@@ -210,7 +210,7 @@ export function nearerOwnLine(candidates: SlotCandidate[], own: readonly Polylin
   if (others.length === 0) return candidates.slice();
   return candidates.filter(({ rect }) => {
     let gap = Infinity;
-    for (const line of own) gap = Math.min(gap, line.distance(rect));
+    for (const line of own) gap = Math.min(gap, line.distanceNear(rect));
     return !others.some(line => line.closerThan(rect, gap));
   });
 }

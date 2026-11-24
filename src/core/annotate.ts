@@ -176,6 +176,8 @@ export interface AnchorResolution {
   };
 }
 
+export interface BracketSpanError { code: string; error: string }
+
 export interface AnnotatePassInput {
   target?: RenderTarget;
   annotations: Annotation[];
@@ -206,7 +208,7 @@ export interface AnnotatePassInput {
    */
   resolveSpan?: (from: Id, to: Id) =>
     | { left: number; right: number; y: number; spanY: number; sum: number; steps: { id: Id; value: number }[] }
-    | { code: string; error: string };
+    | BracketSpanError;
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
   occupied: OccupiedIndex;

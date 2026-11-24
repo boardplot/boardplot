@@ -28,7 +28,10 @@ function leaves(issues: readonly z.core.$ZodIssue[], prefix: readonly PropertyKe
 export function parseWithInputConversions<T>(
   schema: z.ZodType<T>, input: unknown, base: readonly (string | number)[], enumsOnly = false,
 ) {
-  const original = diagnosedSafeParse(schema, input);
+  // Chart requests usually validate one small options object. Compiling code for
+  // every optional field costs more on the first chart than interpreting the schema.
+  const context = base[0] === 'options' ? { jitless: true } : undefined;
+  const original = diagnosedSafeParse(schema, input, context);
   let result = original;
   const warnings: LintWarning[] = [];
   let converted = input;
@@ -88,7 +91,7 @@ export function parseWithInputConversions<T>(
       changed = true;
     }
     if (!changed) break;
-    result = diagnosedSafeParse(schema, converted);
+    result = diagnosedSafeParse(schema, converted, context);
   }
   return result.success ? { result, input: converted, warnings } : { result: original, input, warnings: [] };
 }

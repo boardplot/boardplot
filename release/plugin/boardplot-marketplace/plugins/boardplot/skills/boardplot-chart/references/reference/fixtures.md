@@ -97,6 +97,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | events-dashboard | column.grouped | example | Event markers on a dashboard tile: numbers on the chart, titles in the key |
 | cohort-layers | column.stacked | example | The active base by acquisition cohort, oldest at the bottom |
 | staircase-labels-stacked | column.stacked | example | Staircase category labels: 16 sorted stacked columns with long names and two negative segments |
+| staircase-labels-stacked-auto-height | column.stacked | example | Stacked columns with staircase labels at automatic height |
 | staircase-labels-unsorted-fallback | column.stacked | torture | Torture: staircase labels over unsorted columns fall back to the category row with a warning |
 | integrated-variance-no-growth | column.stacked | torture | Integrated PY ticks without growth arrows (labels.growth false) |
 | series-names-left-edge | column.stacked | example | Stacked series named left of the first column instead of in a legend |

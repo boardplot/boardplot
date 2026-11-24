@@ -469,6 +469,77 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
   return result;
 }
 
+/** Tabular digits can change without changing the measured glyph advances. */
+function sameFigureShape(text: string, sample: string): boolean {
+  if (text.length !== sample.length) return false;
+  for (let i = 0; i < text.length; i++) {
+    const a = text.charCodeAt(i);
+    const b = sample.charCodeAt(i);
+    if (a !== b && (a < 48 || a > 57 || b < 48 || b > 57)) return false;
+  }
+  return true;
+}
+
+/** Measure value tracks together so adjacent periods can use the same figure from a row. */
+export function primeValueBodyWidths(cols: readonly ResolvedColumn[], rows: readonly ResolvedRow[], ctx: WidthContext): void {
+  const tracks = cols.flatMap(column => {
+    const index = ctx.bodyWidths!.columnIndex.get(column.id)!;
+    const variants = ctx.bodyWidths!.columns[index]!;
+    return column.kind === 'value' && column.emphasis !== 'strong' && !column.cellEncoding && variants.length === 0
+      ? [{ column, variants, maximum: -Infinity, supported: true }] : [];
+  });
+  if (tracks.length < 2) return;
+
+  // Each length keeps its most recent measured string. Other signs, separators and affixes get their own measurement.
+  function rowFigureWidth(font: FontSpec) {
+    const tabular = figureFont(font, true);
+    const samples: string[] = [];
+    const widths: number[] = [];
+    return (column: ResolvedColumn, text: string): number => {
+      const length = text.length;
+      const sample = length <= 32 ? samples[length] : undefined;
+      if (sample !== undefined && sameFigureShape(text, sample)) return widths[length]!;
+      if (!ctx.figures!(column, text)) return ctx.measure(text, font).width;
+      const width = ctx.measure(text, tabular).width;
+      if (length <= 32) {
+        samples[length] = text;
+        widths[length] = width;
+      }
+      return width;
+    };
+  }
+  for (const row of rows) {
+    if (row.inline === true) continue;
+    let valueWidth: ReturnType<typeof rowFigureWidth> | undefined;
+    let changeWidth: ReturnType<typeof rowFigureWidth> | undefined;
+    for (const track of tracks) {
+      if (!track.supported) continue;
+      const cell = row.cells[track.column.id];
+      if (!cell) continue;
+      if (cell.note || cell.kind !== 'value' || cell.rowId !== row.id || cell.role !== row.role) {
+        track.supported = false;
+        continue;
+      }
+      valueWidth ??= rowFigureWidth(ctx.cellFont(cell));
+      track.maximum = Math.max(track.maximum, valueWidth(track.column, cell.displayed));
+      for (const line of row.inlineRows ?? []) {
+        const text = line.cells[track.column.id]?.displayed;
+        if (!text) continue;
+        changeWidth ??= rowFigureWidth(ctx.changeFont!(row.step));
+        track.maximum = Math.max(track.maximum, changeWidth(track.column, text));
+      }
+    }
+  }
+  for (const { column, variants, maximum, supported } of tracks) {
+    if (!supported) continue;
+    variants.push({
+      authored: column.width !== undefined, maxTextWidth: column.maxTextWidth, labelLines: ctx.labelLines,
+      figuresOnly: false, hasCellNotes: false, hinted: ctx.hint !== undefined, inlineIndent: ctx.inlineIndent,
+      levels: maximum === -Infinity ? [] : [0], widths: maximum === -Infinity ? [] : [maximum],
+    });
+  }
+}
+
 export function intrinsicColumnWidth(
   column: ResolvedColumn,
   rows: readonly ResolvedRow[],

@@ -13,7 +13,7 @@ import { chartPalette } from '../chartEnv';
 import { valueLineNeedsSharedPass } from '../../annotateFields';
 import { valueLineExtent } from '../../valueLineDomain';
 import { formatAutomaticPercent, formatShare, shareText } from '../../format';
-import { shareSetDecimals } from '../../formatPrecision';
+import { currentSmallValues, formatScopeKey, shareSetDecimals } from '../../formatPrecision';
 import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { PRIORITY } from '../../label/solver';
 import {
@@ -25,8 +25,10 @@ import {
   ranksCategories,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
-import { defaultMeasurer } from '../../text';
-import { colorRolePaints, strokeToken, panelTypeClass, rampSlots, resolveTheme, themeForWidth } from '../../theme';
+import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
+import { requestMemo } from '../../layoutPlan';
+import { barPaints } from './paints';
+import { colorRolePaints, strokeToken, panelTypeClass, rampSlots, resolveTheme, themeForWidth, typeWidthClass } from '../../theme';
 import type { Annotation } from '../../types/annotations';
 import { cellMeta, cellValue, isPctCell, type CellMeta, type Id, type Scenario } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -46,6 +48,17 @@ import { disclosuresShown } from '../../notes';
 import { isRecord } from '../../lint/shared';
 import { cappedItems } from '../../frame';
 import { dataSeriesUnitRefusal } from '../../schema/units';
+
+// The data, paint and format decisions read these options. Legend placement, notes added
+// by a fitting pass and canvas height belong to the frame of the current trial.
+type BarInput = BarOptions & { rasterFromValues?: boolean; shareLabels?: { format?: string } };
+const domainFields = [
+  'variant', 'sort', 'topN', 'unit', 'format', 'rasterFromValues', 'locale', 'strings',
+  'theme', 'palette', 'highlight', 'signColor', 'colorblindSafe', 'connectors', 'referenceStyle',
+  'referenceTick', 'annotations', 'averageMarker', 'netLine', 'grandTotalLabels', 'labels',
+  'notes', 'shareLabels', 'sharesOfOneWhole', 'rounding', 'valueAxis', 'measure',
+] as const satisfies readonly (keyof BarInput)[];
+type DomainOptions = Pick<BarInput, typeof domainFields[number]>;
 
 /** The label text of a bar or segment: the display value with the cell's `${value}` override; null when the cell hides it. */
 /**
@@ -158,7 +171,7 @@ function normalizeBarSeries(data: ChartData, warnings: LintWarning[]): { rawCats
  * with an 'Others' row. Reorders the series cells in place.
  */
 function orderBarCategories(
-  options: BarOptions,
+  options: DomainOptions,
   rawCats: ReturnType<typeof normalizeCategory>[],
   normSeries: NormSeries[],
   dataSeries: NormSeries[],
@@ -315,7 +328,7 @@ function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: No
 
 /** The net line, with the warnings for the cases it cannot draw. */
 function barNetLine(
-  options: BarOptions,
+  options: DomainOptions,
   variant: BarDomain['variant'],
   dataSeries: NormSeries[],
   warnings: LintWarning[],
@@ -374,7 +387,7 @@ function barNetLine(
  * and stacked100 gets its indicator100 by default.
  */
 function barAnnotations(
-  options: BarOptions,
+  options: DomainOptions,
   variant: BarDomain['variant'],
   averageMarkerValue: number | undefined,
   statFmt: (v: number) => string,
@@ -468,10 +481,36 @@ function barValueExtent(
   return { lo, hi, rendered };
 }
 
-/** Phase 1: data and options in, the plotted values and the value extent out. */
-export function resolveBarDomain(data: ChartData, options: BarOptions, warnings: LintWarning[]): BarDomain {
+type PreparedBar = { domain: BarDomain; paints: ReturnType<typeof barPaints> };
+
+export function prepareBar(data: ChartData, options: BarInput, warnings: LintWarning[], native: boolean): PreparedBar {
   const size = resolveSize(options.size);
-  const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
+  const widthClass = panelTypeClass(options) ?? typeWidthClass(size.width);
+  const build = (out: LintWarning[]) => {
+    const domain = resolveBarDomain(data, options, size, widthClass, out);
+    return { domain, paints: barPaints(domain, out) };
+  };
+  if (!native || options.variant !== 'stacked' || !isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return build(warnings);
+
+  // Each sizing trial gets its current size and options. The immutable stacks, extents,
+  // formatters and paints can serve other trials with the same inputs in this request.
+  const key = JSON.stringify(['stacked-bar-data', widthClass, currentSmallValues(), formatScopeKey(options)]);
+  type Entry = { options: DomainOptions; prepared: PreparedBar; warnings: LintWarning[] };
+  const entries = requestMemo(data, key, (): Entry[] => []);
+  const match = entries.find(entry => domainFields.every(field => entry.options[field] === options[field]));
+  if (match) {
+    for (const warning of match.warnings) warnings.push(warning);
+    return { domain: { ...match.prepared.domain, options, size }, paints: match.prepared.paints };
+  }
+  const before = warnings.length;
+  const prepared = build(warnings);
+  entries.push({ options, prepared, warnings: warnings.slice(before) });
+  return prepared;
+}
+
+function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDomain['size'],
+  widthClass: ReturnType<typeof typeWidthClass>, warnings: LintWarning[]): BarDomain {
+  const theme = themeForWidth(resolveTheme(options.theme), widthClass);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const variant = (options.variant ?? 'grouped') as BarDomain['variant'];
   const connectorsOn = options.connectors !== undefined && options.connectors !== false;
@@ -516,7 +555,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // instead — the values carry float noise, not authored precision, and the
   // raster must not lift a whole-point net badge to "+75.06".
   const hostDeclaresPrecision =
-    (options as { rasterFromValues?: boolean }).rasterFromValues === false;
+    options.rasterFromValues === false;
   const valueSpec = seriesRasterFormatter(options.format, hostDeclaresPrecision
       ? []
       : normSeries.flatMap((s) =>

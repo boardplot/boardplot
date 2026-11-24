@@ -34,20 +34,20 @@ import { PARTIAL_KEY, partialIds, toDateFits, toDateRoom } from '../../partialPe
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { NOT_AVAILABLE } from '../../format';
 import { noTotal } from '../../stackAdds';
-import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
+import { emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { segmentHitsRect, type Point, type Rect } from '../../geometry';
 import { leaderPath, linePath } from '../../svgPath';
 import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
-import type { OccupiedIndex } from '../../label/occupied';
+import type { OccupiedClaim, OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { DIGIT_SEAT, type DigitSeated } from '../../sizing';
+import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, sameContent, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import { isCachedTextMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
@@ -59,7 +59,8 @@ import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, type DigitSeats } from './labels';
-import { layoutColumnMarks } from './marks';
+import { layoutColumnMarks, stackPaddingProbe } from './marks';
+import { stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
 import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo } from './plot';
@@ -69,9 +70,11 @@ import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
 import { dataOrder, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
-import { runStaircase, seatStaircase, settleStaircase, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
+import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
 import { pushAll } from '../../arrays';
+import { freedChromeOf, partNeedOf, staticFrame } from '../../footer';
+import { HOST_CLAIMS } from '../../claims/ids';
 
 /** Route straight leaders around printed boxes, or cut their blocked runs, with the shared gap. */
 function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
@@ -262,6 +265,8 @@ function annotateColumn(
   solveCtx: SolveCtx,
   printedLabels: readonly PlacedLabel[],
 ): AnnotatePassResult {
+  const annotations = columnPassAnnotations(domain);
+  if (!annotations.length && isCachedTextMeasurer(domain.measure)) return emptyAnnotatePass();
   const { cats, dataSeries, variant, plottedOf, absOf, posTopP, negBotP, stackTotals } = domain;
   const { plot, band, y, y0, topPad } = area;
   const catIndex = new Map(cats.map((c, i) => [c.id, i] as const));
@@ -351,8 +356,8 @@ function annotateColumn(
     target: domain.options.target,
     // The growth bracket seats its label on its run.
     cagrLabelOnArm: true,
-    annotations: columnPassAnnotations(domain),
-    toleranceKeyed: toleranceKeyed(columnPassAnnotations(domain), area.frame.legend?.items),
+    annotations,
+    toleranceKeyed: toleranceKeyed(annotations, area.frame.legend?.items),
     resolve: resolveAnchor,
     printedLabels,
     defaultSpan:
@@ -478,6 +483,7 @@ function assembleColumnGeometry(
   warnings: LintWarning[],
   paintWarningRules: PaintWarningRule[],
   lane: EmittedLane | undefined,
+  measuring: boolean,
 ): Geometry<ColumnMarks, ColumnDerived> {
   const { cats, dataSeries, anomaly, stackTotals, percents } = domain;
   const { tickFont, strongFont, labelFont, band, catPlan, showCatRow } = area;
@@ -520,7 +526,7 @@ function assembleColumnGeometry(
     if ((label.kind === 'point' || label.kind === 'category') && label.owner.annotationId === undefined
       && (domain.highlights.has(label.owner.categoryId ?? '') || domain.highlights.has(label.owner.seriesId ?? ''))) label.emphasis = true;
   }
-  const labelNodes = labelsToNodes(domain.theme, allLabels, (l) =>
+  const labelNodes = measuring ? [] : labelsToNodes(domain.theme, allLabels, (l) =>
       tierState?.fontByLabelId.get(l.id) ??
       // A total column (categories[].role 'total') prints its head and values bold.
       (totalIds.has(l.owner.categoryId ?? '') && (l.kind === 'segment' || l.kind === 'category')
@@ -560,7 +566,7 @@ function assembleColumnGeometry(
     type: 'column',
     size: domain.size,
     plot: area.plot,
-    scene: withSegmentSeams(joinHatchPeers(nodes), domain.theme),
+    scene: measuring ? nodes : withSegmentSeams(joinHatchPeers(nodes), domain.theme),
     labels: lane ? [...allLabels, ...lane.labels] : allLabels,
     axes,
     annotations: [
@@ -643,10 +649,19 @@ export function layoutColumn(
 interface AxisFallback { on: boolean }
 
 const AXIS_FALLBACK = Symbol('columnAxisFallback');
+const SHORT_WITHOUT_AXIS = Symbol('shortWithoutAxis');
+const PROBE_COLUMN_AXIS = Symbol('probeColumnAxis');
+const AXIS_PROBE_INCONCLUSIVE = Symbol('axisProbeInconclusive');
 interface AxisProbe {
   checked: boolean;
+  otherAxis?: Pick<AxisProbe, 'prepared'> & Pick<ColumnStaircaseMemo, 'frame' | 'plotHeightAt'>;
   prepared?: { domain: ColumnDomain; paints: ReturnType<typeof columnPaints>; warnings: LintWarning[] };
 }
+
+const columnValue = (label: Pick<PlacedLabel, 'kind'>) => ['point', 'segment', 'grandTotal', 'total'].includes(label.kind);
+const shownValue = (label: PlacedLabel) => label.hidden === undefined || label.printedIn !== undefined;
+// A redundant label that owes nothing is the author's label: false.
+const droppedValue = (label: PlacedLabel) => !shownValue(label) && (label.hidden !== 'redundant' || label.owed === true);
 
 const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => ({ ...options, valueAxis: { ...options.valueAxis, show: true } });
 
@@ -659,12 +674,9 @@ const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => (
  */
 function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geometry: Pick<Geometry<ColumnMarks, ColumnDerived>, 'labels' | 'marks'>): boolean {
   if (options.valueAxis?.show !== undefined || panelTypeClass(options) !== undefined) return false;
-  const shown = (label: PlacedLabel) => label.hidden === undefined || label.printedIn !== undefined;
-  // A label the engine dropped; a 'redundant' one that owes nothing is the author's label: false.
-  const dropped = (label: PlacedLabel) => !shown(label) && (label.hidden !== 'redundant' || label.owed === true);
   const values = new Map<string, PlacedLabel[]>();
   for (const label of geometry.labels) {
-    if (!['point', 'segment', 'grandTotal', 'total'].includes(label.kind)) continue;
+    if (!columnValue(label)) continue;
     for (const key of [`${label.owner.seriesId}|${label.owner.categoryId}`, `|${label.owner.categoryId}`]) {
       values.set(key, [...(values.get(key) ?? []), label]);
     }
@@ -675,18 +687,23 @@ function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geomet
   return geometry.marks.bars.some((bar) => {
     if (bar.segments) {
       const own = values.get(`|${bar.categoryId}`) ?? [];
-      return own.some(dropped) && !own.some(shown);
+      return own.some(droppedValue) && !own.some(shownValue);
     }
     const key = `${bar.seriesId}|${bar.categoryId}`;
     // Thinning offers no label to a grouped column at all, so a missing label counts as dropped.
-    return pointsOn && !cellOff.has(key) && !(values.get(key) ?? []).some(shown);
+    return pointsOn && !cellOff.has(key) && !(values.get(key) ?? []).some(shownValue);
   });
 }
 
 /** The column laid out with its value notes, and again with every series keyed when an edge name lost its seat. */
 function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keepEachValue: boolean): Geometry<ColumnMarks, ColumnDerived> {
   const axis: AxisFallback = { on: false };
-  const geometry = withBandValueNotes(data, resolved, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
+  const geometry = withBandValueNotes(data, resolved, next => {
+    // A speculative note may be discarded in favour of the original plot. Only the original
+    // pass can prove the whole midpoint short.
+    if (next !== resolved && typeof next.size === 'object') columnMidpointFloor.delete(next.size);
+    return layoutColumnWithNotes(data, next, keepEachValue, axis, next === resolved && typeof next.size === 'object' && measureColumnHeight.has(next.size));
+  });
   // An edge name that lost its seat leaves its series to the key: lay out again with every series keyed.
   const keyed = new Set(geometry.legend?.items.map((item) => item.id));
   const lost = geometry.labels.some((label) => label.hidden && label.id.startsWith('seriesEdge:') && !keyed.has(label.owner.seriesId!));
@@ -717,19 +734,57 @@ function layoutColumnWithNotes(
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
   axis: AxisFallback = { on: false },
+  originalHeightTrial = false,
 ): Geometry<ColumnMarks, ColumnDerived> {
+  if (originalHeightTrial && typeof options.size === 'object') {
+    const search = columnHeightSearch.get(options.size);
+    if (search && search.growthHeight === options.size.height && !search.rejectMidpoint) {
+      const opening = measureStackedOpening(data, options, search);
+      if (opening) throw opening;
+    }
+  }
   const probe: AxisProbe = { checked: false };
+  const heightAxes = originalHeightTrial ? (options.valueAxis?.show === undefined ? 'auto' : 'fixed') : undefined;
   if (!axis.on) {
     // The first pass usually shows the gap already, so the settling passes are not spent on it.
     try {
-      const geometry = layoutColumnSettled(data, options, keepEachValue, probe, (first) => unnumberedColumn(data, options, first));
+      const geometry = layoutColumnSettled(data, options, keepEachValue, probe, (first) => unnumberedColumn(data, options, first), heightAxes);
       if (geometry && !unnumberedColumn(data, options, geometry)) return geometry;
     } catch (error) {
+      if (error === SHORT_WITHOUT_AXIS || (error instanceof ColumnHeightTrial && options.valueAxis?.show === undefined)) {
+        // The hidden-axis row is short, but its label solve could still choose the axis.
+        // Check that alternative independently, then restore the usual axis decision if
+        // the second geometry could fit. Neither trial can become a public result.
+        const on = { ...withValueAxis(options), [PROBE_COLUMN_AXIS]: true };
+        try {
+          layoutColumnSettled(data, on, keepEachValue, { checked: false, otherAxis: probe.otherAxis }, undefined, heightAxes);
+        } catch (other) {
+          if (other === COLUMN_MIDPOINT_SHORT) throw other;
+          if (error instanceof ColumnHeightTrial && other instanceof ColumnHeightTrial && error.agrees(other)) {
+            const off = error.afterRefusal;
+            const on = other.afterRefusal;
+            error.afterRefusal = off && on && (height => {
+              const first = off(height);
+              const second = first && on(height);
+              return first && second && first.agrees(second) ? first : undefined;
+            });
+            throw error;
+          }
+          // Even an error on the speculative axis belongs to the normal evaluator
+          // only if it would actually choose that axis.
+        }
+        if (typeof options.size === 'object') {
+          columnMidpointFloor.delete(options.size);
+          const search = columnHeightSearch.get(options.size);
+          if (search) delete search.growthHeight;
+        }
+        return layoutColumnWithNotes(data, options, keepEachValue, axis);
+      }
       if (error !== AXIS_FALLBACK) throw error;
     }
     axis.on = true;
   }
-  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe)!;
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe, undefined, heightAxes)!;
 }
 
 /** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
@@ -739,6 +794,7 @@ function layoutColumnSettled(
   keepEachValue: boolean,
   probe: AxisProbe,
   stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
+  heightAxes?: 'auto' | 'fixed',
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
@@ -746,11 +802,23 @@ function layoutColumnSettled(
   let pass!: Exclude<ReturnType<typeof layoutColumnPass>, { retry: StaircaseOutcome }>;
   let minimumChrome = Infinity;
   let first = true;
-  const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
+  const run = (next: AnomalyColumnOptions, probeAxis = false, noteParent?: ColumnPass): AnomalyColumnOptions => {
     // Only the staircase padding or fallback flag changes between these draws.
-    const staircase: ColumnStaircaseMemo | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
+    const staircase: (ColumnStaircaseMemo & Pick<AxisProbe, 'prepared'>) | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
+    const shared = first && PROBE_COLUMN_AXIS in next ? probe.otherAxis : undefined;
+    if (staircase && shared?.prepared) {
+      const { domain, paints, warnings } = shared.prepared;
+      staircase.prepared = { domain: { ...domain, options: next, va: next.valueAxis! }, paints, warnings };
+      staircase.frame = shared.frame;
+      staircase.plotHeightAt = shared.plotHeightAt;
+    }
+    if (first && heightAxes && staircase && typeof next.size === 'object') {
+      const search = columnHeightSearch.get(next.size);
+      if (search && !axisTests.get(search)?.has(!!next.valueAxis?.show)) staircase.heightAxes = heightAxes;
+      if (search && search.growthHeight === next.size.height) staircase.growthTrial = true;
+    }
     const draw = (o: AnomalyColumnOptions) => {
-      const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined, staircase);
+      const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, probeAxis, staircase, noteParent);
       first = false;
       if ('retry' in trial) return trial.retry;
       // A completed draw owns its scene nodes, including the title and footer.
@@ -770,7 +838,7 @@ function layoutColumnSettled(
     }
     return next;
   };
-  options = run(options);
+  options = run(options, stopAfterFirst !== undefined);
   if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
@@ -821,7 +889,8 @@ function layoutColumnSettled(
     for (let round = 0; round <= owed && unnamed(); round++) {
       const byData = dataOrder(data, pass.geometry.labels);
       named = new Map([...named, ...pass.unprinted].sort(([a], [b]) => byData(a, b)));
-      next = run({ ...next, [SEGMENT_NOTE]: [...named.values()] } as AnomalyColumnOptions);
+      const parent = pass.noteFrame?.options === next ? pass : undefined;
+      next = run({ ...next, [SEGMENT_NOTE]: [...named.values()] } as AnomalyColumnOptions, false, parent);
     }
     return next;
   };
@@ -854,6 +923,220 @@ function layoutColumnSettled(
   return pass.geometry;
 }
 
+type AxisHeightTest = (height: number, floor: number) => boolean;
+const axisTests = new WeakMap<object, Map<boolean, AxisHeightTest>>();
+
+/**
+ * The staircase missed its height cap for the current axis. In this plain
+ * stack there are no other mark reserves or lost edge keys. The default frame
+ * prints the source and keeps generated disclosures off the canvas. Replaying a
+ * value note therefore gives the same frame, scale and numerical staircase result.
+ */
+function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?: ColumnStaircaseMemo): void {
+  const { options, size } = domain;
+  const floor = options.size && typeof options.size === 'object' && columnMidpointFloor.get(options.size);
+  if ((!floor && !memo?.heightAxes && !memo?.growthTrial) || !staircaseShortOnHeight(options) || !memo?.plotAtPad
+    || !area.showCatRow || options.mode === 'compact' || panelTypeClass(options) !== undefined
+    || domain.variant !== 'stacked' || domain.activeBreak || domain.anomaly || domain.annList.length
+    || domain.refSeries.length || domain.netLineOn || domain.ribbonsOn || domain.connectorsOn || area.tier
+    || domain.cats.some(c => c.partial || c.footnote !== undefined) || domain.dataSeries.some(s => s.vals.some(v => v.range))
+    || options.seriesLabels !== undefined || kindSetting(options, 'segment') !== false
+    || options.notes !== undefined || options.footnotes !== undefined || staticFrame.pinned || staticFrame.live
+    || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
+    || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
+  if (memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
+    const search = columnHeightSearch.get(options.size);
+    if (search) {
+      if (!options.valueAxis?.show && memo.upperTrial) search.upperTrial = memo.upperTrial;
+      const axes = axisTests.get(search) ?? new Map<boolean, AxisHeightTest>();
+      const { plotHeightAt, rotatedHeightAt, stairFailsAt } = memo;
+      const reason = staircaseState(options).off!;
+      const shown = !!options.valueAxis?.show;
+      axes.set(shown, (height, plotPx) => {
+        const frameHeight = plotHeightAt(height);
+        if (!stairFailsAt(frameHeight, reason)) return false;
+        const rowHeight = rotatedHeightAt(frameHeight);
+        // The row reserves its measured height + 8 and every column plot reserves at least 8 above it.
+        return rowHeight !== undefined && Math.max(10, frameHeight - (rowHeight + 8) - 8) + 1e-6 < plotPx;
+      });
+      axisTests.set(search, axes);
+      if (memo.heightAxes === 'fixed') search.rejectMidpoint = axes.get(shown);
+      else if (axes.size === 2) search.rejectMidpoint = (height, px) => axes.get(false)!(height, px) && axes.get(true)!(height, px);
+    }
+  }
+  // Plain fallback rows keep this plot when the label solver hides a value. The
+  // non-live default frame lists generated disclosures outside the source footer.
+  if (memo.growthTrial && memo.plotHeightAt && !staticFrame.live && !domain.averageMarker && !domain.pyRef
+    && !domain.incompleteCats.size && !area.frame.deficit && !options.labelOffsets && !options.labelPlacements
+    && !plotChromeFloor.has(area.frame.frame)) {
+    const frame = area.frame.frame;
+    const trial = new ColumnHeightTrial(Math.max(frame.minHeight ?? 0, frame.plotMinHeight ?? 0),
+      area.plot.h, freedChromeOf(frame), partNeedOf(frame));
+    const { plotHeightAt, stairFailsAt, rotatedHeightAt, rowPlotAt } = memo;
+    if (trial.minimum > size.height && stairFailsAt && rotatedHeightAt && rowPlotAt && !trial.part) {
+      const reason = staircaseState(options).off!;
+      trial.afterRefusal = height => {
+        const frameHeight = plotHeightAt(height);
+        if (height <= size.height || frameHeight <= 10 || !stairFailsAt(frameHeight, reason)) return;
+        const rowHeight = rotatedHeightAt(frameHeight);
+        if (rowHeight === undefined) return;
+        const { raw, minPlot } = rowPlotAt(frameHeight, rowHeight + 8);
+        const minimum = Math.max(height + (10 - frameHeight), height + 10 - raw, height + minPlot - raw);
+        return new ColumnHeightTrial(minimum, Math.max(10, raw), trial.freed, trial.part);
+      };
+    }
+    if (memo.openingFrame) memo.openingFrame.transferable = true;
+    throw trial;
+  }
+  if (floor && Math.ceil(size.height - area.plot.h + floor - 1e-6) > size.height) {
+    throw options.valueAxis?.show === undefined ? SHORT_WITHOUT_AXIS : COLUMN_MIDPOINT_SHORT;
+  }
+}
+
+function staircaseInput(domain: ColumnDomain, area: ColumnArea) {
+  const { options } = domain;
+  return area.stairTop === undefined ? undefined : {
+    categories: domain.cats, band: area.band, top: area.stairTop, left: area.plot.x, right: area.plot.x + area.plot.w,
+    floor: area.y0, above: options.labels !== false ? area.gtH + 4 : 0, font: area.tickFont, measure: domain.measure,
+    tops: domain.posTopP, options, cap: STAIRCASE_MAX_PAD * area.frame.plot.h,
+  };
+}
+
+function measureColumnStaircase(domain: ColumnDomain, area: ColumnArea, staircaseMemo: ColumnStaircaseMemo | undefined,
+  stairInput: NonNullable<ReturnType<typeof staircaseInput>>): StaircaseOutcome | undefined {
+  const { options } = domain;
+  const probe = stackPaddingProbe(domain, area, staircaseMemo);
+  if (probe && staircaseMemo?.heightAxes && staircaseMemo.scaleAt && staircaseState(options).pad === 0) {
+    const { scaleAt } = staircaseMemo;
+    const paddingAt = (frameHeight: number, base: NonNullable<ReturnType<typeof scaleAt>>) =>
+      probeStaircasePadding({ ...stairInput, cap: STAIRCASE_MAX_PAD * frameHeight }, pad =>
+        probe(undefined, pad === undefined ? base : scaleAt(frameHeight, pad)!));
+    staircaseMemo.stairFailsAt = (frameHeight, reason) => {
+      const base = scaleAt(frameHeight, 0);
+      if (!base) return false;
+      const result = paddingAt(frameHeight, base);
+      return result?.failed === reason || result?.next?.off === reason;
+    };
+    const heightOf = staircaseMemo.plotHeightAt;
+    const claims = staircaseMemo.frame?.claims;
+    const block = area.frame.plot;
+    const frame = area.frame.frame;
+    if (!domain.va.show && !domain.incompleteCats.size && !domain.averageMarker && !staticFrame.live
+      && !options.labelOffsets && !options.labelPlacements && !plotChromeFloor.has(frame) && !partNeedOf(frame)
+      && heightOf && claims && !area.frame.deficit && stairInput.top === block.y && area.band.bandwidth >= 3
+      && claims.every(({ rect }) => rect.y + rect.h <= block.y || rect.y >= block.y + block.h - 1e-6)) {
+      const topContentBottom = Math.max(0, ...claims.map(({ rect }) => rect.y + rect.h <= block.y ? rect.y + rect.h : 0));
+      const minPlot = plotFloorRows(options) * domain.measure('0', area.labelFont).height + 8;
+      const freed = freedChromeOf(frame);
+      staircaseMemo.upperTrial = height => {
+        const frameHeight = heightOf(height);
+        const base = scaleAt(frameHeight, 0);
+        if (!base) return;
+        const result = paddingAt(frameHeight, base);
+        if (result?.failed || result?.next?.off) return;
+        const pad = result?.next?.pad ?? 0;
+        const scaled = pad === 0 ? base : scaleAt(frameHeight, pad)!;
+        if (scaled.plot.h < minPlot) return;
+        const tops = probe(undefined, scaled);
+        if (!tops) return;
+        const seats = staircaseNameSeats(stairInput, tops.map(top => top - stairInput.above));
+        if ('failed' in seats || seats.deficit > 0.5 || pad + seats.deficit > STAIRCASE_MAX_PAD * frameHeight) return;
+        const upperFrame = { ...area.frame, plot: { ...block, h: frameHeight } };
+        // Only the coordinates read by the seat checks change. No scene or footer is made here.
+        const upper = Object.assign(Object.create(area) as ColumnArea, scaled, { topPad: 8 + pad, frame: upperFrame });
+        if (!stackedStaircaseSeatsFit(domain, upper, height, seats.names, topContentBottom)) return;
+        const minimum = Math.max(height + (10 - frameHeight), height + 10 - scaled.plot.h,
+          height + minPlot - scaled.plot.h);
+        return new ColumnHeightTrial(minimum, scaled.plot.h, freed, 0);
+      };
+    }
+  }
+  return probe && probeStaircasePadding(stairInput, probe);
+}
+
+/** Measure the opening's failed staircase and rotated row without laying out marks or the row's labels. */
+function measureStackedOpening(data: ChartData, options: AnomalyColumnOptions, search: NonNullable<ReturnType<typeof columnHeightSearch.get>>) {
+  if (options.variant !== 'stacked' || options.categoryLabels !== 'staircase' || options.valueAxis?.show !== undefined
+    || options.valueAxis?.percent || options.seriesLabels || options.window || options.viewDomain || options.ratioTier
+    || options.annotations?.length || options.mode === 'compact' || options.notes !== undefined || options.footnotes !== undefined
+    || options.labelOffsets || options.labelPlacements || staticFrame.live || staticFrame.pinned || panelTypeClass(options) !== undefined) return;
+  const warnings: LintWarning[] = [];
+  const domain = resolveColumnDomain(data, options, warnings);
+  if (domain.options !== options || !isCachedTextMeasurer(domain.measure) || kindSetting(options, 'segment') !== false
+    || domain.activeBreak || domain.anomaly || domain.averageMarker || domain.refSeries.length || domain.netLineOn
+    || domain.pyRef || domain.ribbonsOn || domain.connectorsOn || domain.incompleteCats.size || domain.annList.length
+    || domain.cats.some(c => c.partial || c.footnote !== undefined || c.date !== undefined || c.role === 'total' || c.breakAfter)
+    || domain.dataSeries.some(s => s.vals.some(v => v.range))) return;
+  const paints = columnPaints(domain, warnings);
+  if (warnings.length) return;
+  const first: ColumnStaircaseMemo = { heightAxes: 'auto', growthTrial: true, measureOpening: true };
+  const axis = (d: ColumnDomain, memo: ColumnStaircaseMemo) => {
+    const { frame } = solveColumnFrame(d, paints, warnings, undefined, memo);
+    if (!memo.plotHeightAt || frame.deficit || frame.frame.notePlacement !== 'frame'
+      || frame.frame.noteList?.some(n => n.kind !== 'source') || plotChromeFloor.has(frame.frame) || partNeedOf(frame.frame)) return;
+    const area = columnPlotArea(d, frame, warnings, undefined, memo);
+    const input = staircaseInput(d, area);
+    if (!input || !memo.prepareFallbackRow || warnings.length) return;
+    const state = nextStaircase(d.options, measureColumnStaircase(d, area, memo, input));
+    if (!state?.off || !staircaseShortOnHeight({ [STAIRCASE]: state }) || !memo.stairFailsAt) return;
+    memo.prepareFallbackRow();
+    const { plotHeightAt, rotatedHeightAt, rowPlotAt, stairFailsAt } = memo;
+    if (!rotatedHeightAt || !rowPlotAt) return;
+    const reason = state.off, freed = freedChromeOf(frame.frame);
+    const measure = (height: number, initial = false) => {
+      const frameHeight = plotHeightAt(height);
+      if (frameHeight <= 10 || !initial && !stairFailsAt(frameHeight, reason)) return;
+      const row = rotatedHeightAt(frameHeight);
+      if (row === undefined) return;
+      const { raw, minPlot } = rowPlotAt(frameHeight, row + 8);
+      return new ColumnHeightTrial(Math.max(height + (10 - frameHeight), height + 10 - raw, height + minPlot - raw),
+        Math.max(10, raw), freed, 0);
+    };
+    const firstTrial = measure(d.size.height, true);
+    if (!firstTrial || firstTrial.minimum <= d.size.height) return;
+    const reject: AxisHeightTest = (height, floor) => {
+      const frameHeight = plotHeightAt(height);
+      if (!stairFailsAt(frameHeight, reason)) return false;
+      const row = rotatedHeightAt(frameHeight);
+      return row !== undefined && Math.max(10, frameHeight - (row + 8) - 8) + 1e-6 < floor;
+    };
+    return { firstTrial, measure, reject };
+  };
+  const without = axis(domain, first);
+  if (!without || !first.narrowGutters || !first.upperTrial) return;
+  // These gutters were already narrowed before the value-axis labels took their share.
+  const on = withValueAxis(options);
+  const shown = axis({ ...domain, options: on, va: on.valueAxis! }, {
+    heightAxes: 'auto', growthTrial: true, measureOpening: true, frame: first.frame, plotHeightAt: first.plotHeightAt,
+  });
+  if (!shown || !without.firstTrial.agrees(shown.firstTrial)) return;
+  const trial = without.firstTrial;
+  trial.afterRefusal = height => {
+    const a = without.measure(height), b = a && shown.measure(height);
+    return a && b && a.agrees(b) ? a : undefined;
+  };
+  search.rejectMidpoint = (height, floor) => without.reject(height, floor) && shown.reject(height, floor);
+  search.upperTrial = first.upperTrial;
+  if (first.openingFrame) first.openingFrame.transferable = true;
+  return trial;
+}
+
+interface ColumnPass {
+  geometry: Geometry<ColumnMarks, ColumnDerived>;
+  unprinted: Map<string, string>;
+  categoryNotes: string[];
+  planNotes: string[];
+  rankKey: () => string[];
+  legDeficit: number;
+  bandNeed: number;
+  valueLineReserve: number;
+  tickReserve: number;
+  unseated: number;
+  seatNeed: number;
+  staircase?: StaircaseOutcome;
+  noteFrame?: { options: AnomalyColumnOptions; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
+}
+
 function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
@@ -861,7 +1144,8 @@ function layoutColumnPass(
   axisProbe?: AxisProbe,
   probeAxis = false,
   staircaseInputs?: Pick<AxisProbe, 'prepared'> & ColumnStaircaseMemo,
-): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } | { retry: StaircaseOutcome } {
+  noteParent?: ColumnPass,
+): ColumnPass | { retry: StaircaseOutcome } {
   const retry = staircaseInputs?.prepared;
   const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
@@ -929,7 +1213,57 @@ function layoutColumnPass(
     area = columnPlotArea(domain, framed.frame, warnings);
     warnings.push(axisBreakHeightOrderWarning());
   }
-  const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area));
+  // The opening plain stack has the same data domain and colours whichever axis the
+  // value labels choose. If its gutters are already narrow, adding the value axis cannot
+  // narrow them again. The axis still gets its own column bands, wrapping and scale.
+  if (axisProbe && staircaseMemo?.heightAxes === 'auto' && staircaseInputs?.prepared && !domain.va.show
+    && domain.variant === 'stacked' && !domain.activeBreak && !domain.pyRef && !domain.refSeries.length
+    && !domain.annList.length && !domain.anomaly && !domain.ribbonsOn && !domain.netLineOn
+    && !domain.connectorsOn && !options.seriesLabels && !options.window && !options.viewDomain
+    && !domain.cats.some(c => c.partial || c.footnote !== undefined)) {
+    axisProbe.otherAxis = { prepared: staircaseInputs.prepared,
+      ...(staircaseMemo.narrowGutters && staircaseMemo.plotHeightAt ? {
+        frame: staircaseMemo.frame, plotHeightAt: staircaseMemo.plotHeightAt,
+      } : {}) };
+  }
+  rejectShortColumnMidpoint(domain, area, staircaseMemo);
+  // A segment note can live outside the drawing. Make its actual frame first.
+  // Only this direct retry owns the previous body, and only if its drawing space is unchanged.
+  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && domain.measure === defaultMeasurer
+    && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
+    && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
+    && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
+    && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
+    && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
+    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice() } : undefined;
+  const before = noteParent?.noteFrame;
+  if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
+    && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
+    && sameContent(before.claims, noteFrame.claims) && sameContent(before.warnings, warnings)
+    && area.band.step === before.area.band.step && area.band.bandwidth === before.area.band.bandwidth
+    && sameContent(before.area.y.domain, area.y.domain) && sameContent(before.area.y.range, area.y.range)) {
+    return { ...noteParent, geometry: { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend }, noteFrame };
+  }
+  const testingAxis = PROBE_COLUMN_AXIS in options;
+  if (testingAxis && area.stairTop === undefined) throw AXIS_PROBE_INCONCLUSIVE;
+  const measuring = typeof options.size === 'object' && measureColumnHeight.has(options.size)
+    && !area.tier && !domain.annList.length && isCachedTextMeasurer(domain.measure);
+  const measureSegments = measuring && !domain.activeBreak && !domain.anomaly && !domain.averageMarker
+    && !domain.refSeries.length && kindSetting(options, 'segment') === false
+    && !domain.cats.some(c => c.partial) && domain.dataSeries.every(s => s.vals.every(cell => cell.labelOverride === undefined && !cell.range));
+  const stairInput = staircaseInput(domain, area);
+  // The staircase already measured every padding round. Only its accepted state on
+  // this same band and frame can paint in one pass; the real label solver still runs.
+  const accepted = staircaseMemo?.acceptedPad;
+  const ready = !!accepted && accepted.state === staircaseState(options) && accepted.block === area.frame.plot && accepted.band === area.band;
+  const retryStair = !ready && stairInput && measureColumnStaircase(domain, area, staircaseMemo, stairInput);
+  if (retryStair) {
+    if (!measuring && !testingAxis && staircaseMemo && retryStair.next && !retryStair.next.off) {
+      staircaseMemo.acceptedPad = { state: retryStair.next, block: area.frame.plot, band: area.band };
+    }
+    return { retry: retryStair };
+  }
+  const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area), measureSegments, ready);
   // the value-axis title is a label in the head band, solved first.
   const requests: LabelRequest[] = area.axisTitle && domain.va.show
     ? [valueAxisTitleRequest(area.axisTitle, { x: area.frame.plot.x, y: area.frame.plot.y + area.ruleH + 4 }, 'start', 'axis:y:title')]
@@ -943,11 +1277,7 @@ function layoutColumnPass(
         measure: domain.measure,
       })
     : undefined;
-  const stair = area.stairTop === undefined ? undefined : seatStaircase({
-    categories: domain.cats, band: area.band, top: area.stairTop, left: area.plot.x, right: area.plot.x + area.plot.w,
-    floor: area.y0, above: options.labels !== false ? area.gtH + 4 : 0, font: area.tickFont, measure: domain.measure,
-    tops: domain.posTopP, options, cap: STAIRCASE_MAX_PAD * area.frame.plot.h, occupied, requests,
-  });
+  const stair = stairInput && seatStaircase({ ...stairInput, occupied, requests });
   // With no running-period key to change the frame, a failed or short staircase already
   // determines the next pass. Its other labels, marks and warnings will be discarded.
   if (stair && domain.annList.length === 0 && !domain.cats.some(c => c.partial)
@@ -955,15 +1285,21 @@ function layoutColumnPass(
     if ('failed' in stair) return { retry: { deficit: 0, failed: stair.failed } };
     if (stair.deficit > 0.5) return { retry: { deficit: stair.deficit } };
   }
-  if (scene.paintStack) scene.nodes = scene.paintStack();
+  if (testingAxis) throw AXIS_PROBE_INCONCLUSIVE;
+  if (scene.paintStack) scene.nodes = scene.paintStack(!measureSegments);
   const noted = { items: new Map<string, string>(), slivers: new Set<string>() };
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
   const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits);
-  // The adjacency lint reads the drawn columns. It runs where it always ran,
-  // after the value-label font step: its `before` count includes those warnings.
-  const paintWarningRules: PaintWarningRule[] = [];
-  pushAll(warnings, rectSeriesAdjacentWarnings(scene.nodes, paints.css, 'vertical', domain.highlights, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
-  const growthPoints = planColumnLabels(domain, area, scene, requests, warnings);
+  const labelWarnings: LintWarning[] = [];
+  // When every segment is suppressed, an omitted total leaves that column with no number.
+  // Digit seats, replacement values and annotations can still give a suppressed segment a number.
+  const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'stacked' && domain.measure === defaultMeasurer && !(HOST_CLAIMS in options)
+    && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && !digits.requests.length && !options.labelPlacements && !options.labelOffsets
+    && requests.every(req => req.kind !== 'segment' || (req.redundant && !req.printedIn && req.pinnedSlot === undefined));
+  const growthPoints = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     density: domain.density,
     measure: domain.measure,
@@ -974,7 +1310,17 @@ function layoutColumnPass(
     seriesUniform: keepEachValue || pickedValues(domain.options) ? undefined : bandValueLabelUniformity(),
   });
   positionColumnLabels(domain, paints, scene, requests);
-  const solved = solveLabels(keepValuesWithoutAxis(requests, domain.density, domain.va.show === true), occupied, solveCtx);
+  // A finished staircase fallback row with a missing sole total already needs the value axis.
+  // Keep every earlier seat and collision decision. Late digit seats, annotations and running periods can still change the answer.
+  const checkTotal = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'stacked' && options.categoryLabels === 'staircase' && area.showCatRow
+    && !tierState && digits.requests.length === 0 && domain.annList.length === 0 && !domain.cats.some(c => c.partial)
+    && isCachedTextMeasurer(domain.measure) ? (label: PlacedLabel) => {
+      const id = label.owner.categoryId;
+      if (label.kind === 'grandTotal' && droppedValue(label) && scene.marks.bars.some(bar => bar.categoryId === id && bar.segments)
+        && requests.filter(request => request.owner.categoryId === id && columnValue(request)).length === 1) throw AXIS_FALLBACK;
+    } : undefined;
+  const solved = solveLabels(keepValuesWithoutAxis(requests, domain.density, domain.va.show === true), occupied, solveCtx, checkTotal);
   // A running period keeps a cue: a to-date value without a seat, or words wider than the drawn column, bring the hatch key back.
   const toDate = toDateOnValues(domain);
   if (toDate.size > 0 && (!toDateFits(domain.options.strings?.toDate ?? chartString(domain.options, 'toDate'), theme, domain.measure, toDateRoom(area.band.bandwidth))
@@ -985,9 +1331,13 @@ function layoutColumnPass(
     axisProbe!.checked = true;
     if (unnumberedColumn(data, options, { labels: solved.placed, marks: scene.marks })) fallback();
   }
+  // Adjacency and its paint-rule positions precede the label warnings on a completed draw.
+  const paintWarningRules: PaintWarningRule[] = [];
+  if (!measuring) pushAll(warnings, rectSeriesAdjacentWarnings(scene.nodes, paints.css, 'vertical', domain.highlights, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
+  pushAll(warnings, labelWarnings);
   const staircase = runStaircase(theme, options.categoryLabels, options, stair, solved.placed, occupied, scene.nodes, warnings);
   applyValueAxisTitleInk(solved.placed);
-  const crossed = haloOverRules(solved.placed, occupied, new Set(['referenceLine', 'valueLine']));
+  const crossed = measuring ? undefined : haloOverRules(solved.placed, occupied, new Set(['referenceLine', 'valueLine']));
   pushAll(warnings, solved.warnings);
   for (const point of growthPoints) {
     const growthLabel = solved.placed.find((label) => label.id === point.growthLabelId);
@@ -1027,11 +1377,22 @@ function layoutColumnPass(
   const inPanel = panelTypeClass(options) !== undefined;
   seatDigits(digits, solved, occupied, solveCtx, warnings, paintWarningRules, (id) => !inPanel && !pointedAt.has(id),
     [...scene.nodes, ...annotated.nodes, ...(lane?.nodes ?? [])]);
-  const unprinted = new Map([...noted.items].filter(([id]) => !pointedAt.has(id) &&
-    // The note names what is not drawn: a sliver a pin placed is drawn, and so is one whose total prints its value.
-    solved.placed.some((label) => label.id === id && (label.hidden === 'collision' || (label.hidden !== undefined && label.printedIn === undefined && noted.slivers.has(id))))));
-  const geometry = assembleColumnGeometry(domain, area, scene, solved, annotated, tierState, pointFont, growthPoints, ratioTierResult, occupied, warnings, paintWarningRules, lane);
-  geometry.scene = raiseOverRules(geometry.scene, crossed);
+  const unprinted = new Map<string, string>();
+  if (noted.items.size) {
+    const hiddenIds = new Set<string>();
+    for (const label of solved.placed) {
+      if (label.hidden === 'collision' || (label.hidden !== undefined && label.printedIn === undefined && noted.slivers.has(label.id))) {
+        hiddenIds.add(label.id);
+      }
+    }
+    // Keep the note in data order, including only values that no callout names.
+    for (const [id, text] of noted.items) {
+      if (hiddenIds.has(id) && !pointedAt.has(id)) unprinted.set(id, text);
+    }
+  }
+  const geometry = assembleColumnGeometry(domain, area, scene, solved, annotated, tierState, pointFont, growthPoints, ratioTierResult, occupied, warnings, paintWarningRules, lane, measuring);
+  if (crossed) geometry.scene = raiseOverRules(geometry.scene, crossed);
+  if (measuring) measuredColumnHeights.add(geometry);
   const planNotes = !area.showCatRow ? []
     : area.catPlan().step === 'ranks' ? rankNotes(domain.cats.map((c) => c.label ?? c.id), domain.options) : area.catPlan().cutNotes;
   const categoryNotes = (options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ? [] : planNotes;
@@ -1052,5 +1413,5 @@ function layoutColumnPass(
       ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
     : [];
   const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  return { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
 }

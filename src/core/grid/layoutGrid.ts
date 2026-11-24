@@ -334,6 +334,17 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   }
 
   // ---- layout children (two passes when aligning) ----
+  // All compact tier headings share the same font. Width alone can change their wrapping in this pass.
+  const headings = compactTiers && isCachedTextMeasurer(measure)
+    ? new Map<number, Map<string, ReturnType<typeof measuredCaption>>>() : undefined;
+  const headingSize = (text: string, font: FontSpec, width: number) => {
+    if (!headings) return measuredCaption(text, font, width, measure);
+    let byText = headings.get(width);
+    if (!byText) headings.set(width, byText = new Map());
+    let size = byText.get(text);
+    if (!size) byText.set(text, size = measuredCaption(text, font, width, measure));
+    return size;
+  };
   let uniformLineEndpointLegend = false;
   // under legend 'none', or a key row that keys only some series, each line
   // panel keeps the end names it can fit; a panel that cannot fit them is keyed by the grid.
@@ -406,9 +417,9 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       : undefined;
     const tierFont = { family: theme.type.family, ...theme.type.axis };
     const tierReserve = compactTiers
-      ? (tierCaption ? measuredCaption(tierCaption, tierFont, slot.w, measure).height : 0) +
+      ? (tierCaption ? headingSize(tierCaption, tierFont, slot.w).height : 0) +
         (tierCaption && tierDetail ? theme.space.labelPad : 0) +
-        (tierDetail ? measuredCaption(tierDetail, tierFont, slot.w, measure).height : 0) +
+        (tierDetail ? headingSize(tierDetail, tierFont, slot.w).height : 0) +
         (tierCaption || tierDetail ? theme.space.labelPad : 0)
       : 0;
     const childMargin: Record<string, unknown> = isRecord(opts.margin) ? opts.margin : {};
@@ -539,8 +550,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     const tierLabels = laidOut.map((child, index) => {
       if (!child.tierCaption && !child.tierDetail) return undefined;
       const font = { family: theme.type.family, ...theme.type.axis };
-      const titleSize = child.tierCaption ? measuredCaption(child.tierCaption, font, child.geo.size.width, measure) : undefined;
-      const detailSize = child.tierDetail ? measuredCaption(child.tierDetail, font, child.geo.size.width, measure) : undefined;
+      const titleSize = child.tierCaption ? headingSize(child.tierCaption, font, child.geo.size.width) : undefined;
+      const detailSize = child.tierDetail ? headingSize(child.tierDetail, font, child.geo.size.width) : undefined;
       const lineGap = titleSize && detailSize ? theme.space.labelPad : 0;
       const height = (titleSize?.height ?? 0) + lineGap + (detailSize?.height ?? 0);
       let y = childContent[index]!.y - theme.space.labelPad - height;
@@ -548,7 +559,13 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       y += (titleSize?.height ?? 0) + lineGap;
       const detail = detailSize ? { x: 0, y, w: detailSize.width, h: detailSize.height } : undefined;
       const occupied = createOccupiedIndex({ x: 0, y: 0, w: child.geo.size.width, h: child.geo.size.height });
+      // Both seats for a heading have the same vertical span. Only claims within a label pad can block them.
+      const pad = Math.max(0, theme.space.labelPad);
+      const first = title ?? detail!;
+      const last = detail ?? title!;
+      const bottom = last.y + last.h + pad;
       for (const claim of child.geo.debug.occupied) {
+        if (claim.rect.y >= bottom || claim.rect.y + claim.rect.h + pad <= first.y) continue;
         occupied.claim(claim.rect, claim.kind, claim.owner, claim.part);
       }
       const requests: LabelRequest[] = [];
@@ -561,7 +578,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         ['tier:detail', child.tierDetail, detailSize, detail, PRIORITY.valueLine],
       ] as const) {
         if (text && size && rect) requests.push({ id, kind: 'axisTitle', typeRole: 'axis', owner: {}, text,
-          lines: size.lines, ...(size.title ? { title: size.title } : {}), font, priority, candidates: candidates(rect) });
+          lines: headings ? [...size.lines] : size.lines, ...(size.title ? { title: size.title } : {}), font, priority, candidates: candidates(rect) });
       }
       const solved = solveLabels(requests, occupied, {
         density: 'full',
@@ -1003,16 +1020,23 @@ export function heightsHoldingMinimums(usable: number, weights: readonly number[
  * moved by its claims alone would draw its names past the canvas.
  */
 export function occupiedBounds(geometry: Geometry, measure: TextMeasurer): Rect {
-  const rects = geometry.debug.occupied.filter((item) => item.kind !== 'reserved').map((item) => item.rect);
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  let hasBounds = false;
+  const include = (x: number, y: number, w: number, h: number) => {
+    hasBounds = true;
+    x1 = Math.min(x1, x);
+    y1 = Math.min(y1, y);
+    x2 = Math.max(x2, x + w);
+    y2 = Math.max(y2, y + h);
+  };
+  for (const item of geometry.debug.occupied) {
+    if (item.kind !== 'reserved') include(item.rect.x, item.rect.y, item.rect.w, item.rect.h);
+  }
   for (const node of geometry.scene) {
     if (node.t !== 'text' || !node.rotate || node.opacity === 0) continue;
-    for (const box of lineBoxes(node, measure)) rects.push({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 });
+    for (const box of lineBoxes(node, measure)) include(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
   }
-  if (rects.length === 0) return geometry.plot;
-  const x1 = minOf(rects.map((rect) => rect.x));
-  const y1 = minOf(rects.map((rect) => rect.y));
-  const x2 = maxOf(rects.map((rect) => rect.x + rect.w));
-  const y2 = maxOf(rects.map((rect) => rect.y + rect.h));
+  if (!hasBounds) return geometry.plot;
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 

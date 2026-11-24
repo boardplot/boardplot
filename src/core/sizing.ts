@@ -17,7 +17,7 @@ import { AUTO_LEGEND } from './legendPolicy';
 import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
 import { withCategoryRowPlans } from './label/categoryRow';
-import { withWrappedTexts } from './text';
+import { defaultMeasurer, isCachedTextMeasurer, type TextMeasurer, withWrappedTexts } from './text';
 import { maxOf } from './arrays';
 import { sourceFollowsContent } from './sourceFollows';
 
@@ -453,8 +453,12 @@ function autoHeightNeed(geometry: Pick<Geometry, 'size' | 'plot'> & { frame?: Ge
 /** The canvas height at which a laid-out chart's plot meets its floor, assuming the frame around it keeps its height. */
 export function plotFloorHeight(geometry: Pick<Geometry, 'size' | 'plot'>, target: RenderTarget, plotPx = PLOT_FLOOR_PX[target],
   share = plotFloorShare(geometry.size.width), freed = 0): number {
-  const chrome = geometry.size.height - plotForFloor(geometry).h + freed;
-  return Math.ceil(Math.max(geometry.size.height, chrome + plotPx, chrome / (1 - share)) - 1e-6);
+  return plotHeightNeeded(geometry.size.height, plotForFloor(geometry).h, plotPx, share, freed);
+}
+
+function plotHeightNeeded(height: number, plot: number, plotPx: number, share: number, freed: number): number {
+  const chrome = height - plot + freed;
+  return Math.ceil(Math.max(height, chrome + plotPx, chrome / (1 - share)) - 1e-6);
 }
 
 /** Includes frame space that a taller chart restores and the chart's certified chrome floor. */
@@ -1120,6 +1124,12 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
     ?? resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size);
   const owes = (layout: LayoutResult<M, DV>) => !layout.refused && layout.labels.some(notedForSize);
   if (constraints.fixed.height || panelTypeClass(options) !== undefined || !owes(first)) return first;
+  // Every taller full frame must still name these values. Neither an empty
+  // note nor a lower count is reachable on the growth ladder.
+  if (!first.refused && options && definition.notesBoundByWidth && !compact && options.mode !== 'compact'
+    && !atHardMinimum(options) && (!staticFrame.pinned || staticFrame.countable)
+    && fitsSize(first.size, declaredSizing(definition, options))
+    && definition.notesBoundByWidth(data, options, first, first.labels.filter(notedForSize))) return first;
   const width = first.size.width;
   // The grown height is the chart's natural height, as grownForFurniture records it: `measure` then names the height that draws.
   const at = (height: number) => {
@@ -1461,26 +1471,98 @@ function cardClassHeight<D, O extends ChartOptions, M extends object, DV extends
   return height;
 }
 
-/** Private size objects identify the fixed-height trials of one automatic column search. */
-export const columnHeightSearch = new WeakMap<object, object>();
+/** A private growth step whose height requirements agree with either choice of value axis. */
+export class ColumnHeightTrial {
+  afterRefusal?: (height: number) => ColumnHeightTrial | undefined;
+  agrees(other: ColumnHeightTrial): boolean {
+    return this.minimum === other.minimum && this.plot === other.plot && this.freed === other.freed && this.part === other.part;
+  }
+  constructor(readonly minimum: number, readonly plot: number, readonly freed: number, readonly part: number) {}
+}
+
+export interface ColumnHeightSearchState {
+  growthHeight?: number;
+  /** Sizing measurements when the winning value-axis choice and staircase seats are known. */
+  upperTrial?: (height: number) => ColumnHeightTrial | undefined;
+  /** True only when neither axis choice can supply the required plot at this height. */
+  rejectMidpoint?: (height: number, plotPx: number) => boolean;
+}
+/** Only size objects owned by one automatic column search carry its measured inputs. */
+export const columnHeightSearch = new WeakMap<object, ColumnHeightSearchState>();
+/** The private height search keeps real frames, marks, text seats and notes; only the selected size needs final painting. */
+export const measureColumnHeight = new WeakSet<object>();
+export const measuredColumnHeights = new WeakSet<object>();
+/** A rejected binary midpoint returns no geometry, so its column may stop at a proven plot shortfall. */
+export const columnMidpointFloor = new WeakMap<object, number>();
+export const COLUMN_MIDPOINT_SHORT = Symbol('columnMidpointShort');
 
 function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, atSize?: SizeLayout<O, M, DV>,
+): LayoutResult<M, DV> {
+  const columnSearch = definition.type === 'column' && widthOnly(options?.size)
+    && (options as { categoryLabels?: string }).categoryLabels === 'staircase' ? {} : undefined;
+  const result = findFit(definition, data, options, compactFallback, atSize, columnSearch);
+  if (result.refused || !measuredColumnHeights.has(result)) return result;
+  // Only the winning height reaches the complete fixed-layout evaluator and its result cache.
+  const size = { width: result.size.width, height: result.size.height };
+  const fixed = { ...options, size } as O;
+  // The chosen chart gets a fresh scene and can use the same measured widths as its trials.
+  if (columnSearch) columnHeightSearch.set(size, columnSearch);
+  try {
+    return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
+  } finally {
+    if (columnSearch) columnHeightSearch.delete(size);
+  }
+}
+
+function findFit<D, O extends ChartOptions, M extends object, DV extends object>(
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, atSize?: SizeLayout<O, M, DV>,
+  columnSearch?: ColumnHeightSearchState,
 ): LayoutResult<M, DV> {
   const declared = declaredSizing(definition, options);
   // a width alone takes the chart's own height at that width: a fill
   // chart its aspect height, a content-fit chart the height its content needs
   // there, measured on a first pass at the aspect height.
   if (widthOnly(options?.size)) {
-    const columnSearch = definition.type === 'column' && (options as { categoryLabels?: string }).categoryLabels === 'staircase' ? {} : undefined;
-    const at = (width: number, height: number) => {
+    const column = options as { variant?: string; valueAxis?: { percent?: boolean }; annotations?: unknown[]; measure?: TextMeasurer };
+    const trials = columnSearch && column.variant === 'stacked' && !column.valueAxis?.percent && !column.annotations?.length
+      && panelTypeClass(options) === undefined && isCachedTextMeasurer(column.measure ?? defaultMeasurer)
+      ? new Map<number, LayoutResult<M, DV>>() : undefined;
+    const at = (width: number, height: number, midpointFloor?: number, draw = false) => {
       const size = { width, height };
       const fixed = { ...options, size } as O;
-      if (columnSearch) columnHeightSearch.set(size, columnSearch);
+      const known = trials?.get(height);
+      if (known) return known;
+      if (columnSearch) {
+        columnHeightSearch.set(size, columnSearch);
+        if (midpointFloor !== undefined) columnMidpointFloor.set(size, midpointFloor);
+      }
       try {
-        return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
+        if (draw || !trials) return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
+        measureColumnHeight.add(size);
+        const result = fitSize(definition, data, fixed, compactFallback);
+        trials.set(height, result);
+        return result;
       } finally {
-        if (columnSearch) columnHeightSearch.delete(size);
+        if (columnSearch) {
+          columnHeightSearch.delete(size);
+          columnMidpointFloor.delete(size);
+        }
+        if (trials) measureColumnHeight.delete(size);
+      }
+    };
+    // A discarded floor check needs only a yes/no answer. Keep the old bracket and
+    // its two-pixel stopping rule, including when an adjacent pixel could also draw.
+    const atFloor = (width: number, height: number, plotPx: number, finalIfFit = false) => {
+      if (columnSearch?.rejectMidpoint?.(height, plotPx)) return undefined;
+      try {
+        // Once a passing midpoint would close the bracket, its public drawing can
+        // answer the floor check and become the result without a second layout.
+        const draw = finalIfFit && !!columnSearch?.rejectMidpoint;
+        return at(width, height, draw ? undefined : plotPx, draw);
+      } catch (error) {
+        if (error !== COLUMN_MIDPOINT_SHORT) throw error;
+        return undefined;
       }
     };
     const width = resolveSize(options.size, options.target).width;
@@ -1571,18 +1653,74 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       const plotPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, allowanceOptions, width) : PLOT_FLOOR_PX[target];
       // The search runs as a function of the plot floor, so a stacked column can try its
       // wide floor first and keep the plain one when that hides fewer values.
+      // Preserve the two-pixel stop even when a measured upper bound has no drawing yet.
+      const lowestFit = (low: number, high: number, plotPx: number, best?: LayoutResult<M, DV>) => {
+        while (high - low > 2) {
+          const mid = Math.floor((low + high) / 2);
+          const between = atFloor(width, mid, plotPx, mid - low <= 2);
+          if (between && !between.refused && autoHeightNeed(between, target, plotPx, plotShare, freed(between)).need <= mid) {
+            best = between;
+            high = between.size.height;
+          } else low = mid;
+        }
+        return best ?? at(width, high, undefined, true);
+      };
       const search = (plotPx: number, startHeight: number): LayoutResult<M, DV> => {
         let height = startHeight;
         // Grow the canvas until the plot keeps its floor. A chart whose plot does not take
         // the added height (variance tiers are rows) keeps the smaller canvas.
-        let previous: LayoutResult<M, DV> | undefined;
+        let previous: { height: number; plot: number; part: number; result?: LayoutResult<M, DV> } | undefined;
         let directRefusal: { height: number; pass: number } | undefined;
         let triedDirectRefusal = false;
+        let afterRefusal: ColumnHeightTrial['afterRefusal'];
         // A frame part that scales with the plot (a scatter size key draws its
         // rings at plot scale) moves the floor height with each pass, so the
         // passes close in on it over more steps than four.
         for (let pass = 0; pass < 8; pass++) {
-          const probe = at(width, height);
+          // After a measured growth step, a plain stack can establish the upper plot
+          // without laying it out. Use it only when the ordinary search would bisect.
+          if (previous && !previous.result && columnSearch?.upperTrial && columnSearch.rejectMidpoint) {
+            const upper = columnSearch.upperTrial(height);
+            if (upper && ceilFloor(Math.max(declared.minHeight, upper.minimum), height) <= height + SIZE_TOLERANCE
+              && upper.part <= height && upper.plot - previous.plot >= 0.5 * (height - previous.height)) {
+              const chrome = height - upper.plot + upper.freed;
+              const floor = Math.ceil(Math.max(chrome + plotPx, chrome / (1 - plotShare)) - 1e-6);
+              const candidate = Math.max(previous.height + 1, floor);
+              if (candidate < height && columnSearch.rejectMidpoint(candidate, plotPx)) {
+                return lowestFit(previous.height, height, plotPx);
+              }
+            }
+          }
+          let probe: LayoutResult<M, DV>;
+          if (trials && columnSearch && !previous && !directRefusal && !compactFallback
+            && width >= Math.max(CARD_MIN_WIDTH, declared.minWidth) && height >= declared.minHeight && options.mode !== 'compact') {
+            columnSearch.growthHeight = height;
+            try {
+              const measured = afterRefusal?.(height);
+              afterRefusal = undefined;
+              if (measured) throw measured;
+              probe = at(width, height);
+            } catch (trial) {
+              if (!(trial instanceof ColumnHeightTrial)) throw trial;
+              const minimum = ceilFloor(Math.max(declared.minHeight, trial.minimum), height);
+              if (height + SIZE_TOLERANCE < minimum) {
+                afterRefusal = trial.afterRefusal;
+                height = minimum;
+                continue;
+              }
+              const need = Math.max(trial.part, plotHeightNeeded(height, trial.plot, plotPx, plotShare, trial.freed));
+              if (height < need) {
+                previous = { height, plot: trial.plot, part: trial.part };
+                height = need;
+                continue;
+              }
+              // This height might be returned. Evaluate its full semantics normally.
+              delete columnSearch.growthHeight;
+              probe = at(width, height);
+            } finally {
+              delete columnSearch.growthHeight;
+            }
+          } else probe = at(width, height);
           if (directRefusal) {
             const chrome = probe.refused ? Infinity : probe.size.height - plotForFloor(probe).h + freed(probe);
             const floor = Math.ceil(Math.max(chrome + plotPx, chrome / (1 - plotShare)) - 1e-6);
@@ -1611,46 +1749,41 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
           if (probe.refused) break;
           // The plot's part of each added px. Under half keeps the smaller canvas, unless that canvas
           // misses the share floor and the plot still grows (a rotated category row takes the rest, in steps).
-          const gain = previous && !previous.refused ? (plotForFloor(probe).h - plotForFloor(previous).h) / (probe.size.height - previous.size.height) : undefined;
-          const underShare = previous !== undefined && !previous.refused && plotForFloor(previous).h + 1e-6 < floorShare * previous.size.height;
+          const gain = previous && (plotForFloor(probe).h - previous.plot) / (probe.size.height - previous.height);
+          const underShare = previous !== undefined && previous.plot + 1e-6 < floorShare * previous.height;
           // A smaller canvas whose frame part gave way is no canvas to keep.
-          if (gain !== undefined && gain < 0.5 && !(gain > 0 && underShare) && partNeedOf((previous as { frame?: Geometry['frame'] }).frame) <= previous!.size.height) return previous!;
+          if (previous && gain !== undefined && gain < 0.5 && !(gain > 0 && underShare) && previous.part <= previous.height) {
+            return previous.result ?? at(width, previous.height);
+          }
           const { need, holds } = autoHeightNeed(probe, target, plotPx, plotShare, freed(probe));
           if (holds || (settledAutoHeight.has(probe.frame) && need <= probe.size.height)) return probe;
           if (need <= height && previous === undefined) return probe;
           if (need <= height) {
-            if (probe.size.height - previous!.size.height <= 1) return probe;
+            if (probe.size.height - previous!.height <= 1) return probe;
             // The chart certified a lower bound for every height in the interval.
             // No smaller frame can hold the plot floor below this bound.
             const certified = plotChromeFloor.get(probe.frame) === undefined ? undefined : plotChromeFloor.get(probe.frame)! + freed(probe);
             if (certified !== undefined && Math.ceil(Math.max(certified + plotPx, certified / (1 - plotShare)) - 1e-6) === height) return probe;
             const chrome = probe.size.height - plotForFloor(probe).h + freed(probe);
             const floor = Math.ceil(Math.max(chrome + plotPx, chrome / (1 - plotShare)) - 1e-6);
-            const candidateHeight = Math.max(previous!.size.height + 1, floor);
+            const candidateHeight = Math.max(previous!.height + 1, floor);
             // shortcut: these frames change with plot height (CAGR headers, scatter size keys
             // and zone labels); retain the search until a stable bound exists.
             const dynamicFrame = ((definition.type === 'waterfall' || definition.type === 'pvm')
               && options.annotations?.some(annotation => annotation.kind === 'cagr'))
               || definition.type === 'scatter';
-            const candidate = candidateHeight === height || dynamicFrame ? probe : at(width, candidateHeight);
-            if (!dynamicFrame && !candidate.refused && autoHeightNeed(candidate, target, plotPx, plotShare, freed(candidate)).need <= candidateHeight) {
+            const candidate = candidateHeight === height || dynamicFrame ? probe
+              : trials ? atFloor(width, candidateHeight, plotPx) : at(width, candidateHeight);
+            if (!dynamicFrame && candidate && !candidate.refused && autoHeightNeed(candidate, target, plotPx, plotShare, freed(candidate)).need <= candidateHeight) {
               const candidateChrome = candidate.size.height - plotForFloor(candidate).h + freed(candidate);
               const checkedFloor = Math.ceil(Math.max(candidateChrome + plotPx, candidateChrome / (1 - plotShare)) - 1e-6);
-              if (candidateHeight === previous!.size.height + 1 || checkedFloor === candidateHeight) return candidate;
+              if (candidateHeight === previous!.height + 1 || checkedFloor === candidateHeight) return candidate;
             }
             // `need` assumed the shorter frame's lines (a note naming the labels its small plot hid),
             // which the taller frame drops. Search back down to the lowest height that keeps the floor.
-            let low = previous!.size.height;
-            let best = probe;
-            // Stop within 2 px of the lowest height; one pass less per search.
-            while (best.size.height - low > 2) {
-              const mid = Math.floor((low + best.size.height) / 2);
-              const between = at(width, mid);
-              if (!between.refused && autoHeightNeed(between, target, plotPx, plotShare, freed(between)).need <= mid) best = between; else low = mid;
-            }
-            return best;
+            return lowestFit(previous!.height, probe.size.height, plotPx, probe);
           }
-          previous = probe;
+          previous = { height: probe.size.height, plot: plotForFloor(probe).h, part: partNeedOf(probe.frame), result: probe };
           // Mekko solves its hanging-total reserve at the minimum plot height.
           const certifiedChrome = ['mekko', 'column', 'histogram'].includes(definition.type) ? plotChromeFloor.get(probe.frame) : undefined;
           const chrome = certifiedChrome === undefined ? undefined : certifiedChrome + freed(probe);

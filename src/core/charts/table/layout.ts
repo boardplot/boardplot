@@ -161,7 +161,10 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     answer?: (choice: TableRungChoice) => void): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
     const input = preparedInput ?? prepareTableData(authoredData, options);
     const resolved = suppliedResolved ?? (options === initialOptions && initialResolved ? initialResolved : resolvePreparedTable(input, options));
-    if (!preparedInput) options = snapshotTableOptions(options);
+    return runResolved(preparedInput ? options : snapshotTableOptions(options), preserveCompactFloor, resolved, input.source, answer);
+  });
+  const runResolved = (options: TableOptions, preserveCompactFloor: boolean, resolved: ReturnType<typeof resolveTable>, source: TableData,
+    answer?: (choice: TableRungChoice) => void): Geometry<TableMarks, TableDerived> => {
     const choice = liftOrFallback((mode) => {
       const variant = mode === 'full' ? options : { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
       const model = mode === 'full' ? resolved : resolvedForSize(authoredData, variant);
@@ -171,7 +174,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
         [FIXED_SIZE_PROBE]: _fixed, [FORCE_COMPACT]: _forced, [ACCEPTANCE_PROBE]: _accept,
         [SIZING_ONLY]: _sizing, [COMPACT_RETRY]: _retry, [ENGINE_NOTES]: _notes, ...stable } = variant as LayoutOptions & Record<symbol, unknown>;
       const variantKey = optionKey(stable);
-      return tableRung({ table: model.table, surface: { data: input.source, options: variant, preserveCompactFloor, cutCount, hasHeadAir, cellPadOf,
+      return tableRung({ table: model.table, surface: { data: source, options: variant, preserveCompactFloor, cutCount, hasHeadAir, cellPadOf,
         run: (candidate, sizingOnly, selected, widthOnlyOnMiss = false) => {
           const current = Object.keys(candidate).length === 0 && Object.getOwnPropertySymbols(candidate).length === 0
             ? variant : { ...variant, ...candidate };
@@ -185,7 +188,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           let prepared = byKey.get(key);
           if (!prepared) {
             // Independent width probes open new executors inside the same synchronous request.
-            prepared = requestMemo(model, key, () => prepareTableCandidate(input.source, current, model));
+            prepared = requestMemo(model, key, () => prepareTableCandidate(source, current, model));
             if (byKey.size >= 256) byKey.delete(byKey.keys().next().value!);
             byKey.set(key, prepared);
           }
@@ -195,7 +198,15 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     answer?.(choice);
     const geometry = choice.undrawn;
     return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
-  });
+  };
+  /** The compiled dimension table already owns its raw data and complete resolved model. */
+  const runCompiled = (options: TableOptions, model: ReturnType<typeof resolveTable>) =>
+    withPlanInputs(() => runResolved(snapshotTableOptions(options), true, model, authoredData));
+  /** Run the same fit ladder on a projected dimension card. Only its width is returned to the period search. */
+  const probeWidth = (options: TableOptions, projection: ReturnType<typeof resolveTable>) => {
+    const geometry = runCompiled(options, projection);
+    return { size: { width: geometry.size.width }, sizing: geometry.sizing && { minWidth: geometry.sizing.minWidth } };
+  };
   const runCard = (options: TableOptions = initialOptions): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
     const input = prepareTableData(authoredData, options);
     // Width-search markers belong to the registry. A complete raw table answer is identical at the same frame.
@@ -216,7 +227,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     const geometry = run(options, false, undefined, undefined, (found) => { choice = found; });
     return tableNeed(choice!, isPlanned(geometry) ? materializeLayout(geometry) : geometry);
   };
-  return { run, runCard, need };
+  return { run, runCompiled, runCard, need, probeWidth };
 }
 
 /** The registry keeps this executor for every size and repair probe of one table. */

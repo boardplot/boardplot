@@ -51,12 +51,21 @@ export const PROSE_TICK_MAX_LINES = 2;
  * Exactly those names, then no further letter: a name followed by any letters
  * read 'Main 2024', 'Mail 2025' and 'Marchandise 2026' as dates.
  */
-const MONTH_NAME = `(?:${[...new Set(DATE_NAME_LANGUAGES.flatMap((language) => {
+const monthNames = [...new Set(DATE_NAME_LANGUAGES.flatMap((language) => {
   const names = dateNames(language);
   return [...names.months, ...names.monthsShort].map((name) => name.replace(/\.$/, '').toLowerCase());
-}))].join('|')})\\.?(?!\\p{L})`;
+}))];
+const MONTH_NAME = `(?:${monthNames.join('|')})\\.?(?!\\p{L})`;
 /** A label that starts with a month name, for the month-friendly strides. */
 export const MONTH_START = new RegExp(`^${MONTH_NAME}`, 'iu');
+// ASCII names can often be ruled out from their first two letters. All other
+// spellings keep the full Unicode month matcher and its letter-boundary check.
+const monthPrefixes = new Set(monthNames.map(name => name.slice(0, 2)));
+export function startsWithMonth(text: string): boolean {
+  const prefix = text.slice(0, 2);
+  if (/^[A-Za-z]{2}$/.test(prefix) && !monthPrefixes.has(prefix.toLowerCase())) return false;
+  return MONTH_START.test(text);
+}
 const SHORT_SLASH_DATE = /^(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])$/;
 const SHORT_DASH_DATE = /^(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
@@ -95,7 +104,8 @@ const TICK_PATTERNS: readonly RegExp[] = [
 /** Does ONE label belong to the date/numeric tick class? */
 function isDateNumericTickLabel(label: string): boolean {
   const text = label.trim();
-  if (text.length === 0) return false;
+  // Every numeric and date format below contains an ASCII digit.
+  if (!/\d/.test(text)) return false;
   return TICK_PATTERNS.some((pattern) => pattern.test(text));
 }
 

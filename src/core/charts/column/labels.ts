@@ -14,7 +14,7 @@ import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
-import type { FontSpec } from '../../text';
+import { defaultMeasurer, type FontSpec } from '../../text';
 import type { LabelContent } from '../../types/options';
 import type { LintWarning, ShownTexts } from '../../types/scene';
 import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, shownParts, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
@@ -392,6 +392,8 @@ export function planColumnValueLabels(
     const sliverIds = new Set<string>();
     const out: LabelRequest[] = [];
     let anyShare = false;
+    const canStep = measure === defaultMeasurer && segment
+      && stepDownFont(domain.theme, stepped ?? labelFont, 'label', options.target, textScaleOf(options)) !== undefined;
     for (const place of segment ? scene.bars : []) {
 
       const { s, si, c, ci, v, rect } = place;
@@ -442,7 +444,11 @@ export function planColumnValueLabels(
       const leader = domain.density === 'full' || (v === 0 && typeof val.labelOverride === 'string');
       // A column whose content the author set alone (shareLabels.only) is not held to the others' fit.
       if (!leader && !inTotal && !only?.has(c.id) && typeof val.labelOverride !== 'string' && val.labelOverride !== false && !restHidden && !(sliver && !hl)
-        && !fitsInside({ ...rect, h: Infinity }, tsize, 0)) { tooWide.push(c.label ?? c.id); }
+        && !fitsInside({ ...rect, h: Infinity }, tsize, 0)) {
+        tooWide.push(c.label ?? c.id);
+        // A wider value makes the whole row try the next font. Only the last font supplies labels or warnings.
+        if (canStep) break;
+      }
       pending.push({ id: `segment:${s.id}:${c.id}`, owed: owedHere && domain.density !== 'minimal', authored: typeof val.labelOverride === 'string' });
       const request: LabelRequest = {
         id: `segment:${s.id}:${c.id}`,
@@ -673,9 +679,10 @@ export function partialWords(domain: ColumnDomain, ci: number): string | undefin
 export function planColumnLabels(
   domain: ColumnDomain,
   area: ColumnArea,
-  scene: ColumnMarkGeometry,
+  scene: Pick<ColumnMarkGeometry, 'bars' | 'planEnds' | 'netLineEnd'>,
   requests: LabelRequest[],
   warnings: LintWarning[],
+  onOmittedTotal?: () => void,
 ): IntegratedVariancePoint[] {
   const { measure, highlights, cats, gtContent, stackTotals, variant, posTopP, negBotP, pyRef, pyGrowth, totalFmt } = domain;
   const { strongFont, tickFont, band, y } = area;
@@ -759,6 +766,7 @@ export function planColumnLabels(
           return clear < candidate.rect.y - 0.5 ? [candidate, { ...candidate, slot: 'aboveNeighbours', rect: { ...candidate.rect, y: clear }, penalty: candidate.penalty + 1, reach: 4 * lineBox(totalFont) + 2 * 4 }] : [candidate];
         });
     const skipped = thinned && !net && ci % 2 !== (cats.length - 1) % 2 && !highlights.has(c.id);
+    if (skipped && onOmittedTotal && !linked.has(`grandTotal:${c.id}`) && scene.bars.some(bar => bar.c.id === c.id)) onOmittedTotal();
     requests.push({
       id: `grandTotal:${c.id}`,
       kind: 'grandTotal',
@@ -908,7 +916,7 @@ export function planColumnLabels(
  * still says which period it is and what it holds, beside its end ("P36
  * -241"), so the outlier the reader's eye goes to is named.
  */
-function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: ColumnMarkGeometry, requests: LabelRequest[]): void {
+function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: Pick<ColumnMarkGeometry, 'bars'>, requests: LabelRequest[]): void {
   // A date row thins its ticks by rhythm, and the period reads off it.
   if (domain.options.labels === false || !area.showCatRow || area.catPlan().dateNumeric || area.catPlan().keep.every(Boolean)) return;
   const extreme = scene.bars.reduce<BarPlace | undefined>((best, place) => (!best || Math.abs(place.v) > Math.abs(best.v) ? place : best), undefined);

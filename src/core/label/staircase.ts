@@ -49,6 +49,11 @@ export function staircaseState(options: object): StaircaseState {
   return (options as { [STAIRCASE]?: StaircaseState })[STAIRCASE] ?? { pad: 0 };
 }
 
+/** A numerical height failure is independent of the later label solve. */
+export function staircaseShortOnHeight(options: object): boolean {
+  return staircaseState(options).off === HEIGHT_FAILED;
+}
+
 /** Whether the chart draws staircase names on this pass. */
 export function staircaseOn(placement: CategoryLabelPlacement | undefined, options: object): boolean {
   return placement === 'staircase' && staircaseState(options).off === undefined;
@@ -93,7 +98,7 @@ export function staircaseRoom(input: {
 
 interface StaircaseObstacle { x0: number; x1: number; top: number }
 
-interface StaircaseName {
+export interface StaircaseName {
   categoryId: Id;
   text: string;
   lines: string[];
@@ -147,74 +152,67 @@ function bandObstacles(claims: OccupiedView, centers: readonly number[], half: n
 }
 
 type StaircasePlan = { names: StaircaseName[]; deficit: number } | { failed: string };
-
-/**
- * Seats every name, from the far end of the run back to the tallest column:
- * a name sits above every obstacle under its span and one step above the
- * name after it, so the leaders are vertical and cross no name.
- * `deficit` is how far the first name rises above `top`.
- */
-function planStaircase(input: {
-  ids: readonly Id[];
-  names: readonly string[];
-  centers: readonly number[];
-  obstacles: readonly StaircaseObstacle[];
-  left: number;
-  right: number;
-  top: number;
+type PaddingProbe = (pad?: number) => number[] | undefined;
+interface MeasuredName {
+  bands: number[];
+  height: number;
+  index: number;
+  text: string;
+  id: Id;
+  lines: string[];
+  x: number;
+  width: number;
+}
+interface StaircaseText {
+  categories: readonly { id: Id; label?: string }[];
+  band: { center(index: number): number; step: number };
   font: FontSpec;
   measure: TextMeasurer;
-  direction: 'right' | 'left';
-}): StaircasePlan {
+  left: number;
+  right: number;
+  tops: readonly number[];
+}
+
+type MeasuredStaircase = { steps: MeasuredName[] } | { failed: string };
+// A measured band lives inside one layout and belongs to one prepared column domain.
+// Its font and categories stay fixed. Only obstacles and the available height change.
+const bandNames = new WeakMap<StaircaseText['band'], MeasuredStaircase>();
+
+function measureStaircase(input: StaircaseText, centers: number[]): MeasuredStaircase {
   const { left, right, font, measure } = input;
-  const n = input.names.length;
-  // Mirrored for names that run left: the plan is always drawn rightward.
-  const flip = input.direction === 'left';
-  const m = (x: number): number => (flip ? left + right - x : x);
-  const order = Array.from({ length: n }, (_, k) => (flip ? n - 1 - k : k));
+  const flip = staircaseDirection(input.tops) === 'left';
+  const mirror = (x: number) => flip ? left + right - x : x;
+  const names = input.categories.map(c => c.label ?? c.id);
+  const ids = input.categories.map(c => c.id);
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const names: StaircaseName[] = [];
-  let next = Infinity;
-  let highest = Infinity;
-  for (let k = n - 1; k >= 0; k--) {
-    const i = order[k]!;
-    const cx = m(input.centers[i]!);
+  const steps: MeasuredName[] = [];
+  // Start at the far end. The first truncated name determines the fallback warning.
+  for (let k = names.length - 1; k >= 0; k--) {
+    const index = flip ? names.length - 1 - k : k;
+    const cx = mirror(centers[index]!);
     const textX = cx + TEXT_X;
-    const wrapped = wrapText(input.names[i]!, font, right - textX, MAX_LINES, measure);
+    const text = names[index]!;
+    const wrapped = wrapText(text, font, right - textX, MAX_LINES, measure);
     if (wrapped.truncated || right - textX < 1) {
-      return { failed: `the name '${input.names[i]}' needs more than ${MAX_LINES} lines in the room beside its column` };
+      return { failed: `the name '${text}' needs more than ${MAX_LINES} lines in the room beside its column` };
     }
-    const w = Math.max(...wrapped.lines.map((line) => measure(line, font).width));
-    const h = wrapped.lines.length * lineH;
-    const x0 = cx - MARK - 1;
-    const x1 = textX + w;
-    let bottom = next - STEP_GAP;
-    for (const o of input.obstacles) {
-      const ox0 = Math.min(m(o.x0), m(o.x1));
-      const ox1 = Math.max(m(o.x0), m(o.x1));
-      if (ox1 > x0 && ox0 < x1) bottom = Math.min(bottom, o.top - LEADER_GAP - 1);
+    const width = Math.max(...wrapped.lines.map(line => measure(line, font).width));
+    const x0 = cx - MARK - 1, x1 = textX + width;
+    const bands: number[] = [];
+    for (let j = 0; j < centers.length; j++) {
+      const a = mirror(centers[j]! - input.band.step / 2), b = mirror(centers[j]! + input.band.step / 2);
+      if (Math.max(a, b) > x0 && Math.min(a, b) < x1) bands.push(j);
     }
-    const y = bottom - h;
-    next = y;
-    highest = Math.min(highest, y);
-    names.push({
-      categoryId: input.ids[i]!,
-      text: input.names[i]!,
-      lines: wrapped.lines,
-      rect: { x: flip ? m(textX + w) : textX, y, w, h },
-      mark: { x: input.centers[i]!, y: y + lineH / 2 },
-      leaderEnd: input.obstacles[i]!.top - LEADER_GAP,
-    });
+    steps.push({ index, id: ids[index]!, text, lines: wrapped.lines, x: flip ? mirror(textX + width) : textX,
+      width, height: wrapped.lines.length * lineH, bands });
   }
-  names.reverse();
-  if (flip) names.reverse();
-  return { names, deficit: Math.max(0, input.top - highest) };
+  return { steps };
 }
 
 const leaderOwner = (categoryId: Id) => ({ annotationId: `staircase:${categoryId}` });
 
 /** Claims each diamond and leader, so no later label sits on them. */
-function claimStaircase(names: readonly StaircaseName[], occupied: OccupiedIndex): void {
+export function claimStaircase(names: readonly StaircaseName[], occupied: OccupiedIndex): void {
   for (const name of names) {
     occupied.claim({ x: name.mark.x - MARK, y: name.mark.y - MARK, w: 2 * MARK, h: Math.max(2 * MARK, name.leaderEnd - name.mark.y + MARK) },
       'annotation', leaderOwner(name.categoryId), 'staircaseLeader');
@@ -222,7 +220,7 @@ function claimStaircase(names: readonly StaircaseName[], occupied: OccupiedIndex
 }
 
 /** One fixed seat per name; the solver checks it against everything claimed. */
-function staircaseRequests(names: readonly StaircaseName[], font: FontSpec): LabelRequest[] {
+export function staircaseRequests(names: readonly StaircaseName[], font: FontSpec): LabelRequest[] {
   return names.map((name) => ({
     id: `category:${name.categoryId}`,
     kind: 'category',
@@ -262,37 +260,63 @@ function staircaseFallbackWarning(reason: string): LintWarning {
 }
 
 /** What a pass reports: the height the names still need, or why they cannot be seated. */
-export interface StaircaseOutcome { deficit: number; failed?: string }
+export interface StaircaseOutcome { deficit: number; failed?: string; next?: StaircaseState }
+
+interface StaircaseTrial extends StaircaseText {
+  options: object;
+  above: number;
+  top: number;
+  cap: number;
+}
+
+function placeSteps(steps: MeasuredName[], tops: number[], top: number, place?: (name: MeasuredName, y: number) => void): number {
+  let highest = Infinity, previous = Infinity;
+  for (const step of steps) {
+    let bottom = previous - STEP_GAP;
+    for (const i of step.bands) bottom = Math.min(bottom, tops[i]! - LEADER_GAP - 1);
+    previous = bottom - step.height;
+    highest = Math.min(highest, previous);
+    place?.(step, previous);
+  }
+  return Math.max(0, top - highest);
+}
+
+/** Try the current stack and its padding retries before building marks. A fitting trial still uses the ordinary solver. */
+export function probeStaircasePadding(input: StaircaseTrial, probe: PaddingProbe): StaircaseOutcome | undefined {
+  const { band, above, top, cap } = input;
+  const centers = input.categories.map((_, i) => band.center(i));
+  let measured = bandNames.get(band);
+  if (!measured) bandNames.set(band, measured = measureStaircase(input, centers));
+  if ('failed' in measured) return { deficit: 0, failed: measured.failed };
+  const start = staircaseState(input.options);
+  let next = start, deficit = 0;
+  while (!next.off) {
+    const tops = probe(next === start ? undefined : next.pad);
+    if (!tops) return;
+    for (let i = 0; i < tops.length; i++) tops[i]! -= above;
+    const need = placeSteps(measured.steps, tops, top);
+    if (next === start) deficit = need;
+    if (next.pad + need > cap) return { deficit: 0, failed: HEIGHT_FAILED };
+    if (need <= 0.5) return next === start ? undefined : { deficit, next };
+    next = retryAfter(next, { deficit: need });
+  }
+  return { deficit, next };
+}
 
 /**
  * Plans the names over a band chart's columns, and when they fit the height
  * this pass gives, claims the leaders and adds the names to the solver's
  * requests. `cap` bounds the whole height the names may add over the plot.
  */
-export function seatStaircase(input: {
-  categories: readonly { id: Id; label?: string }[];
-  band: { center(index: number): number; step: number };
-  top: number;
-  left: number;
-  right: number;
+export function seatStaircase(input: StaircaseTrial & {
   floor: number;
-  above: number;
-  font: FontSpec;
-  measure: TextMeasurer;
-  /** Column tops in category order: the taller end sets the direction. */
-  tops: readonly number[];
-  options: object;
-  cap: number;
   occupied: OccupiedIndex;
   requests: LabelRequest[];
 }): StaircasePlan {
   const { categories, band, font } = input;
   const centers = categories.map((_, i) => band.center(i));
-  const plan = planStaircase({
-    ids: categories.map((c) => c.id), names: categories.map((c) => c.label ?? c.id), centers,
-    obstacles: bandObstacles(input.occupied, centers, band.step / 2, input.floor, input.above),
-    left: input.left, right: input.right, top: input.top, font, measure: input.measure, direction: staircaseDirection(input.tops),
-  });
+  const obstacles = bandObstacles(input.occupied, centers, band.step / 2, input.floor, input.above);
+  const plan = staircaseNameSeats(input, obstacles.map(o => o.top), centers);
   if ('failed' in plan) return plan;
   if (staircaseState(input.options).pad + plan.deficit > input.cap) return { failed: HEIGHT_FAILED };
   if (plan.deficit <= 0.5) {
@@ -300,6 +324,24 @@ export function seatStaircase(input: {
     pushAll(input.requests, staircaseRequests(plan.names, font));
   }
   return plan;
+}
+
+/** Place the already measured names above the supplied band tops, including the reserve over each bar. */
+export function staircaseNameSeats(input: StaircaseText & { top: number }, tops: number[],
+  centers = input.categories.map((_, i) => input.band.center(i))): StaircasePlan {
+  const { band, font } = input;
+  const measured = bandNames.get(band) ?? measureStaircase(input, centers);
+  if ('failed' in measured) return measured;
+  const names: StaircaseName[] = [];
+  const deficit = placeSteps(measured.steps, tops, input.top, (step, y) => {
+    names[step.index] = {
+      categoryId: step.id, text: step.text, lines: [...step.lines],
+      rect: { x: step.x, y, w: step.width, h: step.height },
+      mark: { x: centers[step.index]!, y: y + font.size * (font.lineHeight ?? 1.2) / 2 },
+      leaderEnd: tops[step.index]! - LEADER_GAP,
+    };
+  });
+  return { names, deficit };
 }
 
 /**
@@ -345,7 +387,10 @@ export function runStaircase(
  */
 export function nextStaircase(options: object, outcome: StaircaseOutcome | undefined): StaircaseState | undefined {
   if (!outcome || (outcome.failed === undefined && outcome.deficit <= 0.5)) return undefined;
-  const state = staircaseState(options);
+  return outcome.next ?? retryAfter(staircaseState(options), outcome);
+}
+
+function retryAfter(state: StaircaseState, outcome: StaircaseOutcome): StaircaseState {
   const rounds = state.rounds ?? 0;
   if (outcome.failed === undefined && rounds < 4) return { pad: state.pad + Math.ceil(outcome.deficit) + 1, rounds: rounds + 1 };
   return { pad: 0, off: outcome.failed ?? HEIGHT_FAILED };

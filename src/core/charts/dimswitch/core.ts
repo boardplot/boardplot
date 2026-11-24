@@ -1,13 +1,14 @@
-import { PLAN_ONLY, ownPlanInput } from '../../layoutPlan';
+import { ownCardRecords, PLAN_ONLY } from '../../layoutPlan';
 import { engineNote, engineNoteMeta } from '../../notes';
 import { ENGINE_NOTES } from '../table/tracks';
+import { reusePeriodBodyWidths } from '../table/widths';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchForm } from './compile';
+import { completeDimSwitchProjection, extendPeriodTable, ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
+import { cardFigures, compileDimSwitch, selectedPeriodRecords, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -22,7 +23,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
 }
 
-type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
+type PreparedForm = { resolvedFrom?: 'added-periods' | 'width-probe'; compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
@@ -41,14 +42,30 @@ function figuresOf(data: DimSwitchData, key: string): CardFigures {
   return figures;
 }
 
+function withoutProbe<T extends object>(value: T): T {
+  const copy = { ...value } as Record<PropertyKey, unknown>;
+  for (const symbol of PER_PROBE) delete copy[symbol];
+  return copy as T;
+}
+
+function currentFormOptions(compiled: PreparedForm['compiled']['options'], options: DimSwitchOptions, form: DimSwitchForm, data: DimSwitchData) {
+  const current = currentDimSwitchOptions(withoutProbe(compiled), withoutProbe(options), form, data.effectLabel);
+  for (const symbol of PER_PROBE) if (symbol in options) {
+    (current as Record<symbol, unknown>)[symbol] = (options as Record<symbol, unknown>)[symbol];
+  }
+  return current;
+}
+
+type CardProjection = NonNullable<ReturnType<typeof projectDimSwitchCard>>;
+type WiderCard = { hide: number; prepared: PreparedForm };
+
 /**
  * The compiled and resolved table of one form. One measure call lays the card out at many sizes, and each layout
  * compiles every form again, so the prepared forms are kept per data object and per options without the size and
  * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
  * Limit: 64 forms per data object, then the map starts again.
  */
-function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm): PreparedForm {
-  const probe=PER_PROBE.flatMap(symbol=>symbol in options ? [[symbol,(options as Record<symbol,unknown>)[symbol]] as const] : []);
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projectedCard?: CardProjection): PreparedForm {
   const withProbe=(prepared:PreparedForm):PreparedForm=>{
     // Compiled note strings outlive the request-local metadata that gives them their kind.
     for (const [text,meta] of prepared.noteMetadata) {
@@ -56,24 +73,36 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
       const active=engineNoteMeta(text);
       if (active) Object.assign(active,meta);
     }
-    const current={...currentDimSwitchOptions(prepared.compiled.options,without(options),form,data.effectLabel),...Object.fromEntries(probe)};
+    const current=currentFormOptions(prepared.compiled.options,options,form,data);
     return {...prepared,compiled:{...prepared.compiled,options:current}};
   };
-  const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
   const compute=(figures:CardFigures):PreparedForm=>{
-    const compiled=compileDimSwitch(data,options,{...form,figures});
+    const full = form.card && !form.hide ? forms.prepared.get('false:0') : undefined;
+    const wholeCard = full && wholeDimSwitchCard(options, full.compiled, full.resolved);
+    const wider = forms.wider;
+    const projected = projectedCard ?? (wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
+      ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
+      : undefined);
+    const tail = wider && form.card && form.hide !== undefined && form.hide < wider.hide
+      ? periodCardTail(data, options, wider.prepared.compiled, wider.hide, form.hide, figures) : undefined;
+    const compiled = wholeCard?.compiled ?? projected?.materialize() ?? compileDimSwitch(data,options,{...form,figures,tail},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
-    const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
+    ownCompiledTable(compiled.data);
+    const extended = tail && wider && hostedLayout(options, compiled.options, () =>
+      extendPeriodTable(compiled.data, wider.prepared.compiled.data, wider.prepared.resolved, compiled.options));
+    if (extended && wider) reusePeriodBodyWidths(wider.prepared.resolved.table, extended.table, true);
+    const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
+    const completed = pending && pending.plan === projected && completeDimSwitchProjection(compiled.data, pending.source, pending.model)
+      ? pending.model : undefined;
+    const resolved=wholeCard?.resolved ?? extended ?? completed ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
       if (meta) noteMetadata.set(text,{...meta});
     }
-    // The source key still checks mutable input; this generated table stays private until materialization copies it.
-    ownPlanInput(compiled.data);
-    return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
+    return {compiled:{...compiled,options:withoutProbe(compiled.options)},resolved,resolvedFrom:completed ? 'width-probe' : extended ? 'added-periods' : undefined,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
-  const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
+  const {size:_size,inlineVisibility:_inlineVisibility,...rest}=withoutProbe(options);
   const base=layoutKey(data,rest);
   // A theme named by string compiles again; its period figures do not depend on the theme.
   if (typeof options.theme === 'string') return withProbe(compute(figuresOf(data,base)));
@@ -81,16 +110,27 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   let byKey=keptForms.get(data);
   if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
   let prepared=byKey.get(key);
-  if (!prepared) byKey.set(key,prepared=compute(figuresOf(data,base)));
+  if (!prepared) {
+    prepared=compute(figuresOf(data,base));
+    if (prepared.resolvedFrom !== 'width-probe') byKey.set(key,prepared);
+  }
   return withProbe(prepared);
 }
 
-function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+type ProjectedCard = { source: PreparedForm['resolved']; plan: CardProjection; runOptions: PreparedForm['compiled']['options']; options: DimSwitchOptions; executor: ReturnType<typeof prepareTableExecutor>; model: PreparedForm['resolved'] };
+type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues; wider?: WiderCard; projections?: Map<number, ProjectedCard> };
+
+function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projected?: CardProjection): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
-  let prepared=forms.get(key);
+  let prepared=forms.prepared.get(key);
   if (!prepared) {
-    prepared=prepareForm(data,options,form);
-    forms.set(key,prepared);
+    const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
+    prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.plan ?? projected);
+    if (pending && pending.model !== prepared.resolved) reusePeriodBodyWidths(pending.model.table, prepared.resolved.table);
+    if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
+      forms.wider = { hide: form.hide, prepared };
+    }
+    forms.prepared.set(key,prepared);
   }
   // Only size and the internal floor flag change between this request's probes.
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
@@ -98,19 +138,75 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
   const runOptions={...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options;
-  const geometry=hostedLayout(options,runOptions,()=>prepared.executor.run(runOptions,true,resolved));
+  const geometry=hostedLayout(options,runOptions,()=>prepared.resolvedFrom
+    ? prepared.executor.runCompiled(runOptions, resolved)
+    : prepared.executor.run(runOptions,true,resolved));
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined
     && compiled.options.size.height !== geometry.size.height) compiled.options={...compiled.options,size:geometry.size};
-  const originalRows=new Map(resolved.table.rows.map(row=>[row.id,row]));
-  const drawnRows=new Map(geometry.derived.table.rows.map(row=>[row.id,row]));
   // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
   const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
-  const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
   // The note of a partial window with no head may lose its place in a fixed frame's line budget. An open height prints every note.
   const partialNote=compiled.partialNote, offFrame=partialNote!==undefined && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height===true && !heightOmitted(options.size) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME) && geometry.frame?.noteList?.some(note=>note.text===partialNote && !note.inFrame)===true;
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{
+    ...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,
+    get computedCells() {
+      const originalRows = new Map(resolved.table.rows.map(row => [row.id, row]));
+      const drawnRows = new Map(geometry.derived.table.rows.map(row => [row.id, row]));
+      const periodRecords = selectedPeriodRecords(compiled.computedCells);
+      if (periodRecords && !resolved.computedCells.length) {
+        for (const record of periodRecords) record.displayed = drawnRows.get(record.rowId)?.cells[record.colId]?.displayed
+          ?? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '';
+        ownCardRecords(periodRecords);
+        return periodRecords;
+      }
+      const records = (periodRecords ?? compiled.computedCells).map(record => ({ ...record,
+        // A headline and its measure can read the same period. Each selected calculation owns its operands.
+        ...((form.hide ?? 0) > 0 && record.kind === 'calc' ? { inputs: record.inputs.map(input => ({ ...input })) } : {}),
+        displayed: record.kind === 'calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
+      const selected = [...resolved.computedCells, ...records].map(record => ({ ...record, displayed: record.kind === 'calc'
+        ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed }));
+      if ((form.hide ?? 0) > 0 && !resolved.computedCells.length && records.every(record => record.kind === 'calc')) ownCardRecords(selected);
+      return selected;
+    },
+  }};
+}
+
+type CardWidth = { size: { width: number }; sizing?: { minWidth: number } };
+type CardTrial = CardWidth & { draw: () => Form };
+
+function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, forms: FoldForms): CardTrial {
+  const form = { card: true, hide };
+  const wider = forms.wider;
+  let projection = forms.projections?.get(hide);
+  let plan: CardProjection | undefined;
+  // A measurement tries the same period counts at several widths. Its prepared forms survive those width changes.
+  const measuring = (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE];
+  if (!measuring && !projection && wider && hide > wider.hide && !forms.prepared.has(`true:${hide}`)) {
+    plan = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide, forms.periodValues);
+    if (plan) {
+      const runOptions = currentFormOptions(plan.options, options, form, data);
+      const wideData = wider.prepared.compiled.data;
+      const model = projectDimSwitchWidthTable(wideData, wider.prepared.resolved, plan.columns, runOptions);
+      if (model) {
+        reusePeriodBodyWidths(wider.prepared.resolved.table, model.table);
+        // The width pass takes its rows and columns from the resolved model. The raw table supplies the unchanged column groups.
+        projection = { source: wider.prepared.resolved, plan, runOptions, model, options, executor: prepareTableExecutor(wideData, runOptions) };
+        (forms.projections ??= new Map()).set(hide, projection);
+      }
+    }
+  }
+  const draw = () => layoutForm(data, options, form, forms, plan);
+  if (projection && !forms.prepared.has(`true:${hide}`)) {
+    const runOptions = { ...options, ...projection.runOptions, size: options.size, [PLAN_ONLY]: true,
+      [REGULAR_SPACING]: (options as { [REGULAR_SPACING]?: boolean })[REGULAR_SPACING] } as typeof projection.runOptions;
+    const { executor, model } = projection;
+    const width = hostedLayout(options, runOptions, () => executor.probeWidth(runOptions, model));
+    return { ...width, draw };
+  }
+  const geometry = draw();
+  return { size: geometry.size, sizing: geometry.sizing, draw: () => geometry };
 }
 
 /**
@@ -121,28 +217,28 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
  * All of this runs with regular spacing. Only where it leaves periods out does the tight table spacing (refuse-less) try
  * to show more of them, one at a time from the regular answer.
  */
-function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const openWidth=(options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.width === false;
-  const fits=(geometry: Geometry<TableMarks, DimSwitchDerived>) => openWidth || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
+  const fits=(geometry: CardWidth) => openWidth || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
   const periods=hostPeriods(data,options).length;
   const regular={...options,[REGULAR_SPACING]:true} as DimSwitchOptions;
-  const card=(hide:number)=>layoutForm(data,regular,{card:true,hide},forms);
+  const card=(hide:number)=>tryCard(data,regular,hide,forms);
   const steps=options.belowMinimum !== 'refuse';
   const latest=steps && !openWidth && periods>PROBE_PERIODS ? latestThatFit(card,periods) : undefined;
   // measure()'s width search asks whether the full table draws: where the latest 16, 32 ... periods alone miss, it cannot.
   if (!latest && !openWidth && isWidthProbe('dimswitch',options)) for (let shown=PROBE_PERIODS; shown<periods; shown*=2) {
     const latestOnly=card(periods-shown);
-    if (!fixedFits(latestOnly)) return latestOnly;
+    if (!fixedFits(latestOnly)) return latestOnly.draw();
   }
   let best=latest;
   if (!best) {
     const full=layoutForm(data,regular,{},forms);
     if (!steps || fits(full)) return full;
     const first=card(0);
-    if (fits(first)) return first;
+    if (fits(first)) return first.draw();
     best=mostShown(card,periods,{shown:periods,geometry:first});
   }
-  if ((options as { [REGULAR_SPACING]?: boolean })[REGULAR_SPACING]) return best.geometry;
+  if ((options as { [REGULAR_SPACING]?: boolean })[REGULAR_SPACING]) return best.geometry.draw();
   // The full form with tight spacing shows every period. Where the latest periods alone already missed, it cannot fit.
   if (!latest) {
     const full=layoutForm(data,options,{},forms);
@@ -154,15 +250,19 @@ function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: 
   const blocks=new Set(['label','range','pp','pl']);
   let next: Form | undefined;
   for (let shown=fixedFits(best.geometry) ? best.shown+1 : 0; shown<=periods; shown++) {
-    const geometry=layoutForm(data,options,{card:true,hide:periods-shown},forms);
-    if (!fixedFits(geometry)) { next=geometry; break; }
-    best={shown,geometry};
+    const candidate=tryCard(data,options,periods-shown,forms);
+    if (!fixedFits(candidate)) {
+      if (periods <= PROBE_PERIODS) next=candidate.draw();
+      break;
+    }
+    const geometry=candidate.draw();
+    best={shown,geometry:{size:geometry.size,sizing:geometry.sizing,draw:()=>geometry}};
     const track=minOf(geometry.marks.columns.filter(column=>!blocks.has(column.id)).map(column=>column.w));
     if (Number.isFinite(track) && geometry.size.width-(geometry.sizing?.minWidth ?? 0)<track) break;
   }
   // The check lays out one more card. Past PROBE_PERIODS that layout is the cost of the whole request, and such a
   // table already shows only its latest periods, so its advice stays unchecked.
-  return checkedCardAdvice(best.geometry,best.shown<periods && periods<=PROBE_PERIODS ? (size) => next?.warnings.some(warning=>warning.code==='table-tight-spacing') ? next : layoutForm(data,{...options,size,
+  return checkedCardAdvice(best.geometry.draw(),best.shown<periods && periods<=PROBE_PERIODS ? (size) => next?.warnings.some(warning=>warning.code==='table-tight-spacing') ? next : layoutForm(data,{...options,size,
     [TARGET_SIZE]:{sizePx:{width:size.width,height:size.height ?? Math.round(size.width*9/16)},fixed:{width:true,height:size.height!==undefined}}} as DimSwitchOptions,{card:true,hide:periods-best.shown-1},forms) : undefined);
 }
 
@@ -182,24 +282,19 @@ function checkedCardAdvice(geometry: Form, nextCard?: (size: AdvisedSize) => For
   }));
 }
 
-const fixedFits=(geometry: Form) => geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
+const fixedFits=(geometry: CardWidth) => geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
 
 /** From this many periods on, the card is first tried with the latest periods alone. */
 const PROBE_PERIODS = 16;
 
 type Form = Geometry<TableMarks, DimSwitchDerived>;
 
-/**
- * The card that shows the most of the latest periods and fits, where showing `missed` periods misses (and showing
- * `fitted` fits, when given); with none that fits, the card with every period left out, as before. A card with fewer
- * periods is never wider, so the answer is the one count where a fit turns into a miss. Each probe guesses that
- * count from the two nearest probes' minimum widths, so a table with even period tracks takes about two probes; a
- * guess that does not halve the bracket hands over to bisection.
- */
-function mostShown(card: (hide: number) => Form, periods: number, missed: { shown: number; geometry: Form }, fitted?: { shown: number; geometry: Form }): { shown: number; geometry: Form } {
+/** Search between the two measured counts. Dense headings can narrow the table when a column is added.
+ * Keep the interpolation, bisection and stopping decisions in their original order. */
+function mostShown(card: (hide: number) => CardTrial, periods: number, missed: { shown: number; geometry: CardTrial }, fitted?: { shown: number; geometry: CardTrial }): { shown: number; geometry: CardTrial } {
   const width=missed.geometry.size.width;
-  const floor=(geometry: Form) => geometry.sizing?.minWidth;
-  let lo=fitted, hi=missed, beyond: { shown: number; geometry: Form } | undefined, bisect=false;
+  const floor=(geometry: CardWidth) => geometry.sizing?.minWidth;
+  let lo=fitted, hi=missed, beyond: { shown: number; geometry: CardTrial } | undefined, bisect=false;
   while (hi.shown-(lo?.shown ?? -1)>1) {
     const from=lo?.shown ?? 0, low=lo ? floor(lo.geometry) : undefined, high=floor(hi.geometry), far=beyond ? floor(beyond.geometry) : undefined;
     let guess=(from+hi.shown)>>1, guessed=false;
@@ -216,14 +311,9 @@ function mostShown(card: (hide: number) => Form, periods: number, missed: { show
   return lo ?? {shown:0,geometry:card(periods)};
 }
 
-/**
- * Many periods: try the card with the latest 16, 32, 64 ... periods alone before the whole table, so the
- * work follows the periods drawn, not the periods in the data. The first probe that misses bounds the answer: every
- * form with more periods (the full table, the card with all of them) is wider and misses too. Undefined where every
- * probe fits; the caller then lays the whole table out as before.
- */
-function latestThatFit(card: (hide: number) => Form, periods: number): { shown: number; geometry: Form } | undefined {
-  let fitted: { shown: number; geometry: Form } | undefined;
+/** Probe recent periods in doubling groups. The first miss supplies the search bracket. */
+function latestThatFit(card: (hide: number) => CardTrial, periods: number): { shown: number; geometry: CardTrial } | undefined {
+  let fitted: { shown: number; geometry: CardTrial } | undefined;
   for (let shown=PROBE_PERIODS; shown<periods; shown*=2) {
     const geometry=card(periods-shown);
     if (!fixedFits(geometry)) return mostShown(card,periods,{shown,geometry},fitted);
@@ -241,7 +331,7 @@ const missesFixedHeight=(options: DimSwitchOptions, geometry: Form) => (options 
  * fits, the most folded table answers, so the refusal names the least height the table can draw at. An open height
  * grows to its rows and never folds.
  */
-function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const first=layoutDimSwitch(data,options,formsOf(''));
   const missesHeight=(geometry: Form) => missesFixedHeight(options,geometry);
   // A table that misses the width refuses on width, and its floor names the authored depth.
@@ -277,8 +367,8 @@ const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion
 /** The registered layout: select a form and use its content height at the requested width. */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
-    const folded=new Map<string,Map<string,PreparedForm>>();
-    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
+    const folded=new Map<string,FoldForms>();
+    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms={prepared:new Map(),periodValues:new Map()}); return forms;};
     const layout=(input:DimSwitchData,step:DimSwitchOptions)=>{
       const drawn=foldToFit(input,step,formsOf);
       if (step.columnHeads!==false) return drawn;
@@ -289,7 +379,10 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
       if (misses) return noteOff;
       return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
     };
-    return classFloor(layout,data,options,layout(data,options));
+    const selected = classFloor(layout,data,options,layout(data,options));
+    // Only the selected form needs its cell records. Store ordinary data in the completed layout.
+    selected.derived = { ...selected.derived };
+    return selected;
   });
 }
 

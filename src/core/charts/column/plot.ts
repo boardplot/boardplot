@@ -21,14 +21,16 @@ import {
   normalizeLegendOption,
   plotHeightAfter,
   solveFrame,
+  type FrameWidthMeasurements,
   type FrameBand,
   type FrameInput,
   type FrameResult,
   type LegendItemInput,
   authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
-import { copyFrame } from '../../footer';
+import { copyFrame, staticFrame } from '../../footer';
+import { columnHeightSearch, measureColumnHeight, sameContent, type ColumnHeightTrial } from '../../sizing';
 import type { Rect } from '../../geometry';
-import { categoryRowTop, hangingLabelReserve, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
+import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotatedNames, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
 import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
@@ -315,7 +317,8 @@ function columnFrameFurniture(domain: ColumnDomain, paints: ColumnLegendPaints, 
   const axisFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const axisReserve = domain.va.show ? measureValueAxisWidth([domain.dLo, domain.dHi], domain.fmt, theme, measure, 5, domain.valueSpec.spec) : 0;
   const categoryWidth = Math.max(0, maxOf(domain.cats.map(c => measure(c.label ?? c.id, axisFont).width))) + 4;
-  if (domain.cats.length > 0 && categoryWidth > (size.width - margin.left - margin.right - axisReserve) / domain.cats.length) {
+  const narrowGutters = domain.cats.length > 0 && categoryWidth > (size.width - margin.left - margin.right - axisReserve) / domain.cats.length;
+  if (narrowGutters) {
     const gutter = measure('0', axisFont).height;
     if (options.margin?.left === undefined) margin.left = Math.min(margin.left, gutter);
     if (options.margin?.right === undefined) margin.right = Math.max(decorationRight, Math.min(margin.right, gutter));
@@ -324,8 +327,20 @@ function columnFrameFurniture(domain: ColumnDomain, paints: ColumnLegendPaints, 
   margin.right = Math.max(margin.right, (options as { [VALUE_LINE_RESERVE]?: number })[VALUE_LINE_RESERVE] ?? 0,
     (options as { [TICK_LABEL_RESERVE]?: number })[TICK_LABEL_RESERVE] ?? 0);
   const legend = columnLegend(domain, paints, warnings) ?? bandKeyRow(domain, paints, eventKey);
-  return { margin, legend };
+  return { margin, legend, narrowGutters };
 }
+
+interface ColumnHeightFrame {
+  transferable?: boolean;
+  stacks: ColumnDomain['stacks'];
+  width: number;
+  axis: boolean;
+  options: ColumnDomain['options'];
+  furniture: ReturnType<typeof columnFrameFurniture> & { warnings: LintWarning[] };
+  rows: FrameWidthMeasurements;
+}
+
+const heightFrames = new WeakMap<object, ColumnHeightFrame[]>();
 
 /** The frame, with the legend, the event key and the right-margin decoration reserve; claims into its own index. */
 export function solveColumnFrame(
@@ -347,10 +362,31 @@ export function solveColumnFrame(
     return { frame: { ...saved.frame, frame: copyFrame(saved.frame.frame) }, claims };
   }
   const before = warnings.length;
-  const furniture = !eventKey && memo?.furniture;
-  const { margin, legend } = furniture || columnFrameFurniture(domain, paints, warnings, eventKey);
+  const search = reuse && !domain.activeBreak && !options.ratioTier
+    && typeof options.size === 'object' && columnHeightSearch.get(options.size);
+  const privateTrial = search && typeof options.size === 'object' && measureColumnHeight.has(options.size);
+  const content = search ? { ...options, size: undefined } : undefined;
+  const entries = search ? heightFrames.get(search) : undefined;
+  let measured = content && entries?.find(e => e.stacks === domain.stacks && e.width === size.width
+    && e.axis === !!domain.va.show && sameContent(e.options, content));
+  if (measured) {
+    // A refused opening drew no marks. Its fixed top rows can belong to one public
+    // scene; the source footer still gets fresh nodes at the selected height.
+    if (privateTrial) measured.transferable = false;
+    else if (measured.transferable && measured.rows.plotHeightAt && !staticFrame.live && !staticFrame.pinned) {
+      entries!.splice(entries!.indexOf(measured), 1);
+    } else measured = undefined;
+  }
+  const furniture = measured?.furniture ?? (!eventKey && memo?.furniture);
+  const { margin, legend, narrowGutters } = furniture || columnFrameFurniture(domain, paints, warnings, eventKey);
   if (furniture) pushAll(warnings, furniture.warnings);
-  else if (!eventKey && memo && !reuse) memo.furniture = { margin, legend, warnings: warnings.slice(before) };
+  else if (!eventKey && memo && !reuse) memo.furniture = { margin, legend, narrowGutters, warnings: warnings.slice(before) };
+  if (privateTrial && search && content && !measured) {
+    measured = { stacks: domain.stacks, width: size.width, axis: !!domain.va.show, options: content,
+      furniture: { margin, legend, narrowGutters, warnings: warnings.slice(before) }, rows: {} };
+    if (memo.growthTrial) memo.openingFrame = measured;
+    if (entries) entries.push(measured); else heightFrames.set(search, [measured]);
+  }
   const frame = solveFrame(
     {
       size,
@@ -371,8 +407,11 @@ export function solveColumnFrame(
       measure,
     },
     claims,
+    measured?.rows,
   );
   if (reuse) {
+    memo.plotHeightAt = measured?.rows.plotHeightAt;
+    memo.narrowGutters = narrowGutters;
     memo.frame = { frame, claims: claims.snapshot(), warnings: warnings.slice(before) };
     return { frame: { ...frame, frame: copyFrame(frame.frame) }, claims };
   }
@@ -414,8 +453,21 @@ function widestSegmentValue(domain: ColumnDomain, font: FontSpec = { family: dom
   return widest;
 }
 
+/** Column width that fits the formatted segments and bold total at their drawing fonts. */
+function requiredColumnValueWidth(domain: ColumnDomain): number {
+  const { theme, measure, cats } = domain;
+  const strong: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
+  // A 100% or mixed-sign total can differ from the sum of the positive parts.
+  const widestTotal = Math.max(0, maxOf(cats.map((_, ci) => {
+    const total = stackTotalText(domain, ci);
+    const words = partialWords(domain, ci);
+    return total && !total.net ? Math.max(measure(total.text, strong).width, words ? measure(words, toDateFont(theme)).width : 0) : 0;
+  })));
+  return Math.max(widestSegmentValue(domain) + 10, widestTotal + 8);
+}
+
 /** The horizontal band depends on the frame's sides and key. Its category row also depends on height. */
-function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisReserve: number, tickFont: FontSpec, stair: boolean) {
+function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisReserve: number, tickFont: FontSpec, stair: boolean, valueWidth?: { px?: number }) {
   const { options, theme, measure, cats, va } = domain;
   let plotX0 = frame.plot.x + (va.show ? valueAxisReserve : 0);
   let plotW0 = va.show
@@ -516,14 +568,8 @@ function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisRese
     // side, or its bold stack total plus 4 px a side (up to the share it had before), so a value
     // that printed inside or over it still does.
     if (options.bandFraction === undefined && !narrow && !domain.pyRef && !grouped) {
-      const strong: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
-      // The total as its label prints it: on a 100% or mixed-sign stack that is not the sum of the drawn positive parts.
-      const widestTotal = Math.max(0, maxOf(cats.map((_, ci) => {
-        const total = stackTotalText(domain, ci);
-        const words = partialWords(domain, ci);
-        return total && !total.net ? Math.max(measure(total.text, strong).width, words ? measure(words, toDateFont(theme)).width : 0) : 0;
-      })));
-      const need = Math.max(widestSegmentValue(domain) + 10, widestTotal + 8);
+      const need = valueWidth?.px ?? requiredColumnValueWidth(domain);
+      if (valueWidth) valueWidth.px = need;
       for (let pass = 0; pass < 3; pass++) {
         const width = bandFor(plotX0, plotW0).bandwidth;
         if (width >= need - 0.01 || bandFraction >= COLUMN_FRACTION_MAX) break;
@@ -585,11 +631,40 @@ function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisRese
     if (plotW0 === before) break;
     fitColumnWidth();
   }
-  return { band: bandFor(plotX0, plotW0), plotX0, plotW0, bandFor };
+  return { band: bandFor(plotX0, plotW0), plotX0, plotW0, bandFor, valueWidth };
 }
+
+interface MeasuredColumnBand {
+  stacks: ColumnDomain['stacks'];
+  left: number;
+  width: number;
+  axis: number;
+  axisShown: boolean;
+  keyed: boolean;
+  stair: boolean;
+  plan: ReturnType<typeof columnBandWidth>;
+}
+
+// The search owns the entries. A prepared stack identifies its data, typography
+// and format. Changing the plot sides, axis or category placement needs a new band.
+const bandsBySearch = new WeakMap<object, MeasuredColumnBand[]>();
 
 /** The data, typography and axis are fixed during one column's staircase padding retries. */
 export interface ColumnStaircaseMemo {
+  heightAxes?: 'auto' | 'fixed';
+  acceptedPad?: { state: ReturnType<typeof staircaseState>; block: Rect; band: ColumnArea['band'] };
+  growthTrial?: boolean;
+  measureOpening?: boolean;
+  prepareFallbackRow?: () => void;
+  openingFrame?: ColumnHeightFrame;
+  narrowGutters?: boolean;
+  rowPlotAt?: (frameHeight: number, categoryBand: number) => { raw: number; minPlot: number };
+  upperTrial?: (height: number) => ColumnHeightTrial | undefined;
+  plotHeightAt?: (height: number) => number;
+  scaleAt?: (frameHeight: number, pad: number) => Pick<ColumnArea, 'plot' | 'y' | 'y0'> | undefined;
+  rotatedHeightAt?: (frameHeight: number) => number | undefined;
+  stairFailsAt?: (frameHeight: number, reason: string) => boolean;
+  plotAtPad?: { plot: Rect; at: (frame: FrameResult, pad: number) => ColumnArea };
   furniture?: ReturnType<typeof columnFrameFurniture> & { warnings: LintWarning[] };
   frame?: { frame: FrameResult; claims: OccupiedClaim[]; warnings: LintWarning[] };
   width?: { x: number; w: number; axis: number; keyed: boolean; plan: ReturnType<typeof columnBandWidth> };
@@ -609,14 +684,28 @@ function columnBand(
   stair: boolean,
   beforeCategoryRow?: (bandwidth: number) => void,
   memo?: ColumnStaircaseMemo,
+  heightSearch?: object,
+  dimensionsOnly = false,
 ): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
   const { options, theme, measure, cats } = domain;
+  const size = options.size;
+  const search = heightSearch ?? (memo && domain.variant === 'stacked' && typeof size === 'object' ? columnHeightSearch.get(size) : undefined);
+  const keyed = !!domain.pyRef && pyTickKeyed(domain, frame.legend);
+  const { x, w } = frame.plot;
+  const axisShown = !!domain.va.show;
+  const entries = search && bandsBySearch.get(search);
+  const shared = entries?.find(entry => entry.stacks === domain.stacks && entry.left === x && entry.width === w
+    && entry.axis === valueAxisReserve && entry.axisShown === axisShown && entry.keyed === keyed && entry.stair === stair);
   const cached = stair && memo ? memo.width : undefined;
-  const keyed = !!(stair && memo && domain.pyRef) && pyTickKeyed(domain, frame.legend);
-  const same = cached && cached.x === frame.plot.x && cached.w === frame.plot.w
-    && cached.axis === valueAxisReserve && cached.keyed === keyed;
-  const width = same ? cached.plan : columnBandWidth(domain, frame, valueAxisReserve, tickFont, stair);
-  if (stair && memo && !same) memo.width = { x: frame.plot.x, w: frame.plot.w, axis: valueAxisReserve, keyed, plan: width };
+  const same = cached && cached.x === x && cached.w === w && cached.axis === valueAxisReserve && cached.keyed === keyed;
+  const width = shared?.plan ?? (same ? cached.plan : columnBandWidth(domain, frame, valueAxisReserve, tickFont, stair,
+    // Axis and category placement change the bands, but the prepared stack still prints the same values.
+    search ? entries?.find(entry => entry.stacks === domain.stacks)?.plan.valueWidth ?? {} : undefined));
+  if (search && !shared) {
+    const entry = { stacks: domain.stacks, left: x, width: w, axis: valueAxisReserve, axisShown, keyed, stair, plan: width };
+    if (entries) entries.push(entry); else bandsBySearch.set(search, [entry]);
+  }
+  if (stair && memo && !same) memo.width = { x, w, axis: valueAxisReserve, keyed, plan: width };
   const { plotX0, plotW0, bandFor } = width;
   let band = width.band;
   beforeCategoryRow?.(band.bandwidth);
@@ -627,10 +716,10 @@ function columnBand(
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
   // several would be cut, the row reads as ranks with the mapping in the notes.
-  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
+  const rowInput = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain)));
     ticked?.name(row);
-    const plan = withCategoryRanks(planCategoryRow({
+    const input: Parameters<typeof planCategoryRow>[0] = {
       target: options.target, textScale: textScaleOf(options),
       ...row,
       centers: cats.map((_, ci) => b.center(ci)),
@@ -650,7 +739,25 @@ function columnBand(
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
       ...(rotate === false ? { rotate } : {}),
-    }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    };
+    return input;
+  };
+  const retainRotation = (input: ReturnType<typeof rowInput>, names: ReturnType<typeof measuredRotatedNames>) => {
+    if (names && memo) memo.rotatedHeightAt = h => {
+      const original = names(input.centers, width.band.step, h, plotW0);
+      if (!original || original.inset === 0) return original?.height;
+      const narrowed = bandFor(plotX0 + original.inset, plotW0 - original.inset);
+      return names(cats.map((_, i) => narrowed.center(i)), narrowed.step, h, plotW0 - original.inset)?.height;
+    };
+  };
+  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
+    const input = rowInput(b, ticked, rotate);
+    const plan = withCategoryRanks(planCategoryRow(input), measure, cats.map((c) => c.label ?? c.id),
+      (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    if (!stair && memo?.heightAxes && b === width.band && rotate === undefined && !ticked && input.everyName
+      && !rankKeyShown(options) && !domain.highlights.size && !cats.some(c => c.role === 'total' || c.date !== undefined)) {
+      retainRotation(input, measuredRotatedNames(input));
+    }
     // Rotated total and highlighted names need their drawn width for the row height and left overhang.
     if (plan.rotation !== 0) {
       const widest = () => Math.max(1, maxOf(plan.infos.filter((_, ci) => plan.keep[ci]).map(info => info.w)));
@@ -677,7 +784,13 @@ function columnBand(
     return planned;
   };
   // The band must be final before return. Authored footnote warnings retain their order.
-  if (!stair || cats.some(c => c.footnote !== undefined)) catPlan();
+  if (dimensionsOnly) {
+    if (!authored && !rankKeyShown(options) && !domain.highlights.size
+      && !cats.some(c => c.role === 'total' || c.date !== undefined || c.footnote !== undefined)) {
+      const input = rowInput(band);
+      if (input.everyName) retainRotation(input, openingRotatedNames(input));
+    }
+  } else if (!stair || cats.some(c => c.footnote !== undefined)) catPlan();
   return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 
@@ -718,6 +831,11 @@ export function columnPlotArea(
   widthMemo?: ColumnStaircaseMemo,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
+  const saved = widthMemo?.plotAtPad;
+  if (saved?.plot === frame.plot && !beforeCategoryRow && staircaseOn(options.categoryLabels, options)) {
+    return saved.at(frame, staircaseState(options).pad);
+  }
+  const warningStart = warnings.length;
   // Percent cells print '%' on the ticks as on the value labels (fmtPercent).
   const percentAxis = variant !== 'stacked100' && percentCellsOnly(domain.dataSeries);
   const axisFmt = variant === 'stacked100' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentAxis ? valueSpec.fmtPercent : fmt;
@@ -807,29 +925,15 @@ export function columnPlotArea(
   // engine-chosen height, as the freed headroom does, so the plot keeps its height and the canvas grows.
   if (hasCagr && cagrPad > 0) recordFreedChrome(frame.frame, 'cagr-pad', cagrPad);
   const growthAndCagr = integratedGrowthH + (hasCagr ? cagrRoom + cagrPad : 0);
-  const unrowedH = frame.plot.h - catBandH - ratioTierHeight - 8 - axisTitleH - growthAndCagr - ruleH;
-  const unrowedPlotH = unrowedH - hangingLabelReserve(unrowedH, [dLo, dHi], hangingEnd, hangingRoom);
-  const totalsRow = !domain.gtContent ? 0 : domain.activeBreak ? gtH + 6
-    : Math.max(0, maxOf(domain.posTopP.map((top, ci) => (top > 0 ? seatRoom(top, [dLo, dHi], gtH + partialH(ci) + 4, unrowedPlotH) : 0))));
-  const headerRows = totalsRow + growthAndCagr;
+  const headerAt = (frameHeight: number, categoryBand: number, underLabels = hangingRoom) => {
+    const unrowedH = frameHeight - categoryBand - ratioTierHeight - 8 - axisTitleH - growthAndCagr - ruleH;
+    const unrowedPlotH = unrowedH - hangingLabelReserve(unrowedH, [dLo, dHi], hangingEnd, underLabels);
+    const totalsRow = !domain.gtContent ? 0 : domain.activeBreak ? gtH + 6
+      : Math.max(0, maxOf(domain.posTopP.map((top, ci) => (top > 0 ? seatRoom(top, [dLo, dHi], gtH + partialH(ci) + 4, unrowedPlotH) : 0))));
+    return totalsRow + growthAndCagr;
+  };
+  const headerRows = headerAt(frame.plot.h, catBandH);
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, headerRows);
-  const rawBandPad = (options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0;
-  const baseTopPad = 8 + axisTitleBand + headerRows + ruleH + (stair ? staircaseState(options).pad : 0);
-  const plotH0NoBand = frame.plot.h - catBandH - ratioTierHeight - baseTopPad;
-  const hangingReserveNoBand = hangingLabelReserve(plotH0NoBand, [dLo, dHi], hangingEnd, hangingRoom);
-  const minRawH = Math.max(10, options.mode === 'compact' ? 80 : 0);
-  let bandPad = rawBandPad > 0 ? Math.max(0, Math.min(rawBandPad, Math.floor(plotH0NoBand - hangingReserveNoBand - minRawH))) : 0;
-  while (
-    bandPad > 0 &&
-    frame.plot.h - catBandH - ratioTierHeight - (baseTopPad + bandPad) -
-      hangingLabelReserve(frame.plot.h - catBandH - ratioTierHeight - (baseTopPad + bandPad), [dLo, dHi], hangingEnd, hangingRoom) <
-      minRawH
-  ) {
-    bandPad--;
-  }
-  const topPad = baseTopPad + bandPad;
-  const plotH0 = frame.plot.h - catBandH - ratioTierHeight - topPad;
-  const hangingReserve = hangingLabelReserve(plotH0, [dLo, dHi], hangingEnd, hangingRoom);
   if (!stair && options.categoryLabels !== 'staircase' && ['fit', 'wrap', 'font-down', 'stride'].includes(catPlan().step)
     && !options.annotations?.some(annotation => annotation.kind === 'cagr' || annotation.kind === 'event' || bracketsOverColumns(annotation, domain))
     && ![CAGR_PAD, VALUE_LINE_RESERVE, TICK_LABEL_RESERVE, BAND_PAD].some(marker => marker in options)) {
@@ -857,31 +961,101 @@ export function columnPlotArea(
       else plotChromeFloor.delete(frame.frame);
     }
   }
-  const plot: Rect = {
-    x: frame.plot.x,
-    y: frame.plot.y + topPad,
-    w: frame.plot.w,
-    h: plotHeightAfter(frame, size.height, plotH0 - hangingReserve),
-  };
-  // event keys and rotated categories cannot consume the mark area.
-  const minPlot = plotFloorRows(options) * measure('0', labelFont).height + 8;
-  frame.frame.plotMinHeight = Math.max(frame.frame.plotMinHeight ?? 0, size.height + (frame.deficit ?? 0) + minPlot - (plotH0NoBand - hangingReserveNoBand));
-  // value axis: measure first, shrink the plot, gridlines behind marks
-  if (va.show) {
-    plot.x += valueAxisReserve;
-    plot.w = Math.max(10, plot.w - valueAxisReserve);
+  // A padding retry changes only the vertical scale on this same frame. Keep a
+  // fresh plot and public frame for each trial, including its own minimum height.
+  if (stair && widthMemo?.frame && widthMemo.frame.frame.plot === frame.plot && !beforeCategoryRow
+    && variant === 'stacked' && !domain.activeBreak && !tier && !hasCagr && warnings.length === warningStart
+    && !cats.some(category => category.footnote !== undefined)) {
+    widthMemo.plotAtPad = { plot: frame.plot, at: atPad };
   }
-  const y = domain.activeBreak
-    ? brokenLinearScale([dLo, dHi], [plot.y + plot.h, plot.y], domain.activeBreak)
-    : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
-  return {
-    frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
-    catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
-    // The names may rise to the frame top, under the rule and the axis title.
-    ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
-    // A date row stays at the plot's bottom band; prose reads under the
-    // lowest column and the value hanging under it.
-    get catRowY() { return catPlan().dateNumeric ? plot.y + plot.h + hangingReserve : categoryRowTop(y, lowest, hangingEnd, hangingRoom); },
-    plot, y, y0: y(0),
-  };
+  if (widthMemo?.heightAxes && widthMemo.plotHeightAt && typeof options.size === 'object' && !axisTitle && !tier && !ruleH
+    && !growthAndCagr && !ratioTierHeight && !domain.activeBreak && !domain.incompleteCats.size && !(BAND_PAD in options)) {
+    const search = columnHeightSearch.get(options.size);
+    if (search && stair && widthMemo.plotAtPad && catBandH === 0 && hangingRoom === 0) {
+      // With enough domain headroom, the staircase has no header row above its eight-pixel gap.
+      // Re-evaluate that condition for the candidate height before reusing this vertical scale.
+      const tallest = maxOf(domain.posTopP);
+      const [lo, hi] = [dLo, dHi];
+      widthMemo.scaleAt = (frameHeight, pad) => {
+        if (domain.gtContent && tallest > 0 && seatRoom(tallest, [lo, hi], gtH + 4, frameHeight - 8) > 0) return;
+        const topPad = 8 + pad;
+        const plot = { x: frame.plot.x + valueAxisReserve, w: Math.max(10, frame.plot.w - valueAxisReserve),
+          y: frame.plot.y + topPad, h: Math.max(10, frameHeight - topPad) };
+        const y = linearScale([lo, hi], [plot.y + plot.h, plot.y]);
+        return { plot, y, y0: y(0) };
+      };
+      if (widthMemo.measureOpening) {
+        widthMemo.prepareFallbackRow = () => {
+          columnBand(domain, frame, valueAxisReserve, tickFont, [], false, undefined, widthMemo, search, true);
+          const room = options.labels === false ? 0 : Math.max(measure('0', labelFont).height, gtH) + 4;
+          const minPlot = plotFloorRows(options) * measure('0', labelFont).height + 8;
+          widthMemo.rowPlotAt = (frameHeight, categoryBand) => {
+            const raw = frameHeight - categoryBand - (8 + headerAt(frameHeight, categoryBand, room));
+            return { raw: raw - hangingLabelReserve(raw, [dLo, dHi], hangingEnd, room), minPlot };
+          };
+        };
+      }
+    } else if (search && !stair && showCatRow) {
+      widthMemo.rotatedHeightAt ??= frameHeight => {
+        const row = columnBand(domain, { ...frame, plot: { ...frame.plot, h: frameHeight } },
+          valueAxisReserve, tickFont, [], false, undefined, widthMemo, search).catPlan();
+        return row.step === 'rotate' && !row.cutNotes.length ? row.rowHeight : undefined;
+      };
+      if (widthMemo.growthTrial) {
+        const minPlot = plotFloorRows(options) * measure('0', labelFont).height + 8;
+        widthMemo.rowPlotAt = (frameHeight, categoryBand) => {
+          const raw = frameHeight - categoryBand - (8 + headerAt(frameHeight, categoryBand));
+          return { raw: raw - hangingLabelReserve(raw, [dLo, dHi], hangingEnd, hangingRoom), minPlot };
+        };
+      }
+    }
+  }
+  return atPad(frame, stair ? staircaseState(options).pad : 0);
+
+  function atPad(frame: FrameResult, pad: number): ColumnArea {
+    const rawBandPad = (options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0;
+    const baseTopPad = 8 + axisTitleBand + headerRows + ruleH + pad;
+    const plotH0NoBand = frame.plot.h - catBandH - ratioTierHeight - baseTopPad;
+    const hangingReserveNoBand = hangingLabelReserve(plotH0NoBand, [dLo, dHi], hangingEnd, hangingRoom);
+    const minRawH = Math.max(10, options.mode === 'compact' ? 80 : 0);
+    let bandPad = rawBandPad > 0 ? Math.max(0, Math.min(rawBandPad, Math.floor(plotH0NoBand - hangingReserveNoBand - minRawH))) : 0;
+    while (
+      bandPad > 0 &&
+      frame.plot.h - catBandH - ratioTierHeight - (baseTopPad + bandPad) -
+        hangingLabelReserve(frame.plot.h - catBandH - ratioTierHeight - (baseTopPad + bandPad), [dLo, dHi], hangingEnd, hangingRoom) <
+        minRawH
+    ) {
+      bandPad--;
+    }
+    const topPad = baseTopPad + bandPad;
+    const plotH0 = frame.plot.h - catBandH - ratioTierHeight - topPad;
+    const hangingReserve = hangingLabelReserve(plotH0, [dLo, dHi], hangingEnd, hangingRoom);
+    const plot: Rect = {
+      x: frame.plot.x,
+      y: frame.plot.y + topPad,
+      w: frame.plot.w,
+      h: plotHeightAfter(frame, size.height, plotH0 - hangingReserve),
+    };
+    // event keys and rotated categories cannot consume the mark area.
+    const minPlot = plotFloorRows(options) * measure('0', labelFont).height + 8;
+    frame.frame.plotMinHeight = Math.max(frame.frame.plotMinHeight ?? 0, size.height + (frame.deficit ?? 0) + minPlot - (plotH0NoBand - hangingReserveNoBand));
+    // value axis: measure first, shrink the plot, gridlines behind marks
+    if (va.show) {
+      plot.x += valueAxisReserve;
+      plot.w = Math.max(10, plot.w - valueAxisReserve);
+    }
+    const y = domain.activeBreak
+      ? brokenLinearScale([dLo, dHi], [plot.y + plot.h, plot.y], domain.activeBreak)
+      : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
+    return {
+      frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
+      catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
+      // The names may rise to the frame top, under the rule and the axis title.
+      ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
+      // A date row stays at the plot's bottom band; prose reads under the
+      // lowest column and the value hanging under it.
+      get catRowY() { return catPlan().dateNumeric ? plot.y + plot.h + hangingReserve : categoryRowTop(y, lowest, hangingEnd, hangingRoom); },
+      plot, y, y0: y(0),
+    };
+  }
 }

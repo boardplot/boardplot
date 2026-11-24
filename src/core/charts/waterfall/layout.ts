@@ -14,7 +14,7 @@ import { distinguishSeries } from '../../seriesIdentity';
 
 import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
-import type { AnchorResolution } from '../../annotate';
+import type { AnchorResolution, BracketSpanError } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { categoryBandFromCenters } from '../../annotateFields';
 import { BRACKET_GAP, BRACKET_TICK } from '../../annotateParts';
@@ -51,13 +51,15 @@ import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning, breakReversesOrder, type BreakBar } from '../../axisBreakOrder';
 import { valueLineExtent } from '../../valueLineDomain';
 import { changePercentText, formatAutomaticNumber as plainNumber } from '../../format';
-import { authoredDecimals } from '../../formatPrecision';
+import { authoredDecimals, currentSmallValues, formatScopeKey } from '../../formatPrecision';
+import { requestMemo } from '../../layoutPlan';
 import { copyFrame } from '../../footer';
-import { authoredNotes, collectFrameClaims, type FrameResult, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
+import { authoredNotes, collectFrameClaims, type FrameResult, type FrameWidthMeasurements, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
-import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
+import { CROWDED_NAMES, type CategoryRowPlan, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
 import {
   canvasMargin,
+  layoutStepKey,
   colorblindPaint,
   effectiveFill,
   colorRolePaints,
@@ -96,7 +98,7 @@ import { composedTextRole } from '../../textRole';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
-import { bandSizing, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
+import { bandSizing, sameContent, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -924,6 +926,23 @@ function automaticBreak(
   return invalidLinearBreakReason([0, runHi], axisBreak, drawn) ? undefined : axisBreak;
 }
 
+type BracketSteps = { i: number; j: number; sum: number; steps: { id: Id; value: number }[] };
+type BracketSpan = BracketSteps | BracketSpanError;
+
+function waterfallBracketSteps(items: NormItem[], hasCases: boolean, fromId: Id, toId: Id): BracketSpan {
+  if (hasCases) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
+  const i = items.findIndex(item => item.id === fromId);
+  const j = items.findIndex(item => item.id === toId);
+  if (i < 0 || j < 0) return { code: 'bad-anchor', error: `unknown step '${i < 0 ? fromId : toId}'; valid step ids: ${items.map(item => item.id).join(', ')}` };
+  if (i > j) return { code: 'bracket-span-order', error: `'${fromId}' comes after '${toId}'; give the earlier step as from` };
+  const span = items.slice(i, j + 1);
+  const total = span.find(item => item.type !== 'delta');
+  if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
+  // At a large running balance, level differences can lose a small step.
+  const steps = span.map(item => ({ id: item.id, value: compensatedSum(item.segments.map(segment => segment.value)) }));
+  return { i, j, sum: compensatedSum(steps.map(step => step.value)), steps };
+}
+
 interface BridgePass {
   labels: PlacedLabel[];
   warnings: LintWarning[];
@@ -934,17 +953,32 @@ interface BridgePass {
   repairBreak?: () => BridgePass;
 }
 
-function prepareWaterfall(
-  data: WaterfallData,
-  options: WaterfallOptions,
-  /** A horizontal bridge reads its names in a left column. */
-  categoryRow = true,
-): (extraAnnPad: number, enforceBreakOrder?: boolean, bracketCut?: number) => BridgePass {
+type WaterfallBandDraw = (extraAnnPad: number, enforceBreakOrder?: boolean, bracketCut?: number) => BridgePass;
+
+function prepareWaterfall(data: WaterfallData, options: WaterfallOptions, categoryRow = true): WaterfallBandDraw {
+  const build = () => prepareWaterfallData(data, options, categoryRow);
+  if (!categoryRow || !isCachedTextMeasurer(options.measure ?? defaultMeasurer) || !growthArms(options, data)) return build()(options);
+
+  // The host tries several canvas heights with the same data and format.
+  // Each height still owns its frames, claims and annotation-band trials.
+  const size = resolveSize(options.size);
+  const key = JSON.stringify(['waterfall-data', size.width, layoutStepKey(), currentSmallValues(), formatScopeKey(options)]);
+  type Entry = { settings: WaterfallOptions; atHeight: ReturnType<typeof build> };
+  const entries = requestMemo(data, key, (): Entry[] => []);
+  const { size: _canvas, ...settings } = options;
+  let saved = entries.find(entry => sameContent(entry.settings, settings));
+  if (!saved) {
+    saved = { settings, atHeight: build() };
+    entries.push(saved);
+  }
+  return saved.atHeight(options);
+}
+
+function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, categoryRow: boolean) {
   const fmtPlain = (value: number, settings: Parameters<typeof plainNumber>[1] = {}) => plainNumber(value, { locale: options.locale?.language, ...settings });
   const warnings: LintWarning[] = [];
   const theme = chartTheme(options);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
-  const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
   const highlights = new Set(resolveHighlight(options.highlight));
   // Sign colouring: totals in color.total, each step in its
@@ -954,7 +988,6 @@ function prepareWaterfall(
   const signSteps = stepsBySign(theme, options);
   const connectorStroke: Paint = { token: signBridge ? 'inkMeta' : 'leader' };
   const connectorDash = dashToken(theme, signBridge ? 'dotted' : 'reference');
-  const stepTones = new Map<Id, 'good' | 'bad' | 'neutral'>();
   // A warm red or orange accent on a bridge step reads as a loss, whatever
   // the sign of the step.
   const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'waterfall', before: warnings.length }] : [];
@@ -1029,7 +1062,7 @@ function prepareWaterfall(
       message: `${it.type} '${it.id}': supplied ${printed[0]} differs from the computed ${printed[1]} by less than its inputs' rounding; the computed ${printed[1]} is drawn and a note names both`,
       owner: { categoryId: it.id },
     });
-    checkValueNotes.push(disclosureNote(chartString(options, what, { v1: name, v2: printed[1], v3: printed[0] })));
+    checkValueNotes.push(chartString(options, what, { v1: name, v2: printed[1], v3: printed[0] }));
   };
 
   // Segment ids are series identities: one canonical label/color assignment
@@ -1405,16 +1438,23 @@ function prepareWaterfall(
   const markPatterns = new Set<LegendItemInput['pattern']>();
   const segmentsFor = (it: NormItem): NormItem['segments'] => derivedTotalSegments.get(it.id) ??
     (it.type === 'delta' ? it.segments : [{ ...it.segments[0]!, value: totals[it.id]! }]);
+  type SegmentSpan = { seg: NormItem['segments'][number]; sStart: number; sEnd: number };
+  const stepSegments = new Map<NormItem, { drawSegments: NormItem['segments']; segSpans: SegmentSpan[]; mixed: boolean }>();
   for (const it of allItems) {
     let cursor = levels[it.id]!.start;
     let min = cursor;
     let max = cursor;
-    for (const segment of segmentsFor(it)) {
-      markPatterns.add(scenarioPattern(segment.scenario ?? it.scenario));
-      cursor += segment.value;
+    const drawSegments = segmentsFor(it);
+    const segSpans = drawSegments.map(seg => {
+      const sStart = cursor;
+      markPatterns.add(scenarioPattern(seg.scenario ?? it.scenario));
+      cursor += seg.value;
       min = Math.min(min, cursor);
       max = Math.max(max, cursor);
-    }
+      return { seg, sStart, sEnd: cursor };
+    });
+    const mixed = it.type === 'delta' && drawSegments.some(seg => seg.value > 0) && drawSegments.some(seg => seg.value < 0);
+    stepSegments.set(it, { drawSegments, segSpans, mixed });
     traversalExtrema[it.id] = { min, max };
     const level = levels[it.id]!;
     if (min < Math.min(level.start, level.end) || max > Math.max(level.start, level.end)) {
@@ -1427,9 +1467,38 @@ function prepareWaterfall(
   // Preserve the author's request when a safety repair rebuilds without a break.
   const recommendBreak = options.valueAxis?.break === undefined || options.valueAxis.break === false;
   const growthBand = growthArms(options, data);
+  // A span names the same steps at every padding and canvas height. Its
+  // position still comes from the labels and marks drawn in each trial.
+  const spans = options.annotations?.some(a => a.kind === 'bracket') && isCachedTextMeasurer(measure)
+    ? requestMemo(data, 'waterfall-bracket-steps', () => new Map<Id, Map<Id, BracketSpan>>()) : undefined;
+  const spanFor = (from: Id, to: Id): BracketSpan => {
+    if (!spans) return waterfallBracketSteps(items, cases.length > 0, from, to);
+    let ends = spans.get(from);
+    if (!ends) spans.set(from, ends = new Map());
+    let span = ends.get(to);
+    if (!span) ends.set(to, span = waterfallBracketSteps(items, cases.length > 0, from, to));
+    return span;
+  };
+  const validSpans = (annotations: Annotation[]) => annotations.flatMap(a => {
+    // Only step ids can reserve a bracket row. The annotation pass reports invalid anchors.
+    if (a.kind !== 'bracket' || typeof a.from !== 'string' || typeof a.to !== 'string') return [];
+    const span = spanFor(a.from, a.to);
+    return 'error' in span ? [] : [span];
+  });
+  const preparedSpans = spans ? validSpans(options.annotations!) : undefined;
+
   // The chart size and options stay fixed across band trials. Only a different
   // axis break can change the frame, through its disclosure. The chart's
   // height floor is recorded separately on each copy of the frame.
+  const measuredBands: { x: number; width: number; height: number; row: ReturnType<typeof measureCategoryBand> }[] = [];
+  const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
+  const itemNames = items.map(it => it.label);
+  const dateNumericTicks = isDateNumericTickSequence(itemNames);
+  const frameRows: FrameWidthMeasurements | undefined = growthBand && isCachedTextMeasurer(measure) ? {} : undefined;
+  return function atHeight(options: WaterfallOptions): WaterfallBandDraw {
+  const size = resolveSize(options.size);
+  const stepTones = new Map<Id, 'good' | 'bad' | 'neutral'>();
+  for (const note of checkValueNotes) disclosureNote(note);
   const frames = growthBand && isCachedTextMeasurer(measure)
     ? new Map<string | undefined, { result: FrameResult; claims: OccupiedClaim[] }>() : undefined;
   return (pad, enforceBreakOrder = true, cut = 0) => drawBridge(options, pad, cut, undefined, enforceBreakOrder);
@@ -1526,6 +1595,7 @@ function prepareWaterfall(
       measure,
     },
     claims,
+    frameRows,
   );
   let frameResult: FrameResult;
   if (frames) {
@@ -1541,59 +1611,14 @@ function prepareWaterfall(
     frameResult = frameForBand(occupied);
   }
 
-  const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
-  // The band only depends on the frame's x-extent, so it can be built before
-  // the plot: category labels are wrapped and measured up front, and when
-  // adjacent wrapped labels are wider than the band step the axis reserves a
-  // second tier row that the belowShifted candidates stagger into.
-  // On a vertical bridge a bar that is too narrow for
-  // its widest segment value (with 2 px each side) widens, up to 74% of its column, so the value
-  // reads inside its segment instead of in the note. Only an unset bandFraction moves.
-  const segmentValueWidth = categoryRow && options.bandFraction === undefined && options.labels !== false && cases.length === 0
-    ? Math.max(0, maxOf(items.filter((it) => it.totalSegments ? derivedTotalSegments.has(it.id) : it.authoredSegments && !(it.segments.some((seg) => seg.value > 0) && it.segments.some((seg) => seg.value < 0)))
-      .flatMap((it) => segmentsFor(it).map((seg) => measure(it.type === 'delta' ? fmtSigned(seg.value) : fmt(seg.value), { family: theme.type.family, ...theme.type.label }).width + 4))))
-    : 0;
-  const fractionFor = (w: number) => {
-    const base = options.bandFraction ?? 0.62;
-    if (segmentValueWidth === 0) return base;
-    // The step does not depend on the fraction: inner and outer padding trade off one for one.
-    const step = w / (items.length + 0.1);
-    return Math.min(0.74, Math.max(base, segmentValueWidth / step));
-  };
-  const bandFor = (x0: number, w: number) =>
-    bandScale(items.length, [x0, x0 + w], {
-      paddingInner: 1 - fractionFor(w),
-      paddingOuter: (1 - fractionFor(w)) / 2 + 0.05,
-    });
-  let plotLeft = frameResult.plot.x;
-  let plotWidth = frameResult.plot.w;
-  let band = bandFor(plotLeft, plotWidth);
-  // Date/numeric ticks are one line on one row; prose wraps to two
-  // and may stagger into the second tier row when adjacent labels crowd.
-  const dateNumericTicks = isDateNumericTickSequence(items.map((it) => it.label));
-  // One cascade decides the whole row (wrap, font step, uniform
-  // stride for dates, 45° for prose); no name is hidden by a local sweep.
-  const planRowAt = (b: typeof band, widths?: number[], rotate?: false) =>
-    planCategoryRow({
-      labels: items.map((it) => it.label),
-      centers: items.map((_, i) => b.center(i)),
-      step: b.step,
-      ...(widths ? { widths } : {}),
-      fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],
-      measure,
-      plotHeight: frameResult.plot.h,
-      target: options.target, textScale: textScaleOf(options),
-      range: b.range, spreadBeforeRotate: categoryRow,
-      ...(rotate === false ? { rotate } : {}),
-    });
-  // The upright spread before the 45° step lives in planCategoryRow.
-  // A horizontal bridge draws no row, so it skips the spread.
-  const planRow = (b: typeof band, rotate?: false) => planRowAt(b, undefined, rotate);
-  let catPlan = planRow(band);
-  // A rotated first name hangs left of its bar; the plot yields that much.
-  const widthBeforeRow = plotWidth;
-  if (categoryRow) ({ plan: catPlan, band, x0: plotLeft, width: plotWidth } = yieldToRotatedName(catPlan, band, items.length, plotLeft, plotWidth, bandFor, planRow));
-  const catOverhang = widthBeforeRow - plotWidth;
+  const frame = frameResult.plot;
+  let row = frameRows && measuredBands.find(entry => entry.x === frame.x && entry.width === frame.w
+    && (entry.height === frame.h || entry.row.widthOnly))?.row;
+  if (!row) {
+    row = measureCategoryBand(frame);
+    if (frameRows) measuredBands.push({ x: frame.x, width: frame.w, height: frame.h, row });
+  }
+  const { catPlan, band, plotWidth, plotLeft, catOverhang } = row;
   const catInfos = catPlan.infos;
   const catFont = catPlan.font;
   const catRowH = catPlan.rowHeight;
@@ -1832,17 +1857,9 @@ function prepareWaterfall(
     // Composition-complete final totals retain the segment identities; all
     // other totals stay single because their breakdown is not derivable.
     const stackedTotal = derivedTotalSegments.get(it.id);
-    const drawSegments = segmentsFor(it);
+    const { drawSegments, segSpans, mixed } = stepSegments.get(it)!;
     const segmentedMark = it.authoredSegments || stackedTotal !== undefined;
-
     const traversal = traversalExtrema[it.id]!;
-    let cumScan = lvl.start;
-    const segSpans = drawSegments.map((seg) => {
-      const sStart = cumScan;
-      const sEnd = cumScan + seg.value;
-      cumScan = sEnd;
-      return { seg, sStart, sEnd };
-    });
     const yTop = y(traversal.max);
     const yBot = y(traversal.min);
     const barRect: Rect = { x: bx, y: yTop, w: bw, h: Math.max(yBot - yTop, 0.5) };
@@ -1852,7 +1869,6 @@ function prepareWaterfall(
     // across the band, each from where the one before it ended. Stacked in one
     // column, the up block would overpaint the down block, and the part still
     // showing would print a number no input has.
-    const mixed = it.type === 'delta' && segSpans.some((s) => s.seg.value > 0) && segSpans.some((s) => s.seg.value < 0);
     // The 2 px gap shrinks on a narrow band so every segment keeps at least
     // 1 px (or an equal share of the band when even that does not fit).
     const n = segSpans.length;
@@ -2004,8 +2020,10 @@ function prepareWaterfall(
       }
     });
     // marks index keeps input order regardless of draw order
-    const inputIndex = new Map(drawSegments.map((s, k) => [s.id, k]));
-    segRects.sort((a, b) => (inputIndex.get(a.id) ?? 0) - (inputIndex.get(b.id) ?? 0));
+    if (segRects.length > 1) {
+      const inputIndex = new Map(drawSegments.map((s, k) => [s.id, k]));
+      segRects.sort((a, b) => (inputIndex.get(a.id) ?? 0) - (inputIndex.get(b.id) ?? 0));
+    }
     // A mixed step claims its sub-bars one by one above; the gap between them is air.
     if (!(mixed && caseId === undefined)) occupied.claim(barRect, 'mark', stepOwner, 'bar');
     marks.bars.push({ id: it.id, rect: barRect, segments: segRects });
@@ -2305,7 +2323,7 @@ function prepareWaterfall(
     labelPad: 2,
   });
   const rowValues = labelRequests.filter(request => /^(sum|total):/.test(request.id) && !authoredValueIds.has(request.id));
-  solveCtx.valueRows = [...new Set(rowValues.map(request => `${request.kind}:${request.owner.seriesId ?? ''}`))].map(role => ({
+  const valueRows = [...new Set(rowValues.map(request => `${request.kind}:${request.owner.seriesId ?? ''}`))].map(role => ({
       ids: rowValues.filter(request => `${request.kind}:${request.owner.seriesId ?? ''}` === role).map(request => request.id),
       alternate: true,
     }));
@@ -2328,7 +2346,9 @@ function prepareWaterfall(
   };
   const narrowForm = (options as { [NARROW_FORM]?: true })[NARROW_FORM] === true;
   const unlabelled = narrowForm ? occupied.snapshot() : [];
-  let solved = solveLabels(labelRequests, occupied, solveCtx);
+  // Only the chart values thin by row. An annotation never belongs to a sum or total row.
+  const takeRowIndex = isCachedTextMeasurer(measure) ? (index: typeof occupied) => { occupied = index; } : undefined;
+  let solved = solveLabels(labelRequests, occupied, { ...solveCtx, valueRows }, undefined, takeRowIndex);
   let minPlotW = plotFloor(solved.placed);
   // Step values the solver seats closer than the floor's air refuse the width: the narrower form (NARROW_FORM)
   // thins them as a narrower width does (every second value, then none), so a chart that draws at a width draws wider.
@@ -2336,7 +2356,7 @@ function prepareWaterfall(
     const index = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
     index.tickColumns = occupied.tickColumns;
     for (const claim of unlabelled) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
-    const thinned = solveLabels(labelRequests, index, { ...solveCtx, valueRows: solveCtx.valueRows!.map(row => row.ids[0]?.startsWith('sum:') ? { ...row, from } : row) });
+    const thinned = solveLabels(labelRequests, index, { ...solveCtx, valueRows: valueRows.map(row => row.ids[0]?.startsWith('sum:') ? { ...row, from } : row) });
     const floor = plotFloor(thinned.placed);
     if (floor > plot.w + SIZE_TOLERANCE) continue;
     occupied = index;
@@ -2397,24 +2417,23 @@ function prepareWaterfall(
   };
   // A bracket falls back to the top row where its seat is taken.
   const bracketTopRow = annPlot.y + bracketLabelH + 3;
-  // The y right above the drawn boxes of steps i to j (a mixed-sign step counts its whole height) and their visible value labels.
-  const spanSeat = (i: number, j: number): number => {
-    const spanIds = new Set(items.slice(i, j + 1).map((x) => x.id));
-    const tops = [
-      ...marks.bars.filter((bar) => spanIds.has(bar.id)).map((bar) => bar.rect.y),
-      ...solved.placed.filter((label) => !label.hidden && label.kind !== 'category' && label.owner.categoryId !== undefined && spanIds.has(label.owner.categoryId)).map((label) => label.rect.y),
-    ];
-    return Math.min(...tops) - BRACKET_GAP - BRACKET_TICK;
+  const bracketSpans = preparedSpans ?? validSpans(annotations);
+  // The shared row clears every step and value label covered by a valid bracket.
+  let tops: Map<Id, number> | undefined;
+  const spanSeat = (span: BracketSteps) => {
+    if (!tops) {
+      tops = new Map();
+      for (const bar of marks.bars) tops.set(bar.id, Math.min(tops.get(bar.id) ?? Infinity, bar.rect.y));
+      for (const label of solved.placed) {
+        const id = label.owner.categoryId;
+        if (id !== undefined && !label.hidden && label.kind !== 'category') tops.set(id, Math.min(tops.get(id) ?? Infinity, label.rect.y));
+      }
+    }
+    let top = Infinity;
+    for (const step of span.steps) top = Math.min(top, tops.get(step.id) ?? Infinity);
+    return top - BRACKET_GAP - BRACKET_TICK;
   };
-  // The brackets of one bridge share one row: the lowest row that clears every bracketed span and its values.
-  // A span the bridge refuses (a total in it, an unknown id) takes no part.
-  const bracketSpans = cases.length > 0 ? [] : annotations.flatMap((a) => {
-    if (a.kind !== 'bracket') return [];
-    const i = items.findIndex((x) => x.id === a.from);
-    const j = items.findIndex((x) => x.id === a.to);
-    return i >= 0 && j >= i && items.slice(i, j + 1).every((x) => x.type === 'delta') ? [[i, j] as const] : [];
-  });
-  const bracketRowFree = bracketSpans.length ? Math.min(...bracketSpans.map(([i, j]) => spanSeat(i, j))) : undefined;
+  const bracketRowFree = bracketSpans.length ? Math.min(...bracketSpans.map(spanSeat)) : undefined;
   const bracketRow = bracketRowFree === undefined ? undefined : Math.max(bracketTopRow, bracketRowFree);
   const sourceValues = annotations.some(annotation => annotation.kind === 'valueLine')
     ? data.items.flatMap(item => item.values ?? (item.segments?.length ? item.segments.map(segment => segment.value) : [item.value ?? null]))
@@ -2446,24 +2465,16 @@ function prepareWaterfall(
     yScale: y,
     annotationBandReserved: true,
     resolveSpan: (fromId, toId) => {
-      if (cases.length > 0) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
-      const i = items.findIndex((x) => x.id === fromId);
-      const j = items.findIndex((x) => x.id === toId);
-      if (i < 0 || j < 0) return { code: 'bad-anchor', error: `unknown step '${i < 0 ? fromId : toId}'; valid step ids: ${items.map((x) => x.id).join(', ')}` };
-      if (i > j) return { code: 'bracket-span-order', error: `'${fromId}' comes after '${toId}'; give the earlier step as from` };
-      const steps = items.slice(i, j + 1);
-      const total = steps.find((x) => x.type !== 'delta');
-      if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
-      // The step values, not level differences: next to a large balance the rounded levels lose a small step.
-      const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
+      const span = spanFor(fromId, toId);
+      if ('error' in span) return span;
+      const { i, j, sum, steps } = span;
       return {
         left: band.position(i),
         right: band.position(j) + band.bandwidth,
         y: bracketTopRow,
         // Each bracket stands on the shared row; `bracketRow: 'span'` keeps it right above its own steps.
-        spanY: options.bracketRow === 'span' ? Math.max(bracketTopRow, spanSeat(i, j)) : bracketRow!,
-        sum: compensatedSum(values.map((step) => step.value)),
-        steps: values,
+        spanY: options.bracketRow === 'span' ? Math.max(bracketTopRow, spanSeat(span)) : bracketRow!,
+        sum, steps,
       };
     },
   });
@@ -2561,7 +2572,60 @@ function prepareWaterfall(
     ...(unsafeBreak && !enforceBreakOrder ? { repairBreak: () => drawBridge(options, extraAnnPad, bracketCut) } : {}) };
   }
 
+  };
+
   // ---- helpers ----
+
+  function measureCategoryBand(frame: Rect) {
+    // The band only depends on the frame's x-extent, so it can be built before
+    // the plot: category labels are wrapped and measured up front, and when
+    // adjacent wrapped labels are wider than the band step the axis reserves a
+    // second tier row that the belowShifted candidates stagger into.
+    // On a vertical bridge a bar that is too narrow for
+    // its widest segment value (with 2 px each side) widens, up to 74% of its column, so the value
+    // reads inside its segment instead of in the note. Only an unset bandFraction moves.
+    const segmentValueWidth = categoryRow && options.bandFraction === undefined && options.labels !== false && cases.length === 0
+      ? Math.max(0, maxOf(items.filter((it) => it.totalSegments ? derivedTotalSegments.has(it.id) : it.authoredSegments && !(it.segments.some((seg) => seg.value > 0) && it.segments.some((seg) => seg.value < 0)))
+        .flatMap((it) => segmentsFor(it).map((seg) => measure(it.type === 'delta' ? fmtSigned(seg.value) : fmt(seg.value), { family: theme.type.family, ...theme.type.label }).width + 4))))
+      : 0;
+    const fractionFor = (w: number) => {
+      const base = options.bandFraction ?? 0.62;
+      if (segmentValueWidth === 0) return base;
+      // The step does not depend on the fraction: inner and outer padding trade off one for one.
+      const step = w / (items.length + 0.1);
+      return Math.min(0.74, Math.max(base, segmentValueWidth / step));
+    };
+    const bandFor = (x0: number, w: number) =>
+      bandScale(items.length, [x0, x0 + w], {
+        paddingInner: 1 - fractionFor(w),
+        paddingOuter: (1 - fractionFor(w)) / 2 + 0.05,
+      });
+    let plotLeft = frame.x;
+    let plotWidth = frame.w;
+    let band = bandFor(plotLeft, plotWidth);
+    // One cascade decides the whole row (wrap, font step, uniform
+    // stride for dates, 45° for prose); no name is hidden by a local sweep.
+    let singleLine: CategoryRowPlan['infos'] | undefined;
+    const planRow = (b: typeof band, rotate?: false) =>
+      planCategoryRow({
+        labels: itemNames,
+        ...(frameRows ? { onSingleLineFit: (infos: CategoryRowPlan['infos']) => { singleLine = infos; } } : {}),
+        centers: items.map((_, i) => b.center(i)),
+        step: b.step,
+        fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],
+        measure,
+        plotHeight: frame.h,
+        target: options.target, textScale: textScaleOf(options),
+        range: b.range, spreadBeforeRotate: categoryRow,
+        ...(rotate === false ? { rotate } : {}),
+      });
+    let catPlan = planRow(band);
+    // A rotated first name hangs left of its bar; the plot yields that much.
+    const widthBeforeRow = plotWidth;
+    if (categoryRow) ({ plan: catPlan, band, x0: plotLeft, width: plotWidth } = yieldToRotatedName(catPlan, band, items.length, plotLeft, plotWidth, bandFor, planRow));
+    const catOverhang = widthBeforeRow - plotWidth;
+    return { catPlan, band, plotWidth, plotLeft, catOverhang, widthOnly: catOverhang === 0 && singleLine === catPlan.infos };
+  }
 
   function normalizeItem(raw: WaterfallItem, i: number): NormItem {
     if (!raw?.id) throw new NormalizeError('missing-id', `items[${i}]`, 'item requires an id', undefined, undefined, ['data', 'items', i, 'id']);

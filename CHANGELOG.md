@@ -2,7 +2,21 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
-## Unreleased
+## 0.64.0
+
+### Changed
+
+- Large dimension-switch tables build calculation records for the selected periods, reuse measurements of matching numeric text and retain measured widths as periods are added. Returning to a previous control state also copies its calculation records faster.
+
+- Large dimension-switch tables reuse formatted periods and measured column widths while choosing a card. The selected card can draw from its measured table and copy its calculation records in one pass.
+
+- Dimension-switch tables choose how many periods fit faster. When the remaining rows keep the same figures and formatting, the search can measure their columns without building a complete card for each period count.
+- Dimension-switch tables fit their columns faster. Each layout reuses source values across candidate forms. Only the selected form adds display text to its calculation records.
+- Dense daily stacked columns place labels faster at automatic height. They can settle the value axis earlier, reuse a drawing when its note leaves the plot unchanged, and skip taller layouts when every noted value is too wide for its column.
+- Dense combo charts with stacked columns and lines choose the value axis and endpoint gutters earlier. A value note can keep its label positions when the frame still fits. Automatic height skips taller layouts when every noted segment value is too wide for its column at any height.
+
+- Stacked columns with staircase category labels reuse text and frame measurements while choosing their height. Horizontal bars and Likert surveys reuse shorter layouts only when the footer mode matches. Scatterplots reuse label placements, mixed column and line grids reuse panel heading measurements, and waterfalls reuse bracket sums across height trials.
+- At 878 px wide with automatic height, a stacked column chart with staircase category labels averaged 13.95 ms per layout in React, down from 27.29 ms in 0.63.0. The first layout averaged 48.14 ms, down from 70.20 ms. The comparison used ten runs per version and ten mounts per run. Each chart selected the same 573 px height.
 
 ### Fixed
 

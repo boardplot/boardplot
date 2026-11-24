@@ -5,7 +5,8 @@ import { isFixedNumbers } from './fixedLists';
 import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { layoutStepKey } from './theme';
 import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
-import type { FrameGeometry, Geometry } from './types/scene';
+import type { FrameGeometry, Geometry, LayoutResult } from './types/scene';
+import type { ComputedCellRecord, TableDerived } from './types/table';
 
 type AnyGeometry = Geometry<object, object>;
 
@@ -251,6 +252,35 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   return copy as T;
 }
 
+const privateCardRecords = new WeakSet<ComputedCellRecord[]>();
+
+/** Each record and its operand list were created for this partial card alone. */
+export function ownCardRecords(records: ComputedCellRecord[]): void {
+  if (inputs) privateCardRecords.add(records);
+}
+
+/** Private record objects have no other references in the geometry. Their fields can still reference the input. */
+function copyCardRecords(records: ComputedCellRecord[], copies: Map<object, unknown>): void {
+  const copy = records.map(record => {
+    const operands = record.inputs.map(input => {
+      const operand = { ...input };
+      for (const key of Object.keys(operand) as (keyof typeof input)[]) {
+        const value = input[key];
+        if (value !== null && typeof value === 'object') Object.assign(operand, { [key]: copyPlannedValue(value, copies) });
+      }
+      return operand;
+    });
+    const next = { ...record, inputs: operands };
+    for (const key of Object.keys(record) as (keyof ComputedCellRecord)[]) {
+      if (key === 'inputs') continue;
+      const value = record[key];
+      if (value !== null && typeof value === 'object') Object.assign(next, { [key]: copyPlannedValue(value, copies) });
+    }
+    return next;
+  });
+  copies.set(records, copy);
+}
+
 const requestResults = new WeakMap<object, Map<string, unknown>>();
 
 /** The key of a public request by the content of its data: equal for two copies of the same data. */
@@ -270,13 +300,22 @@ export function requestKey(data: object, options: object, resolved: object): str
  * the options and the resolved request fields again on each call, so an edit lays out again.
  * shortcut: retain 32 results per data object; a new result replaces the oldest.
  */
-export function repeatedResult<T>(data: object, options: object, resolved: object, layout: () => T): T {
+export function repeatedResult<T extends LayoutResult>(data: object, options: object, resolved: object, layout: () => T): T {
   return withPlanInputs(() => {
     const key = requestKey(data, options, resolved);
     let byKey = requestResults.get(data);
     if (!byKey) requestResults.set(data, byKey = new Map());
     if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
     if (!byKey.has(key)) byKey.set(key, layout());
-    return copyPlannedValue(byKey.get(key)) as T;
+    const result = byKey.get(key) as T;
+    if (!result.refused && result.type === 'dimswitch') {
+      const records = (result.derived as unknown as TableDerived).computedCells;
+      if (privateCardRecords.has(records)) {
+        const copies = new Map<object, unknown>();
+        copyCardRecords(records, copies);
+        return copyPlannedValue(result, copies);
+      }
+    }
+    return copyPlannedValue(result);
   });
 }
