@@ -2531,7 +2531,7 @@ function TableGridRow({ rowIndex, final, ...content }: GridRowProps): ReactEleme
 
 /** A row that moves changes its accessible index and keeps its cells. */
 const TableRowCells = memo(function TableRowCells({
-  palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
+  reuseGrid, palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
   barMaxima, heatLanes, sparkDomains, sparkWidths, theme, measure, groupMarks, levelNouns, childCounts,
   inlineVisibility, onToggleRow, staticMarks, labelLead, filler, focus, pinned, trackColumn, columnEdges,
   figures, liteSlots, columnPlan, foldable, toggles, selects, foldsOnRow,
@@ -2647,7 +2647,7 @@ const TableRowCells = memo(function TableRowCells({
               hidden={hidden}
               palette={palette}
               heatLane={heatLanes.get(column.id)}
-              theme={theme}
+              theme={!reuseGrid || column.kind === 'encoding' || column.cellEncoding !== undefined ? theme : undefined}
               measure={measure}
               figures={figures}
               pin={pinned.get(column.id)}
@@ -2767,7 +2767,7 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
   hidden: boolean;
   heatLane: Parameters<typeof heatStyle>[2];
   palette?: string;
-  theme: SharedRowProps['theme'];
+  theme: SharedRowProps['theme'] | undefined;
   measure: TextMeasurer;
   figures: SharedRowProps['figures'];
   pin: CellPlacement['pin'];
@@ -2785,13 +2785,13 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
       aria-colindex={colIndex}
       title={cellTitle(inlineTitle(row, column.id), cell)}
       {...cellAttributes(cell, column, focus, groupMarks, hiddenColumns, hidden,
-        heatStyle(cell, column, heatLane, theme, measure, figures),
+        theme === undefined ? undefined : heatStyle(cell, column, heatLane, theme, measure, figures),
         { ...(pin === undefined ? {} : { pin }), ...(gridColumn === undefined ? {} : { gridColumn }) })}
     >
       {column.kind !== 'encoding' && column.cellEncoding === undefined && cell.kind !== 'status'
         && cell.note === undefined && cell.href === undefined
         ? <span className="bp-value">{cell.displayed}</span>
-        : <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={{ domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />}
+        : <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={theme === undefined ? undefined : { domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />}
       {labelNote ? <span className="bp-note-spacer" aria-hidden="true" /> : null}
       {inlineLines({ row, column, visibility: inlineVisibility, noteLine: column.noteLine === true ? cell.note : undefined })}
     </div>
