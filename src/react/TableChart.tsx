@@ -356,6 +356,7 @@ let measureContext: CanvasRenderingContext2D | undefined;
 const measuredWidths = new Map<string, number>();
 const measuredDigits = new Map<string, number[]>();
 const noSubscription = () => () => {};
+const noColumnScale: ReadonlyMap<Id, never> = new Map<Id, never>();
 
 /**
  * The browser's own width for a string, in the face the table resolved:
@@ -979,7 +980,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const drawn = new Set(columns.map((column) => column.id));
     return new Set(allColumns.filter((column) => !drawn.has(column.id)).map((column) => column.id));
   }, [allColumns, columns]);
-  const margin = tableOptions === undefined ? undefined : resolveCanvasOptions(tableOptions).margin;
+  const margin = useMemo(() => tableOptions === undefined ? undefined : resolveCanvasOptions(tableOptions).margin, [tableOptions]);
   const marginLeft = margin?.left ?? 0;
   const marginRight = margin?.right ?? 0;
   const frameReach = tableOptions?.rowExtent === 'frame' ? Math.max(0, marginRight) : 0;
@@ -1040,7 +1041,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;
   const tracks = measured?.tracks ?? [];
-  const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
+  const hasSpacers = (measured?.spacerBefore.size ?? 0) > 0;
   const labelsWrap = measured?.labelsWrap ?? false;
   // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
   const engineNotes = ((compiledRequest?.options ?? options) as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
@@ -1079,7 +1080,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
   const reachFrame = rowToFrame && !(tableOptions?.rowExtent === undefined && frameRoom !== undefined && Math.floor(frameRoom - trackTotal(tracks)) >= 1);
   /** The track list the grid draws, spacer tracks folded in at their columns. */
-  const gridTracks = measured?.gridTracks ?? [];
+  // A fold measures the new visible rows. Equal tracks keep their pin offsets and column windows.
+  const gridTracks = useStableValue(measured?.gridTracks ?? []);
 
   /**
    * Which track each column sits in, 1-based, once spacers have shifted
@@ -1087,13 +1089,13 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
    * placement would put the next cell into the empty track.
    */
   const trackColumn = useMemo(() => {
-    if (spacerWidths.size === 0 && !windowed) return undefined;
+    if (!hasSpacers && !windowed) return undefined;
     const index = new Map<Id, number>();
     gridTracks.forEach((track, position) => {
       if (!track.id.startsWith('bp-spacer:')) index.set(track.id, position + 1);
     });
     return index;
-  }, [gridTracks, spacerWidths, windowed]);
+  }, [gridTracks, hasSpacers, windowed]);
   /**
    * The pinned core columns: `stickyLabels` names how many, each
    * one takes the width of the tracks before it as its offset, and the last
@@ -1457,6 +1459,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     [collapsed, collapsedSet, isCollapsedControlled, onCollapsedChange, onExpansionChange, resolved, tableOptions?.expansion],
   );
 
+  // Row buttons call the fold handler for the displayed grid, including after a controlled update.
+  const foldHandler = useRef(toggleRow);
+  useLayoutEffect(() => { foldHandler.current = toggleRow; }, [toggleRow]);
+  const foldRow = useCallback((id: Id) => foldHandler.current(id), []);
+
   const toggleColumns = useCallback(
     (toggleId: Id) => {
       const next = {
@@ -1526,8 +1533,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     [table, tableOptions?.variant],
   );
   const sparkWidths = useMemo(
-    () => new Map(tracks.filter((track) => track.width > 0).map((track) => [track.id, track.width])),
-    [tracks],
+    () => !allColumns.some(column => column.kind === 'encoding')
+      ? noColumnScale : new Map(tracks.filter(track => track.width > 0).map(track => [track.id, track.width])),
+    [tracks, allColumns],
   );
   // The tree children, which is the set `hasChildren` is drawn from: a MoM
   // or YoY line prints inside its parent's cells and is no child of it, so a
@@ -1719,11 +1727,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     oneLineLabel: tableOptions.rowLabelLines === 1,
     deferLabelLines,
     anchorWash: tableOptions.anchorWash === true,
-    barMaxima: barMaxima!,
+    barMaxima: barMaxima?.size ? barMaxima : noColumnScale,
     grounds,
     groundMode: tableOptions.groupGround ?? theme.table?.groupGround ?? 'expanded',
-    heatLanes,
-    sparkDomains,
+    heatLanes: heatLanes.size ? heatLanes : noColumnScale,
+    sparkDomains: sparkDomains.size ? sparkDomains : noColumnScale,
     sparkWidths,
     theme,
     measure: request?.fontMetrics ?? defaultMeasurer,
@@ -1731,7 +1739,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     levelNouns: table.levelNouns,
     childCounts,
     inlineVisibility,
-    onToggleRow: toggleRow,
+    onToggleRow: rowLabelLead !== undefined || isRowSelectable !== undefined ? toggleRow : foldRow,
     readOnly: readOnlyTree,
     staticMarks: readOnlyTree && tableOptions.outlineMarks === true,
     onSelect: selectRow,
@@ -1783,9 +1791,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
             <div className="bp-section-float" aria-hidden="true">
               <div ref={setFloatClip} className="bp-section-float-clip" style={{ visibility: 'hidden' }}>
                 <div ref={setFloatInner} className="bp-section-float-inner">
-                  {floatHeading === undefined ? null : (
-                    <TableGridRow row={floatHeading} collapsed={false} hidden={false} floating {...rowShared} readOnly staticMarks={tableOptions.outlineMarks === true} onSelect={undefined} selectable={undefined} focus={undefined} />
-                  )}
+                  {floatHeading === undefined ? null : gridRow(floatHeading, false, false, {
+                    ...rowShared, readOnly: true, staticMarks: tableOptions.outlineMarks === true,
+                    onSelect: undefined, selectable: undefined, focus: undefined,
+                  }, true)}
                 </div>
               </div>
             </div>
@@ -2318,7 +2327,7 @@ const TableRowGroup = memo(function TableRowGroup({ node, hidden, ...shared }: S
     <div className="bp-rowwrap" data-bp-row-wrap={node.row.id}
       data-bp-defer-row={deferred ? '' : undefined}
       style={deferred ? { '--bp-defer-lines': visibleInlineRows(node.row, shared.inlineVisibility).length, ...(shared.deferLabelLines === undefined ? {} : { '--bp-defer-label-lines': shared.deferLabelLines(node.row) }) } as CSSProperties : undefined}>
-      <TableGridRow row={node.row} collapsed={collapsed} hidden={hidden} {...shared} />
+      {gridRow(node.row, collapsed, hidden, shared)}
       {node.children.length > 0 && (shared.mountCollapsed || !collapsed || closing) ? (
         <TableChildren rowId={node.row.id} collapsed={collapsed} onClosed={closing ? closed : undefined}>
           {node.children.map((child) => (
@@ -2396,6 +2405,15 @@ function TableChildren({ rowId, collapsed, onClosed, children }: {
   );
 }
 
+/** Only the index, closing rule and focus of this row affect its markup. */
+function gridRow(row: ResolvedRow, collapsed: boolean, hidden: boolean, shared: SharedRowProps, floating = false): ReactElement {
+  const { rowIndices, closers, collapsedSet: _folds, deferLabelLines: _defer, focus, ...style } = shared;
+  // A host's predicate or label renderer can read state outside the table.
+  const hostRender = style.selectable !== undefined || style.labelLead !== undefined ? {} : undefined;
+  return <MemoTableGridRow {...style} hostRender={hostRender} row={row} collapsed={collapsed} hidden={hidden} floating={floating}
+    rowIndex={rowIndices.get(row.id)} final={closers.has(row.id)} focus={focus?.rowId === row.id ? focus : undefined} />;
+}
+
 /**
  * One drawn row. `aria-expanded` stays on the row header, not on the row:
  * axe is right that a `role=row` inside a `role=table` may not carry it (it
@@ -2406,12 +2424,12 @@ function TableGridRow({
   palette,
   oneLineLabel,
   row,
-  rowIndices,
+  rowIndex,
   columnIndices,
   isTree,
   light,
   floating = false,
-  closers,
+  final,
   columns,
   hiddenColumns,
   collapsed,
@@ -2444,7 +2462,10 @@ function TableGridRow({
   foldOn,
   liteSlots,
   columnPlan,
-}: SharedRowProps & { row: ResolvedRow; collapsed: boolean; hidden: boolean; floating?: boolean }): ReactElement {
+}: Omit<SharedRowProps, 'rowIndices' | 'closers' | 'collapsedSet' | 'deferLabelLines'> & {
+  row: ResolvedRow; collapsed: boolean; hidden: boolean; floating: boolean;
+  rowIndex: number | undefined; final: boolean; hostRender?: object;
+}): ReactElement {
   // A read-only tree folds where the host says and offers nothing to press.
   // A row authored foldable: false offers neither.
   const foldable = row.hasChildren && row.foldable !== false;
@@ -2528,7 +2549,7 @@ function TableGridRow({
     <div
       role="row"
       className={row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver' ? 'bp-total' : undefined}
-      aria-rowindex={hidden || floating ? undefined : rowIndices.get(row.id)}
+      aria-rowindex={hidden || floating ? undefined : rowIndex}
       aria-level={isTree && !floating ? row.level + 1 : undefined}
       aria-expanded={isTree && foldable && !floating ? !collapsed : undefined}
       data-row-id={floating ? undefined : row.id}
@@ -2538,7 +2559,7 @@ function TableGridRow({
       data-has-children={row.hasChildren ? 'true' : undefined}
       data-bp-kind={row.kind}
       data-bp-driver-tone={row.driverTone ? '' : undefined}
-      data-bp-final={closers.has(row.id) ? '' : undefined}
+      data-bp-final={final ? '' : undefined}
       data-bp-divider={row.divider ? '' : undefined}
       data-bp-member-open={row.kind === 'member' && row.hasChildren && !collapsed ? '' : undefined}
       data-bp-ground={row.kind === 'member' ? (row.hasChildren && !collapsed && groundMode !== 'none' ? 'band' : undefined) : row.kind === 'measure' || row.kind === 'detail' || row.kind === 'split' || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver' ? undefined : row.role === 'total' ? 'emphasis' : (groundMode === 'always' || (groundMode === 'expanded' && row.hasChildren && !collapsed)) && grounds.has(row.id) ? 'band' : undefined}
@@ -2678,6 +2699,8 @@ function TableGridRow({
     </div>
   );
 }
+
+const MemoTableGridRow = memo(TableGridRow);
 
 /**
  * The cells of a run of columns outside the column window: their text alone, one span per cell in its track's
