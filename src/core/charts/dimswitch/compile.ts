@@ -1119,12 +1119,15 @@ export function wholeDimSwitchCard(options: DimSwitchOptions, full: CompiledDimS
   return { compiled, resolved: { ...model, table: { ...model.table, columns: resolvedColumns } } };
 }
 
-/**
- * The raw table of a narrower card in the same fold and request. The table resolver still formats and sizes
- * that card with its own columns. If removing periods can change a row or a diagnostic, compile it normally.
- */
+export interface ProjectedDimSwitchCard {
+  columns: CompiledDimSwitch['data']['columns'];
+  options: CompiledDimSwitch['options'];
+  materialize(): CompiledDimSwitch;
+}
+
+/** A width probe needs the narrower card's columns and notes. Build its raw rows and records only for a full layout. */
 export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions, wider: CompiledDimSwitch,
-  fromHide: number, hide: number, periodValues: DimSwitchPeriodValues): CompiledDimSwitch | undefined {
+  fromHide: number, hide: number, periodValues: DimSwitchPeriodValues): ProjectedDimSwitchCard | undefined {
   const periods = hostPeriods(data, options);
   if (!(fromHide > 0 && hide > fromHide && hide < periods.length)) return undefined;
   if (data.dimension.sums || options.rowVisibility?.[data.dimension.total.id] === false || options.bars === false
@@ -1167,16 +1170,18 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
   const notes = periodNotes(options, strings, periods.slice(0, hide), partial, star, partialText, false, nearZero);
   const dropped = new Set(periods.slice(fromHide, hide).map(p => p.id));
   const columns = wider.data.columns.filter(col => !dropped.has(col.id));
-  const rows = wider.data.rows.map(row => {
-    if (!row.cells) return row;
-    const cells = emptyIdRecord<TableCell>();
-    for (const id of Object.keys(row.cells)) if (!dropped.has(id)) cells[id] = row.cells[id]!;
-    // The compiler's row symbols carry the full period figures. The kept cells retain their format symbols.
-    return { ...row, cells };
-  });
   const cardOptions = { ...wider.options, [ENGINE_NOTES]: notes };
-  return { ...wider, data: { ...wider.data, columns, rows }, options: cardOptions,
-    computedCells: wider.computedCells.filter(record => !dropped.has(record.colId)) };
+  return { columns, options: cardOptions, materialize() {
+    const rows = wider.data.rows.map(row => {
+      if (!row.cells) return row;
+      const cells = emptyIdRecord<TableCell>();
+      for (const id of Object.keys(row.cells)) if (!dropped.has(id)) cells[id] = row.cells[id]!;
+      // The compiler's row symbols carry the full period figures. The kept cells retain their format symbols.
+      return { ...row, cells };
+    });
+    return { ...wider, data: { ...wider.data, columns, rows }, options: cardOptions,
+      computedCells: wider.computedCells.filter(record => !dropped.has(record.colId)) };
+  } };
 }
 
 /** The first row id whose first element is not a variant: it cannot name a row in either variant. */

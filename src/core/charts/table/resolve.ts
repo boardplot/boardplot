@@ -491,7 +491,7 @@ export function resolvePreparedTable(model: PreparedTableData, options: TableOpt
  * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
  * carry their own examples and the column that supplies their base format keeps the same rows.
  */
-export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowData: TableData, options: TableOptions): ResolveResult | undefined {
+export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowColumns: TableData['columns'], options: TableOptions): ResolveResult | undefined {
   if (wide.lifted || wide.computedCells.length || wide.table.footnotes.length || wide.table.partialColumnIds
     || wide.table.unit || wide.table.columnUnits || wide.table.columns.some(col => col.unitLabel || col.cellEncoding)
     || options.encodings || options.highlight || options.sort || options.topN || options.format || options.unit
@@ -519,7 +519,7 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
   }));
   if (!stable) return undefined;
 
-  const keep = new Set(narrowData.columns.map(col => col.id));
+  const keep = new Set(narrowColumns.map(col => col.id));
   const columns = wide.table.columns.filter(col => keep.has(col.id));
   const rows = wide.table.rows.map(row => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();

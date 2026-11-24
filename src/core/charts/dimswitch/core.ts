@@ -47,14 +47,15 @@ function withoutProbe<T extends object>(value: T): T {
   return copy as T;
 }
 
-function currentFormOptions(compiled: PreparedForm['compiled'], options: DimSwitchOptions, form: DimSwitchForm, data: DimSwitchData) {
-  const current = currentDimSwitchOptions(withoutProbe(compiled.options), withoutProbe(options), form, data.effectLabel);
+function currentFormOptions(compiled: PreparedForm['compiled']['options'], options: DimSwitchOptions, form: DimSwitchForm, data: DimSwitchData) {
+  const current = currentDimSwitchOptions(withoutProbe(compiled), withoutProbe(options), form, data.effectLabel);
   for (const symbol of PER_PROBE) if (symbol in options) {
     (current as Record<symbol, unknown>)[symbol] = (options as Record<symbol, unknown>)[symbol];
   }
   return current;
 }
 
+type CardProjection = NonNullable<ReturnType<typeof projectDimSwitchCard>>;
 type WiderCard = { hide: number; prepared: PreparedForm };
 
 /**
@@ -63,7 +64,7 @@ type WiderCard = { hide: number; prepared: PreparedForm };
  * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
  * Limit: 64 forms per data object, then the map starts again.
  */
-function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projectedCard?: PreparedForm['compiled']): PreparedForm {
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projectedCard?: CardProjection): PreparedForm {
   const withProbe=(prepared:PreparedForm):PreparedForm=>{
     // Compiled note strings outlive the request-local metadata that gives them their kind.
     for (const [text,meta] of prepared.noteMetadata) {
@@ -71,7 +72,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
       const active=engineNoteMeta(text);
       if (active) Object.assign(active,meta);
     }
-    const current=currentFormOptions(prepared.compiled,options,form,data);
+    const current=currentFormOptions(prepared.compiled.options,options,form,data);
     return {...prepared,compiled:{...prepared.compiled,options:current}};
   };
   const compute=(figures:CardFigures):PreparedForm=>{
@@ -81,7 +82,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     const projected = projectedCard ?? (wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
       ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
       : undefined);
-    const compiled = wholeCard?.compiled ?? projected ?? compileDimSwitch(data,options,{...form,figures},true);
+    const compiled = wholeCard?.compiled ?? projected?.materialize() ?? compileDimSwitch(data,options,{...form,figures},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
     const resolved=wholeCard?.resolved ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
@@ -104,15 +105,15 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   return withProbe(prepared);
 }
 
-type ProjectedCard = { compiled: PreparedForm['compiled']; options: DimSwitchOptions; executor: ReturnType<typeof prepareTableExecutor>; model: PreparedForm['resolved'] };
+type ProjectedCard = { plan: CardProjection; runOptions: PreparedForm['compiled']['options']; options: DimSwitchOptions; executor: ReturnType<typeof prepareTableExecutor>; model: PreparedForm['resolved'] };
 type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues; wider?: WiderCard; projections?: Map<number, ProjectedCard> };
 
-function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projected?: PreparedForm['compiled']): Geometry<TableMarks, DimSwitchDerived> {
+function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projected?: CardProjection): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
   let prepared=forms.prepared.get(key);
   if (!prepared) {
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
-    prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.compiled ?? projected);
+    prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.plan ?? projected);
     if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
       forms.wider = { hide: form.hide, prepared };
     }
@@ -155,22 +156,24 @@ function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, f
   const form = { card: true, hide };
   const wider = forms.wider;
   let projection = forms.projections?.get(hide);
-  let compiled: PreparedForm['compiled'] | undefined;
+  let plan: CardProjection | undefined;
   if (!projection && wider && hide > wider.hide && !forms.prepared.has(`true:${hide}`)) {
-    compiled = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide, forms.periodValues);
-    if (compiled) {
-      compiled = { ...compiled, options: currentFormOptions(compiled, options, form, data) };
-      const model = projectDimSwitchWidthTable(wider.prepared.compiled.data, wider.prepared.resolved, compiled.data, compiled.options);
+    plan = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide, forms.periodValues);
+    if (plan) {
+      const runOptions = currentFormOptions(plan.options, options, form, data);
+      const wideData = wider.prepared.compiled.data;
+      const model = projectDimSwitchWidthTable(wideData, wider.prepared.resolved, plan.columns, runOptions);
       if (model) {
-        projection = { compiled, model, options, executor: prepareTableExecutor(compiled.data, compiled.options) };
+        // The width pass takes its rows and columns from the resolved model. The raw table supplies the unchanged column groups.
+        projection = { plan, runOptions, model, options, executor: prepareTableExecutor(wideData, runOptions) };
         (forms.projections ??= new Map()).set(hide, projection);
       }
     }
   }
-  const draw = () => layoutForm(data, options, form, forms, compiled);
+  const draw = () => layoutForm(data, options, form, forms, plan);
   if (projection && !forms.prepared.has(`true:${hide}`)) {
-    const runOptions = { ...options, ...projection.compiled.options, size: options.size, [PLAN_ONLY]: true,
-      [REGULAR_SPACING]: (options as { [REGULAR_SPACING]?: boolean })[REGULAR_SPACING] };
+    const runOptions = { ...options, ...projection.runOptions, size: options.size, [PLAN_ONLY]: true,
+      [REGULAR_SPACING]: (options as { [REGULAR_SPACING]?: boolean })[REGULAR_SPACING] } as typeof projection.runOptions;
     const { executor, model } = projection;
     const width = hostedLayout(options, runOptions, () => executor.probeWidth(runOptions, model));
     return { ...width, draw };
