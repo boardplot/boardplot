@@ -27,7 +27,7 @@ import { AUTHORED_TYPE_SIZE } from '../core/text';
  * snapshot's key matches it, so hydration draws the server's chart while the
  * checks load in the background.
  */
-export function useResolvedChartRequest(input: ChartRequest, context: RequestContext = {}, prepared?: PreparedHeader, linked: readonly DeferredName[] = [], idle = false) {
+export function useResolvedChartRequest(input: ChartRequest, context: RequestContext = {}, prepared?: PreparedHeader, linked: readonly DeferredName[] = [], idle = false, registrations?: number) {
   const provider = useContext(BoardplotThemeContext);
   const options = useStableValue(input.options ?? {});
   const request = useStableValue({ ...input, options });
@@ -46,7 +46,7 @@ export function useResolvedChartRequest(input: ChartRequest, context: RequestCon
     }
     // `revision` is not read here: it is the store snapshot that makes this
     // memo recompute once the module a failed resolve asked for has landed.
-  }, [request, inherited, revision, prepared?.theme, prepared?.requestKey, linked, idle]);
+  }, [request, inherited, revision, prepared?.theme, prepared?.requestKey, linked, idle, registrations]);
   useDeferredModule(attempt.seeded ? 'theme-rules' : undefined);
   const resolved = attempt.resolved;
   // The hooks below stay unconditional, and read nothing while there is no

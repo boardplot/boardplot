@@ -4,6 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type Rea
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
+import { copyPlannedValue } from '../core/layoutPlan';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
 import { ownCompiledTable } from '../core/charts/table/resolve';
 import { ENGINE_NOTE_KINDS } from './tablePresentation';
@@ -11,7 +12,8 @@ import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
 import { TableFloorRequestContext } from './TableChart';
-import { BoardplotThemeContext } from './themeContext';
+import { BoardplotThemeContext, isStandardThemeProvider } from './themeContext';
+import { isCachedTextMeasurer } from '../core/text';
 import { linkedBinding, rebindable } from './linkedBinding';
 import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
@@ -75,7 +77,8 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   // The built-in width check reads the source snapshot. An export or host resolver can retain its own copy.
   const provider=useContext(BoardplotThemeContext);
   const separateFloor=useRef(false);
-  if (exporter || provider) separateFloor.current=true;
+  const hostResolver=!isStandardThemeProvider(provider);
+  if (exporter || hostResolver) separateFloor.current=true;
   const floorInline=useStableValue(inlineVisibility);
   const floor=useMemo(()=>({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility:floorInline}}),
     [stableData,stableOptions,variant,depth,splits,floorInline]);
@@ -84,8 +87,12 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const {expansion, ...valueOptions}=stableOptions;
   const totalId=stableData?.dimension?.total?.id;
   const observesCompile=useRef(false);
-  if (exporter || provider || rowLabelLead || isRowSelectable || onRowSelect || handleRef
-      || typeof fontMetrics==='function' || typeof stableOptions.measure==='function') observesCompile.current=true;
+  const rowOrHandle=rowLabelLead || isRowSelectable || onRowSelect || handleRef;
+  if (exporter || hostResolver || linked!==undefined && rowOrHandle
+      || typeof fontMetrics==='function' && !isCachedTextMeasurer(fontMetrics)
+      || typeof stableOptions.measure==='function' && !isCachedTextMeasurer(stableOptions.measure)) observesCompile.current=true;
+  const hostWarnings=useRef(false);
+  if (provider || rowOrHandle || exporter || typeof fontMetrics==='function' || typeof stableOptions.measure==='function') hostWarnings.current=true;
   const ordinaryFolds=!observesCompile.current && totalId!==undefined && stableOptions.rowVisibility?.[totalId]!==false
     && (expansion?.collapsed===undefined || Array.isArray(expansion.collapsed) && foreignRowId(expansion.collapsed)===undefined)
     && (expansion?.expanded===undefined || Array.isArray(expansion.expanded) && foreignRowId(expansion.expanded)===undefined)
@@ -103,6 +110,11 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
   },true),[stableData,compileOptions,variant,splits]);
+  // Warning objects handed to the host stay editable until the next authored compile.
+  // An ordinary fold can keep the cells while giving that view fresh warning objects.
+  const warningOptions=hostWarnings.current && expansion!==undefined ? stableOptions : compileOptions;
+  const warningRecords=useMemo(()=>values.warnings.length ? copyPlannedValue(values.warnings) : values.warnings,
+    [stableData,warningOptions,variant,splits]);
   const compiled=useMemo(()=>{
     if (!ordinaryFolds || !expansion) return values;
     const folded=new Set(values.depthCollapsed);
@@ -158,16 +170,16 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     // A partial note waits for the footer's decision, so the host hears one set, not a set without its warning first.
     if(!wantsWarnings || tableWarnings===undefined || (compiled.partialNote!==undefined && printed===undefined)) return;
     // The footer's final decision: a partial note it did not print (behind the info button, or past the line budget) has no place on the chart.
-    const inPanel=compiled.partialNote!==undefined && printed!==undefined && !printed.includes(compiled.partialNote) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
+    const inPanel=compiled.partialNote!==undefined && printed!==undefined && !printed.includes(compiled.partialNote) && !warningRecords.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
     // The compile runs at depth 1 and depth only selects folds, so a hidden Total's blank table is judged on the folds on screen.
     const totalId=stableData.dimension.total.id, totalGone=stableOptions.rowVisibility?.[totalId]===false && compiled.data.columns.length>1;
-    const compileWarnings=compiled.warnings.filter(warning=>warning.code!==LABELS_ONLY || warning.field?.[1]!=='rowVisibility');
+    const compileWarnings=warningRecords.filter(warning=>warning.code!==LABELS_ONLY || warning.field?.[1]!=='rowVisibility');
     const all=[...retired.warnings,...compileWarnings,...(totalGone ? hiddenTotalFoldWarnings(compiled.data.rows,collapsed,totalId) : []),...(inPanel ? [partialNoteWarning(compiled.partialNote!)] : []),...dimSwitchTableWarnings(tableWarnings,stableOptions.columnOverrides)];
     const key=JSON.stringify(all);
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings,printed]);
+  },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
