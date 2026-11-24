@@ -475,14 +475,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const { boxes: gutterBoxes, keys: gutterKeys, heights: gutterHeights } = fitted ?? atDefault;
   const gutterFloored = authoredGutter !== undefined && gutter > authoredGutter;
   const gutterCapped = authoredGutter !== undefined && gutter < authoredGutter;
-  // Where even the full width is too little, values and category names thin
-  // to every second category, counted back from the latest one.
+  // Where even the full width is too little, values thin to every second category, counted back from the latest one.
   const onRight = gutterAfter && !narrow;
   // A plot at the left edge of the frame moves right by the room of the base labels.
   const inset = narrow || onRight ? baseRoom : 0;
   const thin = narrow && !periodAxis && frame.plot.w - inset < valueRoom;
   const lastIndex = data.categories.length - 1;
-  const named = (ci: number) => !thin || ci % 2 === lastIndex % 2;
+  const onValueRhythm = (ci: number) => !thin || ci % 2 === lastIndex % 2;
   const plotX = narrow || onRight ? frame.plot.x + inset : frame.plot.x + gutter + gutterGap, plotW = narrow ? frame.plot.w - inset : frame.plot.w - gutter - gutterGap - inset;
   // Where the readout text sits: the gutter track, or the full width above a panel, which reads no gutter setting.
   const trackX = onRight ? frame.plot.x + plotW + gutterGap : frame.plot.x;
@@ -540,11 +539,41 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const categoryName = (c: (typeof data.categories)[number]) => {
     const label = c.label ?? c.id;
     if (!c.partial) return label;
+    if (label === '') {
+      if (!running.has(c.id)) return '';
+      return partialFootnote !== undefined && partialMark ? partialMark : runningWording;
+    }
     if (partialMark && partialNoteIds.has(c.id)) return partialOnValues ? label : label + partialMark;
     return running.has(c.id) && runningWording && !saysToDate(label, runningWording) ? `${label} ${toDate}` : label;
   };
-  const categoryBoxes = data.categories.map(c => periodAxis || c.label === '' ? NO_BOX : textBox(categoryName(c), keyFont, (thin ? 2 : 1) * step - 3));
-  const categoryHeight = maxOf(categoryBoxes.map(b=>b.h));
+  const categoryNames = periodAxis ? [] : data.categories.map(categoryName);
+  const categoryX = (i: number) => plotX + (i + 0.5) * step;
+  const sparseAxis = !periodAxis && data.categories.some(c => c.label === '');
+  const edgeWidth = (i: number) => 2 * Math.min(categoryX(i), size.width - categoryX(i));
+  const categoryBoxes = categoryNames.map((name, i) => name === '' ? NO_BOX
+    : textBox(name, keyFont, sparseAxis ? edgeWidth(i) : (thin ? 2 : 1) * step - 3));
+  if (sparseAxis) {
+    // Blank slots leave space for their neighbours and do not count when the axis thins.
+    const printing = categoryBoxes.flatMap((box, i) => box.w > 0 ? [i] : []);
+    const collide = printing.some((i, order) => {
+      if (order === 0) return false;
+      const previous = printing[order - 1]!;
+      return (categoryBoxes[previous]!.w + categoryBoxes[i]!.w) / 2 + 3 > (i - previous) * step;
+    });
+    if (collide) {
+      const kept: number[] = [];
+      printing.forEach((i, order) => {
+        if ((printing.length - 1 - order) % 2 === 0) kept.push(i);
+        else categoryBoxes[i] = NO_BOX;
+      });
+      kept.forEach((i, order) => {
+        const distance = Math.min(i - (kept[order - 1] ?? -Infinity), (kept[order + 1] ?? Infinity) - i);
+        const width = distance * step - 3;
+        if (categoryBoxes[i]!.w > width) categoryBoxes[i] = textBox(categoryNames[i]!, keyFont, width);
+      });
+    }
+  }
+  const categoryHeight = periodAxis ? 0 : maxOf(categoryBoxes.map(b=>b.h));
   const periodBoxes = data.periods?.map(period => {
     const indexes = stackRange(data, period);
     // On the period axis every label is muted and plain, set 5 px after its tick.
@@ -830,10 +859,10 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const latest=data.categories.reduce((last,_,ci)=>visible(ci)?ci:last,-1);
     // The focus look prints the value of each focus category only, kept inside the plot with its plate:
     // at the first and the last category it moves inward instead of leaving the plot.
-    const valued=(ci:number)=>look ? stateOf(ci)==='focus' : named(ci)||ci===latest;
+    const valued=(ci:number)=>look ? stateOf(ci)==='focus' : onValueRhythm(ci)||ci===latest;
     const seatX=(x:number,text:string)=>{ if(!look) return x; const w=measure(text,valueFont).width; return Math.min(Math.max(x-w/2,plotX+3),plotX+plotW-3-w)+w/2; };
     // A latest value off the thinned rhythm sits one column from its neighbour's; that neighbour yields where they collide.
-    if(!look&&!named(latest)) yielding.add(`${p.panel.id}:value:${data.categories[latest-1]?.id}`);
+    if(!look&&!onValueRhythm(latest)) yielding.add(`${p.panel.id}:value:${data.categories[latest-1]?.id}`);
     data.categories.forEach((category,ci)=>{
       const x=plotX+(ci+0.5)*step,cellOwner={seriesId:p.panel.id,categoryId:category.id};
       if(!visible(ci)) {if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,na,valueFont,seatX(x,na),baseline-heightOf(valueFont)-5,cellOwner,muted);if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);return;}
@@ -899,9 +928,9 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   });
   const axisY=plots.at(-1)!.y+plots.at(-1)!.h+8;
   if(!periodAxis) data.categories.forEach((category,i)=>{
-    if(!named(i) || category.label === '') { scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:plotX+(i+0.5)*step,x2:plotX+(i+0.5)*step,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'}); return; }
-    const box=categoryBoxes[i]!;
-    put(`stack:category:${category.id}`,categoryName(category),keyFont,{x:plotX+(i+0.5)*step-box.w/2,y:axisY,w:box.w,h:box.h},{categoryId:category.id},{token:'ink'},'secondary','category',box.lines);
+    const box=categoryBoxes[i]!, x=categoryX(i);
+    if(sparseAxis ? box.w === 0 : !onValueRhythm(i) || categoryNames[i] === '') { scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:x,x2:x,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'}); return; }
+    put(`stack:category:${category.id}`,categoryNames[i]!,keyFont,{x:x-box.w/2,y:axisY,w:box.w,h:box.h},{categoryId:category.id},{token:'ink'},'secondary','category',box.lines);
   });
   // The period axis: each period's label at its first category, after a short tick from the last baseline, with no rule.
   const lastBaseline=plots.at(-1)!.y+plots.at(-1)!.h;
@@ -949,7 +978,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const { value, change, from } = texts[i]!;
     return `${p.panel.title}: ${[value, ...[change, from, readouts[i]!.partial?.wording].filter(Boolean)].join(' ')}.`;
   }).join(' ') : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ');
-  return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,...(periodAxis || c.label === '' ? {} : {labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
+  return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:categoryX(i),...(periodAxis || categoryNames[i] === '' ? {} : {labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
     a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: readoutDescription })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
 }

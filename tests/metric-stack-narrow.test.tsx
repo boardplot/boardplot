@@ -53,14 +53,40 @@ it('draws a dated category with a blank axis label', () => {
   };
   const drawn = render({ spec: { type: 'grid', data: stackData, options: { stack: {}, size: { width: 720 } } }, return: ['svg', 'reading'] }).body;
   expect(drawn.ok, JSON.stringify(drawn.errors)).toBe(true);
-  expect(drawn.svg).toContain('data-id="stack:category:tick:jun"');
   expect(drawn.svg).toContain('data-id="volume:bar:jun:0"');
   expect(drawn.svg).toContain('data-id="label:volume:value:jun"');
-  expect(drawn.svg).not.toContain('data-id="label:stack:category:jun"');
   expect(drawn.reading).toMatchObject({
     values: { withoutNumber: expect.arrayContaining([expect.objectContaining({ label: 'Completion / jun' })]) },
     notes: expect.arrayContaining([expect.objectContaining({ text: 'jun to date' })]),
   });
+});
+
+// Prevents blank category labels from hiding named ticks or the status of a running period.
+it('keeps sparse stack axis names and labels an unnamed running period', () => {
+  const draw = (names: string[], running = false, footnote?: string) => {
+    const stackData = {
+      ...data,
+      categories: names.map((label, i) => ({ id: `w${i + 1}`, label, partial: running && i === names.length - 1 })),
+      measures: [
+        { id: 'started', label: 'Started', values: names.map((_, i) => 80 + 3 * i) },
+        { id: 'finished', label: 'Finished', values: names.map((_, i) => 35 + 2 * i) },
+      ],
+      panels: [{ ...data.panels[0]!, type: 'line' }, data.panels[1]!],
+      windows: { base: { from: 'w1', to: 'w1', label: 'First week' }, compare: { from: 'w2', to: 'w2', label: 'Second week' } },
+      states: footnote === undefined ? undefined : { partial: { panels: ['rate'], footnote } },
+    };
+    const { body: drawn } = render({ spec: { type: 'grid', data: stackData, options: { stack: {}, size: { width: 320 } } }, return: ['svg'] });
+    expect(drawn.ok, JSON.stringify(drawn.errors)).toBe(true);
+    return new DOMParser().parseFromString(drawn.svg as string, 'image/svg+xml');
+  };
+  const axis = (chart: Document) => Array.from(chart.querySelectorAll('[data-id^="label:stack:category:"]'), label => label.textContent);
+  const weeks = ['Jan', '', '', '', 'Feb', '', '', '', 'Mar', '', '', ''];
+  expect.soft(axis(draw(weeks)), 'three names on a narrow axis').toEqual(['Jan', 'Feb', 'Mar']);
+  const running = ['Mar', 'Apr', ''];
+  expect.soft(axis(draw(running, true)), 'running period without a footnote').toEqual(['Mar', 'Apr', 'to date']);
+  const chart = draw(running, true, 'Last week still running.');
+  const markers = Array.from(chart.querySelectorAll('text'), label => label.textContent).join('').match(/¹/g)?.length ?? 0;
+  expect.soft({ axis: axis(chart), markers }, 'running period with a footnote').toEqual({ axis: ['Mar', 'Apr', '¹'], markers: 1 });
 });
 
 // A running period in a stack without a maturing cohort must keep its mark and wording without gaining a cohort key.
