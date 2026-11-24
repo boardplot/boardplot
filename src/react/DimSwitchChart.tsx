@@ -20,11 +20,12 @@ import { TableFloorRequestContext } from './TableChart';
 import { BoardplotThemeContext, isStandardThemeProvider } from './themeContext';
 import { isCachedTextMeasurer } from '../core/text';
 import { linkedBinding, rebindable } from './linkedBinding';
-import type { DeferredName } from '../core/deferred';
+import { DeferredCoreError, type DeferredName } from '../core/deferred';
+import { useDeferredModule } from './deferredCore';
 import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
-import { LayoutRefusal, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
+import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
@@ -68,7 +69,19 @@ function DimSwitchRefusal({ failure, data, options, size, fallbackSize, onRefuse
   const warning = refusal.warnings[0]!;
   return { ...refusal, warnings: issues.length ? issues : [{ ...warning, message: atPath({ path: error.path }, error.message) }] };
  }, [data, failure, title, width, height]);
- return <SizePlaceholder result={result} options={{ ...options, target }} theme={resolveTheme(options.theme ?? settings?.theme)} onRefused={onRefused} renderRefused={renderRefused} />;
+ const themeRef = options.theme ?? settings?.theme;
+ let theme: ReturnType<typeof resolveTheme> | undefined;
+ let deferred: DeferredName | undefined;
+ try {
+  theme = resolveTheme(themeRef);
+ } catch (error) {
+  if (!(error instanceof DeferredCoreError)) throw error;
+  deferred = error.module;
+ }
+ const themeFailure = useDeferredModule(deferred);
+ const frameOptions = { ...options, target };
+ if (theme === undefined) return <LoadingPlaceholder size={result.size} options={frameOptions} theme={themeRef} failure={themeFailure} />;
+ return <SizePlaceholder result={result} options={frameOptions} theme={theme} onRefused={onRefused} renderRefused={renderRefused} />;
 }
 
 export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
