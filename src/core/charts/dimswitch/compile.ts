@@ -23,8 +23,11 @@ import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMe
 import { maxOf } from '../../arrays';
 import { cleanDiff, cleanSum } from '../../geometry';
 import { emptyIdRecord } from '../../idRecords';
+import { unknownHeadlineMeasure } from './dataChecks';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
+
+export class DimSwitchIdError extends NormalizeError {}
 
 /** The caller edits dimswitch widths, not the columns made by this compiler. */
 export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrides?: DimSwitchOptions['columnOverrides']): LintWarning[] {
@@ -374,7 +377,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // Nothing to put in a cell: the one empty-data code, as for every other type (a view with no measure still draws its head and one row, below).
   if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`, undefined, undefined, ['data', !data.periods.length ? 'periods' : 'facts']);
   const range = data.periods.find(p=>p.kind === 'range')!, prior = data.periods.find(p=>p.kind === 'prior')!;
-  if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'Give periods one period of kind range and one of kind prior. To hide their columns, keep both and set options.columnVisibility to { range: false, pp: false }.', undefined, ['data', 'periods']);
+  if (!range || !prior) throw new DimSwitchIdError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'Give periods one period of kind range and one of kind prior. To hide their columns, keep both and set options.columnVisibility to { range: false, pp: false }.', undefined, ['data', 'periods']);
   const authoredPeriods = hostPeriods(data, options), plan = data.periods.find(p=>p.kind==='plan');
   const hidden = authoredPeriods.slice(0, form.hide ?? 0), periods = authoredPeriods.slice(hidden.length);
   const shared = hidden.length > 0 ? form.figures ?? cardFigures() : undefined;
@@ -382,7 +385,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const blockColumns = ['range', 'pp', ...(plan ? ['pl'] : [])].filter(id => options.columnVisibility?.[id] !== false);
   const drawnBlock = new Set(blockColumns), rangeDrawn = drawnBlock.has('range');
   const blockCells = () => { const cells: Record<string, TableCell> = emptyIdRecord(); for (const id of blockColumns) cells[id] = null; return cells; };
-  if (data.periods.filter(p=>p.kind==='plan').length>1) throw new NormalizeError('invalid-count', 'periods', 'dimswitch permits at most one plan period', 'keep one period of kind plan', undefined, ['data', 'periods']);
+  if (data.periods.filter(p=>p.kind==='plan').length>1) throw new DimSwitchIdError('invalid-count', 'periods', 'dimswitch permits at most one plan period', 'keep one period of kind plan', undefined, ['data', 'periods']);
   for (const setting of [options.thresholds,options.thresholds?.period,options.thresholds?.prior,options.thresholds?.plan]) for (const family of ['volume','cost','rate','effect'] as const) {
     const pair=setting?.[family];
     if (pair && (!pair.every(Number.isFinite) || !(pair[0]>=0 && pair[0]<=pair[1]))) throw new NormalizeError('invalid-number', 'options.thresholds', `dimswitch thresholds.${family} must satisfy 0 <= first <= second.`);
@@ -394,10 +397,10 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     let child: DimSwitchMember | undefined;
     while(current) {
       // The parentId of the member before closes the cycle.
-      if(seen.has(current.id)) throw new NormalizeError('parent-cycle', 'dimension.members', 'dimswitch member hierarchy contains a cycle', undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, child!.id, 'parentId'));
+      if(seen.has(current.id)) throw new DimSwitchIdError('parent-cycle', 'dimension.members', 'dimswitch member hierarchy contains a cycle', undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, child!.id, 'parentId'));
       seen.add(current.id);level++;
       const parent: string | undefined=current.parentId;
-      if(parent && !memberIndex.has(parent)) throw new NormalizeError('parent-missing', 'dimension.members', `Unknown dimswitch parent ${parent}`, undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, current.id, 'parentId'));
+      if(parent && !memberIndex.has(parent)) throw new DimSwitchIdError('parent-missing', 'dimension.members', `Unknown dimswitch parent ${parent}`, undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, current.id, 'parentId'));
       child=current; current=parent ? memberIndex.get(parent) : undefined;
     }
     memberLevels=Math.max(memberLevels,level);
@@ -406,7 +409,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // `field` is the field of measure `from` that names `id`.
   const measure = (id: string, from: string, field: string) => {
     const m = measures.get(id);
-    if (!m) throw new NormalizeError('calc-ref-missing', 'measures', `dimswitch measure '${from}' names unknown measure '${id}'; use a measures[].id.`, undefined, undefined, pointAt(['data', 'measures'], data.measures, from, field));
+    if (!m) throw new DimSwitchIdError('calc-ref-missing', 'measures', `dimswitch measure '${from}' names unknown measure '${id}'; use a measures[].id.`, undefined, undefined, pointAt(['data', 'measures'], data.measures, from, field));
     return m;
   };
   const warnings: CompiledDimSwitch['warnings'] = [];
@@ -418,14 +421,26 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const hostHidEveryPeriod = !authoredPeriods.length && data.periods.some(p => !p.kind);
   const generatedIds = ['label', 'range', 'pp', ...(plan ? ['pl'] : [])];
   const allPeriodIds = data.periods.filter(p => !p.kind).map(p => p.id);
+  const authoredPeriodIds = authoredPeriods.map(p => p.id);
+  const periodIds = hidden.length === 0 ? authoredPeriodIds : authoredPeriodIds.slice(hidden.length);
+  const barColumns = rangeDrawn ? ['range', ...periodIds] : periodIds;
+  const columnIds = [...blockColumns, ...authoredPeriodIds];
+  const overrideIds = ['label', ...columnIds];
+  // Check the columns the React grid will resolve. Hidden periods can share an id without breaking the grid.
+  if (form.records === false) {
+    const drawnIds = hidden.length === 0 ? overrideIds : ['label', ...blockColumns, ...periodIds];
+    if (new Set(drawnIds).size !== drawnIds.length) {
+      const id = drawnIds.find((id, index) => drawnIds.indexOf(id) !== index)!;
+      throw new DimSwitchIdError('duplicate-column-id', `columns[${id}]`, `duplicate column id '${id}'`);
+    }
+  }
   // A hidden column is known to columnVisibility, and no longer drawn for columnOverrides.
   warnings.push(...generatedIdWarnings('dimswitch', 'columnVisibility', options.columnVisibility, [...generatedIds, ...allPeriodIds]),
-    ...generatedIdWarnings('dimswitch', 'columnOverrides', options.columnOverrides, ['label', ...blockColumns, ...authoredPeriods.map(p => p.id)]),
+    ...generatedIdWarnings('dimswitch', 'columnOverrides', options.columnOverrides, overrideIds),
     ...generatedIdWarnings('dimswitch', 'columnOrder', options.columnOrder, ['block', 'periods']));
   if (!blockColumns.length && !authoredPeriods.length) warnings.push({ code: 'dimswitch-labels-only', severity: 'warn', field: ['options', 'columnVisibility'],
     message: 'columnVisibility leaves out every value column, so the table draws its labels only.', suggest: 'Keep range or one period in the table.' });
   // The table resolver ignores an encodings key that names no column, unless the entry lists other columns in `columns`. Here the columns are the drawn range, pp, pl (with a plan) and the displayed period ids.
-  const columnIds = [...blockColumns, ...authoredPeriods.map(p => p.id)];
   // A hidden range, pp, pl or period takes its encoding back when a host shows the column again, 'label' is a real column, and `columns` spreads an entry whatever its key. Only an id of no column with no such `columns` may go.
   const spreads = (entry: unknown) => typeof entry === 'object' && ((entry as { columns?: { length: number } } | null)?.columns?.length ?? 0) > 0;
   const removable = (id: string, entry: unknown) => !columnIds.includes(id) && ![...generatedIds, ...allPeriodIds].includes(id) && !spreads(entry);
@@ -648,7 +663,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     }
     return has(m, member);
   };
-  const headline = (member:string) => data.dimension.headline.map(id=>measures.get(id)!).find(m=>applies(m,member));
+  const headline = (member: string) => {
+    for (let i = 0; i < data.dimension.headline.length; i++) {
+      const id = data.dimension.headline[i]!;
+      const measure = measures.get(id);
+      if (!measure) throw new DimSwitchIdError('invalid-data', `data.dimension.headline.${i}`, unknownHeadlineMeasure(id), undefined, undefined, ['data', 'dimension', 'headline', i]);
+      if (applies(measure, member)) return measure;
+    }
+    return undefined;
+  };
   const show = (m:DimSwitchMember) => {
     if (options.show !== 'withData') return true;
     // A member that still counts in the Total through any applicable measure stays.
@@ -659,7 +682,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const members=data.dimension.members.filter(m=>m.parentId===parentId && show(m));
     if (options.order && options.order !== 'sheet') {
       const order=options.order, by=measures.get(order.by);
-      if(!by) throw new NormalizeError('invalid-data', 'options.order', `Unknown dimswitch ordering measure ${order.by}`);
+      if(!by) throw new DimSwitchIdError('invalid-data', 'options.order', `Unknown dimswitch ordering measure ${order.by}`);
       members.sort((a,b)=>{
         const av=evaluate(exprOf(by),sums(a.id,range.id),sums(data.dimension.total.id,range.id)).raw, bv=evaluate(exprOf(by),sums(b.id,range.id),sums(data.dimension.total.id,range.id)).raw;
         if (av === null || bv === null) return av === bv ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : av === null ? 1 : -1;
@@ -918,7 +941,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     if (m.scale === 'money' || m.scale === 'count' || (m.format === undefined && m.unit === undefined)) Object.assign(row, { [MAGNITUDE_GROUP]: m.id });
     if (line && line.levels.length > 0) Object.assign(row, { [PERIOD_FIGURES]: [line.levels] });
     // A member's bar compares it with the other members in that column (the Total would always win).
-    if (sized && member!==totalId) for (const col of [...(rangeDrawn ? ['range'] : []),...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
+    if (sized && member!==totalId) for (const col of barColumns) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
     rows.push(row);
     // No displayed period has a ref: the change line would be empty, so it is left out.
@@ -1089,7 +1112,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const collapsed=new Set(defaults);
   for (const key of ['expanded','collapsed'] as const) {
     const foreign=foreignRowId(options.expansion?.[key]);
-    if (foreign!==undefined) throw new NormalizeError('invalid-data', `options.expansion.${key}`, `dimswitch row id ${foreign} names no variant first, so it names no row`, `build each id as JSON.stringify([variant, memberId, measureId]) with variant 'by-measure' or 'by-member', or use dimswitchRowId`);
+    if (foreign!==undefined) throw dimSwitchExpansionIdError(key, foreign);
   }
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
@@ -1124,6 +1147,14 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
   const computedCells=totalHidden ? hideTotal() : records;
+  // Repeated source ids are tolerated when they never produce duplicate rows.
+  if (form.records === false && (memberIndex.size !== data.dimension.members.length || memberIndex.has(totalId) || measures.size !== data.measures.length)) {
+    const ids = new Set<string>();
+    for (const { id } of rows) {
+      if (ids.has(id)) throw new DimSwitchIdError('duplicate-row-id', `rows[${id}]`, `row id '${id}' appears more than once`);
+      ids.add(id);
+    }
+  }
   function hideTotal():ComputedCellRecord[] {
     const hiddenIds=new Set<string>(), dropped=new Set<TableRow>();
     if (variant==='by-member') for (const row of rows.slice(0,totalBlockEnd)) dropped.add(row);
@@ -1325,4 +1356,8 @@ export function foreignRowId(ids: readonly string[] | undefined): string | undef
     try { parsed = JSON.parse(id); } catch { return true; }
     return !Array.isArray(parsed) || (parsed[0] !== 'by-measure' && parsed[0] !== 'by-member');
   });
+}
+
+export function dimSwitchExpansionIdError(key: 'expanded' | 'collapsed', id: string): DimSwitchIdError {
+  return new DimSwitchIdError('invalid-data', `options.expansion.${key}`, `dimswitch row id ${id} names no variant first, so it names no row`, `build each id as JSON.stringify([variant, memberId, measureId]) with variant 'by-measure' or 'by-member', or use dimswitchRowId`);
 }

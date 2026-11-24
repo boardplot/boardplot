@@ -6,7 +6,7 @@ import { ChartFooter } from '../src/react/ChartFooter';
 import { requireGeometry } from '../src/core/sizing';
 import { resolveTheme } from '../src/core/theme';
 import type { DimSwitchData } from '../src/core/charts/dimswitch/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { DimSwitchChart, type DimSwitchViewReason } from '../src/react/DimSwitchChart';
 import { judgeExample } from '../src/core/charts/dimswitch/judgeExample';
@@ -170,6 +170,28 @@ it('calls onRefused once when refused at an inline size',async()=>{
  act(()=>root.unmount());host.remove();
 });
 
+// A headline that names a sums field used to crash the host before it could receive a refusal.
+it('draws and reports a refusal for an unknown headline measure', async () => {
+ await import('../src/react/ReaderBox');
+ const host = document.createElement('div');
+ const root = createRoot(host);
+ const onRefused = vi.fn();
+ const data = { ...exampleData, dimension: { ...exampleData.dimension, headline: ['nc'] } };
+ try {
+  await act(async () => root.render(<DimSwitchChart data={data} variant="by-member" onRefused={onRefused} />));
+  expect(host.querySelector('[data-bp-refused="invalid-data"]:not([data-bp-loading])')).not.toBeNull();
+  expect(onRefused.mock.calls).toEqual([[expect.objectContaining({
+   refused: true,
+   warnings: [expect.objectContaining({
+    code: 'invalid-data',
+    message: "data.dimension.headline.0: Unknown headline measure 'nc'; use a measure id, not a sums field.",
+   })],
+  })]]);
+ } finally {
+  act(() => root.unmount());
+ }
+});
+
 // A prepared snapshot passed to DimSwitchChart reached the table, which threw "Expected a prepared table chart."
 it('ignores a prepared snapshot and draws from data',async()=>{
  const prepared=await prepareChart({type:'column',data:{categories:['a','b'],series:[{id:'s',name:'S',values:[1,2]}]}});
@@ -238,4 +260,69 @@ it('warns when the line budget leaves the partial period note off the frame', as
  expect(Array.from(host.querySelectorAll('figure > .bp-footnotes li'),li=>li.textContent)).not.toContain('Week 2 to date');
  expect(codes).toContain('dimswitch-partial-note-off-frame');
  act(()=>root.unmount());host.remove();
+});
+
+// A refused dimension-switch table with theme overrides could crash while its theme rules loaded.
+it('waits for patched theme rules before drawing and reporting an ID refusal', async () => {
+ const theme = { preset: 'standard', overrides: { color: { ink: '#111111' } } } as const;
+ const data = { ...exampleData, dimension: { ...exampleData.dimension, headline: ['nc'] } };
+ const diagnostic = {
+  code: 'invalid-data',
+  message: "data.dimension.headline.0: Unknown headline measure 'nc'; use a measure id, not a sums field.",
+ };
+
+ for (const loadFails of [false, true]) {
+  vi.resetModules();
+  if (loadFails) vi.doMock('../src/react/ReaderBox', () => { throw new Error('Theme rules unavailable'); });
+  const { loadedDeferred, registerDeferredLoader } = await import('../src/core/deferred');
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const loaded = pending.then(async () => {
+   if (loadFails) throw new Error('Theme rules unavailable');
+   await import('../src/core/themeShapeRules');
+  });
+  const loadRules = vi.fn(() => loaded);
+  registerDeferredLoader('theme-rules', loadRules);
+
+  const { DimSwitchChart: Standalone } = await import('../src/react/charts/dimswitch');
+  const { BoardplotTheme } = await import('../src/react/BoardplotTheme');
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  const fromProp = vi.fn();
+  const fromProvider = vi.fn();
+  try {
+   expect(loadedDeferred('theme-rules')).toBeUndefined();
+   await act(async () => root.render(<>
+    <Standalone data={data} variant="by-member" theme={theme} onRefused={fromProp} />
+    <BoardplotTheme theme={theme}><Standalone data={data} variant="by-member" onRefused={fromProvider} /></BoardplotTheme>
+   </>));
+   expect(host.querySelectorAll('[data-bp-loading]')).toHaveLength(2);
+   expect(loadRules).toHaveBeenCalledTimes(1);
+   expect(fromProp).not.toHaveBeenCalled();
+   expect(fromProvider).not.toHaveBeenCalled();
+
+   await act(async () => {
+    release();
+    await Promise.allSettled([loaded, import('../src/react/ReaderBox'), ...(loadFails ? [] : [import('../src/react/DiagnosticDetails')])]);
+   });
+   if (loadFails) {
+    const cards = [...host.querySelectorAll('[data-bp-spec-error]')];
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card.getAttribute('data-bp-diagnostics')).toContain('chunk-load-failed');
+    expect(fromProp).not.toHaveBeenCalled();
+    expect(fromProvider).not.toHaveBeenCalled();
+   } else {
+    const cards = [...host.querySelectorAll<HTMLElement>('[data-bp-refused="invalid-data"]:not([data-bp-loading])')];
+    expect(cards.map(card => card.style.color)).toEqual(['rgb(17, 17, 17)', 'rgb(17, 17, 17)']);
+    for (const onRefused of [fromProp, fromProvider]) {
+     expect(onRefused.mock.calls).toEqual([[expect.objectContaining({
+      refused: true, warnings: [expect.objectContaining(diagnostic)],
+     })]]);
+    }
+   }
+  } finally {
+   vi.doUnmock('../src/react/ReaderBox');
+   act(() => root.unmount());
+  }
+ }
 });

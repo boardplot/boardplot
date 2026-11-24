@@ -4,6 +4,7 @@ import * as z from 'zod';
 import { columnOrderOption, columnOverridesOption, columnVisibilityOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
 import { figuresNeedHeat, tableOptionsObject } from '../table/schema';
 import type { DimSwitchData, DimSwitchExpression, DimSwitchOptions, DimSwitchJudgeBase } from './types';
+import { checkDimSwitchData } from './dataChecks';
 const id = z.string().min(1).describe('Stable id or display label.');
 const expression: z.ZodType<DimSwitchExpression> = z.lazy(()=>z.union([
   z.strictObject({field:id.describe('Field name in facts[].sums.')}),
@@ -18,7 +19,6 @@ const driverExpression: z.ZodType<DimSwitchExpression> = z.lazy(()=>z.union([
  z.strictObject({op:z.enum(['add','sub','mul','div']).describe('Arithmetic over driver measure values.'),a:driverExpression,b:driverExpression,factor:z.number().finite().optional().describe('Multiplier of the result.')}),
 ])).describe('Driver formula over measure references and constants only.');
 const sums=idRecord(id,z.number().finite().nullable().describe('Additive sum, or null for a missing value.')).describe('Sums by field: an absent field drops its measures, null is missing, 0 is data. A field absent or null in every fact of a member does not apply to it, null in some facts is missing, and a host that means zero sends 0. With dimension.sums true, a member owes a field it reports in any period in every period, and a gap makes the parent sum missing.');
-const measureRefs=(e:DimSwitchExpression):string[]=>typeof e==='number' || 'field' in e ? [] : 'measure' in e ? [e.measure] : 'total' in e ? measureRefs(e.total) : [...measureRefs(e.a),...measureRefs(e.b)];
 const judgeBase: z.ZodType<DimSwitchJudgeBase> = z.union([id,z.tuple([id],id).refine(v=>new Set(v).size===v.length,{message:'Sample base fields must be unique.'})]).describe('One field or a nonempty list of unique fields. All listed fields must meet their own minimumSample floor in every required member and Total window.');
 const thresholdPair = z.tuple([z.number().finite().nonnegative(),z.number().finite().nonnegative()]).refine(v=>v[0]<=v[1],{message:'Thresholds must satisfy 0 <= first <= second.'});
 const thresholdFamilies = {volume:thresholdPair.optional().describe('Relative percent change thresholds for volume; default [2,10].'),cost:thresholdPair.optional().describe('Relative percent change thresholds for cost; default [5,15], lower is better.'),rate:thresholdPair.optional().describe('Relative percent change thresholds for rate; default [3,10].'),effect:thresholdPair.optional().describe('Effect thresholds in the statement unit. An explicit pair must resolve for each used comparison kind.')};
@@ -30,39 +30,7 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
  changeLabel:id.optional().describe('Tag of the change line under each period value, such as WoW; it also opens the hover text of the cell.'),
  periods:z.array(z.strictObject({id,label:id.describe('Column head (prior or plan: head of the comparison column, such as vs prior or vs plan).'),subLabel:id.optional().describe('Second head line, such as W38 or dates.'),partial:z.boolean().optional().describe('Cut or running window (muted, never judged). Its ref covers the same days one period earlier.'),kind:z.enum(['range','prior','plan']).optional().describe('Block role: range is the selection, prior the window of equal length before it. plan adds the Range vs-plan column (pl), without prorating. Absent for a displayed period.')})).min(3).describe('One range, one prior, zero or one plan, then at least one displayed period in order. The host owns dates and reference windows.'),
  facts:z.array(z.strictObject({memberId:id,periodId:id,sums,ref:sums.optional().describe('Sums of the period before (partial: the same days one period earlier). Only displayed periods take ref; Range compares with prior and optional plan.')})).min(1).describe('Additive sums per member and period, one entry each.'),
-}).superRefine((data,ctx)=>{
- const issue=(path:(string|number)[],message:string)=>ctx.addIssue({code:'custom',path,message});
- // An emptied collection is one empty-data finding; the cross-checks below would add invalid-data noise about it.
- if(!data.measures.length||!data.periods.length||!data.facts.length) return;
- const unique=(values:string[],path:string)=>{if(new Set(values).size!==values.length) issue([path],`Duplicate id '${values.find((v,i)=>values.indexOf(v)!==i)}' is not allowed.`);};
- unique(data.measures.map(m=>m.id),'measures'); unique(data.periods.map(p=>p.id),'periods'); unique([data.dimension.total.id,...data.dimension.members.map(m=>m.id)],'dimension');
- const members=new Map(data.dimension.members.map(m=>[m.id,m])), measures=new Map(data.measures.map(m=>[m.id,m]));
- for(const [i,member] of data.dimension.members.entries()){
-  const visited=new Set([member.id]);let parent=member.parentId;
-  while(parent){if(!members.has(parent)||visited.has(parent)){issue(['dimension','members',i,'parentId'],`Member '${member.id}': parent '${parent}' is unknown or forms a cycle.`);break;}visited.add(parent);parent=members.get(parent)!.parentId;}
- }
- for(const [i,m] of data.measures.entries()) if(m.parentId && (!measures.has(m.parentId)||measures.get(m.parentId)?.parentId)) issue(['measures',i,'parentId'],`Measure '${m.id}': parentId '${m.parentId}' must be a root measure id.`);
- for(const [i,m] of data.measures.entries()) {
-  const parent=m.splitOf ?? m.parentId;
-  if(m.splitOf && m.parentId) issue(['measures',i],`Measure '${m.id}': use either splitOf or parentId.`);
-  if(parent && (parent===m.id || !measures.has(parent) || measures.get(parent)?.parentId || measures.get(parent)?.splitOf)) issue(['measures',i],`Measure '${m.id}': a split must refer to a different root measure without a split parent.`);
- }
- const drivers=new Set(data.measures.flatMap(m=>m.drivers===undefined ? [] : measureRefs(m.drivers)));
- for(const [i,m] of data.measures.entries()) {
-  if(m.partOf!==undefined && !measures.has(m.partOf)) issue(['measures',i,'partOf'],`Measure '${m.id}': partOf '${m.partOf}' is not a measure id.`);
-  for(const ref of [...(m.value===undefined ? [] : measureRefs(m.value)),...(m.drivers===undefined ? [] : measureRefs(m.drivers))]) if(!measures.has(ref)) issue(['measures',i],`Measure '${m.id}' names unknown measure '${ref}'; use a measures[].id.`);
-  if(m.result && (m.value===undefined || m.sign!==undefined || m.partOf!==undefined)) issue(['measures',i,'result'],`Measure '${m.id}': a result is a top-level line with a value that names its lines; it takes no sign or partOf.`);
-  if(m.value===undefined && !data.measures.some(p=>p.partOf===m.id && !drivers.has(p.id))) issue(['measures',i,'value'],`Measure '${m.id}' has no value and no measure names it in partOf; add a value or make it a subtotal.`);
- }
- for(const [i,h] of data.dimension.headline.entries()) if(!measures.has(h)) issue(['dimension','headline',i],`Unknown headline measure '${h}'; use a measure id, not a sums field.`);
- for(const kind of ['range','prior']) if(data.periods.filter(p=>p.kind===kind).length!==1) issue(['periods'],`Exactly one ${kind} period is required; to hide its column, keep the period and set options.columnVisibility.${kind==='range'?'range':'pp'} to false.`);
- if(data.periods.filter(p=>p.kind==='plan').length>1) issue(['periods'],'At most one plan period is allowed.');
- if(!data.periods.some(p=>!p.kind)) issue(['periods'],'At least one displayed period is required.');
- const periodIds=new Set(data.periods.map(p=>p.id));
- if(data.periods.some(p=>!p.kind && ['label','range','pp','pl'].includes(p.id))) issue(['periods'],'Normal period ids cannot be label, range, pp or pl.');
- const keys=new Set<string>();
- for(const [i,f] of data.facts.entries()){const key=JSON.stringify([f.memberId,f.periodId]);if(keys.has(key)) issue(['facts',i],`Duplicate fact for member '${f.memberId}' and period '${f.periodId}'.`);keys.add(key);if(f.memberId!==data.dimension.total.id&&!members.has(f.memberId)) issue(['facts',i,'memberId'],`Unknown member '${f.memberId}'; use the total id or a dimension.members id.`);if(!periodIds.has(f.periodId)) issue(['facts',i,'periodId'],`Unknown period '${f.periodId}'; use a periods id.`);}
-});
+}).superRefine((data,ctx)=>checkDimSwitchData(data,(path,message)=>ctx.addIssue({code:'custom',path,message})));
 const columnVisibility = columnVisibilityOption('dimswitch');
 const columnOverrides = columnOverridesOption('dimswitch', ['width', 'align', 'headAlign', 'label']);
 const columnOrder = columnOrderOption('dimswitch');
