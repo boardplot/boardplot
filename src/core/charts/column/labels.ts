@@ -11,8 +11,9 @@ import { namesOnly } from '../../markVisibility';
 import type { Rect } from '../../geometry';
 import { notApplicableGlyph, numberRange } from '../../format';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
+import type { OccupiedIndex } from '../../label/occupied';
 import { REFERENCE_MARKER_R } from '../band/ticks';
-import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
+import { PRIORITY, SERIES_VALUE_GAP, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx, type SolveResult } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import type { FontSpec } from '../../text';
@@ -684,7 +685,7 @@ export function planColumnLabels(
   requests: LabelRequest[],
   warnings: LintWarning[],
   onOmittedTotal?: () => void,
-): IntegratedVariancePoint[] {
+) {
   const { measure, highlights, cats, gtContent, stackTotals, variant, posTopP, negBotP, pyRef, pyGrowth, totalFmt } = domain;
   const { strongFont, tickFont, band, y } = area;
   const growthPoints: IntegratedVariancePoint[] = [];
@@ -899,7 +900,7 @@ export function planColumnLabels(
     });
   }
   rightEdgeSeriesRequests(domain, area, requests);
-  extremeNameRequest(domain, area, scene, requests);
+  const namedExtreme = extremeNameRequest(domain, area, scene, requests);
   if (area.showCatRow) categoryRequests(domain, area, requests);
   rankValueLabels(requests, request => {
     const ci = cats.findIndex(c => c.id === request.owner.categoryId);
@@ -909,7 +910,7 @@ export function planColumnLabels(
   }, domain.density, domain.options.labelPlacements, {
     categories: cats.length, last: domain.options.mode === 'compact' ? cats.at(-1)?.id : undefined, pitch: band.step / (variant === 'grouped' ? domain.dataSeries.length : 1), orientation: 'vertical', measure,
   });
-  return growthPoints;
+  return { growthPoints, namedExtreme };
 }
 
 /**
@@ -917,22 +918,34 @@ export function planColumnLabels(
  * still says which period it is and what it holds, beside its end ("P36
  * -241"), so the outlier the reader's eye goes to is named.
  */
-function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: Pick<ColumnMarkGeometry, 'bars'>, requests: LabelRequest[]): void {
+function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: Pick<ColumnMarkGeometry, 'bars'>, requests: LabelRequest[]) {
   // A date row thins its ticks by rhythm, and the period reads off it.
   if (domain.options.labels === false || !area.showCatRow || area.catPlan().dateNumeric || area.catPlan().keep.every(Boolean)) return;
   const extreme = scene.bars.reduce<BarPlace | undefined>((best, place) => (!best || Math.abs(place.v) > Math.abs(best.v) ? place : best), undefined);
   if (!extreme || area.catPlan().keep[extreme.ci]) return;
-  const { c, s, v, rect } = extreme;
-  // Where the column prints its value already, the name alone is added.
-  const valueShown = domain.variant === 'grouped' && contentOf(domain.options, 'point', ['absolute']) !== null;
-  const text = valueShown ? (c.label ?? c.id) : `${c.label ?? c.id} ${domain.valueSpec.forSeries(s)(v)}`;
+  const { c, s, ci, v } = extreme;
+  const content = domain.variant === 'grouped' ? contentOf(domain.options, 'point', ['absolute']) : null;
+  const name = c.label ?? c.id;
+  const request = extremeLabel(domain, area, extreme, content ? name : `${name} ${domain.valueSpec.forSeries(s)(v)}`);
+  requests.push(request);
+
+  const mode = domain.options.valueLabels;
+  const override = s.vals[ci]!.labelOverride;
+  if (mode === undefined || mode === 'none' || !content?.includes('absolute') || override === false
+    || (typeof override === 'string' && !printsValue(override))) return;
+  if (!chosenValueIndices(mode, s.vals.map(cell => cell.v)).has(ci)) return;
+  const value = domain.absOf(s, ci);
+  if (value !== null) return { extreme, id: request.id, value: cellValueFmt(domain, s, ci)(value) };
+}
+
+function extremeLabel(domain: ColumnDomain, area: ColumnArea, { c, s, v, rect }: BarPlace, text: string): LabelRequest {
   // Measured in the face it is drawn in: the layout draws an annotation in the emphasis weight.
   const font = { ...area.labelFont, weight: emphasisWeight(domain.theme) };
   const size = domain.measure(text, font);
   const cx = rect.x + rect.w / 2;
   const endY = v < 0 ? rect.y + rect.h + 4 : rect.y - size.height - 4;
   const box = (x: number, y: number): Rect => ({ x, y, w: size.width, h: size.height });
-  requests.push({
+  return {
     id: `extreme:${s.id}:${c.id}`,
     kind: 'annotation', role: composedTextRole(text, 'note'),
     owner: { seriesId: s.id, categoryId: c.id },
@@ -943,7 +956,43 @@ function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: Pick<
       { slot: 'atEndRight', rect: box(rect.x + rect.w + 4, v < 0 ? rect.y + rect.h - size.height : rect.y), penalty: 1 },
       { slot: 'atEndLeft', rect: box(rect.x - 4 - size.width, v < 0 ? rect.y + rect.h - size.height : rect.y), penalty: 2 },
     ],
-  });
+  };
+}
+
+/** Replace a drawn name only after the selected value has failed to take its own seat. */
+export function seatExtremeValue(
+  domain: ColumnDomain, area: ColumnArea, named: NonNullable<ReturnType<typeof extremeNameRequest>>,
+  solved: SolveResult, occupied: OccupiedIndex, ctx: SolveCtx,
+): void {
+  const { extreme, id, value } = named;
+  const at = solved.placed.findIndex(label => label.id === id);
+  const name = solved.placed[at];
+  if (!name || name.hidden || !occupied.release) return;
+  const point = solved.placed.find(label => label.id === `point:${extreme.s.id}:${extreme.c.id}`);
+  if (point && !point.hidden) return;
+  const claim = occupied.hitsWhich(name.rect, LABEL_PAD).find(entry => entry.kind === 'label' && entry.owner === name.owner);
+  if (!claim) return;
+
+  occupied.release(claim);
+  const seat = (text: string) => solveLabels([{ ...extremeLabel(domain, area, extreme, text), shows: { value } }], occupied, ctx);
+  let replacement = seat(name.text ? `${name.text} ${value}` : value);
+  if (name.text && replacement.placed[0]!.hidden) replacement = seat(value);
+  if (replacement.placed[0]!.hidden) {
+    occupied.claim(name.rect, 'label', name.owner);
+    return;
+  }
+
+  solved.placed[at] = replacement.placed[0]!;
+  const decision = solved.decisions.findIndex(entry => entry.labelId === id);
+  if (decision >= 0) solved.decisions[decision] = replacement.decisions[0]!;
+  if (point) {
+    point.hidden = 'redundant';
+    point.printedIn = id;
+    delete point.owed;
+    const previous = solved.decisions.find(entry => entry.labelId === point.id);
+    if (previous) previous.reason = `printed in label '${id}'`;
+    solved.warnings = solved.warnings.filter(warning => warning.code !== 'label-hidden' || warning.detail?.labelId !== point.id);
+  }
 }
 
 /**

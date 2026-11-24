@@ -529,6 +529,27 @@ describe('chart layout edge cases', () => {
     expect(ticks(request({ show: false }))).toBe(0);
   });
 
+  // A weekday name must not hide the selected peak's formatted value when the category axis shows months.
+  it('prints the selected column peak value once with its weekday', () => {
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const spec = {
+      type: 'column',
+      data: {
+        categories: Array.from({ length: 40 }, (_, i) => ({
+          id: `d${i}`, date: new Date(Date.UTC(2026, 9, 18 + i)).toISOString().slice(0, 10), label: weekdays[i % 7],
+        })),
+        series: [{ id: 's', label: 'Revenue', format: '$1,234', values: [
+          88, 116, 134, 131, 128, 84, 96, 87, 111, 128, 108, 110, 121, 104, 130, 93, 86, 111, 81, 137,
+          133, 104, 107, 118, 128, 129, 80, 124, 260, 97, 126, 131, 94, 117, 140, 86, 137, 100, 81, 81,
+        ] }],
+      },
+      options: { title: 'Daily orders', valueLabels: 'extremes', categoryAxis: { dateTicks: 'months' } },
+    };
+    const body = render({ spec, width: 420, return: ['svg'] }).body as { ok: boolean; svg: string };
+    expect(body.ok).toBe(true);
+    expect(Array.from(body.svg.matchAll(/>([^<>]*\$260)<\//g), match => match[1])).toEqual(['Sun $260']);
+  });
+
   // A grouped chart with thinned values needs no discarded label solve before it draws its axis.
   it('solves thinned grouped values only with the fallback axis', () => {
     const data = {
