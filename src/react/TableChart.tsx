@@ -1000,6 +1000,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     return new Set(allColumns.filter((column) => !drawn.has(column.id)).map((column) => column.id));
   }, [allColumns, columns]);
   const reuseGrid = resolved !== undefined && !exposed && (metricMeasure === defaultMeasurer || isCachedTextMeasurer(metricMeasure));
+  // A warning listener can retain the records it received, even after it detaches.
+  const reportedWarnings = useRef(false);
+  if (onWarnings !== undefined) reportedWarnings.current = true;
+  const checkDisplayWarnings = reportedWarnings.current || !reuseGrid || !keepRequest || linked !== undefined;
   const resolvedMargin = useMemo(() => !reuseGrid || !tableOptions ? undefined : resolveCanvasOptions(tableOptions).margin, [reuseGrid, tableOptions]);
   const margin = reuseGrid || tableOptions === undefined ? resolvedMargin : resolveCanvasOptions(tableOptions).margin;
   const marginLeft = margin?.left ?? 0;
@@ -1047,14 +1051,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         fit: size === 'container' ? fit : undefined,
       },
       margins: { left: sides.left ?? 0, right: sides.right ?? 0 },
-      at: request === undefined ? undefined : (frameWidth) => {
+      at: !checkDisplayWarnings || request === undefined ? undefined : (frameWidth) => {
         const frameTheme = tableRenderTheme({ ...request, size: { ...request.size, width: frameWidth } });
         const frameSides = sidesAt(frameTheme, frameWidth);
         return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0), scrollBox: scrollBox(frameWidth) };
       },
     } });
   }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor, reuseGrid,
-    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter, checkDisplayWarnings]);
   const measured = need?.plan;
   // The density of the rung the grid draws: the compact and tight rungs take the compact density.
   const drawnDensity = need?.density ?? density;
@@ -1075,12 +1079,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
       request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
   [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
-  const diagnostics = useMemo(() => layoutRequest && resolved ? {
+  const diagnostics = useMemo(() => checkDisplayWarnings && layoutRequest && resolved ? {
     warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(need?.warnings ?? []), ...(sized?.warnings ?? []), ...(frameMemo?.warnings ?? []),
       ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
+  } : undefined, [checkDisplayWarnings, layoutRequest, resolved, initialPrepared, sized, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
@@ -1310,7 +1314,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const update = () => {
       frame = 0;
       // Under dir="rtl" scrollLeft runs from 0 to negative; the tracks count from the logical start either way.
-      const left = getComputedStyle(scroller).direction === 'rtl' ? Math.abs(scroller.scrollLeft) : scroller.scrollLeft;
+      const offset = scroller.scrollLeft;
+      const left = offset < 0 && getComputedStyle(scroller).direction === 'rtl' ? -offset : offset;
       const next = viewRange(left, scroller.clientWidth);
       setViewKey((before) => (before === next ? before : next));
     };
@@ -1384,9 +1389,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const headsShown = tableOptions?.columnHeads !== false;
   const tableReady = table !== undefined;
   useEffect(() => {
+    if (!stickySections) return undefined;
     const element = grid.tableRef.current;
     const head = element?.querySelector<HTMLElement>('[data-bp-rowgroup="head"]');
-    if (!stickySections || !element || !head) return undefined;
+    if (!element || !head) return undefined;
     const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false || !headsShown ? 0 : head.offsetHeight}px`);
     apply();
     const watch = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(apply);
@@ -1801,7 +1807,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
 
   const figure = (
     <figure ref={displayRef} className="bp-table" data-bp-chart="table" data-bp-table-theme={themeScope} data-bp-motion={provider?.motion} data-bp-mount={tableOptions.mountCollapsed === false ? 'open' : undefined} data-bp-density={drawnDensity} data-bp-mode={frame.mode === 'compact' ? 'compact' : undefined} data-bp-fill-height={fillHeight ? '' : undefined} style={figureStyle}>
-      <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} />
+      <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} freshMount={freshMount} />
       {/* `legend: 'none'` drops the key row, as on the SVG. */}
       <TableCaption frame={frame} theme={theme}
         keyEntries={tableOptions.legend === 'none' ? [] : heatKey(columns, heatLanes, theme, tableOptions.strings, tableOptions.locale?.language)}
@@ -2116,9 +2122,10 @@ const TableHead = memo(function TableHead({
   useLayoutEffect(() => {
     const was = lastHidden.current;
     lastHidden.current = hiddenColumns;
+    if (was === hiddenColumns) return;
     const head = headRef.current;
     const row = head?.querySelector('[role="row"]');
-    if (!head || !row || was === hiddenColumns) return;
+    if (!head || !row) return;
     const ms = parseFloat(getComputedStyle(row).transitionDuration) * 1000;
     if (!(ms > 0)) return;
     const opened = (ids: readonly Id[]) => ids.every((id) => was.has(id)) && ids.some((id) => !hiddenColumns.has(id));
@@ -2531,7 +2538,7 @@ function TableGridRow({ rowIndex, final, ...content }: GridRowProps): ReactEleme
 
 /** A row that moves changes its accessible index and keeps its cells. */
 const TableRowCells = memo(function TableRowCells({
-  palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
+  reuseGrid, palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
   barMaxima, heatLanes, sparkDomains, sparkWidths, theme, measure, groupMarks, levelNouns, childCounts,
   inlineVisibility, onToggleRow, staticMarks, labelLead, filler, focus, pinned, trackColumn, columnEdges,
   figures, liteSlots, columnPlan, foldable, toggles, selects, foldsOnRow,
@@ -2647,7 +2654,7 @@ const TableRowCells = memo(function TableRowCells({
               hidden={hidden}
               palette={palette}
               heatLane={heatLanes.get(column.id)}
-              theme={theme}
+              theme={!reuseGrid || column.kind === 'encoding' || column.cellEncoding !== undefined ? theme : undefined}
               measure={measure}
               figures={figures}
               pin={pinned.get(column.id)}
@@ -2767,7 +2774,7 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
   hidden: boolean;
   heatLane: Parameters<typeof heatStyle>[2];
   palette?: string;
-  theme: SharedRowProps['theme'];
+  theme: SharedRowProps['theme'] | undefined;
   measure: TextMeasurer;
   figures: SharedRowProps['figures'];
   pin: CellPlacement['pin'];
@@ -2785,13 +2792,13 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
       aria-colindex={colIndex}
       title={cellTitle(inlineTitle(row, column.id), cell)}
       {...cellAttributes(cell, column, focus, groupMarks, hiddenColumns, hidden,
-        heatStyle(cell, column, heatLane, theme, measure, figures),
+        theme === undefined ? undefined : heatStyle(cell, column, heatLane, theme, measure, figures),
         { ...(pin === undefined ? {} : { pin }), ...(gridColumn === undefined ? {} : { gridColumn }) })}
     >
       {column.kind !== 'encoding' && column.cellEncoding === undefined && cell.kind !== 'status'
         && cell.note === undefined && cell.href === undefined
         ? <span className="bp-value">{cell.displayed}</span>
-        : <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={{ domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />}
+        : <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={theme === undefined ? undefined : { domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />}
       {labelNote ? <span className="bp-note-spacer" aria-hidden="true" /> : null}
       {inlineLines({ row, column, visibility: inlineVisibility, noteLine: column.noteLine === true ? cell.note : undefined })}
     </div>
@@ -3358,7 +3365,7 @@ function safeHref(href: string | undefined): string | undefined {
   return SAFE_HREF.test(trimmed) ? trimmed : undefined;
 }
 
-function TableThemeStyle({ stylesheet, scope, nonce }: { stylesheet: string; scope: string; nonce?: string }): ReactElement | null {
+function TableThemeStyle({ stylesheet, scope, nonce, freshMount }: { stylesheet: string; scope: string; nonce?: string; freshMount: boolean }): ReactElement | null {
   const [attached, setAttached] = useState(false);
   const inline = useRef<HTMLStyleElement>(null);
   const root = useRef<Node>(undefined);
@@ -3410,13 +3417,13 @@ function TableThemeStyle({ stylesheet, scope, nonce }: { stylesheet: string; sco
       }
     };
   }, [key, css, scope, nonce]);
-  // The first server/client frame includes CSS. Remove its inline copy only
-  // after the shared stylesheet has mounted, without resolving the table.
+  // Release the inline node after the shared stylesheet is installed.
   useEffect(() => setAttached(true), []);
-  // Raw text on both sides: React 18's server escapes the quotes of a style
+  // A fresh mount needs only the node to locate its document or shadow root. The layout effect installs the CSS before paint.
+  // Raw text on both sides of hydration: React 18's server escapes the quotes of a style
   // element's text child and the client then re-rendered the whole root
   //. `stylesheetBody` refuses any `<style` or `</style` in it.
-  return attached ? null : <style ref={inline} data-bp-table-theme={scope} nonce={nonce} dangerouslySetInnerHTML={{ __html: css }} />;
+  return attached ? null : <style ref={inline} data-bp-table-theme={scope} nonce={nonce} dangerouslySetInnerHTML={freshMount ? undefined : { __html: css }} />;
 }
 
 function stylesheetBody(stylesheet: string): string {
