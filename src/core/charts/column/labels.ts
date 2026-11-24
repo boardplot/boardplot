@@ -14,7 +14,8 @@ import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
-import { defaultMeasurer, type FontSpec } from '../../text';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
+import type { FontSpec } from '../../text';
 import type { LabelContent } from '../../types/options';
 import type { LintWarning, ShownTexts } from '../../types/scene';
 import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, shownParts, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
@@ -392,7 +393,7 @@ export function planColumnValueLabels(
     const sliverIds = new Set<string>();
     const out: LabelRequest[] = [];
     let anyShare = false;
-    const canStep = measure === defaultMeasurer && segment
+    const canStep = hasCompleteTextWidths(measure) && segment
       && stepDownFont(domain.theme, stepped ?? labelFont, 'label', options.target, textScaleOf(options)) !== undefined;
     for (const place of segment ? scene.bars : []) {
 
