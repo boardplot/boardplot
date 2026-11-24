@@ -2406,6 +2406,7 @@ function stampRecordDisplay(
   resolvedRows: ResolvedRow[],
   formatNumber: (raw: number, colId: Id, rowId?: Id) => string,
 ): void {
+  if (records.length === 0) return;
   const cellIndex = new Map<string, ResolvedCell>();
   for (const r of resolvedRows) for (const c of Object.values(r.cells)) cellIndex.set(tableCellKey(c.rowId, c.colId), c);
   for (const rec of records) {
