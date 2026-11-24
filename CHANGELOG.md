@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Large dimension-switch tables reuse formatted periods and measured column widths while choosing a card. The selected card can draw from its measured table and copy its calculation records in one pass.
+
 - Dimension-switch tables choose how many periods fit faster. When the remaining rows keep the same figures and formatting, the search can measure their columns without building a complete card for each period count.
 - Dimension-switch tables fit their columns faster. Each layout reuses source values across candidate forms. Only the selected form adds display text to its calculation records.
 - Dense daily stacked columns place labels faster at automatic height. They can settle the value axis earlier, reuse a drawing when its note leaves the plot unchanged, and skip taller layouts when every noted value is too wide for its column.
