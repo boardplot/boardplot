@@ -25,13 +25,13 @@ import {
 } from 'react';
 import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLayoutEffect';
 import { resolveCanvasOptions, resolveSize } from '../core/normalize/shared';
-import { canvasMargin } from '../core/theme';
+import { canvasMargin, themeRegistrations } from '../core/theme';
 import { measureResolvedRequest, resolveChartRequest, type ResolvedChartRequest } from '../core/request';
 import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../core/formatPrecision';
 import { asFirstFrame, DeferredCoreError, type DeferredName } from '../core/deferred';
 import { useDeferredModule, useDeferredRevision } from './deferredCore';
 import { useResolvedChartRequest } from './useResolvedChartRequest';
-import { BoardplotThemeContext } from './themeContext';
+import { BoardplotThemeContext, isStandardThemeProvider } from './themeContext';
 import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
@@ -89,7 +89,7 @@ import { lastObservedIndex, type SparklineDomain } from '../core/charts/sparklin
 import { resolvePaint } from '../core/svg/paint';
 import { sceneAttributes } from './sceneAttributes';
 import type { LintWarning, Paint, RefusedLayout, SceneNode } from '../core/types/scene';
-import { defaultMeasurer, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../core/text';
+import { defaultMeasurer, isCachedTextMeasurer, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../core/text';
 import type { Id } from '../core/types/cell';
 import type {
   ResolvedCell,
@@ -619,12 +619,16 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const source = compiledRequest?.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
   const requestOptions = useMemo(() => source?.[AUTHORED_EXAMPLES] === undefined ? stableOptions
     : { ...stableOptions, [UNIT_STAND_INS]: source[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: source[AUTHORED_EXAMPLES] }, [stableOptions, source]);
-  // Export links and host callbacks can observe each resolved request, row, measurement or handle.
   const inherited = useContext(BoardplotThemeContext);
-  const keepRequest = !inherited && !exporter && handleRef == null && !prepared && !rowLabelLead
+  const plainRequest = !inherited && !exporter && handleRef == null && !prepared && !rowLabelLead
     && !isRowSelectable && !onRowSelect && typeof fontMetrics !== 'function' && typeof options.measure !== 'function';
+  const keepRequest = !exporter && !prepared && isStandardThemeProvider(inherited)
+    && (typeof fontMetrics !== 'function' || isCachedTextMeasurer(fontMetrics))
+    && (typeof options.measure !== 'function' || isCachedTextMeasurer(options.measure));
   const requestModules = linked ?? (keepRequest ? noLinkedModules : undefined);
-  const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, requestModules);
+  const newlyKept = linked === undefined && keepRequest && !plainRequest;
+  const registrations = newlyKept ? themeRegistrations() : undefined;
+  const { request: paintRequest, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, requestModules, false, registrations);
   // Inline visibility changes the drawn lines, not their values or widths.
   // Keep the full request for prepared-snapshot matching; reuse resolution
   // while the reader switches the lines on or off.
@@ -654,6 +658,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const resolved = useMemo(() => !layoutRequest || !tableOptions ? undefined : initialPrepared
     ? { table: { ...initialPrepared.table, provenance: {} }, warnings: initialPrepared.warnings ?? [] }
     : resolveTable(layoutRequest.data as TableData, tableOptions), [layoutRequest?.data, resolveKey, initialPrepared]);
+  // Selection, labels and prepared snapshots expose mutable rows. Re-read those rows wherever
+  // a fresh request previously refreshed the width plan, footer and hover records.
+  const exposedTable = useRef<ResolvedTable>(undefined);
+  if (exposedTable.current !== resolved?.table) exposedTable.current = undefined;
+  if (onRowSelect || rowLabelLead || initialPrepared) exposedTable.current = resolved?.table;
+  const exposed = resolved !== undefined && exposedTable.current === resolved.table;
+  const request = paintRequest && newlyKept && (exposed || onWarnings)
+    ? { ...paintRequest, options: { ...paintRequest.options } } : paintRequest;
   // The prop when the host wrote one, the authored option otherwise, so a
   // spec that carries `expansion.rootsHidden` or the totals step hides its
   // roots in the grid as the SVG does.
@@ -987,11 +999,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const drawn = new Set(columns.map((column) => column.id));
     return new Set(allColumns.filter((column) => !drawn.has(column.id)).map((column) => column.id));
   }, [allColumns, columns]);
-  // A host can keep and edit a row received from a label, selection or prepared table.
-  const exposedTable = useRef<ResolvedTable>(undefined);
-  if (exposedTable.current !== resolved?.table) exposedTable.current = undefined;
-  if (onRowSelect || isRowSelectable || rowLabelLead || initialPrepared) exposedTable.current = resolved?.table;
-  const reuseGrid = resolved !== undefined && exposedTable.current !== resolved.table && handleRef == null && metricMeasure === defaultMeasurer;
+  const reuseGrid = resolved !== undefined && !exposed && (metricMeasure === defaultMeasurer || isCachedTextMeasurer(metricMeasure));
   const resolvedMargin = useMemo(() => !reuseGrid || !tableOptions ? undefined : resolveCanvasOptions(tableOptions).margin, [reuseGrid, tableOptions]);
   const margin = reuseGrid || tableOptions === undefined ? resolvedMargin : resolveCanvasOptions(tableOptions).margin;
   const marginLeft = margin?.left ?? 0;
@@ -1428,6 +1436,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       watch?.disconnect();
     };
   }, [pageHead, stickySections, headBox, scroller, floatClip, floatInner, floatId, tableReady, gridWidth]);
+  // A handle follows each measurement, even when equal track values can keep the grid markup.
+  // An unlinked request or an authored canvas margin previously measured on every render.
+  const handleTracks = handleRef == null ? undefined : linked === undefined || tableOptions?.canvas?.margin !== undefined ? {} : measuredTracks;
   useImperativeHandle(handleRef, () => ({
     scrollState: () => scrollStateOf(scroller),
     scrollToColumn: (columnId, behavior) => {
@@ -1448,7 +1459,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     scrollTo: (left, behavior) => {
       if (scroller !== null) scrollBoxTo(scroller, left, behavior);
     },
-  }), [scroller, gridTracks, pinned]);
+  }), [scroller, gridTracks, pinned, handleTracks]);
   /**
    * The width the figure needs to show every column: its two margins and
    * the tracks and spacers. Under 'frame' the first track already carries
