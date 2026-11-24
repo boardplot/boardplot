@@ -400,6 +400,26 @@ it('gives a value with labels off the text its label would print', () => {
   expect(labelCardContent(record).rows.map(row => row.text)).toContain('Revenue: $78.0');
 });
 
+// A scenario code in place of the series name made the hover comparison hard to match to the chart.
+it('uses a reference series label when present and keeps the existing comparison wording otherwise', () => {
+  const cardRows = (spec: object) => {
+    const { request, geometry } = build(spec);
+    const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+      .find(record => record.comparisons.length > 0)!;
+    return withChartFormats(request.options, () => labelCardContent(record).rows.map(row => row.text));
+  };
+  const dumbbell = (reference: { label?: string }) => ({ type: 'dot', data: {
+    categories: [{ id: 'north', label: 'North' }],
+    series: [{ id: 'ac', label: 'Actual', scenario: 'AC', values: [27.9] },
+      { id: 'pl', scenario: 'PL', values: [25], ...reference }],
+  }, options: { variant: 'dumbbell', unit: '%' } });
+
+  expect(cardRows(dumbbell({ label: 'Plan' }))).toEqual(['North', 'Actual: 27.9%', 'vs Plan: +2.9pp (+12%)']);
+  expect(cardRows(dumbbell({}))).toEqual(['North', 'Actual: 27.9%', 'vs PL: +2.9pp (+12%)']);
+  expect(cardRows({ type: 'kpi', data: { label: 'Orders', value: 120, delta: { vs: 100, scenario: 'PY', mode: 'both' } } }))
+    .toEqual(['Orders', '120', 'vs PY: +20 (+20%)']);
+});
+
 // The card formatted a drawn change again, so a change labelled −4% read −4.0%.
 it('prints a drawn KPI change as the chart prints it', () => {
   const fixture = structuredClone(getFixtures('kpi').find(item => item.id === 'text-comparisons')!);
@@ -441,7 +461,7 @@ it('prints the value, not a bound behind a currency sign, in the card', () => {
       { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, -0.02] }] } });
   const emea = interactionRecords({ request: variance.request, geometry: variance.geometry, scope: variance.request.scope, claims: [] })
     .find(record => record.target.owner.categoryId === 'emea')!;
-  expect(labelCardContent(emea).rows.find(row => row.kind === 'comparison')?.text).toMatch(/^vs PY: \+\$0\.04m \(/);
+  expect(labelCardContent(emea).rows.find(row => row.kind === 'comparison')?.text).toMatch(/^vs Prior year: \+\$0\.04m \(/);
 });
 
 // A value its label prints as the example's zero (0.04 under '0.0%') printed that zero in its card too, so no surface stated the value.

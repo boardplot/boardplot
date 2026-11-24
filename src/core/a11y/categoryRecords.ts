@@ -18,9 +18,11 @@ import type { InteractionRecord, InteractionValue } from './types';
 import { chartWording } from '../strings';
 import { pushAll } from '../arrays';
 
+type RecordSeries = Series & { labelFromId?: boolean };
+
 interface Matrix {
   categories: Category[];
-  series: (Series & { cells: Cell[] })[];
+  series: (RecordSeries & { cells: Cell[] })[];
   shown: Set<string>;
   categoryIndex: Map<string, number>;
   displayedIndex: Map<string, number>;
@@ -92,7 +94,7 @@ function comparisons(ctx: RecordContext, matrix: Matrix, source: Matrix['series'
       : (reference.axis ?? 'primary') !== (source.axis ?? 'primary') ? 'Comparison uses a different axis'
       : stackedComponent && reference.role === 'reference' ? 'A stacked component has no per-component comparison reference' : undefined;
     return {
-      ...compareValues(value, valueFor(ctx, matrix, reference, categoryId), reference.label ?? reference.id, scenario, reason),
+      ...compareValues(value, valueFor(ctx, matrix, reference, categoryId), reference, scenario, reason),
       target: { ...ctx.scope, owner: { seriesId: reference.id, categoryId } },
     };
   });
@@ -287,8 +289,9 @@ export function categoryRecords(ctx: RecordContext): InteractionRecord[] | undef
   // Slope 'diverging' draws each negative share as its own series (`<id>:negative`), so it reads its own values.
   const negName = (ctx.request.options as { diverging?: { labels?: { negative?: string } } }).diverging?.labels?.negative ?? 'Negative';
   const drawn = ctx.request.type === 'slope' && (ctx.request.options as { variant?: string }).variant === 'diverging'
-    ? (data.series as SlopeSeries[]).flatMap((item): Series[] => item.role !== 'reference' && Array.isArray(item.negative)
-      ? [item, { ...item, id: `${item.id}:negative`, label: `${item.label ?? item.id} (${negName})`, values: item.negative }] : [item])
+    ? (data.series as SlopeSeries[]).flatMap((item): RecordSeries[] => item.role !== 'reference' && Array.isArray(item.negative)
+      ? [item, { ...item, id: `${item.id}:negative`, label: `${item.label ?? item.id} (${negName})`,
+        labelFromId: item.label === undefined, values: item.negative }] : [item])
     : data.series;
   const series = drawn.map((series, index) => ({ ...series, scenario: normalizeScenario(series.scenario, `series[${index}].scenario`), cells: normalizeSeriesValues(series, categories, index) }));
   // A Total column the engine weighted: its records carry the drawn shares and base.

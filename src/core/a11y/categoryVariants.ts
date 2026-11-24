@@ -55,7 +55,7 @@ export function categoryVariantRecords(ctx: RecordContext): InteractionRecord[] 
     const current = operands.length === 1 ? operands[0]! : units.size > 1 ? unavailableValue('Current total combines incompatible units')
       : derivedValue(derived.ac[category.id] === null ? null : values.reduce((sum, value) => sum + value, 0), operands[0]?.unit, options.format);
     const reference = cellRecordValue(cells.get(referenceSeries.id)![index]!, referenceSeries.unit ?? valueUnit, referenceSeries.format ?? options.format);
-    const comparison = compareValues(current, reference, referenceSeries.label ?? referenceSeries.id, referenceSeries.scenario);
+    const comparison = compareValues(current, reference, referenceSeries, referenceSeries.scenario);
     const mark = marks.bars.find(mark => mark.categoryId === category.id) ?? marks.pins.find(mark => mark.categoryId === category.id);
     return [makeRecord(ctx, { categoryId: category.id }, mode === 'integrated' ? current : mode === 'relative' ? comparison.percent : comparison.delta, {
       label: category.label ?? category.id, anchor: mark?.rect, comparisons: [comparison],

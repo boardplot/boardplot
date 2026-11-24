@@ -43,6 +43,8 @@ export interface InteractionEvent {
 export interface InteractionComparison {
   label: string;
   scenario?: Scenario;
+  /** The reference series name when the input supplies a label for it. */
+  referenceLabel?: string;
   current: InteractionValue;
   reference: InteractionValue;
   delta: InteractionValue;
