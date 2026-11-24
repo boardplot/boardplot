@@ -2,6 +2,7 @@ import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer } from '../../text';
 import { canvasMargin } from '../../theme';
 import type { InternalFootnoteOptions } from '../../frame';
@@ -21,7 +22,8 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   summary: 'Stacked columns with line/area overlays; gated, tick-synced secondary axis',
   layout: (data, options) => withEventsDescribed(layoutCombo(prepareFractionData(data), options as ComboOptions | undefined), options),
   notesBoundByWidth(data, options, geometry, noted) {
-    if (options.measure && options.measure !== defaultMeasurer || (options as InternalFootnoteOptions).footnotesOff
+    const measure = options.measure ?? defaultMeasurer;
+    if (!hasCompleteTextWidths(measure) || (options as InternalFootnoteOptions).footnotesOff
       || options.annotations?.length || (options as ComboOptions).averageMarker
       || options.labels !== undefined || options.labelPlacements || options.labelOffsets
       || noted.some(label => label.kind !== 'segment' || !label.noted || !label.noteText || label.slots.length > 0)
@@ -41,7 +43,7 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
     const font = { family: theme.type.family, ...theme.type.label };
     // Plain segment values use the same data, format and width-class font at
     // every height. A segment that fails even the tight inside seat is named.
-    return noted.every(label => !fitsInside(rect, defaultMeasurer(label.text, font), 0));
+    return noted.every(label => !fitsInside(rect, measure(label.text, font), 0));
   },
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   prepare: prepareFractionData,
