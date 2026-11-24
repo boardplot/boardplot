@@ -1,6 +1,6 @@
 'use client';
 import type { OptionsInput } from '../core/types/optionInput';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
@@ -11,6 +11,7 @@ import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
 import { TableFloorRequestContext } from './TableChart';
+import { BoardplotThemeContext } from './themeContext';
 import { linkedBinding, rebindable } from './linkedBinding';
 import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
@@ -71,24 +72,33 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   // A retired setting is compiled as its successor (or dropped) and reported with the compile warnings.
   const retired=useMemo(()=>{const shaped=normalizeOptionShapes('dimswitch',{options:authoredOptions});const retired=retireChartSettings('dimswitch',{options:shaped.chart.options as DimSwitchOptions});return {...retired,warnings:[...shaped.warnings,...retired.warnings]};},[authoredOptions]);
   const stableOptions=retired.chart.options;
-  const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
+  // The built-in width check reads the source snapshot. An export or host resolver can retain its own copy.
+  const provider=useContext(BoardplotThemeContext);
+  const separateFloor=useRef(false);
+  if (exporter || provider) separateFloor.current=true;
+  const floorInline=useStableValue(inlineVisibility);
+  const floor=useMemo(()=>({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility:floorInline}}),
+    [stableData,stableOptions,variant,depth,splits,floorInline]);
+  const floorRequest=useStableValue(separateFloor.current ? floor : undefined) ?? floor;
   // Ordinary folds select rows. Folding the by-member Total can also replace its headline.
   const {expansion, ...valueOptions}=stableOptions;
   const totalId=stableData?.dimension?.total?.id;
-  const ordinaryFolds=totalId!==undefined && stableOptions.rowVisibility?.[totalId]!==false
+  const observesCompile=useRef(false);
+  if (exporter || provider || rowLabelLead || isRowSelectable || onRowSelect || handleRef
+      || typeof fontMetrics==='function' || typeof stableOptions.measure==='function') observesCompile.current=true;
+  const ordinaryFolds=!observesCompile.current && totalId!==undefined && stableOptions.rowVisibility?.[totalId]!==false
     && (expansion?.collapsed===undefined || Array.isArray(expansion.collapsed) && foreignRowId(expansion.collapsed)===undefined)
     && (expansion?.expanded===undefined || Array.isArray(expansion.expanded) && foreignRowId(expansion.expanded)===undefined)
-    && !(variant==='by-member' && expansion?.collapsed?.includes(dimswitchRowId(variant,totalId)))
-    && !exporter && !rowLabelLead && !isRowSelectable && !onRowSelect && !handleRef
-    && typeof fontMetrics!=='function' && typeof stableOptions.measure!=='function';
-  const foldOptions=useStableValue(ordinaryFolds ? valueOptions : undefined);
+    && !(variant==='by-member' && expansion?.collapsed?.includes(dimswitchRowId(variant,totalId)));
+  const foldOptions=useStableValue(ordinaryFolds || expansion===undefined ? valueOptions : undefined);
   const compileOptions=foldOptions ?? stableOptions;
   // The grid reads values, not the computed-cell records the static audit trail carries.
   // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
   // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
   const values=useMemo(()=>withEngineNotes(()=>{
     const result=compileDimSwitch(stableData,{...compileOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
-    ownCompiledTable(result.data);
+    // A hidden Total contributes additional figure arrays on symbol properties outside the frozen cells.
+    if (compileOptions.rowVisibility?.[stableData.dimension.total.id]!==false) ownCompiledTable(result.data);
     const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
