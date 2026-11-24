@@ -2,6 +2,7 @@
 import { resolveCanvasOptions, resolveSize } from '../../normalize/shared';
 import { canvasMargin } from '../../theme';
 import { chartSizing, fitsSize, resolveSizing } from '../../sizing';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer, isCachedTextMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
@@ -22,7 +23,7 @@ import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
   tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
   changeLineFont, encodingReserve, intrinsicColumnWidth, authoredTrackWidth, authoredWidthWarnings,
-  wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts, primeValueBodyWidths,
+  browserSlack, wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts, primeValueBodyWidths,
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext, type BodyWidthMeasurements,
 } from './tracks';
 import { maxOf } from '../../arrays';
@@ -200,7 +201,8 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
       hint: (row: ResolvedRow) => collapsedHintWidth(row, table.levelNouns, childCount.get(row.id) ?? 0, measure, faces.hint),
       ...(view.headLines === undefined ? {} : { headLines: view.headLines }),
     };
-    if (measure === defaultMeasurer && widthRows.length >= 64 && view.slack === undefined && theme.type.numeric !== 'proportional') {
+    if (widthRows.length >= 64 && (view.slack === undefined || view.slack === browserSlack) && theme.type.numeric !== 'proportional'
+      && (measure === defaultMeasurer || hasCompleteTableWidths(measure))) {
       primeValueBodyWidths(cols, widthRows, context);
     }
     for (let index = 0; index < cols.length; index++) {
