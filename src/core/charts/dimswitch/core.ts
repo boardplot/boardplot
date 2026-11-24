@@ -8,7 +8,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -83,7 +83,9 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     const projected = projectedCard ?? (wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
       ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
       : undefined);
-    const compiled = wholeCard?.compiled ?? projected?.materialize() ?? compileDimSwitch(data,options,{...form,figures},true);
+    const tail = wider && form.card && form.hide !== undefined && form.hide < wider.hide
+      ? periodCardTail(data, options, wider.prepared.compiled, wider.hide, form.hide, figures) : undefined;
+    const compiled = wholeCard?.compiled ?? projected?.materialize() ?? compileDimSwitch(data,options,{...form,figures,tail},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
     const resolved=wholeCard?.resolved ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
