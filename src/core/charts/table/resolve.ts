@@ -481,14 +481,21 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
   if (wide.lifted || wide.computedCells.length || wide.table.footnotes.length || wide.table.partialColumnIds
     || wide.table.unit || wide.table.columnUnits || wide.table.columns.some(col => col.unitLabel || col.cellEncoding)
     || options.encodings || options.highlight || options.sort || options.topN || options.format || options.unit
-    || options.magnitude === 'million' || options.magnitude === 'thousand' || (options.measure !== undefined && options.measure !== defaultMeasurer)) return undefined;
+    || (options.measure !== undefined && options.measure !== defaultMeasurer)) return undefined;
+  const forced = options.magnitude === 'million' || options.magnitude === 'thousand';
+  // With a forced scale, each figure in a period-only card also belongs to its unchanged full period list.
+  if (forced && (options.columnHeads === false || wideData.columns.some(col => col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return undefined;
 
   const stable = withChartFormats(options, () => wideData.rows.every(row => {
     if (row.calc || row.children || (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES]) return false;
     const numeric = Object.values(row.cells ?? {}).filter((cell): cell is TableCellObject =>
       cell !== null && typeof cell === 'object' && 'v' in cell && typeof cell.v === 'number');
+    // Every formatted row names its own scale, so the resolver cannot move a unit from those rows to the header.
+    if (forced && row.format !== undefined && row.scale === undefined) return false;
     if (numeric.length === 0) return true;
     if (row.inline) return numeric.every(cell => cell.format !== undefined && (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
+    if (forced) return row.scale !== undefined && !!(row as MagnitudeGroupSource)[PERIOD_FIGURES]?.length
+      && numeric.every(cell => cell.format === undefined && (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
     if (row.format === undefined || (row as AutomaticFormatSource)[AUTOMATIC_FORMAT] || !isExactExample(row.format)) return false;
     // Money and per-unit scales choose precision from their figures even with an authored example.
     if (row.scale === 'money' || row.scale === 'perUnit') return false;
