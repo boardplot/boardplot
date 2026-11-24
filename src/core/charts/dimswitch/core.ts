@@ -61,7 +61,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   };
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
   const compute=(figures:CardFigures):PreparedForm=>{
-    const compiled=compileDimSwitch(data,options,{...form,figures});
+    const compiled=compileDimSwitch(data,options,{...form,figures},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
     const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
@@ -113,8 +113,10 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
     get computedCells() {
       const originalRows = new Map(resolved.table.rows.map(row => [row.id, row]));
       const drawnRows = new Map(geometry.derived.table.rows.map(row => [row.id, row]));
-      const records = compiled.computedCells.map(record => ({ ...record, displayed: record.kind === 'calc'
-        ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
+      const records = compiled.computedCells.map(record => ({ ...record,
+        // A headline and its measure can read the same period. Each selected calculation owns its operands.
+        ...((form.hide ?? 0) > 0 && record.kind === 'calc' ? { inputs: record.inputs.map(input => ({ ...input })) } : {}),
+        displayed: record.kind === 'calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
       return [...resolved.computedCells, ...records].map(record => ({ ...record, displayed: record.kind === 'calc'
         ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed }));
     },

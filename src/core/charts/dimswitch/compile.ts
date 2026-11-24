@@ -207,6 +207,8 @@ interface PeriodValues {
   currentSums: DimSwitchSums | undefined; ref: DimSwitchSums | undefined;
   total: DimSwitchSums | undefined; refTotal: DimSwitchSums | undefined;
   current: Value; before: Value; delta: Value;
+  levelInputs?: ComputedCellRecord['inputs'];
+  changeInputs?: ComputedCellRecord['inputs'];
 }
 /** One fold of one layout request owns these raw results by measure, member and authored period index. */
 export type DimSwitchPeriodValues = Map<DimSwitchMeasure, Map<string, PeriodValues[]>>;
@@ -223,13 +225,13 @@ export const cardFigures = (): CardFigures => ({ lines: new Map(), relative: new
 const CARD_LABEL_WIDTH = 140;
 
 /** Pure compiler. The host supplies all calendar windows and additive facts. */
-export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}): CompiledDimSwitch {
+export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}, reuseReceiptInputs = false): CompiledDimSwitch {
   // A caller outside any chart (the React component) has no record of which formats the author wrote: read it
   // here, as a request does, so the table gets the SVG path's formats and the formats the compile writes stay the engine's.
   if (!hasFormatRecord(options)) {
     const read = readFormatExamples(data, options);
     const own = { ...read.options, ...(read.standIns.size ? { [UNIT_STAND_INS]: read.standIns } : {}), [AUTHORED_EXAMPLES]: read.authored };
-    return withUnitStandIns(own, () => compileDimSwitch(read.data, own, form));
+    return withUnitStandIns(own, () => compileDimSwitch(read.data, own, form, reuseReceiptInputs));
   }
   // Each measure uses the same formats for all members and periods.
   const formatDecimals = new Map<string, number>();
@@ -557,14 +559,19 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const op=isChange ? `${m.change==='pp' || m.change==='absolute' ? 'sub' : 'percentDelta'}(${current},${expression(exprOf(m),true)})` : current;
     template={op,refs};receiptTemplates.set(id,template);return template;
   };
-  const record = (rowId:string,colId:string,m:DimSwitchMeasure,member:string,period:string,value:Value,ref?:DimSwitchSums, isChange=false, refTotal?:DimSwitchSums, refPeriod?:string) => {
+  const record = (rowId:string,colId:string,m:DimSwitchMeasure,member:string,period:string,value:Value,cachedPeriod?:PeriodValues,ref?:DimSwitchSums, isChange=false, refTotal?:DimSwitchSums, refPeriod?:string) => {
     if (form.records === false) return;
     const template=receiptOf(m,isChange);
-    const inputs=template.refs.map(({field,total,reference})=>({
-      rowId:total ? data.dimension.total.id : member,
-      colId:reference ? receiptColumn(refPeriod ?? period,refPeriod ? 'sums' : 'ref',field) : receiptColumn(period,'sums',field),
-      value:(reference ? total ? refTotal : ref : sums(total ? data.dimension.total.id : member,period))?.[field] ?? null,
-    }));
+    const slot = isChange ? 'changeInputs' : 'levelInputs';
+    let inputs = cachedPeriod?.[slot];
+    if (inputs === undefined) {
+      inputs=template.refs.map(({field,total,reference})=>({
+        rowId:total ? data.dimension.total.id : member,
+        colId:reference ? receiptColumn(refPeriod ?? period,refPeriod ? 'sums' : 'ref',field) : receiptColumn(period,'sums',field),
+        value:(reference ? total ? refTotal : ref : sums(total ? data.dimension.total.id : member,period))?.[field] ?? null,
+      }));
+      if (cachedPeriod) cachedPeriod[slot] = inputs;
+    }
     records.push({rowId,colId,op:template.op,inputs,raw:value.raw,state:value.state,displayed:'',kind:'calc'});
   };
   const formatOf = (m: DimSwitchMeasure) => m.format ?? (m.scale==='percent' ? '1.2%' : '1,234');
@@ -685,8 +692,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       : valuesFor(m, member, authoredPeriods[index]!);
     const needsTotal = usesTotal(exprOf(m));
     for (const { p, reference, comparisonKind, periodIndex } of comparisons) {
-      const {currentSums, ref, total, refTotal, current, before, delta} = reference
-        ? valuesFor(m, member, p, reference) : readPeriod(periodIndex);
+      const period = reference ? valuesFor(m, member, p, reference) : readPeriod(periodIndex);
+      const {currentSums, ref, total, refTotal, current, before, delta} = period;
+      const receiptPeriod = reuseReceiptInputs && !reference && cachedPeriods ? period : undefined;
       const windows = needsTotal ? [currentSums, ref, total, refTotal] : [currentSums, ref];
       const col=p.kind ? 'range' : p.id, comparison=comparisonKind==='plan' ? 'pl' : comparisonKind==='prior' ? 'pp' : p.id;
       const comparisonDrawn=!p.kind || drawnBlock.has(comparison);
@@ -706,7 +714,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       // Bands judge the level. A change judgement colours the change it judged, never the level.
       if (comparisonKind!=='plan' && (!p.kind || rangeDrawn)) {
         const levelJudgement=m.bands ? judgeBand(m,current,[currentSums,...(usesTotal(exprOf(m)) ? [total] : [])],p.partial === true,options) : NEUTRAL;
-        cells[col]=cell(current,levelJudgement); record(id,col,m,member,p.id,current);
+        cells[col]=cell(current,levelJudgement); record(id,col,m,member,p.id,current,receiptPeriod);
       }
       // A relative change and a point difference print in change sets, settled below. An absolute one prints in the row's own format,
       // and without a format or unit it joins the set of its measure's levels (MAGNITUDE_GROUP on the cell).
@@ -722,10 +730,10 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         cells[comparison]=!m.judge && changeCell !== null && typeof changeCell==='object' && changeCell.missing === undefined ? {...changeCell,muted:true} : changeCell;
         if (relative) relativeChanges.push({cell:cells[comparison],measure:m.id});
         pointChange(m,cells[comparison]);
-        record(id,comparison,m,member,p.id,delta,ref,true,refTotal,reference?.id);
+        record(id,comparison,m,member,p.id,delta,undefined,ref,true,refTotal,reference?.id);
         effects[comparison]=effectCell;
       }
-      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,measure:m.id}); pointChange(m,changeCell);}}
+      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,receiptPeriod,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,measure:m.id}); pointChange(m,changeCell);}}
     }
     // A card that leaves out periods still reads them: their levels and changes join the sets of the measure, so every
     // figure the card prints reads as it does in the full table.
