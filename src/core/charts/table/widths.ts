@@ -2,7 +2,7 @@
 import { resolveCanvasOptions, resolveSize } from '../../normalize/shared';
 import { canvasMargin } from '../../theme';
 import { chartSizing, fitsSize, resolveSizing } from '../../sizing';
-import { lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
@@ -389,7 +389,7 @@ function measurementTheme(theme: Theme) {
     table?.fixedType, table?.rows !== undefined, table?.weights, table?.driver?.italic, table?.qualifier, table?.operator?.width];
 }
 
-function prepareWidthTypography(table: ResolvedTable, theme: Theme, options: WidthOptions,
+function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions,
   cols: readonly ResolvedColumn[], rows: readonly ResolvedRow[], widthRows: readonly ResolvedRow[]) {
   const ladder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
   const regularFonts = tableFonts(theme, ladder);
@@ -401,8 +401,6 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, options: Wid
   const indentStep = (cell: ResolvedCell) => rowById.get(cell.rowId)?.indentStep ?? cellStep(cell);
   const childCount = treeChildCounts(table);
   const inlineFont = (level: number, signed: boolean) => ladderInlineFont(theme, ladder, level, signed);
-  const cellIndex = new Map<ResolvedCell, number>();
-  const cellFonts: FontSpec[] = [];
   function makeCellFont(cell: ResolvedCell): FontSpec {
     const row = rowById.get(cell.rowId);
     const kind = row?.kind;
@@ -412,15 +410,25 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, options: Wid
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
     return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
   }
-  for (const row of rowById.values()) for (const col of cols) {
-    const cell = row.cells[col.id];
-    if (cell === undefined || cellIndex.has(cell)) continue;
-    cellIndex.set(cell, cellFonts.length);
-    cellFonts.push(makeCellFont(cell));
+  // The built-in measurer reads font fields. On one row they vary only by label and strong-column treatment.
+  const rowFonts = new Map<ResolvedRow, FontSpec[]>();
+  const cellFonts = new Map<ResolvedCell, FontSpec>();
+  if (measure !== defaultMeasurer) {
+    // Preserve the individual font objects a supplied measurer receives.
+    for (const row of rowById.values()) for (const col of cols) {
+      const cell = row.cells[col.id];
+      if (cell !== undefined && !cellFonts.has(cell)) cellFonts.set(cell, makeCellFont(cell));
+    }
   }
   function cellFont(cell: ResolvedCell): FontSpec {
-    const index = cellIndex.get(cell);
-    return index === undefined ? makeCellFont(cell) : cellFonts[index]!;
+    if (measure !== defaultMeasurer) return cellFonts.get(cell) ?? makeCellFont(cell);
+    const row = rowById.get(cell.rowId);
+    if (row === undefined || cell.role !== row.role) return makeCellFont(cell);
+    const strong = cell.state === 'value' && !cell.deEmphasized && colById.get(cell.colId)?.emphasis === 'strong';
+    const slot = (cell.kind === 'rowLabel' ? 2 : 0) + (strong ? 1 : 0);
+    let fonts = rowFonts.get(row);
+    if (fonts === undefined) rowFonts.set(row, fonts = []);
+    return fonts[slot] ??= makeCellFont(cell);
   }
   const bodyWidths: BodyWidthMeasurements = {
     columnIndex: new Map(cols.map((col, index) => [col.id, index])),
@@ -444,7 +452,7 @@ function measuredTypography(table: ResolvedTable, theme: Theme, measure: TextMea
   let measured = variants.get(key);
   if (!measured) {
     if (variants.size >= 64) variants.delete(variants.keys().next().value!);
-    variants.set(key, measured = prepareWidthTypography(table, theme, options, cols, rows, widthRows));
+    variants.set(key, measured = prepareWidthTypography(table, theme, measure, options, cols, rows, widthRows));
   }
   return measured;
 }
