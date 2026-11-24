@@ -323,8 +323,37 @@ function largestOfList(list: readonly number[]): number {
   }
   return most;
 }
-const sharedPreparedData = new Map<string, PreparedTableData>();
+const largeCompiledTables = new WeakSet<TableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
+
+/** A private dimension form can skip the shared cache when its cell fields alone exceed the key limit. */
+export function ownCompiledTable(data: TableData): void {
+  ownPlanInput(data);
+  const seen = new Set<object>();
+  let length = 0;
+  for (const row of data.rows) {
+    if (!row.cells || seen.has(row.cells)) continue;
+    seen.add(row.cells);
+    for (const [id, cell] of Object.entries(row.cells)) {
+      // modelContentKey writes key"<id>": (six characters around the id) and at least three for the value.
+      length += id.length + 9;
+      if (typeof cell === 'string') length += cell.length;
+      if (cell !== null && typeof cell === 'object' && !Array.isArray(cell) && !seen.has(cell)) {
+        seen.add(cell);
+        for (const [field, value] of Object.entries(cell)) {
+          length += field.length + 9;
+          if (typeof value === 'string') length += value.length;
+        }
+      }
+      if (length > MAX_SHARED_KEY_CHARS) {
+        largeCompiledTables.add(data);
+        return;
+      }
+    }
+  }
+}
+
+const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
 const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW, PERIOD_FIGURES].map((symbol, index) => [symbol, index]));
@@ -396,13 +425,15 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
       ...(options.topN ? { columnVisibility: options.columnVisibility, [ZERO_LIFT]: (options as ZeroLiftOptions)[ZERO_LIFT] } : {}),
     };
     // These inputs become separate owned snapshots. Keep each graph exact, and read data once per public request.
-    const dataContent = memoExactInputKey(data, modelContentKey);
+    const privateForm = magnitudeSource === data && largeCompiledTables.has(data);
+    const dataContent = privateForm ? undefined : memoExactInputKey(data, modelContentKey);
     const magnitudeContent = magnitudeSource === data ? 'same;' : memoExactInputKey(magnitudeSource, modelContentKey);
     const semanticContent = modelContentKey([semantic, currentSmallValues(), formatScopeKey()]);
     const content = dataContent === undefined || magnitudeContent === undefined || semanticContent === undefined ? undefined
       : requestMemo(data, 'table-model:' + magnitudeContent.length + ':' + magnitudeContent + semanticContent,
         () => dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent);
-    const key = content;
+    // The form already owns the complete data. Its options and format scope still select the model.
+    const key = privateForm ? semanticContent : content;
     let models = key === undefined ? undefined : preparedData.get(data);
     if (!models && key !== undefined) preparedData.set(data, models = new Map());
     let model = key === undefined ? undefined : models!.get(key) ?? (content === undefined ? undefined : sharedPreparedData.get(content));

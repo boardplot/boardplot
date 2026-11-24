@@ -1,4 +1,4 @@
-import { PLAN_ONLY, ownPlanInput } from '../../layoutPlan';
+import { PLAN_ONLY } from '../../layoutPlan';
 import { engineNote, engineNoteMeta } from '../../notes';
 import { ENGINE_NOTES } from '../table/tracks';
 import type { ChartCore } from '../../registry';
@@ -6,7 +6,7 @@ import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
+import { ownCompiledTable, prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
@@ -63,14 +63,13 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   const compute=(figures:CardFigures):PreparedForm=>{
     const compiled=compileDimSwitch(data,options,{...form,figures});
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
+    ownCompiledTable(compiled.data);
     const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
       if (meta) noteMetadata.set(text,{...meta});
     }
-    // The source key still checks mutable input; this generated table stays private until materialization copies it.
-    ownPlanInput(compiled.data);
     return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
