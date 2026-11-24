@@ -56,6 +56,7 @@ import {
 import type { Fixture } from '../src/core/registry';
 import type { TableData, TableOptions } from '../src/core/types/table';
 import { DimSwitchChart, TableChart } from '../src/react';
+import { TableChart as TableChartEntry } from '../src/react/charts/table';
 
 const actGlobal = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -2130,18 +2131,25 @@ describe('columnHeads: false', () => {
   });
 });
 
-// The overflow advice was read in the type of the asked width: a frame past 720 px draws larger type and still scrolled at the advised width.
-it('advises a frame width at which the grid no longer scrolls', () => {
+// A listener added after mount needs advice checked in the larger type a frame past 720 px draws.
+it('advises a width that fits when a warning listener attaches after mount', () => {
   const { data, options } = getFixtures('table').find((entry) => entry.id === 'steering-monthly')!;
-  const overflowAt = (width: number) => {
-    const onWarnings = vi.fn();
-    act(() => root.render(<TableChart data={data} {...options} size={{ width }} onWarnings={onWarnings} />));
-    const fix = onWarnings.mock.lastCall?.[0].find((warning: { code: string }) => warning.code === 'table-overflow')?.fix?.[0];
-    return fix?.value?.width as number | undefined;
-  };
-  const advised = overflowAt(480)!;
+  const onWarnings = vi.fn();
+  const props = { data, ...options, size: { width: 480 } };
+  act(() => root.render(<TableChartEntry {...props} />));
+  const grid = gridElement();
+  expect(drawnGrid(onWarnings).sum).toBeGreaterThan(props.size.width);
+
+  act(() => root.render(<TableChartEntry {...props} onWarnings={onWarnings} />));
+  expect(gridElement()).toBe(grid);
+  const fix = onWarnings.mock.lastCall?.[0].find((warning: { code: string }) => warning.code === 'table-overflow')?.fix?.[0];
+  const advised = fix?.value?.width as number;
   expect(advised).toBeGreaterThan(720);
-  expect(overflowAt(advised)).toBeUndefined();
+
+  act(() => root.render(<TableChartEntry {...props} size={{ width: advised }} onWarnings={onWarnings} />));
+  const resized = drawnGrid(onWarnings);
+  expect(resized.sum).toBeLessThanOrEqual(advised + 0.5);
+  expect(resized.overflow).toBe(false);
 });
 
 // A fixed frame's overflow check took the theme's side margins off the room, which the grid gives way first: a table that fit its frame warned table-overflow.
