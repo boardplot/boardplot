@@ -538,8 +538,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const partialMark = marker(stateNotes.partial);
   const categoryName = (c: (typeof data.categories)[number]) => {
     const label = c.label ?? c.id;
-    if (!c.partial) return label;
-    if (label === '') return partialFootnote !== undefined && running.has(c.id) ? partialMark : '';
+    if (label === '' || !c.partial) return label;
     if (partialMark && partialNoteIds.has(c.id)) return partialOnValues ? label : label + partialMark;
     return running.has(c.id) && runningWording && !saysToDate(label, runningWording) ? `${label} ${toDate}` : label;
   };
@@ -552,10 +551,10 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const category = data.categories[i];
       return category !== undefined && category.label !== '';
     };
-    // Adjacent names thin on the usual rhythm. Isolated names and footnote markers keep their ticks.
+    // Adjacent names thin on the usual rhythm. Isolated names keep their ticks.
     const printing = categoryNames.flatMap((name, i) => {
       if (name === '') return [];
-      if (!onValueRhythm(i) && hasName(i) && (hasName(i - 1) || hasName(i + 1))) return [];
+      if (!onValueRhythm(i) && (hasName(i - 1) || hasName(i + 1))) return [];
       return [i];
     });
     printing.forEach((i, order) => {
@@ -919,9 +918,14 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     occupied.claim({x:plotX,y:baseline-0.5,w:plotW,h:1},'axis',owner,'baseline');
   });
   const axisY=plots.at(-1)!.y+plots.at(-1)!.h+8;
+  const blankTicks: { sceneIndex: number; x: number }[] = [];
   if(!periodAxis) data.categories.forEach((category,i)=>{
     const box=categoryBoxes[i]!, x=categoryX(i);
-    if(sparseAxis ? box.w === 0 : !onValueRhythm(i) || categoryNames[i] === '') { scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:x,x2:x,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'}); return; }
+    if(sparseAxis ? box.w === 0 : !onValueRhythm(i) || categoryNames[i] === '') {
+      if (category.label === '') blankTicks.push({ sceneIndex: scene.length, x });
+      scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:x,x2:x,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'});
+      return;
+    }
     put(`stack:category:${category.id}`,categoryNames[i]!,keyFont,{x:x-box.w/2,y:axisY,w:box.w,h:box.h},{categoryId:category.id},{token:'ink'},'secondary','category',box.lines);
   });
   // The period axis: each period's label at its first category, after a short tick from the last baseline, with no rule.
@@ -955,6 +959,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     let low=defaultGutter,high=gutter;
     while(high-low>1){ const mid=Math.floor((low+high)/2); if(places(mid))low=mid; else high=mid; }
     return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:low} as GridLayoutOptions);
+  }
+  if (blankTicks.length) {
+    // Only names the solver places can cover a tick.
+    const names = solved.placed.filter(label => !label.hidden && label.id.startsWith('stack:category:'));
+    for (const { sceneIndex, x } of blankTicks.reverse()) {
+      if (names.some(({ rect }) => x >= rect.x - 2 && x <= rect.x + rect.w + 2)) scene.splice(sceneIndex, 1);
+    }
   }
   // Any other label without a seat drops: the shared note pass names it and warns label-hidden, as on every chart type.
   pushAll(scene, labelsToNodes(theme, solved.placed,()=>valueFont));

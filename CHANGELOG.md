@@ -8,7 +8,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 - Earlier partial periods keep their incomplete marks, and only running periods say “to date”.
 - Hover cards use the reference series label when the series has one. KPI hover cards print the comparison wording once.
-- Metric stacks skip blank slots when thinning category labels. An unnamed running period keeps a plain tick unless an authored footnote supplies a marker.
+- Metric stacks skip blank slots when thinning category labels. Empty labels have no axis text, and their ticks disappear where a printed name covers them.
 
 ## 0.64.0
 
