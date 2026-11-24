@@ -7,7 +7,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { ownCompiledTable, prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, projectDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -41,13 +41,15 @@ function figuresOf(data: DimSwitchData, key: string): CardFigures {
   return figures;
 }
 
+type WiderCard = { hide: number; prepared: PreparedForm };
+
 /**
  * The compiled and resolved table of one form. One measure call lays the card out at many sizes, and each layout
  * compiles every form again, so the prepared forms are kept per data object and per options without the size and
  * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
  * Limit: 64 forms per data object, then the map starts again.
  */
-function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm): PreparedForm {
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, wider?: WiderCard): PreparedForm {
   const probe=PER_PROBE.flatMap(symbol=>symbol in options ? [[symbol,(options as Record<symbol,unknown>)[symbol]] as const] : []);
   const withProbe=(prepared:PreparedForm):PreparedForm=>{
     // Compiled note strings outlive the request-local metadata that gives them their kind.
@@ -61,7 +63,10 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   };
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
   const compute=(figures:CardFigures):PreparedForm=>{
-    const compiled=compileDimSwitch(data,options,{...form,figures},true);
+    const projected = wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
+      ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
+      : undefined;
+    const compiled = projected ?? compileDimSwitch(data,options,{...form,figures},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
     const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
@@ -84,13 +89,16 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   return withProbe(prepared);
 }
 
-type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues };
+type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues; wider?: WiderCard };
 
 function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
   let prepared=forms.prepared.get(key);
   if (!prepared) {
-    prepared=prepareForm(data,options,{...form,periodValues:forms.periodValues});
+    prepared=prepareForm(data,options,{...form,periodValues:forms.periodValues},forms.wider);
+    if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
+      forms.wider = { hide: form.hide, prepared };
+    }
     forms.prepared.set(key,prepared);
   }
   // Only size and the internal floor flag change between this request's probes.

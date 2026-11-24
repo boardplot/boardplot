@@ -40,6 +40,21 @@ export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrid
 }
 /** The displayed periods the host keeps: the one filter of `columnVisibility`, for the compile and the card search. */
 export const hostPeriods = (data: DimSwitchData, options: DimSwitchOptions): DimSwitchPeriod[] => data.periods.filter(p => !p.kind && options.columnVisibility?.[p.id] !== false);
+const noteName = (p: DimSwitchPeriod, options: DimSwitchOptions) =>
+  (options.columnOverrides?.[p.kind ? 'range' : p.id]?.label ?? p.label).trim() || p.label;
+
+function periodNotes(options: DimSwitchOptions, strings: ReturnType<typeof localeStrings>, hidden: DimSwitchPeriod[],
+  partial: DimSwitchPeriod[], star: string, partialText: string, noteFits: boolean, nearZero: boolean): string[] {
+  const omitted = hidden.map(p => p.label);
+  const full = stringFields(strings.hiddenPeriods, { periods: omitted.join(', ') });
+  const listed = cappedItems(omitted, { notes: options.notes, strings });
+  const short = stringFields(strings.hiddenPeriods, { periods: listed.join(', ') });
+  return [
+    ...(partial.length && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
+    ...(nearZero ? [disclosureNote(strings.nearZeroChange)] : []),
+    ...(hidden.length ? [engineNote(full, 'disclosure', short === full ? undefined : short)] : []),
+  ];
+}
 /** Set where a fixed height has no room for the note of a partial window with no head: the note leaves the frame, so it never raises the floor. */
 export const PARTIAL_NOTE_OFF = Symbol('dimswitchPartialNoteOff');
 /** A partial window with no head to say so, where the frame cannot print the note. */
@@ -1023,7 +1038,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const track=(id:string,fallback:number)=>({...fixed(overrides?.[id]?.width ?? fallback),...aligned(id)});
   // An empty head still leaves the note naming its column.
   const nameOf=(p:DimSwitchPeriod)=>headOf(p.kind ? 'range' : p.id,p.label);
-  const noteName=(p:DimSwitchPeriod)=>nameOf(p).trim() || p.label;
   if (form.card) for (const [id,override] of Object.entries(overrides ?? {})) if (override.width!==undefined && (id==='label' ? override.width>CARD_LABEL_WIDTH : columnIds.includes(id))) warnings.push({code:'option-ignored',severity:'warn',field:['options','columnOverrides',id,'width'],
     message:`The table does not fit at its authored widths, so the automatic card form sizes this track by content and ignores options.columnOverrides.${id}.width.`,suggest:`Give the table more width, or remove options.columnOverrides.${id}.width.`});
   // Engine notes (disclosures): a partial period's star, a near-zero change, the periods the card leaves out.
@@ -1033,22 +1047,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
   const star=disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
   // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
-  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${noteName(p)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
-  const omitted=hidden.map(p=>p.label), fullPeriodNote=stringFields(strings.hiddenPeriods,{periods:omitted.join(', ')});
-  const listed=cappedItems(omitted,{notes:options.notes,strings});
-  const shortPeriodNote=stringFields(strings.hiddenPeriods,{periods:listed.join(', ')});
-  const partialText=`${partial.map(noteName).join(', ')} ${strings.toDate}`;
+  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${noteName(p,options)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
+  const partialText=`${partial.map(p=>noteName(p,options)).join(', ')} ${strings.toDate}`;
   // With no head, nothing in the drawing says a window is partial, so the note prints as a note where the author does not print disclosures.
   const partialNote=partial.length && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
   const shownKinds=shownNoteKinds(options);
   const noteFits=partialNote!==undefined && !(options as {[PARTIAL_NOTE_OFF]?:boolean})[PARTIAL_NOTE_OFF] && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
   if (partialNote!==undefined && !noteFits) warnings.push(partialNoteWarning(partialNote));
   if (noteFits) tableOptions.footnotes=[...(tableOptions.footnotes || []),partialNote];
-  const notes=[
-    ...(partial.length && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
-    ...(nearZeroSeen ? [disclosureNote(strings.nearZeroChange)] : []),
-    ...(hidden.length ? [engineNote(fullPeriodNote,'disclosure',shortPeriodNote===fullPeriodNote?undefined:shortPeriodNote)] : []),
-  ];
+  const notes=periodNotes(options,strings,hidden,partial,star,partialText,noteFits,nearZeroSeen);
   // The table seats a unit affix beside left-aligned text. Under another alignment the unit stays with its label as plain text.
   if ((overrides?.label?.align ?? 'left')!=='left') for (const row of rows) if (row.unitAffix!==undefined) { row.label=`${row.label} ${row.unitAffix}`; delete row.unitAffix; }
   const blockTracks=[
@@ -1077,6 +1084,66 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       ...(data.effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),
       expansion:{collapsed:[...collapsed]}},computedCells,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,...(partialNote===undefined ? {} : {partialNote}),
   };
+}
+
+/**
+ * The raw table of a narrower card in the same fold and request. The table resolver still formats and sizes
+ * that card with its own columns. If removing periods can change a row or a diagnostic, compile it normally.
+ */
+export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions, wider: CompiledDimSwitch,
+  fromHide: number, hide: number, periodValues: DimSwitchPeriodValues): CompiledDimSwitch | undefined {
+  const periods = hostPeriods(data, options);
+  if (!(fromHide > 0 && hide > fromHide && hide < periods.length)) return undefined;
+  if (data.dimension.sums || options.rowVisibility?.[data.dimension.total.id] === false || options.bars === false
+    || data.measures.some(m => m.partOf !== undefined || m.drivers !== undefined || m.result || m.sign !== undefined || m.judge?.family === 'effect')
+    || wider.warnings.some(w => w.code !== 'dimswitch-measure-omitted')) return undefined;
+  const reserved = new Set(['label', 'range', 'pp', 'pl']);
+  const members = [data.dimension.total, ...data.dimension.members];
+  if (periods.some(p => reserved.has(p.id))
+    || new Set(data.periods.map(p => p.id)).size !== data.periods.length
+    || new Set(data.measures.map(m => m.id)).size !== data.measures.length
+    || new Set(members.map(m => m.id)).size !== members.length) return undefined;
+
+  const visible = periods.slice(hide);
+  const previous = periods.slice(fromHide);
+  const references = requestMemo(data, 'dimswitch:reference-periods', () => new Set(data.facts.filter(f => f.ref).map(f => f.periodId)));
+  if (previous.some(p => references.has(p.id)) !== visible.some(p => references.has(p.id))) return undefined;
+  const range = data.periods.find(p => p.kind === 'range')!;
+  const partials = (shown: DimSwitchPeriod[]) => [...(options.columnVisibility?.range === false ? [] : [range]), ...shown].filter(p => p.partial);
+  const previousPartial = partials(previous);
+  if (previousPartial.length && options.columnHeads === false) return undefined;
+  const partial = partials(visible);
+  const strings = { ...localeStrings(options.locale?.language), ...options.strings };
+  const previousNotes = (wider.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES]!;
+  // A partial card always has an omitted-period note, optionally preceded by the partial and near-zero disclosures.
+  const nearZero = previousNotes.length > 1 + Number(previousPartial.length > 0);
+  if (nearZero) {
+    // A period's own change can keep the disclosure. Where only a block comparison or a removed period might
+    // have caused it, compile the card and let its comparison windows settle the note.
+    let stillSeen = false;
+    for (const byMember of periodValues.values()) {
+      for (const values of byMember.values()) {
+        if (values.some((value, index) => index >= hide && value.delta.nearZero)) { stillSeen = true; break; }
+      }
+      if (stillSeen) break;
+    }
+    if (!stillSeen) return undefined;
+  }
+  const star = disclosuresShown(options) && options.columnHeads !== false ? '*' : '';
+  const partialText = `${partial.map(p => noteName(p, options)).join(', ')} ${strings.toDate}`;
+  const notes = periodNotes(options, strings, periods.slice(0, hide), partial, star, partialText, false, nearZero);
+  const dropped = new Set(periods.slice(fromHide, hide).map(p => p.id));
+  const columns = wider.data.columns.filter(col => !dropped.has(col.id));
+  const rows = wider.data.rows.map(row => {
+    if (!row.cells) return row;
+    const cells = emptyIdRecord<TableCell>();
+    for (const id of Object.keys(row.cells)) if (!dropped.has(id)) cells[id] = row.cells[id]!;
+    // The compiler's row symbols carry the full period figures. The kept cells retain their format symbols.
+    return { ...row, cells };
+  });
+  const cardOptions = { ...wider.options, [ENGINE_NOTES]: notes };
+  return { ...wider, data: { ...wider.data, columns, rows }, options: cardOptions,
+    computedCells: wider.computedCells.filter(record => !dropped.has(record.colId)) };
 }
 
 /** The first row id whose first element is not a variant: it cannot name a row in either variant. */
