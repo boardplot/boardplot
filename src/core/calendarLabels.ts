@@ -51,7 +51,7 @@ function isoWeek(date: Date): { week: number; weekYear: number } {
   return { week: 1 + Math.floor((thursday.getTime() - utcDate(weekYear, 0, 1).getTime()) / 604800000), weekYear };
 }
 
-function pointOf(text: string): Point | undefined {
+export function calendarPoint(text: string): Point | undefined {
   const day = parseISODate(text);
   if (day) return { unit: 'day', date: day };
   const month = MONTH.exec(text);
@@ -107,7 +107,7 @@ export function calendarNames(categories: readonly Raw[], language?: string): (s
 function deriveCalendar(categories: readonly Raw[], language?: string, yearRow = false) {
   const unlabelled = (raw: Raw) => typeof raw === 'string' || raw.label === undefined;
   if (categories.length === 0 || !categories.some(unlabelled)) return undefined;
-  const points = categories.map((raw) => typeof raw === 'string' ? pointOf(raw) : pointOf(raw.date ?? raw.id));
+  const points = categories.map((raw) => calendarPoint(typeof raw === 'string' ? raw : raw.date ?? raw.id));
   if (points.some((point) => point === undefined)) return undefined;
   const kinds = new Set(points.map((point) => point!.unit));
   if (kinds.size !== 1) return undefined;
@@ -161,7 +161,7 @@ function deriveCalendar(categories: readonly Raw[], language?: string, yearRow =
  * back from the latest period.
  */
 export function calendarMonths(texts: readonly (string | undefined)[]): { unit: CalendarUnit; months?: number[] } | undefined {
-  const points = texts.map((text) => text === undefined ? undefined : pointOf(text));
+  const points = texts.map((text) => text === undefined ? undefined : calendarPoint(text));
   const kind = points[0]?.unit;
   if (!kind || points.some((point) => point?.unit !== kind)) return undefined;
   const unit: CalendarUnit = kind === 'day' ? dayUnit(points.map((point) => point!.date)) : kind;

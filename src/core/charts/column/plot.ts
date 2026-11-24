@@ -34,7 +34,7 @@ import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotat
 import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
-import { partialAxisWords, partialFootnotes, partialLegendKeys, toDateFont } from '../../partialPeriod';
+import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, RUNNING_PERIOD_LEGEND_ID, toDateFont } from '../../partialPeriod';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale';
 import type { FontSpec } from '../../text';
@@ -159,7 +159,7 @@ function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): Le
       keyPatterns: keyedSeries.map((item) => item.pattern),
       paint: { token: 'neutralMark' }, strings: domain.options.strings,
     }),
-    ...partialLegendKeys(paints.partialHatch && !partialNamedOnValues(domain), domain.options.strings, domain.cats),
+    ...partialLegendKeys(paints.partialHatch, domain.options.strings, domain.running, partialNamedOnValues(domain), domain.cats),
     // The flag marker and the corridor rule carry the anomaly verdict, so the
     // legend keys them, not only the fill. Key glyphs mirror the actual mark
     // encoding, so these are drawn as a marker and a dashed line, in the same
@@ -257,6 +257,9 @@ function columnLegend(
   }
   const effectiveLegend =
     options.legend === undefined && (legendForcedByEncoding || toleranceKeys.length > 0) ? 'top' : options.legend;
+  if ((!effectiveLegend || effectiveLegend === 'auto') && hasEarlierPartialHatch(paints.partialHatch, domain.running)) {
+    return { options: { position: 'top' }, items: partialLegendKeys(paints.partialHatch, options.strings, domain.running, false, domain.cats) };
+  }
   if (!effectiveLegend || effectiveLegend === 'none' || effectiveLegend === 'auto') return undefined;
   const legendOpts: LegendOptions = normalizeLegendOption(effectiveLegend);
   // A key row that only the band brought does not repeat the name of the one series.
@@ -393,7 +396,7 @@ export function solveColumnFrame(
       margin,
       ...frameTextOptions(shareUnitOptions('column', options)),
       footnotes: [
-        ...partialFootnotes(domain.cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)), ...authoredNotes(options),
+        ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnValues(domain)), ...authoredNotes(options),
         // Above 8 values the note counts them against all drawn values.
         ...noteLine(options.strings!.valuesNotOnColumns!, (options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE] ?? [], options,
           domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
@@ -717,7 +720,8 @@ function columnBand(
   // A cut name takes a note mark and prints whole in the notes; once
   // several would be cut, the row reads as ranks with the mapping in the notes.
   const rowInput = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
-    const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain)));
+    const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnValues(domain));
+    const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, toDate, domain.running);
     ticked?.name(row);
     const input: Parameters<typeof planCategoryRow>[0] = {
       target: options.target, textScale: textScaleOf(options),

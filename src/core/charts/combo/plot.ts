@@ -23,7 +23,7 @@ import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { referenceMarkerKey } from '../band/ticks';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { isDateNumericTickSequence, MONTH_START } from '../../label/tickRow';
-import { partialAxisWords, partialFootnotes, partialKeyForced, partialLegendKeys, partialPattern, saysToDate, toDateFits } from '../../partialPeriod';
+import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialKeyForced, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate, toDateFits } from '../../partialPeriod';
 import { bandScale, linearScale } from '../../scale';
 import { wrapText, type FontSpec } from '../../text';
 import { defaultAnnotationId } from '../../types/annotations';
@@ -355,6 +355,13 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
   // A grid panel leaves its key to the grid legend, which collects it.
   const referenceDrawn = panelTypeClass(options) === undefined && refs.some((s) => s.vals.some((val) => val.v !== null));
   const position = (anomalyKeys.length > 0 || referenceDrawn) && options.legend === undefined ? 'top' : options.legend;
+  const partialHatch = cats.filter((cat, ci) => cat.partial && columns.some((s) => {
+    const val = s.vals[ci]!;
+    return val.v !== null && val.v !== 0 && paints.pattern(s, val, cat) !== scenarioPattern(s, val);
+  }));
+  if ((!position || position === 'auto') && hasEarlierPartialHatch(partialHatch, domain.running)) {
+    return { options: { position: 'top' }, items: partialLegendKeys(partialHatch, options.strings, domain.running, false, cats) };
+  }
   if (!position || position === 'none' || position === 'auto') return undefined;
   const legendOpts: LegendOptions = normalizeLegendOption(position);
   const columnItems: LegendItemInput[] = columns.map((s, i) => ({
@@ -365,9 +372,6 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
     ...paints.edge(paints.column(s, i), scenarioPattern(s, {})),
   }));
   const painted = columns.flatMap((s) => s.vals.flatMap((val) => (val.v === null || val.v === 0 ? [] : [scenarioPattern(s, val)])));
-  const partialHatchPainted = columns.some((s) =>
-    s.vals.some((val, ci) => val.v !== null && val.v !== 0 && paints.pattern(s, val, cats[ci]!) !== scenarioPattern(s, val)),
-  );
   // The dual-axis key rule: a series its axis title keys with a swatch leaves the key row.
   const axisKeyed = axisKeyedSeries(domain);
   const undrawn = new Set([...columns, ...lines, ...refs].filter(s => s.vals.every(val => val.v === null)).map(s => s.id));
@@ -392,7 +396,7 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
       ...(options.referenceStyle === 'marker' ? referenceMarkerKey(theme, paints.ref(s)) : {}),
     })),
     ...scenarioLegendKeys({ markPatterns: painted, keyPatterns: columnItems.map((item) => item.pattern), paint: { token: 'neutralMark' }, strings: options.strings }),
-    ...partialLegendKeys(partialHatchPainted && !partialNamedOnTotals(env, domain), options.strings, cats),
+    ...partialLegendKeys(partialHatch, options.strings, domain.running, partialNamedOnTotals(env, domain), cats),
     // A line that turns dashed at its forecast cells keys that dash, 5 on 3 as marks.ts draws it.
     ...(lines.some((s) => s.scenario !== 'FC' && s.vals.some((val) => val.v !== null && val.scenario === 'FC'))
       ? [{ id: '__scenarioFCLine', label: options.strings!.forecast!, paint: { token: 'neutralMark' } as const, key: 'line' as const, width: strokeToken(theme, 'data'), dash: dashToken(theme, 'reference') }]
@@ -526,7 +530,7 @@ export function solveComboFrame(
       ...(options.unit && domain.data.some((s) => s.unit !== undefined && !sameUnit(s.unit, options.unit!))
         ? { subtitle: resolveSubtitle(options.subtitle), unit: undefined } : {}),
       footnotes: [
-        ...partialFootnotes(domain.cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnTotals(env, domain)), ...authoredNotes(frameOptions),
+        ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain)), ...authoredNotes(frameOptions),
         ...noteLine(knownPartsLead(options), domain.columnsAdd ? domain.cats.flatMap((c, ci) => {
           if (!domain.incompleteCats.has(c.id)) return [];
           const missing = domain.columns.filter(s => s.vals[ci]!.v === null).map(s => s.label);
@@ -572,14 +576,14 @@ export function netInsideStack(domain: ComboDomain, ci: number): boolean {
  */
 export function toDateOnTotals(env: ComboEnv, domain: ComboDomain): Set<Id> {
   const ids = new Set<Id>();
-  if (partialKeyForced(domain.options)) return ids;
+  if (partialKeyForced(domain.options) || domain.running.size === 0) return ids;
   const toDateWords = domain.options.strings?.toDate ?? chartString(domain.options, 'toDate');
   if (!toDateFits(toDateWords, env.theme, env.measure, env.size.width / Math.max(1, domain.cats.length))) return ids;
   const segments = domain.columns.length > 1 && contentOf(domain, 'segment', ['absolute']) !== null;
   // Only a total that prints its value carries the words ('series' or [] content prints none).
   if (domain.columns.length === 0 || !domain.columnsAdd || segments || domain.anatomy || !contentOf(domain, 'grandTotal', ['absolute'])?.includes('absolute')) return ids;
   domain.cats.forEach((c, ci) => {
-    if (c.partial !== true || !domain.anyByCat[ci] || saysToDate(c.label ?? c.id, toDateWords)) return;
+    if (!domain.running.has(c.id) || !domain.anyByCat[ci] || saysToDate(c.label ?? c.id, toDateWords)) return;
     const populated = domain.columns.filter(column => column.vals[ci]!.v !== null);
     const override = populated.length === 1 ? populated[0]!.vals[ci]!.labelOverride : undefined;
     if (override === false || (typeof override === 'string' && override.trim() === '')) return;
@@ -588,12 +592,12 @@ export function toDateOnTotals(env: ComboEnv, domain: ComboDomain): Set<Id> {
   return ids;
 }
 
-/** Every drawn partial category carries the to-date words on its total: no hatch key, note or axis words. */
+/** Every drawn running category carries the to-date words on its total. */
 export function partialNamedOnTotals(env: ComboEnv, domain: ComboDomain): boolean {
   const named = toDateOnTotals(env, domain);
   // A running category with only a line value draws a hollow marker and no total: it keeps the shared cue.
   const drawn = (ci: number) => domain.anyByCat[ci] || domain.lines.some(s => s.vals[ci]!.v !== null);
-  return named.size > 0 && domain.cats.every((c, ci) => c.partial !== true || !drawn(ci) || named.has(c.id));
+  return named.size > 0 && domain.cats.every((c, ci) => !domain.running.has(c.id) || !drawn(ci) || named.has(c.id));
 }
 
 export function kindSetting(domain: ComboDomain, kind: LabelKind): boolean | LabelContent {
@@ -852,7 +856,8 @@ export function comboPlotArea(
   // row of cut names. `withCategoryRanks` keeps that decision, and the strings
   // that carry the mapping, out of the shared cascade every type imports.
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
-    const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnTotals(env, domain)));
+    const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain));
+    const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, toDate, domain.running);
     ticked?.name(row);
     return withCategoryRanks(planCategoryRow({
       rotate: !cats.every(c => MONTH_START.exec((c.label ?? c.id).trim())?.[0] === (c.label ?? c.id).trim()),

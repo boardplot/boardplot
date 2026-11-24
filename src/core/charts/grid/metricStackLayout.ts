@@ -11,7 +11,7 @@ import { solveLabels, PRIORITY, type LabelRequest } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { generatedIdWarnings, type GeneratedIdKey } from '../../schema/generatedColumns';
 import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
-import { partialFootnotes, partialIds, saysToDate } from '../../partialPeriod';
+import { partialFootnotes, partialIds, runningPeriodIds, saysToDate } from '../../partialPeriod';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { heightOmitted } from '../../sizing';
 import { structureCount } from '../../structureCounts';
@@ -158,6 +158,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const focusIndex = pointed === undefined ? -1 : data.categories.findIndex(c => c.id === pointed);
   const focusCategory = data.categories[focusIndex];
   const focusPartial = focusCategory?.partial === true;
+  const running = runningPeriodIds(data.categories);
   const focusWindow: StackRange | undefined = focusCategory ? { from: focusCategory.id, to: focusCategory.id, label: focusCategory.label || focusCategory.id } : data.windows?.compare;
   const showUnit = stack.columnVisibility?.unit !== false, showHeadline = stack.columnVisibility?.headline !== false, showSpan = stack.columnVisibility?.span !== false;
   const hasLine = showHeadline || showSpan;
@@ -170,7 +171,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const measure = options.measure ?? defaultMeasurer;
   const na = notApplicableGlyph(options.strings);
   const toDate = options.strings?.toDate ?? localeStrings(options.locale?.language).toDate;
-  const runningWording = toDate.trim();
+  const runningWording = running.size ? toDate.trim() : '';
+  const focusWording = focusCategory && running.has(focusCategory.id) ? runningWording : '';
   const computed = computeMetricStack(focusCategory ? withCompareWindow(data, focusWindow!) : data, options.locale?.language, na, look);
   const font = (role: 'label' | 'axis' | 'title' | 'footnote', weight?: number): FontSpec => ({ family: theme.type.family, ...theme.type[role], ...(weight ? { weight } : {}) });
   const valueFont = font('label', 700), nameFont = font('label', 700), unitFont = font('axis'), heroFont = font('title', 700), axisFont = font('axis'), noteFont = font('footnote');
@@ -205,7 +207,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const after = end('after');
     if (partial) {
       const available = p.values[focusIndex] !== null && after.raw !== null;
-      return { value: available ? sign(p, after.displayed) : na, change: '', from: '', base: '', toDate: hasLine ? runningWording : '', shares: available ? p.shares ?? [] : [] };
+      return { value: available ? sign(p, after.displayed) : na, change: '', from: '', base: '', toDate: hasLine ? focusWording : '', shares: available ? p.shares ?? [] : [] };
     }
     const before = end('before'), line = after.raw !== null;
     const base = before.raw === null ? na : sign(p, before.displayed);
@@ -279,8 +281,9 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   };
   const maturingFootnote = data.states?.maturing?.footnote;
   const partialFootnote = data.states?.partial?.footnote;
+  const partialNoteIds = partialFootnote === undefined ? running : partial;
   const addPartialNote = () => {
-    if (partial.size) stateNote('partial', partialFootnote, () => partialFootnotes(withBlankCategoryLabelsOmitted(data).categories, options.strings)[0]);
+    if (partialNoteIds.size) stateNote('partial', partialFootnote, () => partialFootnotes(withBlankCategoryLabelsOmitted(data).categories, options.strings, running)[0]);
   };
   // The footer prints authored notes before generated disclosures.
   const partialFirst = options.strings?.toDate === '' && partialFootnote !== undefined && maturingFootnote === undefined;
@@ -531,14 +534,14 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     spacingError(`options.stack.heights.${short[0]}`, `${short.map(i => `Panel '${data.panels[i]!.id}' needs at least ${minimumHeights[i]} px`).join(', ')} for its readout and value labels`, fix);
   }
   const headRoom = heads?.reduce((sum, head) => sum + head.h, 0) ?? 0;
-  const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => p.values[i] !== null));
+  const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => partialNoteIds.has(data.categories[i]!.id) && p.values[i] !== null));
   // A running period with no marker to point at its note says "to date" on its axis name.
   const partialMark = marker(stateNotes.partial);
   const categoryName = (c: (typeof data.categories)[number]) => {
     const label = c.label ?? c.id;
     if (!c.partial) return label;
-    if (partialMark) return partialOnValues ? label : label + partialMark;
-    return toDate.trim() && !saysToDate(label, toDate.trim()) ? `${label} ${toDate}` : label;
+    if (partialMark && partialNoteIds.has(c.id)) return partialOnValues ? label : label + partialMark;
+    return running.has(c.id) && runningWording && !saysToDate(label, runningWording) ? `${label} ${toDate}` : label;
   };
   const categoryBoxes = data.categories.map(c => periodAxis || c.label === '' ? NO_BOX : textBox(categoryName(c), keyFont, (thin ? 2 : 1) * step - 3));
   const categoryHeight = maxOf(categoryBoxes.map(b=>b.h));
@@ -655,7 +658,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   let y = frame.plot.y + topRoom;
   heights.forEach((h,i) => { tops.push(y); y += heads?.[i]!.h ?? 0; plots.push({ x:plotX,y,w:plotW,h }); y+=h+gap; });
   const readouts = computed.panels.map((p, i) => printedReadout(p.readout, showHeadline, showSpan, look, focusPartial ? {
-    categoryId: focusCategory.id, valueText: texts[i]!.value, wording: runningWording,
+    categoryId: focusCategory.id, valueText: texts[i]!.value, wording: focusWording,
     available: p.values[focusIndex] !== null, shares: texts[i]!.shares,
   } : undefined));
   const derived: MetricStackDerived = { gap,gutterWidth:narrow?0:gutter,axisOwner:data.panels.at(-1)!.id,readouts,panels:[] };
@@ -837,7 +840,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const v=p.values[ci]!,top=py(v),provisional=p.states[ci]!=='mature';
       const val=formatValue(v);
       displayed[ci]=val;
-      const labelText = val + (p.panel.type === 'column' && p.states[ci] === 'partial' ? marker(stateNotes.partial) : '');
+      const labelText = val + (p.panel.type === 'column' && p.states[ci] === 'partial' && partialNoteIds.has(data.categories[ci]!.id) ? marker(stateNotes.partial) : '');
       if(p.panel.type==='column') {
         const width=barWidth;
         let sum=0;

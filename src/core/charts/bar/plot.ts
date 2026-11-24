@@ -16,7 +16,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { gutterBudget, stepDownFont } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { categoryCutLint } from '../../label/categoryRow';
-import { partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, saysToDate } from '../../partialPeriod';
+import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate } from '../../partialPeriod';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
@@ -64,7 +64,16 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   const netLineKeyed = domain.netLineOn && panelTypeClass(options) === undefined;
   // A tolerance band says nothing about itself: the key names it and prints its bounds. A grid panel keeps the bounds in the band.
   const toleranceKeys = panelTypeClass(options) === undefined ? toleranceLegendKeys(domain.passAnns, domain.meanValue, cats.map((c) => c.id), barPassText(domain)) : [];
+  const partialHatch = cats.filter((cat, ci) => cat.partial && dataSeries.some((s) => {
+    const cell = s.cells[ci]!;
+    if (cell.v === null) return false;
+    const { pattern, outline } = paints.scenario(s, cat.id, cell.meta);
+    return partialPattern(cat, pattern, outline) !== pattern;
+  }));
   const l = options.legend ?? (signColor || referenceDrawn || netLineKeyed || toleranceKeys.length > 0 ? 'top' : undefined);
+  if ((!l || l === 'auto') && hasEarlierPartialHatch(partialHatch, domain.running)) {
+    return { options: { position: 'top' }, items: partialLegendKeys(partialHatch, options.strings, domain.running, false, cats) };
+  }
   if (!l || l === 'none' || l === 'auto') return undefined;
   const legendOptions: LegendOptions = normalizeLegendOption(l);
   // A sign-coloured series gets the two keys it paints, each naming its polarity in words.
@@ -107,13 +116,6 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   // uniform PL row) is the plan notation too, keyed in that treatment.
   const planOutlined = dataSeries.some((s) => s.cells.some((cell, ci) =>
     cell.v !== null && paints.scenario(s, cats[ci]?.id ?? '', cell.meta).outline === true));
-  const partialHatchPainted = dataSeries.some((s) =>
-    s.cells.some((cell, ci) => {
-      if (cell.v === null || !cats[ci]?.partial) return false;
-      const { pattern, outline } = paints.scenario(s, cats[ci]!.id, cell.meta);
-      return partialPattern(cats[ci], pattern, outline) !== pattern;
-    }),
-  );
   // A key row that only the band brought does not repeat the name of the one series.
   const seriesKeyed = options.legend !== undefined || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
   let items: LegendItemInput[] = [
@@ -144,7 +146,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
       keyPatterns: seriesItems.map((item) => item.pattern),
       paint: { token: 'neutralMark' }, strings: domain.options.strings,
     }),
-    ...partialLegendKeys(partialHatchPainted && !partialNamedOnValues(domain), options.strings, cats),
+    ...partialLegendKeys(partialHatch, options.strings, domain.running, partialNamedOnValues(domain), cats),
     ...toleranceKeys,
   ];
   /**
@@ -182,7 +184,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
       size,
       margin: { ...canvasMargin(theme, size.width), ...options.margin },
       ...frameTextOptions(shareUnitOptions('bar', options)),
-      footnotes: [...partialFootnotes(cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)),
+      footnotes: [...partialFootnotes(cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnValues(domain)),
         ...(domain.variant === 'stacked' && domain.incompleteRows.size ? [disclosureNote(stringFields(options.strings!.incompleteStacks!, {
           categories: cappedItems(cats.filter(c => domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
         }))] : []),
@@ -351,10 +353,10 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const incompleteWord = options.strings!.incomplete!;
   const partialName = !disclosuresShown(options) && domain.incompleteRows.size > 0;
   // A running period no key names says "to date" on its name, as on a column chart's axis.
-  const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain));
+  const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnValues(domain));
   const named = (rows: typeof cats) => rows.map((cat) => {
     if (partialName && domain.incompleteRows.has(cat.id) && variant === 'stacked100' && cat.total100 === undefined) return { ...cat, label: `${cat.label} ${incompleteWord}`, suffix: incompleteWord };
-    return toDate !== undefined && cat.partial === true && !saysToDate(cat.label ?? cat.id, toDate) ? { ...cat, label: `${cat.label ?? cat.id} ${toDate}`, suffix: toDate } : cat;
+    return toDate !== undefined && domain.running.has(cat.id) && !saysToDate(cat.label ?? cat.id, toDate) ? { ...cat, label: `${cat.label ?? cat.id} ${toDate}`, suffix: toDate } : cat;
   });
   const band0 = (rows: typeof cats, refs: { count: number; warnings: LintWarning[] }) => rowLabelBand(named(rows), tickFont, capW, catMaxLines, lineH, measure, {
     wider: nameTrack ?? gutterBudget(24, plot0.w), tightLines: Math.floor((rowStep - 4) / lineH),

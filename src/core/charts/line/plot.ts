@@ -120,7 +120,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
       }
       // A time axis has no category name to carry a running end period's words, so the key value does.
       const words = options.strings?.toDate ?? chartString(options, 'toDate');
-      if (printed) keyValues.set(s.id, words && domain.x && cats[ci]!.partial === true && !saysToDate(cats[ci]!.label ?? cats[ci]!.id, words) ? `${printed} ${words}` : printed);
+      if (printed) keyValues.set(s.id, words && domain.x && domain.running.has(cats[ci]!.id) && !saysToDate(cats[ci]!.label ?? cats[ci]!.id, words) ? `${printed} ${words}` : printed);
     }
   }
   // Before the names: the name column starts clear of the last values. A
@@ -462,7 +462,7 @@ export function solveLineFrame(
       // be a lie if the frame still printed "in EUR m" over a rank ladder.
       unit: isBump ? undefined : shareUnitOptions('line', options).unit,
       footnotes: [
-        ...lineFrameFootnotes({ fan: domain.fan, cats, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
+        ...lineFrameFootnotes({ fan: domain.fan, cats, running: domain.running, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },
           mixedSign: cats.filter((c) => domain.nmCats100.has(c.id) && !domain.overfullCats100.has(c.id)), incompleteStack: domain.incompleteStack,
           knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)), rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
@@ -620,7 +620,7 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
   const ticked = authoredDateTicks(cats, options, warnings);
   // Line keys no running period, so its name says so where the note does not print.
-  const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0));
+  const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0), domain.running);
   ticked?.name(row);
   const planWith = (x0: number, width: number, fonts: typeof text.tickFont[]) =>
     planCategoryRow({

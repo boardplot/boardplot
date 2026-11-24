@@ -35,7 +35,7 @@ import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import { labelOn } from '../labelOn';
 import { chosenValueIndices } from '../band/valueSelection';
-import { partialKeyForced, saysToDate } from '../../partialPeriod';
+import { partialKeyForced, runningPeriodIds, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, printsValue, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
@@ -70,8 +70,8 @@ type DomainOptions = Pick<BarInput, typeof domainFields[number]>;
  */
 export function toDateOnValues(domain: BarDomain): Set<Id> {
   const ids = new Set<Id>();
-  const { options, cats, dataSeries, variant } = domain;
-  if (partialKeyForced(options) || !cats.some((c) => c.partial === true)) return ids;
+  const { options, cats, dataSeries, variant, running } = domain;
+  if (partialKeyForced(options) || running.size === 0) return ids;
   const words = options.strings?.toDate ?? chartString(options, 'toDate');
   const grouped = variant === 'grouped';
   const segments = dataSeries.length > 1 && labelOn(options, 'segment');
@@ -79,7 +79,7 @@ export function toDateOnValues(domain: BarDomain): Set<Id> {
   const only = dataSeries[0]!;
   const picked = grouped && options.valueLabels !== undefined ? chosenValueIndices(options.valueLabels, cats.map((_, ci) => only.cells[ci]?.v ?? null)) : undefined;
   cats.forEach((c, ci) => {
-    if (c.partial !== true || saysToDate(c.label ?? c.id, words) || domain.nmRows[ci] || domain.naRows[ci] || domain.incompleteRows.has(c.id)) return;
+    if (!running.has(c.id) || saysToDate(c.label ?? c.id, words) || domain.nmRows[ci] || domain.naRows[ci] || domain.incompleteRows.has(c.id)) return;
     const values = dataSeries.map((s) => s.cells[ci]?.v ?? null).filter((v): v is number => v !== null);
     if (values.length === 0 || values.some((v) => v < 0)) return;
     const meta = values.length === 1 ? dataSeries.find((s) => (s.cells[ci]?.v ?? null) !== null)!.cells[ci]!.meta : null;
@@ -93,7 +93,7 @@ export function toDateOnValues(domain: BarDomain): Set<Id> {
 /** Every drawn running category carries the to-date words on its value: no hatch key, note or name words. */
 export function partialNamedOnValues(domain: BarDomain): boolean {
   const named = toDateOnValues(domain);
-  return named.size > 0 && domain.cats.every((c, ci) => c.partial !== true || named.has(c.id)
+  return named.size > 0 && domain.cats.every((c, ci) => !domain.running.has(c.id) || named.has(c.id)
     || domain.dataSeries.every((s) => (s.cells[ci]?.v ?? null) === null));
 }
 
@@ -705,7 +705,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
       : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
         ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
-    cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
+    cats, running: runningPeriodIds(rawCats), dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
     /**
      * A category highlight on one series makes the named bars the
      * subject. They take `highlight` and every other bar steps back to

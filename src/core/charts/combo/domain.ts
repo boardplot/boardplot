@@ -28,6 +28,7 @@ import { applyAxisBounds, applyTickStep, linearScale, niceDomain } from '../../s
 import type { Annotation } from '../../types/annotations';
 import { type Id } from '../../types/cell';
 import { stackAdds } from '../../stackAdds';
+import { runningPeriodIds } from '../../partialPeriod';
 import type { Category, ChartData } from '../../types/data';
 import type { AxisRuler, ComboOptions, LineInterpolation } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
@@ -1040,6 +1041,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     anomaly: anomalyFor(primary, right.secondaryDomain, warnings),
     options: effective,
     cats,
+    running: runningPeriodIds(cats),
     data: dataSeries,
     columns,
     lines,

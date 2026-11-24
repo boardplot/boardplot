@@ -1,8 +1,7 @@
 import { localeStrings } from './strings';
 /**
- * A running period keeps its geometry. Filled marks take a hatch and line
- * markers turn hollow. One key names the period; without that key a note
- * names it. The caller can replace the wording through options.strings.
+ * A partial period keeps its geometry. Filled marks take a hatch and line
+ * markers turn hollow. Running periods also get wording through options.strings.
  */
 
 import type { LegendItemInput } from './frame';
@@ -12,6 +11,24 @@ import type { Category } from './types/data';
 import type { StringsSpec } from './types/options';
 import type { Theme } from './types/theme';
 import { disclosureNote, disclosuresShown } from './notes';
+import { calendarPoint } from './calendarLabels';
+
+/** The partial categories with no later complete category, in calendar or authored order. */
+export function runningPeriodIds(categories: readonly Pick<Category, 'id' | 'date' | 'partial'>[]): Set<string> {
+  const running = partialIds(categories);
+  if (running.size === 0 || running.size === categories.length) return running;
+  const dates = categories.map(c => calendarPoint(c.date ?? c.id)?.date.getTime());
+  const dated = dates.every(date => date !== undefined);
+  const orderAt = (i: number) => dated ? dates[i]! : i;
+  let lastComplete = -Infinity;
+  categories.forEach((c, i) => {
+    if (c.partial !== true) lastComplete = Math.max(lastComplete, orderAt(i));
+  });
+  categories.forEach((c, i) => {
+    if (orderAt(i) < lastComplete) running.delete(c.id);
+  });
+  return running;
+}
 
 /**
  * The pattern a bar or segment paints. A scenario pattern (FC hatch, PL
@@ -28,12 +45,13 @@ export function partialPattern(
 
 /** Names running categories once when their hatch has no drawn key. */
 export function partialFootnotes(
-  categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[],
+  categories: readonly Pick<Category, 'id' | 'label'>[],
   strings: StringsSpec | undefined,
+  running: ReadonlySet<string>,
   keyed = false,
 ): string[] {
-  if (keyed || strings?.toDate === '') return [];
-  const names = partialNames(categories, strings);
+  if (keyed || running.size === 0 || strings?.toDate === '') return [];
+  const names = partialNames(categories, strings, running);
   return names == null ? [] : [disclosureNote(names)];
 }
 
@@ -42,9 +60,9 @@ export function partialFootnotes(
  * "W38, W39 to date". A label that already says them ("1 Nov to date") gets no second copy.
  * Undefined leaves the generic hatch key available. Null suppresses a named key whose text is empty.
  */
-function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[], strings: StringsSpec | undefined): string | null | undefined {
+function partialNames(categories: readonly Pick<Category, 'id' | 'label'>[], strings: StringsSpec | undefined, running: ReadonlySet<string>): string | null | undefined {
   const toDate = strings?.toDate ?? localeStrings().toDate;
-  const labels = categories.filter((c) => c.partial === true).map((c) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
+  const labels = categories.filter((c) => running.has(c.id)).map((c) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
   if (labels.length === 0) return undefined;
   if (toDate === '') return labels.map(label => label.trim()).filter(Boolean).join(', ') || null;
   // Authored order: each run of plain names ends with the words once, a name that says them stays as it is.
@@ -79,19 +97,31 @@ export function partialIds(categories: readonly Pick<Category, 'id' | 'partial'>
   return new Set(categories.filter((category) => category.partial === true).map((category) => category.id));
 }
 
+export const RUNNING_PERIOD_LEGEND_ID = '__partial';
+
+export function hasEarlierPartialHatch(hatched: readonly Pick<Category, 'id'>[], running: ReadonlySet<string>): boolean {
+  return hatched.some(c => !running.has(c.id));
+}
+
 /**
  * The legend key for the partial hatch: neutral, like the scenario keys, since
  * the hatch sits on top of every series identity. It is hatched in the mark
  * ink: the swatch is small and its stripes are drawn 0.7 px wide, where the
  * neutral mark washes out to about 2:1 on a light page (notation #939393).
- * `painted` must come from the cells the layout emits, so a
- * partial category with nothing drawn adds no key.
+ * `hatched` comes from the emitted cells. A key for earlier hatches leaves
+ * the running periods to their values, axis names or note.
  */
-export function partialLegendKeys(painted: boolean, strings: StringsSpec | undefined, categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[] = []): LegendItemInput[] {
-  const names = partialNames(categories, strings);
+export function partialLegendKeys(
+  hatched: readonly Pick<Category, 'id'>[], strings: StringsSpec | undefined, running: ReadonlySet<string>,
+  namedOnValues: boolean, categories: readonly Pick<Category, 'id' | 'label'>[] = [],
+): LegendItemInput[] {
+  if (hatched.length === 0) return [];
+  const earlier = hasEarlierPartialHatch(hatched, running);
+  if (namedOnValues && !earlier) return [];
+  const names = earlier ? undefined : partialNames(categories, strings, running);
   const label = names === undefined ? strings?.partial ?? localeStrings().partial : names;
-  return painted && label !== null
-    ? [{ id: '__partial', label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
+  return label !== null
+    ? [{ id: earlier ? '__earlierPartial' : RUNNING_PERIOD_LEGEND_ID, label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
     : [];
 }
 

@@ -293,13 +293,13 @@ describe('note rules', () => {
   });
 
   it('an authored note that repeats an engine disclosure stays a note, also after a render that made that disclosure', () => {
-    const spec = (footnotes?: string[]) => ({ type: 'column', data: { categories: [{ id: 'q1', label: 'Q1', partial: true }, { id: 'q2', label: 'Q2' }],
+    const spec = (footnotes?: string[]) => ({ type: 'column', data: { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2', partial: true }],
       series: [{ id: 'o', label: 'Orders', values: [10, 12] }, { id: 'r', label: 'Returns', values: [2, 3] }] }, options: { title: 'Orders', legend: 'none', ...(footnotes ? { footnotes } : {}) } });
     const footer = (body: unknown) => [...String((body as { svg: string }).svg).matchAll(/<text[^>]*data-part="footnote"[^>]*>([\s\S]*?)<\/text>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, ''));
     expect(footer(render({ spec: spec(), return: ['svg'] }).body)).toEqual([]);
-    const authored = render({ spec: spec(['Q1 to date']), return: ['svg'] }).body as { notes: { kind: string; text: string }[] };
-    expect(footer(authored)).toEqual(['Q1 to date']);
-    expect(authored.notes.filter((note) => note.text === 'Q1 to date').map((note) => note.kind).sort()).toEqual(['disclosure', 'note']);
+    const authored = render({ spec: spec(['Q2 to date']), return: ['svg'] }).body as { notes: { kind: string; text: string }[] };
+    expect(footer(authored)).toEqual(['Q2 to date']);
+    expect(authored.notes.filter((note) => note.text === 'Q2 to date').map((note) => note.kind).sort()).toEqual(['disclosure', 'note']);
   });
 
   // A wide slice centred on 180° hung its label on the right while the column sizing counted it on the left.

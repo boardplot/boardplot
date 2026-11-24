@@ -68,6 +68,7 @@ export interface LineDomain {
   /** The options after the view window (annotations and subtitle). */
   options: LineOptions;
   cats: Category[];
+  running: ReadonlySet<Id>;
   seriesNorm: NormSer[];
   dataSeries: NormSer[];
   refSeries: NormSer[];

@@ -7,7 +7,7 @@ import { ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP } from '../table/tracks'
 import type { ResolveResult } from '../table/resolve';
 import { defaultNotePlacement, disclosureNote, disclosuresShown, engineNote, shownNoteKinds } from '../../notes';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
-import { saysToDate } from '../../partialPeriod';
+import { runningPeriodIds, saysToDate } from '../../partialPeriod';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
@@ -46,6 +46,14 @@ export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrid
 export const hostPeriods = (data: DimSwitchData, options: DimSwitchOptions): DimSwitchPeriod[] => data.periods.filter(p => !p.kind && options.columnVisibility?.[p.id] !== false);
 const noteName = (p: DimSwitchPeriod, options: DimSwitchOptions) =>
   (options.columnOverrides?.[p.kind ? 'range' : p.id]?.label ?? p.label).trim() || p.label;
+
+function runningColumns(data: DimSwitchData): ReadonlySet<string> {
+  const running = runningPeriodIds(data.periods.filter(p => !p.kind));
+  // The Range summarises the window and has its own coverage.
+  const range = data.periods.find(p => p.kind === 'range');
+  if (range?.partial) running.add(range.id);
+  return running;
+}
 
 function partialPeriodText(periods: DimSwitchPeriod[], options: DimSwitchOptions, toDate: string): string {
   if (periods.length === 0 || toDate === '') return '';
@@ -271,7 +279,8 @@ export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, s
   if (!notes) return undefined;
   const deferred = periodRecordPlans.get(source.computedCells);
   const deferredRows = deferred && new Map(deferred.rows.map(row => [row.id, row]));
-  const hasPartialNote = options.strings?.toDate !== '' && periods.some(p => p.partial);
+  const running = runningColumns(data);
+  const hasPartialNote = options.strings?.toDate !== '' && periods.some(p => running.has(p.id));
   return { periods, rows, records, deferredRows, nearZero: notes.length > 1 + Number(hasPartialNote) };
 }
 
@@ -1206,13 +1215,13 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     message:`The table does not fit at its authored widths, so the automatic card form sizes this track by content and ignores options.columnOverrides.${id}.width.`,suggest:`Give the table more width, or remove options.columnOverrides.${id}.width.`});
   // Engine notes (disclosures): a partial period's star, a near-zero change, the periods the card leaves out.
   const strings={...localeStrings(options.locale?.language),...options.strings};
-  // The Range is a period too: a partial Range carries the star and enters the note.
-  const partial=[...(rangeDrawn ? [range] : []),...periods].filter(p=>p.partial);
+  const running=runningColumns(data);
+  const partial=[...(rangeDrawn ? [range] : []),...periods].filter(p=>running.has(p.id));
   // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
   const partialText=partialPeriodText(partial,options,strings.toDate);
   const star=partialText && disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
-  // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
-  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || !strings.toDate || saysToDate(`${noteName(p,options)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
+  // Where the star's note does not print, a running head says "to date" itself, unless its words already do.
+  const headSub=(p:DimSwitchPeriod)=>star || !running.has(p.id) || !strings.toDate || saysToDate(`${noteName(p,options)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
   // With no head, nothing in the drawing says a window is partial, so the note prints as a note where the author does not print disclosures.
   const partialNote=partialText && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
   const shownKinds=shownNoteKinds(options);
@@ -1227,8 +1236,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     ...(drawnBlock.has('pp') ? [{id:'pp',kind:'value' as const,label:headOf('pp',prior.label),subLabel:prior.subLabel,format:'+1.2%',percentScale:'points' as const,...track('pp',width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
     ...(plan && drawnBlock.has('pl') ? [{id:'pl',kind:'value' as const,label:headOf('pl',plan.label),subLabel:plan.subLabel,format:'+1.2%',percentScale:'points' as const,...track('pl',width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
   ];
-  // A partial period carries a star in its head; the note says what it means.
-  const periodTracks=periods.map(p=>({id:p.id,kind:'value' as const,label:p.partial ? `${nameOf(p)}${star}` : nameOf(p),subLabel:headSub(p),...track(p.id,width.period),aggregate:'source' as const,...(p.partial ? {emphasis:'muted' as const} : {})}));
+  // The star links the running period to its note.
+  const periodTracks=periods.map(p=>({id:p.id,kind:'value' as const,label:running.has(p.id) ? `${nameOf(p)}${star}` : nameOf(p),subLabel:headSub(p),...track(p.id,width.period),aggregate:'source' as const,...(p.partial ? {emphasis:'muted' as const} : {})}));
   // Whole blocks move, so the block group stays contiguous. Only leading block columns pin.
   const periodsFirst=options.columnOrder?.find(id=>id==='block' || id==='periods')==='periods';
   const pinned=1+(periodsFirst ? 0 : blockColumns.length);
@@ -1307,7 +1316,8 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
   const references = requestMemo(data, 'dimswitch:reference-periods', () => new Set(data.facts.filter(f => f.ref).map(f => f.periodId)));
   if (previous.some(p => references.has(p.id)) !== visible.some(p => references.has(p.id))) return undefined;
   const range = data.periods.find(p => p.kind === 'range')!;
-  const partials = (shown: DimSwitchPeriod[]) => [...(options.columnVisibility?.range === false ? [] : [range]), ...shown].filter(p => p.partial);
+  const running = runningColumns(data);
+  const partials = (shown: DimSwitchPeriod[]) => [...(options.columnVisibility?.range === false ? [] : [range]), ...shown].filter(p => running.has(p.id));
   const previousPartial = partials(previous);
   if (previousPartial.length && options.columnHeads === false) return undefined;
   const partial = partials(visible);

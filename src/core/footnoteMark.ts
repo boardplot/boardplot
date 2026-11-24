@@ -125,14 +125,16 @@ export function categoryLabelsAndMarks(
   categories: readonly LabelledCategory[],
   refs?: FootnoteRefs,
   toDate?: string,
+  running?: ReadonlySet<Id>,
 ): { labels: string[]; suffixes: string[]; dates: (string | undefined)[]; calendar?: (CalendarInfo | undefined)[]; under?: (string | undefined)[] } {
-  const under = categories.map((category) => toDate !== undefined && category.partial === true && !saysToDate(category.label ?? category.id, toDate) ? toDate : undefined);
+  const under = toDate === undefined || !running?.size ? undefined : categories.map((category) =>
+    running.has(category.id) && !saysToDate(category.label ?? category.id, toDate) ? toDate : undefined);
   return {
     labels: categories.map((category) => category.label ?? category.id),
     // The ISO date of each category, else its id: the row's tick rule reads the calendar from it.
     dates: categories.map((category) => category.date ?? String(category.id)),
     suffixes: categories.map((category) => footnoteSuffix(category.footnote, category.id, refs)),
-    ...(under.some(Boolean) ? { under } : {}),
+    ...(under?.some(Boolean) ? { under } : {}),
     ...(categories.some((category) => category.calendar) ? { calendar: categories.map((category) => category.calendar) } : {}),
   };
 }

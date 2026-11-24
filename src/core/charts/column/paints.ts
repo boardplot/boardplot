@@ -26,8 +26,8 @@ export interface ColumnLegendPaints extends ColumnPaints {
   base(s: NormSer, dataIdx: number): Paint;
   /** Every scenario pattern the cells paint (partial-period hatch excluded). */
   cellPatterns: ('hatch45' | 'outline' | undefined)[];
-  /** Whether any cell paints the partial-period hatch. */
-  partialHatch: boolean;
+  /** Categories whose cells paint the partial-period hatch. */
+  partialHatch: Category[];
 }
 
 /**
@@ -214,7 +214,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     identity: seriesIdentityPaint,
     base: seriesBasePaint,
     cellPatterns: paintedCells.map(({ s, val, c }) => scenarioPattern(s, val, c)),
-    partialHatch: paintedCells.some(({ s, val, c }) => cellPattern(s, val, c) !== scenarioPattern(s, val, c)),
+    partialHatch: paintedCells.flatMap(({ s, val, c }) => c.partial && cellPattern(s, val, c) !== scenarioPattern(s, val, c) ? [c] : []),
   };
 }
 

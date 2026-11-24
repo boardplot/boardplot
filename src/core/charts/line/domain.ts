@@ -17,6 +17,7 @@ import { cleanFloat } from '../../geometry';
 import { drawnVariant } from '../../stackAdds';
 import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
+import { runningPeriodIds } from '../../partialPeriod';
 import { fitLineTrends, lineTrendRates, trendTimeline } from './trend';
 import { lineXModel, resolveLineXOptions, unmatchedPartial, type LineXModel } from './continuous';
 import {
@@ -985,6 +986,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   };
   const resolved = {
     ...core,
+    running: runningPeriodIds(cats),
     refSeries, drawnSeries, bumpOmitted, valueSpec, fmt: valueSpec.fmt, interpolationFor, labelModes, labelOnly: labelModes.only, gapFillSeries, fan, phases, rebased, ...(sourceFmt ? { sourceFmt } : {}), ...(fanFmt ? { fanFmt } : {}),
     population, timeline, ...(xModel ? { x: { model: xModel, lo: xRange!.lo, hi: xRange!.hi, shown: population ? population.indexes.map((i) => xModel.xs[i]!) : xModel.xs, ...(range ? { range } : {}) } } : {}), autoSampled: live.auto === true, absOf, compositionInvalidAt, nmCats100, overfullCats100, naCats100, sharesWithheld, incompleteStack, rebaseSuppressed, cumTop, cumBot, endpoints, lastIdxOf,
     labelPv, shareTexts: rounded?.texts ?? nearestTexts, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,

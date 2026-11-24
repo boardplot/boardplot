@@ -42,7 +42,7 @@ import { drawnVariant, NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { chosenValueIndices } from '../band/valueSelection';
-import { partialKeyForced, saysToDate, toDateFits } from '../../partialPeriod';
+import { partialKeyForced, runningPeriodIds, saysToDate, toDateFits } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import { anomalyCorridor, columnAnomalyModel, refuseColumnEncodings, type AnomalyModel } from './anomaly';
 import type { ColumnDomain, ColumnEnv, ColumnVariant, ComputedTotal, IntegratedValue, NormSer } from './model';
@@ -112,8 +112,8 @@ export function contentOf(options: AnomalyColumnOptions, kind: LabelKind, dflt: 
  */
 export function toDateOnValues(domain: ColumnDomain): Set<Id> {
   const ids = new Set<Id>();
-  const { options, cats, dataSeries, variant } = domain;
-  if (partialKeyForced(options) || !cats.some((c) => c.partial === true)) return ids;
+  const { options, cats, dataSeries, variant, running } = domain;
+  if (partialKeyForced(options) || running.size === 0) return ids;
   const words = options.strings?.toDate ?? chartString(options, 'toDate');
   if (!toDateFits(words, domain.theme, domain.measure, domain.size.width / Math.max(1, cats.length))) return ids;
   const grouped = variant === 'grouped';
@@ -123,7 +123,7 @@ export function toDateOnValues(domain: ColumnDomain): Set<Id> {
   const only = dataSeries[0]!;
   const picked = grouped && options.valueLabels !== undefined ? chosenValueIndices(options.valueLabels, cats.map((_, ci) => only.vals[ci]?.v ?? null)) : undefined;
   cats.forEach((c, ci) => {
-    if (c.partial !== true || saysToDate(c.label ?? c.id, words) || domain.mixedSignCats.has(c.id)) return;
+    if (!running.has(c.id) || saysToDate(c.label ?? c.id, words) || domain.mixedSignCats.has(c.id)) return;
     if (grouped ? only.vals[ci]?.v === null || only.vals[ci]?.v === undefined : !domain.stacks[ci]!.hasValue) return;
     // A value under a negative column stands at the category row: the words would push its name off.
     if (grouped ? only.vals[ci]!.v! < 0 : !(domain.posTopP[ci]! > 0 || domain.negBotP[ci]! === 0)) return;
@@ -139,7 +139,7 @@ export function toDateOnValues(domain: ColumnDomain): Set<Id> {
 /** Every drawn running category carries the to-date words on its value: no hatch key, note or axis words. */
 export function partialNamedOnValues(domain: ColumnDomain): boolean {
   const named = toDateOnValues(domain);
-  return named.size > 0 && domain.cats.every((c, ci) => c.partial !== true || named.has(c.id)
+  return named.size > 0 && domain.cats.every((c, ci) => !domain.running.has(c.id) || named.has(c.id)
     || (domain.variant === 'grouped' ? domain.dataSeries.every((s) => s.vals[ci]?.v === null || s.vals[ci]?.v === undefined) : !domain.stacks[ci]!.hasValue));
 }
 
@@ -1137,7 +1137,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
-    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running: runningPeriodIds(normalized.cats), seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
