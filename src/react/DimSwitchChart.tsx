@@ -2,9 +2,14 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { compileDimSwitch, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
-import { engineNoteMeta, withEngineNotes } from '../core/notes';
+import { compileDimSwitch, dimSwitchExpansionIdError, DimSwitchIdError, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
+import { checkDimSwitchData } from '../core/charts/dimswitch/dataChecks';
+import { atPath } from '../core/diagnostics/describe';
+import { layoutRefusal } from '../core/emptyData';
 import { copyPlannedValue } from '../core/layoutPlan';
+import { engineNoteMeta, withEngineNotes } from '../core/notes';
+import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
+import { resolveTheme } from '../core/theme';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
 import { ownCompiledTable } from '../core/charts/table/resolve';
 import { ENGINE_NOTE_KINDS } from './tablePresentation';
@@ -19,7 +24,7 @@ import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
-import { LayoutRefusal } from './SizePlaceholder';
+import { LayoutRefusal, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
@@ -41,6 +46,31 @@ export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | '
  /** One callback for all view changes. A variant, depth or `expansion` change resets manual folds; 'collapsed' is a reader's fold. */
  onViewChange?: (next: DimSwitchView, reason: DimSwitchViewReason) => void;
 };
+
+function DimSwitchRefusal({ failure, data, options, size, fallbackSize, onRefused, renderRefused }: RefusalProps & Pick<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
+ failure: DimSwitchIdError | string;
+ data: DimSwitchData;
+ options: DimSwitchOptions;
+}): ReactElement {
+ const settings = useContext(BoardplotThemeContext);
+ const target = options.target ?? settings?.target ?? DEFAULT_TARGET;
+ const { width, height } = resolveTargetSize(target, size === 'container' ? fallbackSize : size).sizePx;
+ const title = options.title || '';
+ const result = useMemo(() => {
+  const error = typeof failure === 'string' ? dimSwitchExpansionIdError('collapsed', failure) : failure;
+  const refusal = layoutRefusal('dimswitch', title, { width, height }, error);
+  const issues: LintWarning[] = [];
+  // The CLI reports data findings before layout findings. These checks run only after a lookup fails.
+  checkDimSwitchData(data, (path, message) => {
+   const field = ['data', ...path];
+   issues.push({ code: 'invalid-data', severity: 'error', field, message: atPath({ displayPath: field.join('.') }, message) });
+  });
+  const warning = refusal.warnings[0]!;
+  return { ...refusal, warnings: issues.length ? issues : [{ ...warning, message: atPath({ path: error.path }, error.message) }] };
+ }, [data, failure, title, width, height]);
+ return <SizePlaceholder result={result} options={{ ...options, target }} theme={resolveTheme(options.theme ?? settings?.theme)} onRefused={onRefused} renderRefused={renderRefused} />;
+}
+
 export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
  // The table it draws counts the same fetched modules as this component's own entry.
  const Table = linked === undefined ? TableChart : linkedBinding(TableChart, linked);
@@ -102,33 +132,43 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   // The grid reads values, not the computed-cell records the static audit trail carries.
   // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
   // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
-  const values=useMemo(()=>withEngineNotes(()=>{
-    const result=compileDimSwitch(stableData,{...compileOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
-    // A hidden Total contributes additional figure arrays on symbol properties outside the frozen cells.
-    if (compileOptions.rowVisibility?.[stableData.dimension.total.id]!==false) ownCompiledTable(result.data);
-    const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
-    const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
-    return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
-  },true),[stableData,compileOptions,variant,splits]);
-  // Warning objects handed to the host stay editable until the next authored compile.
-  // An ordinary fold can keep the cells while giving that view fresh warning objects.
-  const warningOptions=hostWarnings.current && expansion!==undefined ? stableOptions : compileOptions;
-  const warningRecords=useMemo(()=>values.warnings.length ? copyPlannedValue(values.warnings) : values.warnings,
-    [stableData,warningOptions,variant,splits]);
-  const compiled=useMemo(()=>{
-    if (!ordinaryFolds || !expansion) return values;
+  const values=useMemo(()=>{
+    try {
+      return withEngineNotes(()=>{
+        const result=compileDimSwitch(stableData,{...compileOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
+        // A hidden Total contributes additional figure arrays on symbol properties outside the frozen cells.
+        if (compileOptions.rowVisibility?.[stableData.dimension.total.id]!==false) ownCompiledTable(result.data);
+        const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
+        const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
+        return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
+      },true);
+    } catch(error) {
+      if(error instanceof DimSwitchIdError) return error;
+      throw error;
+    }
+  },[stableData,compileOptions,variant,splits]);
+  const compilation=useMemo(()=>{
+    if (!ordinaryFolds || !expansion || values instanceof DimSwitchIdError) return values;
     const folded=new Set(values.depthCollapsed);
     for (const id of expansion.expanded ?? []) folded.delete(id);
     for (const id of expansion.collapsed ?? []) folded.add(id);
     return {...values,options:{...values.options,expansion:{collapsed:[...folded]}}};
   },[values,ordinaryFolds,expansion]);
+  const failedCompile=compilation instanceof DimSwitchIdError;
+  const compiled=failedCompile ? undefined : compilation;
+  // Warning objects handed to the host stay editable until the next authored compile.
+  // An ordinary fold can keep the cells while giving that view fresh warning objects.
+  const warningOptions=hostWarnings.current && expansion!==undefined ? stableOptions : compileOptions;
+  const warningRecords=useMemo(()=>compiled?.warnings.length ? copyPlannedValue(compiled.warnings) : compiled?.warnings,
+    [stableData,warningOptions,variant,splits,failedCompile]);
 
-  const maxDepth=compiled.maxDepth;
-  if(!Number.isInteger(depth) || depth<1 || depth>maxDepth) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
-  const foreign=foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
-  if(foreign!==undefined) throw new Error(`dimswitch row id ${foreign} names no variant first; build it with dimswitchRowId(variant, memberId, measureId)`);
+  const maxDepth=compiled?.maxDepth;
+  if(maxDepth!==undefined && (!Number.isInteger(depth) || depth<1 || depth>maxDepth)) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
+  const foreign=failedCompile ? undefined : foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
+  const refused=failedCompile || foreign!==undefined;
   // Depth only selects folds. Keep the compiled values and table widths.
   const depthDefaults=useMemo(()=>{
+    if(!compiled) return [];
     const ids=new Set(Object.keys(compiled.levels).filter(id=>compiled.levels[id]!>depth));
     for(const id of stableOptions.expansion?.expanded ?? []) ids.delete(id);
     // A hidden Total's rows left the table, so a fold of one names nothing.
@@ -137,22 +177,23 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     return [...ids];
   },[compiled,depth,stableOptions.expansion]);
   const expansionKey=JSON.stringify(stableOptions.expansion ?? null);
-  const [manual,setManual]=useState(()=>({variant,depth,expansion:expansionKey,collapsed:defaultCollapsed ?? depthDefaults}));
+  const [manual,setManual]=useState(()=>({variant,depth,expansion:expansionKey,collapsed:refused ? undefined : defaultCollapsed ?? depthDefaults}));
   // A host that let go of the folds (it pressed the depth already shown) gets the depth's folds back.
   const held=controlledCollapsed!==undefined;
   const [wasHeld,setWasHeld]=useState(held);
   if(wasHeld!==held){setWasHeld(held); if(!held) setManual({variant,depth,expansion:expansionKey,collapsed:depthDefaults});}
   const changed=manual.variant!==variant || manual.depth!==depth || manual.expansion!==expansionKey;
-  const collapsed=changed ? depthDefaults : controlledCollapsed ?? manual.collapsed;
+  const collapsed=changed ? depthDefaults : controlledCollapsed ?? manual.collapsed ?? defaultCollapsed ?? depthDefaults;
   const previous=useRef({variant,depth,splits});
   const callback=useRef(onViewChange); callback.current=onViewChange;
   useEffect(()=>{
+    if(refused) return;
     const before=previous.current;
     const reason=before.variant!==variant ? 'variant' : before.depth!==depth ? 'depth' : before.splits!==splits ? 'splits' : undefined;
     previous.current={variant,depth,splits};
-    if(changed) setManual({variant,depth,expansion:expansionKey,collapsed});
+    if(changed || manual.collapsed===undefined) setManual({variant,depth,expansion:expansionKey,collapsed});
     if(reason) callback.current?.({variant,depth,splits,collapsed},reason);
-  },[variant,depth,splits,changed,collapsed,expansionKey]);
+  },[variant,depth,splits,changed,collapsed,expansionKey,refused,manual.collapsed]);
   const toggle=(next:string[])=>{
     setManual({variant,depth,expansion:expansionKey,collapsed:next});
     callback.current?.({variant,depth,splits,collapsed:next},'collapsed');
@@ -161,14 +202,22 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const [tableWarnings,setTableWarnings]=useState<LintWarning[]>();
   const [printed,setPrinted]=useState<readonly string[]>();
   const readPrinted=useCallback((next:readonly string[])=>setPrinted(before=>before!==undefined && before.join('\n')===next.join('\n') ? before : next),[]);
-  const tableRequest=useMemo(()=>({request:floorRequest,options:compiled.options,printed:readPrinted}),[floorRequest,compiled.options,readPrinted]);
+  const compiledOptions=compiled?.options;
+  const tableRequest=useMemo(()=>compiledOptions && {request:floorRequest,options:compiledOptions,printed:readPrinted},[floorRequest,compiledOptions,readPrinted]);
   const readTable=useCallback((next:LintWarning[])=>setTableWarnings(before=>before!==undefined && JSON.stringify(before)===JSON.stringify(next) ? before : next),[]);
   const warningsCallback=useRef(onWarnings); warningsCallback.current=onWarnings;
   const reported=useRef<string|undefined>(undefined);
   const wantsWarnings=onWarnings!==undefined;
   useEffect(()=>{
+    if(refused){
+      // The table remounts after a refusal and supplies its own warnings and printed notes.
+      setTableWarnings(undefined);
+      setPrinted(undefined);
+      reported.current=undefined;
+      return;
+    }
     // A partial note waits for the footer's decision, so the host hears one set, not a set without its warning first.
-    if(!wantsWarnings || tableWarnings===undefined || (compiled.partialNote!==undefined && printed===undefined)) return;
+    if(!compiled || !warningRecords || !wantsWarnings || tableWarnings===undefined || (compiled.partialNote!==undefined && printed===undefined)) return;
     // The footer's final decision: a partial note it did not print (behind the info button, or past the line budget) has no place on the chart.
     const inPanel=compiled.partialNote!==undefined && printed!==undefined && !printed.includes(compiled.partialNote) && !warningRecords.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
     // The compile runs at depth 1 and depth only selects folds, so a hidden Total's blank table is judged on the folds on screen.
@@ -179,9 +228,10 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed]);
+  },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
+  if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
-  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
+  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compilation.options} exporter={exporter} data={compilation.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}

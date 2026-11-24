@@ -282,9 +282,9 @@ Every code a render, a measure or a React chart can return, read from the source
 | `dumbbell-two-series` | error |  | dot |
 | `duplicate-binding` | error |  | status |
 | `duplicate-category-labels` | warn |  | core/lint/honesty.ts |
-| `duplicate-column-id` | error |  | table |
+| `duplicate-column-id` | error |  | dimswitch, table |
 | `duplicate-id` | error |  | bullet, choropleth, core/charts/geoScale.ts, core/rows.ts, gantt, grid, pareto, pyramid, scatter |
-| `duplicate-row-id` | error |  | core/rows.ts, table |
+| `duplicate-row-id` | error |  | core/rows.ts, dimswitch, table |
 | `duplicate-toggle-id` | error |  | table |
 | `elapsed-without-today` | info |  | gantt |
 | `empty-data` | error |  | bar, box, bullet, butterfly, cohort, column, combo, core/charts/categorySeries.ts, core/doc/chartValidation.ts, core/grid/layoutGrid.ts, core/rangeRules.ts, core/request.ts, diagram, dimswitch, dot, funnel, gantt, heatmap, histogram, likert, line, mekko, pareto, pie, pvm, pyramid, sankey, scatter, slope, sparkline, status, tilemap, treemap, variance, waffle, waterfall |
@@ -466,7 +466,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-cell` | error |  | core/normalize/shared.ts |
 | `invalid-contract` | error |  | core/rows.ts, core/schema/namedColumns.ts |
 | `invalid-count` | error |  | dimswitch, kpi, sparkline |
-| `invalid-data` | error | yes | core/doc/chartValidation.ts, core/normalize/fraction.ts, core/rows.ts, core/schema/shared.ts, dimswitch, kpi, status, table |
+| `invalid-data` | error | yes | core/doc/chartValidation.ts, core/normalize/fraction.ts, core/rows.ts, core/schema/shared.ts, dimswitch, kpi, react/DimSwitchChart.tsx, status, table |
 | `invalid-date` | error |  | gantt |
 | `invalid-diagram-kind` | error |  | core/schema/diagramKind.ts |
 | `invalid-domain` | error |  | core/viewport.ts |

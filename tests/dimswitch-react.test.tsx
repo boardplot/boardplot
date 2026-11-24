@@ -6,7 +6,7 @@ import { ChartFooter } from '../src/react/ChartFooter';
 import { requireGeometry } from '../src/core/sizing';
 import { resolveTheme } from '../src/core/theme';
 import type { DimSwitchData } from '../src/core/charts/dimswitch/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { DimSwitchChart, type DimSwitchViewReason } from '../src/react/DimSwitchChart';
 import { judgeExample } from '../src/core/charts/dimswitch/judgeExample';
@@ -168,6 +168,28 @@ it('calls onRefused once when refused at an inline size',async()=>{
  expect(calls).toBe(1);
  expect(renders).toBeLessThan(10);
  act(()=>root.unmount());host.remove();
+});
+
+// A headline that names a sums field used to crash the host before it could receive a refusal.
+it('draws and reports a refusal for an unknown headline measure', async () => {
+ await import('../src/react/ReaderBox');
+ const host = document.createElement('div');
+ const root = createRoot(host);
+ const onRefused = vi.fn();
+ const data = { ...exampleData, dimension: { ...exampleData.dimension, headline: ['nc'] } };
+ try {
+  await act(async () => root.render(<DimSwitchChart data={data} variant="by-member" onRefused={onRefused} />));
+  expect(host.querySelector('[data-bp-refused="invalid-data"]:not([data-bp-loading])')).not.toBeNull();
+  expect(onRefused.mock.calls).toEqual([[expect.objectContaining({
+   refused: true,
+   warnings: [expect.objectContaining({
+    code: 'invalid-data',
+    message: "data.dimension.headline.0: Unknown headline measure 'nc'; use a measure id, not a sums field.",
+   })],
+  })]]);
+ } finally {
+  act(() => root.unmount());
+ }
 });
 
 // A prepared snapshot passed to DimSwitchChart reached the table, which threw "Expected a prepared table chart."
