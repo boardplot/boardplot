@@ -492,19 +492,14 @@ export function resolvePreparedTable(model: PreparedTableData, options: TableOpt
   return withChartFormats(options, () => model.resolve(options));
 }
 
-/**
- * A compiled dimension card with the same rows and raw cells as a wider partial card, for a width probe
- * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
- * carry their own examples and the column that supplies their base format keeps the same rows.
- */
-export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowColumns: TableData['columns'], options: TableOptions): ResolveResult | undefined {
+function stablePeriodCells(wideData: TableData, wide: ResolveResult, options: TableOptions): boolean {
   if (wide.lifted || wide.computedCells.length || wide.table.footnotes.length || wide.table.partialColumnIds
     || wide.table.unit || wide.table.columnUnits || wide.table.columns.some(col => col.unitLabel || col.cellEncoding)
     || options.encodings || options.highlight || options.sort || options.topN || options.format || options.unit
-    || (options.measure !== undefined && options.measure !== defaultMeasurer)) return undefined;
+    || (options.measure !== undefined && options.measure !== defaultMeasurer)) return false;
   const forced = options.magnitude === 'million' || options.magnitude === 'thousand';
   // With a forced scale, each figure in a period-only card also belongs to its unchanged full period list.
-  if (forced && (options.columnHeads === false || wideData.columns.some(col => col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return undefined;
+  if (forced && (options.columnHeads === false || wideData.columns.some(col => col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return false;
 
   const stable = withChartFormats(options, () => wideData.rows.every(row => {
     if (row.calc || row.children || (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES]) return false;
@@ -523,8 +518,16 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
     return spec.magnitude === 'none' && unitOfSpec(spec) === null
       && numeric.every(cell => (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
   }));
-  if (!stable) return undefined;
+  return stable;
+}
 
+/**
+ * A compiled dimension card with the same rows and raw cells as a wider partial card, for a width probe
+ * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
+ * carry their own examples and the column that supplies their base format keeps the same rows.
+ */
+export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowColumns: TableData['columns'], options: TableOptions): ResolveResult | undefined {
+  if (!stablePeriodCells(wideData, wide, options)) return undefined;
   const keep = new Set(narrowColumns.map(col => col.id));
   const columns = wide.table.columns.filter(col => keep.has(col.id));
   const rows = wide.table.rows.map(row => {
@@ -535,6 +538,48 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
   const byId = new Map(rows.map(row => [row.id, row]));
   for (const row of rows) if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => byId.get(line.id)!);
   return { table: { ...wide.table, columns, rows }, computedCells: [], warnings: [] };
+}
+
+/** The new period columns of a dimension card retain the full-period row formats. */
+export function extendPeriodTable(data: TableData, source: TableData, previous: ResolveResult, options: TableOptions): ResolveResult | undefined {
+  if (previous.warnings.length || !stablePeriodCells(source, previous, options)) return undefined;
+  const priorIds = new Set(source.columns.filter(col => col.kind !== 'rowLabel').map(col => col.id));
+  const columns = data.columns.filter(col => !priorIds.has(col.id));
+  const rows = data.rows.map(row => {
+    if (!row.cells) return row;
+    const cells = emptyIdRecord<TableCell>();
+    for (const col of columns) if (Object.hasOwn(row.cells, col.id)) cells[col.id] = row.cells[col.id]!;
+    return { ...row, cells };
+  });
+  const addedData = { ...data, columns, rows };
+  const before = zeroLifts.count;
+  try {
+    const added = withChartFormats(options, () => {
+      const owned = copyDimensionTable(addedData);
+      return compileTableData(owned, options, owned).resolve(options);
+    });
+    if (added.warnings.length || !stablePeriodCells(addedData, added, options)) return undefined;
+    // The same numeric rows in both parts keep the same decision about moving a row unit to the header.
+    const numeric = (row: ResolvedRow) => Object.values(row.cells).some(cell => typeof cell.raw === 'number');
+    if (added.table.rows.length !== previous.table.rows.length || added.table.rows.some((row, index) => {
+      const old = previous.table.rows[index]!;
+      return row.id !== old.id || row.unitAffix !== old.unitAffix || numeric(row) !== numeric(old);
+    })) return undefined;
+    const extra = added.table.columns;
+    const old = previous.table.columns.filter(col => priorIds.has(col.id));
+    const combined = added.table.rows.map((r,i) => {
+      const cells = emptyIdRecord<ResolvedCell>();
+      for (const col of extra) cells[col.id] = r.cells[col.id]!;
+      for (const col of old) cells[col.id] = previous.table.rows[i]!.cells[col.id]!;
+      return { ...r, cells };
+    });
+    const byId = new Map(combined.map(row => [row.id, row]));
+    for (const row of combined) if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => byId.get(line.id)!);
+    return { ...added, table: { ...added.table, columns: [...extra, ...old], rows: combined } };
+  } catch (error) {
+    if (!(error instanceof NormalizeError)) throw error;
+    return undefined;
+  } finally { zeroLifts.count = before; }
 }
 
 export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {

@@ -7,7 +7,7 @@ import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
+import { extendPeriodTable, ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { cardFigures, compileDimSwitch, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
@@ -88,7 +88,9 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     const compiled = wholeCard?.compiled ?? projected?.materialize() ?? compileDimSwitch(data,options,{...form,figures,tail},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
-    const resolved=wholeCard?.resolved ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
+    const extended = tail && wider && hostedLayout(options, compiled.options, () =>
+      extendPeriodTable(compiled.data, wider.prepared.compiled.data, wider.prepared.resolved, compiled.options));
+    const resolved=wholeCard?.resolved ?? extended ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
