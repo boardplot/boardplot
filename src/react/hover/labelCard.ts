@@ -188,7 +188,8 @@ function comparisonRow(comparison: InteractionComparison, locale?: string): Labe
   const withheld = values.some(value => value.state === 'suppressed');
   if (!withheld && comparison.delta.state === 'unavailable') return undefined;
   const precision = Math.max(decimalPrecision(comparison.current.raw), decimalPrecision(comparison.reference.raw));
-  const label = chartString({ locale }, 'comparisonLabel', { label: comparison.scenario ?? comparison.label });
+  const name = comparison.labelKind === 'reference' ? comparison.label : comparison.scenario ?? comparison.label;
+  const label = comparison.labelKind === 'complete' ? `${comparison.label}:` : chartString({ locale }, 'comparisonLabel', { label: name });
   const value = withheld ? chartString({ locale: { language: locale } }, 'valueWithheld')
     : `${deltaValueText(comparison.delta, precision, locale)} (${signedPercentText(comparison.percent, locale)})`;
   return { kind: 'comparison', label, value, text: `${label} ${value}`,

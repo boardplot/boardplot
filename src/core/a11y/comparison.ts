@@ -1,4 +1,5 @@
 import type { Scenario } from '../types/cell';
+import type { Series } from '../types/data';
 import type { InteractionComparison, InteractionValue } from './types';
 import { derivedPercent, derivedValue } from './recordsShared';
 import { parseFormatExample, specUnitKind } from '../formatSpec';
@@ -15,8 +16,9 @@ export function unavailableValue(reason: string, unit?: string): InteractionValu
 
 /** Relative changes use a positive base, as the existing variance contract does. */
 export function compareValues(
-  current: InteractionValue, reference: InteractionValue, label: string, scenario?: Scenario,
-  incompatible?: string,
+  current: InteractionValue, reference: InteractionValue,
+  referenceSeries: Pick<Series, 'id' | 'label'> & { labelFromId?: boolean },
+  scenario?: Scenario, incompatible?: string,
 ): InteractionComparison {
   const reason = incompatible ?? (current.unit !== reference.unit ? 'Incompatible units' : undefined)
     ?? (current.state !== 'value' || reference.state !== 'value' ? 'A comparison operand is unavailable' : undefined)
@@ -26,5 +28,7 @@ export function compareValues(
   const percent = reason ? unavailableValue(reason, '%') : (reference.raw as number) <= 0
     ? unavailableValue('Relative change requires a positive reference', '%')
     : derivedPercent((delta.raw as number) / (reference.raw as number) * 100);
-  return { label, ...(scenario ? { scenario } : {}), current, reference, delta, percent };
+  const { id, label, labelFromId } = referenceSeries;
+  return { label: label ?? id, ...(scenario ? { scenario } : {}),
+    ...(!labelFromId && label?.trim() ? { labelKind: 'reference' } : {}), current, reference, delta, percent };
 }
