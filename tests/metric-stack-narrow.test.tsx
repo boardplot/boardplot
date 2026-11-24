@@ -63,7 +63,7 @@ it('draws a dated category with a blank axis label', () => {
 
 // Prevents blank category labels from hiding named ticks or the status of a running period.
 it('keeps sparse stack axis names and labels an unnamed running period', () => {
-  const draw = (names: string[], running = false, footnote?: string) => {
+  const draw = (names: string[], running = false, footnote?: string, width = 320) => {
     const stackData = {
       ...data,
       categories: names.map((label, i) => ({ id: `w${i + 1}`, label, partial: running && i === names.length - 1 })),
@@ -75,7 +75,7 @@ it('keeps sparse stack axis names and labels an unnamed running period', () => {
       windows: { base: { from: 'w1', to: 'w1', label: 'First week' }, compare: { from: 'w2', to: 'w2', label: 'Second week' } },
       states: footnote === undefined ? undefined : { partial: { panels: ['rate'], footnote } },
     };
-    const { body: drawn } = render({ spec: { type: 'grid', data: stackData, options: { stack: {}, size: { width: 320 } } }, return: ['svg'] });
+    const { body: drawn } = render({ spec: { type: 'grid', data: stackData, options: { stack: {}, size: { width } } }, return: ['svg'] });
     expect(drawn.ok, JSON.stringify(drawn.errors)).toBe(true);
     return new DOMParser().parseFromString(drawn.svg as string, 'image/svg+xml');
   };
@@ -87,6 +87,9 @@ it('keeps sparse stack axis names and labels an unnamed running period', () => {
   const chart = draw(running, true, 'Last week still running.');
   const markers = Array.from(chart.querySelectorAll('text'), label => label.textContent).join('').match(/¹/g)?.length ?? 0;
   expect.soft({ axis: axis(chart), markers }, 'running period with a footnote').toEqual({ axis: ['Mar', 'Apr', '¹'], markers: 1 });
+  const namedWeeks = Array.from({ length: 12 }, (_, i) => `W${String(i + 1).padStart(2, '0')}`);
+  expect.soft(axis(draw([...namedWeeks, ''], true, undefined, 420)).sort(), 'named weeks before an unnamed running period')
+    .toEqual([...namedWeeks, 'to date']);
 });
 
 // A running period in a stack without a maturing cohort must keep its mark and wording without gaining a cohort key.

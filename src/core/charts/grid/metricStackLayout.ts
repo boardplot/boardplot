@@ -549,29 +549,24 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const categoryNames = periodAxis ? [] : data.categories.map(categoryName);
   const categoryX = (i: number) => plotX + (i + 0.5) * step;
   const sparseAxis = !periodAxis && data.categories.some(c => c.label === '');
-  const edgeWidth = (i: number) => 2 * Math.min(categoryX(i), size.width - categoryX(i));
-  const categoryBoxes = categoryNames.map((name, i) => name === '' ? NO_BOX
-    : textBox(name, keyFont, sparseAxis ? edgeWidth(i) : (thin ? 2 : 1) * step - 3));
+  const categoryBoxes = categoryNames.map(name => sparseAxis || name === '' ? NO_BOX : textBox(name, keyFont, (thin ? 2 : 1) * step - 3));
   if (sparseAxis) {
-    // Blank slots leave space for their neighbours and do not count when the axis thins.
-    const printing = categoryBoxes.flatMap((box, i) => box.w > 0 ? [i] : []);
-    const collide = printing.some((i, order) => {
-      if (order === 0) return false;
-      const previous = printing[order - 1]!;
-      return (categoryBoxes[previous]!.w + categoryBoxes[i]!.w) / 2 + 3 > (i - previous) * step;
+    const hasName = (i: number) => {
+      const category = data.categories[i];
+      return category !== undefined && category.label !== '';
+    };
+    // Adjacent names thin on the usual rhythm. Isolated names and running-period cues keep their ticks.
+    const printing = categoryNames.flatMap((name, i) => {
+      if (name === '') return [];
+      if (!onValueRhythm(i) && hasName(i) && (hasName(i - 1) || hasName(i + 1))) return [];
+      return [i];
     });
-    if (collide) {
-      const kept: number[] = [];
-      printing.forEach((i, order) => {
-        if ((printing.length - 1 - order) % 2 === 0) kept.push(i);
-        else categoryBoxes[i] = NO_BOX;
-      });
-      kept.forEach((i, order) => {
-        const distance = Math.min(i - (kept[order - 1] ?? -Infinity), (kept[order + 1] ?? Infinity) - i);
-        const width = distance * step - 3;
-        if (categoryBoxes[i]!.w > width) categoryBoxes[i] = textBox(categoryNames[i]!, keyFont, width);
-      });
-    }
+    printing.forEach((i, order) => {
+      const distance = Math.min(i - (printing[order - 1] ?? -Infinity), (printing[order + 1] ?? Infinity) - i);
+      const x = categoryX(i);
+      const width = Math.min(distance * step - 3, 2 * x, 2 * (size.width - x));
+      categoryBoxes[i] = textBox(categoryNames[i]!, keyFont, width);
+    });
   }
   const categoryHeight = periodAxis ? 0 : maxOf(categoryBoxes.map(b=>b.h));
   const periodBoxes = data.periods?.map(period => {
