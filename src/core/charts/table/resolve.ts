@@ -1837,6 +1837,22 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return localized;
   };
 
+  /** A row that supplies every value's final format can select its formatter once. */
+  function commonRowFormat(row: FlatRow): ((value: number) => string) | undefined {
+    const spec = rowSpecs.get(row.id);
+    if (!row.id || !spec || cellSpecs.has(row.id) || groupCellSpecs.has(row.id)
+      || (!rowOverridesColumn(row.id) && (ownFormatColumns.size || (ownScaleExamples.has(row.id) && scaleChangingColumns.size)))) return undefined;
+    const print = displayFormat(spec, spec.decimals, spec.automatic, hoistedRowUnits.has(row.id));
+    const grouped = groupOf(row) !== undefined;
+    const localMinus = ownScaleExamples.has(row.id) && locale.minusGlyph === '-';
+    if (!grouped && !localMinus) return print;
+    return raw => {
+      if (grouped && raw === 0) return '0';
+      const text = print(raw);
+      return localMinus && text.startsWith(MINUS) ? `-${text.slice(MINUS.length)}` : text;
+    };
+  }
+
   // ---- percent-scale lint (points, not fractions) ----
   // Computed columns are in scope: div(gp, revenue) yields a FRACTION, and
   // formatting 0.42 as '12.3%' prints "0.4%" — wrong by 100x, silently.
@@ -2044,8 +2060,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   }
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();
+    const rowFormat = commonRowFormat(row);
     for (const col of columns) {
-      cells[col.id] = resolveCell(row, col);
+      cells[col.id] = resolveCell(row, col, rowFormat);
     }
     const hasChildren = (treeChildrenOf.get(row.id) ?? []).length > 0;
     const indentStep = memoIndentStep(row);
@@ -2114,7 +2131,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       return ((isCellObject(cell) ? cell.missing : undefined) ?? input?.missing) === 'blank';
     });
   }
-  function resolveCell(row: FlatRow, col: TableColumn): ResolvedCell {
+  function resolveCell(row: FlatRow, col: TableColumn, rowFormat: ((raw: number) => string) | undefined): ResolvedCell {
     // A row may say what its own gaps print: a change line with
     // nothing to say in a block column stays empty, and the table's real
     // gaps keep the table's glyph.
@@ -2173,7 +2190,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
             && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
           negated = negate && s.raw !== 0;
-          displayed = formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
+          const signed = negate && s.raw !== 0 ? -s.raw : s.raw;
+          displayed = rowFormat ? rowFormat(signed) : formatNumber(signed, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a head drawn, a column that skipped a child); else the cell says it.
           if (s.partial && !(headMarksPartial && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
