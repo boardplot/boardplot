@@ -157,7 +157,9 @@ function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, f
   const wider = forms.wider;
   let projection = forms.projections?.get(hide);
   let plan: CardProjection | undefined;
-  if (!projection && wider && hide > wider.hide && !forms.prepared.has(`true:${hide}`)) {
+  // A measurement tries the same period counts at several widths. Its prepared forms survive those width changes.
+  const measuring = (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE];
+  if (!measuring && !projection && wider && hide > wider.hide && !forms.prepared.has(`true:${hide}`)) {
     plan = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide, forms.periodValues);
     if (plan) {
       const runOptions = currentFormOptions(plan.options, options, form, data);
