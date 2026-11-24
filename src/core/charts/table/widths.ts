@@ -2,7 +2,8 @@
 import { resolveCanvasOptions, resolveSize } from '../../normalize/shared';
 import { canvasMargin } from '../../theme';
 import { chartSizing, fitsSize, resolveSizing } from '../../sizing';
-import { defaultMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
+import { defaultMeasurer, isCachedTextMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
@@ -22,7 +23,7 @@ import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
   tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
   changeLineFont, encodingReserve, intrinsicColumnWidth, authoredTrackWidth, authoredWidthWarnings,
-  wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts, primeValueBodyWidths,
+  browserSlack, wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts, primeValueBodyWidths,
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext, type BodyWidthMeasurements,
 } from './tracks';
 import { maxOf } from '../../arrays';
@@ -36,6 +37,8 @@ export interface TableWidthView {
   rows?: readonly ResolvedRow[];
   widthRows?: readonly ResolvedRow[];
   fullRows?: readonly ResolvedRow[];
+  /** Visible rows are drawn directly from the immutable rows that set the body widths. */
+  keepBodyFontsOnFold?: boolean;
   available?: number;
   /** A scrolling host keeps authored tracks; a fixed frame uses the existing shrink order. */
   scroll?: boolean;
@@ -154,7 +157,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
   const { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths, headings } =
-    measuredTypography(table, theme, measure, options, view, cols, rows, widthRows);
+    measuredTypography(table, theme, measure, options, view, cols, view.keepBodyFontsOnFold ? widthRows : rows, widthRows);
   const isTree = fullRows.some(row => row.hasChildren);
   const indents = labelIndents(cellPadX, options.labelIndent, view.withMarks ?? options.outlineMarks === true);
   const operatorSlot = operatorWidth(rows, theme);
@@ -198,7 +201,8 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
       hint: (row: ResolvedRow) => collapsedHintWidth(row, table.levelNouns, childCount.get(row.id) ?? 0, measure, faces.hint),
       ...(view.headLines === undefined ? {} : { headLines: view.headLines }),
     };
-    if (measure === defaultMeasurer && widthRows.length >= 64 && view.slack === undefined && theme.type.numeric !== 'proportional') {
+    if (widthRows.length >= 64 && (view.slack === undefined || view.slack === browserSlack) && theme.type.numeric !== 'proportional'
+      && (measure === defaultMeasurer || hasCompleteTableWidths(measure))) {
       primeValueBodyWidths(cols, widthRows, context);
     }
     for (let index = 0; index < cols.length; index++) {
@@ -414,10 +418,11 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
     return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
   }
-  // The built-in measurer reads font fields. On one row they vary only by label and strong-column treatment.
+  // Table measurers read font fields. On one row they vary only by label and strong-column treatment.
+  const shareRowFonts = isCachedTextMeasurer(measure);
   const rowFonts = new Map<ResolvedRow, FontSpec[]>();
   const cellFonts = new Map<ResolvedCell, FontSpec>();
-  if (measure !== defaultMeasurer) {
+  if (!shareRowFonts) {
     // Preserve the individual font objects a supplied measurer receives.
     for (const row of rowById.values()) for (const col of cols) {
       const cell = row.cells[col.id];
@@ -425,7 +430,7 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
     }
   }
   function cellFont(cell: ResolvedCell): FontSpec {
-    if (measure !== defaultMeasurer) return cellFonts.get(cell) ?? makeCellFont(cell);
+    if (!shareRowFonts) return cellFonts.get(cell) ?? makeCellFont(cell);
     const row = rowById.get(cell.rowId);
     if (row === undefined || cell.role !== row.role) return makeCellFont(cell);
     const strong = cell.state === 'value' && !cell.deEmphasized && colById.get(cell.colId)?.emphasis === 'strong';

@@ -29,13 +29,24 @@ export interface BoardplotThemeOptions extends RequestContext {
   strings?: BoardplotStrings;
 }
 
-export const BoardplotThemeContext = createContext<(BoardplotThemeOptions & {
+type ThemeProviderValue = BoardplotThemeOptions & {
   resolve: (request: ChartRequest, settings: BoardplotThemeOptions) => ResolvedChartRequest;
   repaint: typeof repaintGeometry;
   repaintScene: typeof repaintScene;
   layoutKey: (request: ResolvedChartRequest, settings: BoardplotThemeOptions) => string;
   scenePaint: typeof scenePaint;
-}) | undefined>(undefined);
+};
+export const BoardplotThemeContext = createContext<ThemeProviderValue | undefined>(undefined);
+
+// Standalone charts recognize the provider without importing its resolution or repaint code.
+const standardResolvers = new WeakMap<ThemeProviderValue['resolve'], ThemeProviderValue['layoutKey']>();
+export function standardThemeMethods(resolve: ThemeProviderValue['resolve'], layoutKey: ThemeProviderValue['layoutKey']) {
+  standardResolvers.set(resolve, layoutKey);
+  return { resolve, layoutKey };
+}
+export function isStandardThemeProvider(provider: ThemeProviderValue | undefined): boolean {
+  return provider === undefined || standardResolvers.has(provider.resolve) && standardResolvers.get(provider.resolve) === provider.layoutKey;
+}
 
 /** Minimal fallback wording when the reader chunk cannot load. */
 export const DEFAULT_LOAD_FAILED_TEXT = localeStrings().loadingFailed;

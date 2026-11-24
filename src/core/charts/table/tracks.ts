@@ -491,7 +491,7 @@ export function primeValueBodyWidths(cols: readonly ResolvedColumn[], rows: read
   if (tracks.length < 2) return;
 
   // Each length keeps its most recent measured string. Other signs, separators and affixes get their own measurement.
-  function rowFigureWidth(font: FontSpec) {
+  function rowFigureWidth(font: FontSpec, slack?: WidthContext['slack']) {
     const tabular = figureFont(font, true);
     const samples: string[] = [];
     const widths: number[] = [];
@@ -499,8 +499,10 @@ export function primeValueBodyWidths(cols: readonly ResolvedColumn[], rows: read
       const length = text.length;
       const sample = length <= 32 ? samples[length] : undefined;
       if (sample !== undefined && sameFigureShape(text, sample)) return widths[length]!;
-      if (!ctx.figures!(column, text)) return ctx.measure(text, font).width;
-      const width = ctx.measure(text, tabular).width;
+      const figures = ctx.figures!(column, text);
+      const measured = ctx.measure(text, figures ? tabular : font).width;
+      const width = measured + (slack?.(font, measured) ?? 0);
+      if (!figures) return width;
       if (length <= 32) {
         samples[length] = text;
         widths[length] = width;
@@ -520,7 +522,7 @@ export function primeValueBodyWidths(cols: readonly ResolvedColumn[], rows: read
         track.supported = false;
         continue;
       }
-      valueWidth ??= rowFigureWidth(ctx.cellFont(cell));
+      valueWidth ??= rowFigureWidth(ctx.cellFont(cell), ctx.slack);
       track.maximum = Math.max(track.maximum, valueWidth(track.column, cell.displayed));
       for (const line of row.inlineRows ?? []) {
         const text = line.cells[track.column.id]?.displayed;
