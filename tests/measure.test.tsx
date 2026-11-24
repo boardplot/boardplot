@@ -242,11 +242,12 @@ describe('shared request measurement', () => {
   // asked width (a frame past 720 px draws larger type), sent the host a width at which the grid still scrolls.
   for (const type of ['table', 'dimswitch'] as const) it(`${type} grid draws the tracks of its need, and its overflow advice holds`, () => {
     const needs = vi.spyOn(tableNeeds, 'tableScrollRung');
+    const onWarnings = vi.fn();
     const Component = (type === 'table' ? TableChart : DimSwitchChart) as unknown as (props: Record<string, unknown>) => null;
     const drawAt = (fixture: { data: unknown; options?: Record<string, unknown> }, width: number) => {
       needs.mockClear();
       const size = { ...resolveSize(fixture.options?.size as never), width };
-      const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...fixture.options, size }));
+      const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...fixture.options, size, onWarnings }));
       const at = needs.mock.results.length - 1;
       if (at < 0) return undefined;
       const need = needs.mock.results[at]!.value as ReturnType<typeof tableNeeds.tableScrollRung>;
