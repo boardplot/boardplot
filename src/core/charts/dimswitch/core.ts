@@ -23,7 +23,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
 }
 
-type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
+type PreparedForm = { extended?: boolean; compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
@@ -96,7 +96,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
       const meta=engineNoteMeta(text);
       if (meta) noteMetadata.set(text,{...meta});
     }
-    return {compiled:{...compiled,options:withoutProbe(compiled.options)},resolved,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
+    return {compiled:{...compiled,options:withoutProbe(compiled.options)},resolved,extended:extended!==undefined,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=withoutProbe(options);
   const base=layoutKey(data,rest);
@@ -131,7 +131,9 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
   const runOptions={...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options;
-  const geometry=hostedLayout(options,runOptions,()=>prepared.executor.run(runOptions,true,resolved));
+  const geometry=hostedLayout(options,runOptions,()=>prepared.extended
+    ? prepared.executor.runCompiled(runOptions, resolved)
+    : prepared.executor.run(runOptions,true,resolved));
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined
