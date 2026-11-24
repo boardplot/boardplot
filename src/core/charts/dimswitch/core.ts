@@ -90,6 +90,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     ownCompiledTable(compiled.data);
     const extended = tail && wider && hostedLayout(options, compiled.options, () =>
       extendPeriodTable(compiled.data, wider.prepared.compiled.data, wider.prepared.resolved, compiled.options));
+    if (extended && wider) reusePeriodBodyWidths(wider.prepared.resolved.table, extended.table, true);
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
     const completed = pending && pending.plan === projected && completeDimSwitchProjection(compiled.data, pending.source, pending.model)
       ? pending.model : undefined;
