@@ -137,6 +137,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     if (restRecedes && !s.fill && !s.colorRole && !s.scenario) return { token: 'rest' };
     return seriesIdentityPaint(s, dataIdx);
   });
+  const baseColors: (string | undefined)[] = [];
   const seriesBasePaint = (_s: NormSer, dataIdx: number): Paint => basePaints[dataIdx]!;
   const cellPaint = (s: NormSer, val: NormVal, cat: Category, dataIdx: number): Paint => {
     if (val.fill) return { css: val.fill };
@@ -202,7 +203,11 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     outline: cellOutline,
     // what the viewer SEES: outline reads as background, hatch as a
     // mostly-background blend — auto-ink must contrast against that
-    inside: (s, val, cat, dataIdx) => effectiveFill(paintCss(cellPaint(s, val, cat, dataIdx)), cellPattern(s, val, cat), theme),
+    inside: (s, val, cat, dataIdx) => {
+      const paint = cellPaint(s, val, cat, dataIdx);
+      const css = paint === basePaints[dataIdx] ? baseColors[dataIdx] ??= paintCss(paint) : paintCss(paint);
+      return effectiveFill(css, cellPattern(s, val, cat), theme);
+    },
     corridor: columnCorridorPaint(options.colorblindSafe),
     ref: refPaintOf,
     refStroke: (s) => (domain.refStyle === 'tick' && !s.fill && !s.colorRole ? { token: 'axis' } : refPaintOf(s)),

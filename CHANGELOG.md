@@ -6,6 +6,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Dense daily stacked columns place labels faster at automatic height. They can settle the value axis earlier, reuse a drawing when its note leaves the plot unchanged, and skip taller layouts when every noted value is too wide for its column.
 - Dense combo charts with stacked columns and lines choose the value axis and endpoint gutters earlier. A value note can keep its label positions when the frame still fits. Automatic height skips taller layouts when every noted segment value is too wide for its column at any height.
 
 - Stacked columns with staircase category labels reuse text and frame measurements while choosing their height. Horizontal bars and Likert surveys reuse shorter layouts only when the footer mode matches. Scatterplots reuse label placements, mixed column and line grids reuse panel heading measurements, and waterfalls reuse bracket sums across height trials.
