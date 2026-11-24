@@ -6,6 +6,7 @@
  */
 
 import { disclosuresShown } from '../../notes';
+import { defaultMeasurer } from '../../text';
 import { copyPlannedValue, memoExactInputKey, ownPlanInput, requestMemo } from '../../layoutPlan';
 import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
@@ -469,6 +470,44 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
 /** Only view state, column visibility and ZERO_LIFT may change after preparation. The returned graph is borrowed. */
 export function resolvePreparedTable(model: PreparedTableData, options: TableOptions = {}): ResolveResult {
   return withChartFormats(options, () => model.resolve(options));
+}
+
+/**
+ * A compiled dimension card with the same rows and raw cells as a wider partial card, for a width probe
+ * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
+ * carry their own examples and the column that supplies their base format keeps the same rows.
+ */
+export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowData: TableData, options: TableOptions): ResolveResult | undefined {
+  if (wide.lifted || wide.computedCells.length || wide.table.footnotes.length || wide.table.partialColumnIds
+    || wide.table.unit || wide.table.columnUnits || wide.table.columns.some(col => col.unitLabel || col.cellEncoding)
+    || options.encodings || options.highlight || options.sort || options.topN || options.format || options.unit
+    || options.magnitude === 'million' || options.magnitude === 'thousand' || (options.measure !== undefined && options.measure !== defaultMeasurer)) return undefined;
+
+  const stable = withChartFormats(options, () => wideData.rows.every(row => {
+    if (row.calc || row.children || (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES]) return false;
+    const numeric = Object.values(row.cells ?? {}).filter((cell): cell is TableCellObject =>
+      cell !== null && typeof cell === 'object' && 'v' in cell && typeof cell.v === 'number');
+    if (numeric.length === 0) return true;
+    if (row.inline) return numeric.every(cell => cell.format !== undefined && (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
+    if (row.format === undefined || (row as AutomaticFormatSource)[AUTOMATIC_FORMAT] || !isExactExample(row.format)) return false;
+    // Money and per-unit scales choose precision from their figures even with an authored example.
+    if (row.scale === 'money' || row.scale === 'perUnit') return false;
+    const spec = parseExample(row.format, true);
+    return spec.magnitude === 'none' && unitOfSpec(spec) === null
+      && numeric.every(cell => (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
+  }));
+  if (!stable) return undefined;
+
+  const keep = new Set(narrowData.columns.map(col => col.id));
+  const columns = wide.table.columns.filter(col => keep.has(col.id));
+  const rows = wide.table.rows.map(row => {
+    const cells: Record<Id, ResolvedCell> = emptyIdRecord();
+    for (const col of columns) cells[col.id] = row.cells[col.id]!;
+    return { ...row, cells };
+  });
+  const byId = new Map(rows.map(row => [row.id, row]));
+  for (const row of rows) if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => byId.get(line.id)!);
+  return { table: { ...wide.table, columns, rows }, computedCells: [], warnings: [] };
 }
 
 export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
