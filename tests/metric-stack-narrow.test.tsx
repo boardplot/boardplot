@@ -37,6 +37,27 @@ it('draws a metric stack on a 320 px card with each readout above its panel', ()
   expect(svg.svg).toContain('cases per month');
 });
 
+// A dated running category with a blank axis label must still draw and keep its name in the reading and note.
+it('draws a dated category with a blank axis label', () => {
+  const stackData = {
+    ...data,
+    categories: categories.map(category => category.id === 'jun'
+      ? { ...category, label: '', date: '2026-06-01', partial: true } : category),
+    states: { partial: { panels: ['rate'] } },
+    windows: { ...data.windows, compare: { from: 'may', to: 'may', label: 'May' } },
+  };
+  const drawn = render({ spec: { type: 'grid', data: stackData, options: { stack: {}, size: { width: 720 } } }, return: ['svg', 'reading'] }).body;
+  expect(drawn.ok, JSON.stringify(drawn.errors)).toBe(true);
+  expect(drawn.svg).toContain('data-id="stack:category:tick:jun"');
+  expect(drawn.svg).toContain('data-id="volume:bar:jun:0"');
+  expect(drawn.svg).toContain('data-id="label:volume:value:jun"');
+  expect(drawn.svg).not.toContain('data-id="label:stack:category:jun"');
+  expect(drawn.reading).toMatchObject({
+    values: { withoutNumber: expect.arrayContaining([expect.objectContaining({ label: 'Completion / jun' })]) },
+    notes: expect.arrayContaining([expect.objectContaining({ text: 'jun to date' })]),
+  });
+});
+
 // A running period in a stack without a maturing cohort must keep its mark and wording without gaining a cohort key.
 it('draws a running period without a cohort key in the CLI and React', async () => {
   const partialData = {

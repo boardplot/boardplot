@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { NormalizeError } from '../../normalize/shared';
 import { columnOrderOption, columnOverridesOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
+import { categoryDateSchema } from '../../schema/shared';
 import { normalizeMetricStack } from './metricStack';
 
 const id = z.string().min(1);
@@ -13,7 +14,8 @@ const fields = z.array(id.describe('Source measure id.')).min(1);
 export const metricStackDataSchema = z.strictObject({
   categories: z.array(z.strictObject({
     id: id.describe('Unique category id in display order.'),
-    label: id.describe('Category label drawn once below the last panel.'),
+    label: z.string().optional().describe('Category name below the last panel. Omit it to show the id. An empty string hides the axis name and uses the id in the hover card, reading and notes.'),
+    date: categoryDateSchema.optional().describe('ISO 8601 category date, yyyy-mm-dd, kept as metadata on the metric stack.'),
     partial: z.boolean().optional().describe('Period still running. Draw count so far provisionally; scoped outcomes are n/a.'),
   })).min(1).describe('One category axis shared by every metric-stack panel.'),
   measures: z.array(z.strictObject({

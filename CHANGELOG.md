@@ -31,6 +31,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Metric stacks reserve the cohort key for drawn maturing values and keep existing running-period marks and wording.
 - Under a forced table magnitude, columns without an authored format keep authored cell formats on per-unit, count and percent rows and the precision of authored per-unit row formats.
 - Across the CLI, MCP tools and React, an empty `strings.toDate` hides the partial-period suffix and any generated note and marker that only carry that suffix, and an empty `strings.stackAverages` hides the averaging sentence and frees its space.
+- Grid categories accept ISO dates and empty axis labels, with a fallback name in hover cards, screen reader text, readings and notes.
 
 ## 0.63.0
 

@@ -466,7 +466,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-cell` | error |  | core/normalize/shared.ts |
 | `invalid-contract` | error |  | core/rows.ts, core/schema/namedColumns.ts |
 | `invalid-count` | error |  | dimswitch, kpi, sparkline |
-| `invalid-data` | error | yes | core/doc/chartValidation.ts, core/normalize/fraction.ts, core/rows.ts, core/schema/shared.ts, dimswitch, kpi, status, table |
+| `invalid-data` | error | yes | core/doc/chartValidation.ts, core/normalize/fraction.ts, core/rows.ts, core/schema/shared.ts, dimswitch, grid, kpi, status, table |
 | `invalid-date` | error |  | gantt |
 | `invalid-diagram-kind` | error |  | core/schema/diagramKind.ts |
 | `invalid-domain` | error |  | core/viewport.ts |
