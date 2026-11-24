@@ -31,6 +31,7 @@ import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../core/formatPrecision';
 import { asFirstFrame, DeferredCoreError, type DeferredName } from '../core/deferred';
 import { useDeferredModule, useDeferredRevision } from './deferredCore';
 import { useResolvedChartRequest } from './useResolvedChartRequest';
+import { BoardplotThemeContext } from './themeContext';
 import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
@@ -356,6 +357,7 @@ let measureContext: CanvasRenderingContext2D | undefined;
 const measuredWidths = new Map<string, number>();
 const measuredDigits = new Map<string, number[]>();
 const noSubscription = () => () => {};
+const noLinkedModules: readonly DeferredName[] = [];
 const noColumnScale: ReadonlyMap<Id, never> = new Map<Id, never>();
 
 /**
@@ -495,7 +497,7 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * outside it as the CLI does. The table's own props are taken off
  * before the check.
  */
-export function createTableChart(checkKeys?: OptionKeyCheck, linked: readonly DeferredName[] = []) {
+export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
   type NormalizedTableProps = Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
   function GatedTable(props: NormalizedTableProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
@@ -617,7 +619,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const source = compiledRequest?.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
   const requestOptions = useMemo(() => source?.[AUTHORED_EXAMPLES] === undefined ? stableOptions
     : { ...stableOptions, [UNIT_STAND_INS]: source[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: source[AUTHORED_EXAMPLES] }, [stableOptions, source]);
-  const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, linked);
+  // Export links and host callbacks can observe each resolved request, row, measurement or handle.
+  const inherited = useContext(BoardplotThemeContext);
+  const keepRequest = !inherited && !exporter && handleRef == null && !prepared && !rowLabelLead
+    && !isRowSelectable && !onRowSelect && typeof fontMetrics !== 'function' && typeof options.measure !== 'function';
+  const requestModules = linked ?? (keepRequest ? noLinkedModules : undefined);
+  const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, requestModules);
   // Inline visibility changes the drawn lines, not their values or widths.
   // Keep the full request for prepared-snapshot matching; reuse resolution
   // while the reader switches the lines on or off.
@@ -980,7 +987,13 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const drawn = new Set(columns.map((column) => column.id));
     return new Set(allColumns.filter((column) => !drawn.has(column.id)).map((column) => column.id));
   }, [allColumns, columns]);
-  const margin = useMemo(() => tableOptions === undefined ? undefined : resolveCanvasOptions(tableOptions).margin, [tableOptions]);
+  // A host can keep and edit a row received from a label, selection or prepared table.
+  const exposedTable = useRef<ResolvedTable>(undefined);
+  if (exposedTable.current !== resolved?.table) exposedTable.current = undefined;
+  if (onRowSelect || isRowSelectable || rowLabelLead || initialPrepared) exposedTable.current = resolved?.table;
+  const reuseGrid = resolved !== undefined && exposedTable.current !== resolved.table && handleRef == null && metricMeasure === defaultMeasurer;
+  const resolvedMargin = useMemo(() => !reuseGrid || !tableOptions ? undefined : resolveCanvasOptions(tableOptions).margin, [reuseGrid, tableOptions]);
+  const margin = reuseGrid || tableOptions === undefined ? resolvedMargin : resolveCanvasOptions(tableOptions).margin;
   const marginLeft = margin?.left ?? 0;
   const marginRight = margin?.right ?? 0;
   const frameReach = tableOptions?.rowExtent === 'frame' ? Math.max(0, marginRight) : 0;
@@ -1081,7 +1094,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const reachFrame = rowToFrame && !(tableOptions?.rowExtent === undefined && frameRoom !== undefined && Math.floor(frameRoom - trackTotal(tracks)) >= 1);
   /** The track list the grid draws, spacer tracks folded in at their columns. */
   // A fold measures the new visible rows. Equal tracks keep their pin offsets and column windows.
-  const gridTracks = useStableValue(measured?.gridTracks ?? []);
+  const measuredTracks = measured?.gridTracks ?? [];
+  const keptTracks = useStableValue(reuseGrid ? measuredTracks : undefined);
+  const gridTracks = keptTracks ?? measuredTracks;
 
   /**
    * Which track each column sits in, 1-based, once spacers have shifted
@@ -1533,9 +1548,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     [table, tableOptions?.variant],
   );
   const sparkWidths = useMemo(
-    () => !allColumns.some(column => column.kind === 'encoding')
+    () => reuseGrid && !allColumns.some(column => column.kind === 'encoding')
       ? noColumnScale : new Map(tracks.filter(track => track.width > 0).map(track => [track.id, track.width])),
-    [tracks, allColumns],
+    [tracks, allColumns, reuseGrid],
   );
   // The tree children, which is the set `hasChildren` is drawn from: a MoM
   // or YoY line prints inside its parent's cells and is no child of it, so a
@@ -1714,6 +1729,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     return wrapText(cell.displayed, measured.cellFont(cell), Math.max(1, room), tableOptions.rowLabelLines, width.measure, true).lines.length - 1;
   } : undefined;
   const rowShared: SharedRowProps = {
+    reuseGrid,
     palette: tableOptions.palette,
     rowIndices,
     columnIndices,
@@ -1727,11 +1743,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     oneLineLabel: tableOptions.rowLabelLines === 1,
     deferLabelLines,
     anchorWash: tableOptions.anchorWash === true,
-    barMaxima: barMaxima?.size ? barMaxima : noColumnScale,
+    barMaxima: reuseGrid && !barMaxima?.size ? noColumnScale : barMaxima!,
     grounds,
     groundMode: tableOptions.groupGround ?? theme.table?.groupGround ?? 'expanded',
-    heatLanes: heatLanes.size ? heatLanes : noColumnScale,
-    sparkDomains: sparkDomains.size ? sparkDomains : noColumnScale,
+    heatLanes: reuseGrid && !heatLanes.size ? noColumnScale : heatLanes,
+    sparkDomains: reuseGrid && !sparkDomains.size ? noColumnScale : sparkDomains,
     sparkWidths,
     theme,
     measure: request?.fontMetrics ?? defaultMeasurer,
@@ -1739,7 +1755,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     levelNouns: table.levelNouns,
     childCounts,
     inlineVisibility,
-    onToggleRow: rowLabelLead !== undefined || isRowSelectable !== undefined ? toggleRow : foldRow,
+    onToggleRow: reuseGrid ? foldRow : toggleRow,
     readOnly: readOnlyTree,
     staticMarks: readOnlyTree && tableOptions.outlineMarks === true,
     onSelect: selectRow,
@@ -2240,6 +2256,7 @@ function headCellStyle(
 }
 
 interface SharedRowProps {
+  reuseGrid: boolean;
   palette?: string;
   rowIndices: ReadonlyMap<Id, number>;
   columnIndices: ReadonlyMap<Id, number>;
@@ -2409,9 +2426,9 @@ function TableChildren({ rowId, collapsed, onClosed, children }: {
 function gridRow(row: ResolvedRow, collapsed: boolean, hidden: boolean, shared: SharedRowProps, floating = false): ReactElement {
   const { rowIndices, closers, collapsedSet: _folds, deferLabelLines: _defer, focus, ...style } = shared;
   // A host's predicate or label renderer can read state outside the table.
-  const hostRender = style.selectable !== undefined || style.labelLead !== undefined ? {} : undefined;
+  const hostRender = style.reuseGrid ? undefined : {};
   return <MemoTableGridRow {...style} hostRender={hostRender} row={row} collapsed={collapsed} hidden={hidden} floating={floating}
-    rowIndex={rowIndices.get(row.id)} final={closers.has(row.id)} focus={focus?.rowId === row.id ? focus : undefined} />;
+    rowIndex={rowIndices.get(row.id)} final={closers.has(row.id)} focus={!style.reuseGrid || focus?.rowId === row.id ? focus : undefined} />;
 }
 
 /**
@@ -2420,67 +2437,18 @@ function gridRow(row: ResolvedRow, collapsed: boolean, hidden: boolean, shared: 
  * belongs to a treegrid row), and the header cell is where the reader's Enter
  * and Space land anyway.
  */
-function TableGridRow({
-  palette,
-  oneLineLabel,
-  row,
-  rowIndex,
-  columnIndices,
-  isTree,
-  light,
-  floating = false,
-  final,
-  columns,
-  hiddenColumns,
-  collapsed,
-  hidden,
-  anchorWash,
-  barMaxima,
-  grounds,
-  groundMode,
-  heatLanes,
-  sparkDomains,
-  sparkWidths,
-  theme,
-  measure,
-  groupMarks,
-  levelNouns,
-  childCounts,
-  inlineVisibility,
-  onToggleRow,
-  readOnly,
-  staticMarks,
-  onSelect,
-  selectable,
-  labelLead,
-  filler,
-  focus,
-  pinned,
-  trackColumn,
-  columnEdges,
-  figures,
-  foldOn,
-  liteSlots,
-  columnPlan,
-}: Omit<SharedRowProps, 'rowIndices' | 'closers' | 'collapsedSet' | 'deferLabelLines'> & {
+type GridRowProps = Omit<SharedRowProps, 'rowIndices' | 'closers' | 'collapsedSet' | 'deferLabelLines'> & {
   row: ResolvedRow; collapsed: boolean; hidden: boolean; floating: boolean;
   rowIndex: number | undefined; final: boolean; hostRender?: object;
-}): ReactElement {
+};
+
+function TableGridRow({ rowIndex, final, ...content }: GridRowProps): ReactElement {
+  const { row, collapsed, hidden, floating, isTree, readOnly, onToggleRow, onSelect, selectable, foldOn,
+    anchorWash, groundMode, grounds } = content;
   // A read-only tree folds where the host says and offers nothing to press.
   // A row authored foldable: false offers neither.
   const foldable = row.hasChildren && row.foldable !== false;
   const toggles = foldable && !readOnly;
-  // Opt-in marks show open and closed groups without a control.
-  const mark = toggles
-    ? <TreeToggle row={row} collapsed={collapsed} hidden={hidden} onToggleRow={onToggleRow} />
-    : foldable && staticMarks ? <OutlineMark collapsed={collapsed} /> : null;
-  const rowLabel = columns.find((column) => column.kind === 'rowLabel')!;
-  const childCount = childCounts.get(row.id) ?? 0;
-  // A row-label note prints under the label, so it is a line the whole row
-  // pays for: without the same reserved line in every other cell, the
-  // change lines under the values sit a line above the ones under the
-  // label. The SVG positions the same row as a block.
-  const labelNote = row.cells[rowLabel.id]?.note !== undefined;
   // A row the host lets the reader pick; a section heading is none,
   // and neither is a row the host's predicate turns down.
   const selects = onSelect !== undefined && row.role !== 'section' && selectable?.(row, { collapsed }) !== false;
@@ -2515,6 +2483,61 @@ function TableGridRow({
     '--bp-level': row.indentStep ?? row.step,
     ...(row.spacer === undefined ? {} : { '--bp-row-spacer': `${row.spacer}px` }),
   } as CSSProperties;
+  return (
+    <div
+      role="row"
+      className={row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver' ? 'bp-total' : undefined}
+      aria-rowindex={hidden || floating ? undefined : rowIndex}
+      aria-level={isTree && !floating ? row.level + 1 : undefined}
+      aria-expanded={isTree && foldable && !floating ? !collapsed : undefined}
+      data-row-id={floating ? undefined : row.id}
+      data-bp-row={floating ? undefined : row.id}
+      data-bp-floating={floating ? '' : undefined}
+      data-parent-id={row.parentId}
+      data-has-children={row.hasChildren ? 'true' : undefined}
+      data-bp-kind={row.kind}
+      data-bp-driver-tone={row.driverTone ? '' : undefined}
+      data-bp-final={final ? '' : undefined}
+      data-bp-divider={row.divider ? '' : undefined}
+      data-bp-member-open={row.kind === 'member' && row.hasChildren && !collapsed ? '' : undefined}
+      data-bp-ground={row.kind === 'member' ? (row.hasChildren && !collapsed && groundMode !== 'none' ? 'band' : undefined) : row.kind === 'measure' || row.kind === 'detail' || row.kind === 'split' || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver' ? undefined : row.role === 'total' ? 'emphasis' : (groundMode === 'always' || (groundMode === 'expanded' && row.hasChildren && !collapsed)) && grounds.has(row.id) ? 'band' : undefined}
+      data-anchor={anchorWash && row.step === 0 && row.hasChildren ? '' : undefined}
+      data-level={row.level}
+      data-bp-step={step}
+      data-role={row.role}
+      data-relation={row.relation}
+      data-highlight-tone={row.highlightTone}
+      data-bp-spacer={row.spacer === undefined ? undefined : ''}
+      data-bp-selectable={selects ? '' : undefined}
+      style={style}
+      onClick={foldsOnRow || selects ? handleRowClick : undefined}
+      onKeyDown={selects ? handleRowKey : undefined}
+    >
+      <TableRowCells {...content} foldable={foldable} toggles={toggles} selects={selects} foldsOnRow={foldsOnRow} />
+    </div>
+  );
+}
+
+/** A row that moves changes its accessible index and keeps its cells. */
+const TableRowCells = memo(function TableRowCells({
+  palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
+  barMaxima, heatLanes, sparkDomains, sparkWidths, theme, measure, groupMarks, levelNouns, childCounts,
+  inlineVisibility, onToggleRow, staticMarks, labelLead, filler, focus, pinned, trackColumn, columnEdges,
+  figures, liteSlots, columnPlan, foldable, toggles, selects, foldsOnRow,
+}: Omit<GridRowProps, 'rowIndex' | 'final'> & {
+  foldable: boolean; toggles: boolean; selects: boolean; foldsOnRow: boolean;
+}): ReactElement {
+  // Opt-in marks show open and closed groups without a control.
+  const mark = toggles
+    ? <TreeToggle row={row} collapsed={collapsed} hidden={hidden} onToggleRow={onToggleRow} />
+    : foldable && staticMarks ? <OutlineMark collapsed={collapsed} /> : null;
+  const rowLabel = columns.find((column) => column.kind === 'rowLabel')!;
+  const childCount = childCounts.get(row.id) ?? 0;
+  // A row-label note prints under the label, so it is a line the whole row
+  // pays for: without the same reserved line in every other cell, the
+  // change lines under the values sit a line above the ones under the
+  // label. The SVG positions the same row as a block.
+  const labelNote = row.cells[rowLabel.id]?.note !== undefined;
   // A section heading is one cell across the whole grid, and its hairline
   // with it. The span is MERGED over whatever `cellAttributes` carries, a
   // pin offset or a heat ground, because that spread writes its own `style`
@@ -2546,35 +2569,7 @@ function TableGridRow({
       .map((id) => <span key={id} aria-hidden="true" className="bp-section-rule" style={{ insetInlineStart: `${columnEdges.left.get(id)! - start}px` }} />);
 
   return (
-    <div
-      role="row"
-      className={row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver' ? 'bp-total' : undefined}
-      aria-rowindex={hidden || floating ? undefined : rowIndex}
-      aria-level={isTree && !floating ? row.level + 1 : undefined}
-      aria-expanded={isTree && foldable && !floating ? !collapsed : undefined}
-      data-row-id={floating ? undefined : row.id}
-      data-bp-row={floating ? undefined : row.id}
-      data-bp-floating={floating ? '' : undefined}
-      data-parent-id={row.parentId}
-      data-has-children={row.hasChildren ? 'true' : undefined}
-      data-bp-kind={row.kind}
-      data-bp-driver-tone={row.driverTone ? '' : undefined}
-      data-bp-final={final ? '' : undefined}
-      data-bp-divider={row.divider ? '' : undefined}
-      data-bp-member-open={row.kind === 'member' && row.hasChildren && !collapsed ? '' : undefined}
-      data-bp-ground={row.kind === 'member' ? (row.hasChildren && !collapsed && groundMode !== 'none' ? 'band' : undefined) : row.kind === 'measure' || row.kind === 'detail' || row.kind === 'split' || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver' ? undefined : row.role === 'total' ? 'emphasis' : (groundMode === 'always' || (groundMode === 'expanded' && row.hasChildren && !collapsed)) && grounds.has(row.id) ? 'band' : undefined}
-      data-anchor={anchorWash && row.step === 0 && row.hasChildren ? '' : undefined}
-      data-level={row.level}
-      data-bp-step={step}
-      data-role={row.role}
-      data-relation={row.relation}
-      data-highlight-tone={row.highlightTone}
-      data-bp-spacer={row.spacer === undefined ? undefined : ''}
-      data-bp-selectable={selects ? '' : undefined}
-      style={style}
-      onClick={foldsOnRow || selects ? handleRowClick : undefined}
-      onKeyDown={selects ? handleRowKey : undefined}
-    >
+    <>
       {row.role === 'section' ? (
         <div
           role="rowheader"
@@ -2696,9 +2691,9 @@ function TableGridRow({
       {filler === undefined || row.role === 'section' ? null : (
         <div aria-hidden="true" data-bp-filler="" style={filler.gridColumn === undefined ? undefined : { gridColumn: filler.gridColumn }} />
       )}
-    </div>
+    </>
   );
-}
+});
 
 const MemoTableGridRow = memo(TableGridRow);
 
