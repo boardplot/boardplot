@@ -233,10 +233,17 @@ export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, s
     || source.warnings.some(warning => warning.code !== 'dimswitch-measure-omitted')) return undefined;
   const ids = data.periods.map(p => p.id);
   if (new Set(ids).size !== ids.length || data.periods.some(p => !p.kind && ['label','range','pp','pl'].includes(p.id))) return undefined;
+  const memberIds = [data.dimension.total.id, ...data.dimension.members.map(member => member.id)];
+  if (new Set(memberIds).size !== memberIds.length || new Set(data.measures.map(m => m.id)).size !== data.measures.length) return undefined;
+  if (data.measures.some(m => m.partOf !== undefined || m.drivers !== undefined || m.sign !== undefined || m.result || m.judge?.family === 'effect')) return undefined;
   const omitted = new Set(source.omissions.map(item => item.labelId));
-  if (data.measures.some(m => m.partOf !== undefined || m.drivers !== undefined || m.sign !== undefined || m.result || m.judge?.family === 'effect'
-    || (!omitted.has('measure:' + m.id) && (m.change === 'pp' && m.format === undefined && m.unit === undefined && !figures.point.has(m.id)
-      || m.change !== 'pp' && m.change !== 'absolute' && !figures.relative.has(m.id))))) return undefined;
+  for (const m of data.measures) {
+    // Only a member headline can still draw a child of a measure when its splits are off.
+    if (omitted.has('measure:' + m.id) || (m.parentId && !options.splits
+      && ((options.variant ?? 'by-measure') === 'by-measure' || !data.dimension.headline.includes(m.id)))) continue;
+    if (m.change === 'pp' && m.format === undefined && m.unit === undefined && !figures.point.has(m.id)) return undefined;
+    if (m.change !== 'pp' && m.change !== 'absolute' && !figures.relative.has(m.id)) return undefined;
+  }
   const rows = new Map(source.data.rows.map(row => [row.id, row]));
   if (rows.size !== source.data.rows.length) return undefined;
   const periods = hostPeriods(data, options).slice(fromHide);
