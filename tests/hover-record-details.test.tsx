@@ -416,6 +416,7 @@ it('uses a reference series label and prints each KPI comparison label once', ()
 
   expect.soft(cardRows(dumbbell({ label: 'Plan' }))).toEqual(['North', 'Actual: 27.9%', 'vs Plan: +2.9pp (+12%)']);
   expect(cardRows(dumbbell({}))).toEqual(['North', 'Actual: 27.9%', 'vs PL: +2.9pp (+12%)']);
+  expect(cardRows(dumbbell({ label: '' }))).toEqual(['North', 'Actual: 27.9%', 'vs PL: +2.9pp (+12%)']);
 
   const orders = { label: 'Orders', value: 120 };
   const compare = [{ vs: 100, label: 'YoY' }, { vs: 110, label: 'vs Plan' }];
