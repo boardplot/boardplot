@@ -260,6 +260,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     }
     return decimals;
   };
+  // A change example depends only on its kind and decimal count within this compile.
+  const percentExamples: string[] = [], pointExamples: string[] = [];
+  const changeExample = (points: boolean, decimals: number): string => {
+    const examples = points ? pointExamples : percentExamples;
+    const value = decimals === 3 ? 0.2 : 1.2;
+    return examples[decimals] ??= points
+      ? formatPercentagePoints(value, decimals, true)
+      : formatAutomaticPercent(value, decimals, true);
+  };
   const variant = options.variant ?? 'by-measure', depth = options.depth ?? 1;
   // Nothing to put in a cell: the one empty-data code, as for every other type (a view with no measure still draws its head and one row, below).
   if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`, undefined, undefined, ['data', !data.periods.length ? 'periods' : 'facts']);
@@ -703,6 +712,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const values=new Map<string,Value>();
     const owner = isDriver(m) ? measures.get(driverOwner.get(m.id)!)! : undefined;
     const ownFormat = formatOf(m), effectFormat = signedFormat(formatOf(owner ?? m));
+    const relative = m.change !== 'pp' && m.change !== 'absolute';
+    const changeFormat = m.change === 'absolute' ? signedFormat(ownFormat) : changeExample(m.change === 'pp', 1);
     const cachedPeriods = periodValuesFor(m, member);
     const readPeriod = (index: number): PeriodValues => cachedPeriods
       ? cachedPeriods[index] ??= valuesFor(m, member, authoredPeriods[index]!)
@@ -735,8 +746,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       }
       // A relative change and a point difference print in change sets, settled below. An absolute one prints in the row's own format,
       // and without a format or unit it joins the set of its measure's levels (MAGNITUDE_GROUP on the cell).
-      const relative=m.change!=='pp' && m.change!=='absolute';
-      const changeFormat=m.change==='pp' ? formatPercentagePoints(1.2,1,true) : m.change==='absolute' ? signedFormat(ownFormat) : formatAutomaticPercent(1.2,1,true);
       const changeCell:TableCell=!p.kind && !withRef.has(p.id) ? {missing:'blank'} : delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
       const effectCell:TableCell=effect === null ? null : {v:effect,format:effectFormat};
       if (m.format === undefined && m.unit === undefined && changeCell && typeof changeCell === 'object') Object.assign(changeCell, { [AUTOMATIC_FORMAT]: true, ...(m.change === 'absolute' && changeCell.missing === undefined ? { [MAGNITUDE_GROUP]: m.id } : {}) });
@@ -966,7 +975,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const rule=changeSet(measure,list.map(entry=>entry.v),'point');
     for (const {cell,v} of list) {
       const decimals=rule.groupOf(v).decimals;
-      (cell as {format?:string}).format=formatPercentagePoints(decimals===3 ? 0.2 : 1.2,decimals,true);
+      (cell as {format?:string}).format=changeExample(true,decimals);
     }
   }
   // One change set per measure of relative changes, across its columns, as its point differences.
@@ -988,7 +997,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // An example with three decimals takes an integer part of 0, because "+1.200%" reads as a thousands group.
     for (const entry of entries) {
       const decimals=rule.groupOf(valueOf(entry)).decimals;
-      (entry.cell as {format?:string}).format=formatAutomaticPercent(decimals===3 ? 0.2 : 1.2,decimals,true);
+      (entry.cell as {format?:string}).format=changeExample(false,decimals);
     }
   }
   // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
