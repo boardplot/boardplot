@@ -240,6 +240,12 @@ function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
     && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
 }
 
+/** At least one unscaled unit stays nonzero at every decimal precision. */
+function cellRoundsToZero(value: number, spec: NumberFormatSpec): boolean {
+  if (spec.magnitude === 'none' && spec[RULE_SET] === undefined && Math.abs(value) >= 1) return false;
+  return roundedNumber(value, spec) === 0;
+}
+
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
 const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
@@ -2195,7 +2201,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         if (s.state === 'value' && typeof s.raw === 'number' && judgmentRow) {
           // A value that prints as zero at its own precision has no sign to
           // judge: "-0.02%" shown as "0.0%" is not a loss.
-          if (polarity && !obj?.tone && band === undefined && roundedNumber(s.raw, specFor(col.id, row.id)) !== 0) {
+          if (polarity && !obj?.tone && band === undefined && !cellRoundsToZero(s.raw, specFor(col.id, row.id))) {
             const goodSign = polarity === 'higherIsBetter' ? 1 : -1;
             tone = Math.sign(s.raw) === goodSign ? 'good' : 'bad';
             // The measure the direction belongs to: the column's where the
@@ -2228,7 +2234,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // A figure that prints as zero carries no amount to read.
         tone = judgementTone(tone, obj?.strong);
         const zero = tone === 'neutral' && !deEmphasized && s.state === 'value' && typeof s.raw === 'number'
-          && roundedNumber(s.raw, specFor(col.id, row.id)) === 0;
+          && cellRoundsToZero(s.raw, specFor(col.id, row.id));
         // The direction travels with the cell: a heat ground or an in-cell bar
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
