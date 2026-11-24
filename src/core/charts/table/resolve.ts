@@ -2172,9 +2172,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // The direction travels with the cell: a heat ground or an in-cell bar
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
-        return { ...base, raw: s.raw, state: s.state, displayed, tone, deEmphasized, polarity, ...(zero ? { zero: true as const } : {}),
-          ...(negated ? { negated: true as const } : {}),
-          ...(band === undefined ? {} : { band: { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) } }) };
+        base.raw = s.raw;
+        base.state = s.state;
+        base.displayed = displayed;
+        base.tone = tone;
+        base.deEmphasized = deEmphasized;
+        base.polarity = polarity;
+        if (zero) base.zero = true;
+        if (negated) base.negated = true;
+        if (band !== undefined) base.band = { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) };
+        return base;
       }
       case 'status': {
         // Every authored row with this cell's row id, nested rows included, as pointer segments.
