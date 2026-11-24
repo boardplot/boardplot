@@ -125,4 +125,22 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
     ],windows:{base:{from:'2025-10',to:'2025-10',label:'Oct 2025'},compare:{from:'2026-09',to:'2026-09',label:'Sep 2026'}}},
     options:{stack:{variant:'focus',heights:[140,220]},size:{width:1180},title:'Cost per order falls 6% as orders grow faster than spend',subtitle:{measure:'Cost per order and orders by channel per month',period:'October 2025–September 2026'},source:'Invented example'},
   },
+  {
+    id: 'metric-stack-empty-averages',
+    title: 'A focus stack compares two quarters without an averages sentence',
+    kind: 'example',
+    data: {
+      categories: categories.slice(3, 9),
+      measures: [
+        { id: 'started', label: 'Starts', values: [90, 105, 108, 120, 125, 132] },
+        { id: 'finished', label: 'Completions', values: [70, 81, 84, 95, 98, 104] },
+      ],
+      panels: [
+        { id: 'started', type: 'column', title: 'Starts', unit: 'per month', measure: { sum: ['started'] }, readout: 'change' },
+        { id: 'finished', type: 'column', title: 'Completions', unit: 'per month', measure: { sum: ['finished'] }, readout: 'change' },
+      ],
+      windows: { grain: 'month', base: periods[1]!, compare: periods[2]! },
+    },
+    options: { title: 'Starts and completions rise', stack: { variant: 'focus' }, size: { width: 360 }, strings: { stackAverages: '' } },
+  },
 ];

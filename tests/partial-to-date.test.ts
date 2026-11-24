@@ -112,6 +112,16 @@ describe('bar partial row', () => {
 });
 
 describe('line partial point', () => {
+  // An empty partial-period word must keep the running value and unit without a blank label or a trailing space.
+  it('keeps the running value when the to-date word is empty', () => {
+    const fixture = getFixtures('line').find(entry => entry.id === 'x-time-empty-to-date')!;
+    const { geometry } = measure({ type: 'line', data: fixture.data, options: fixture.options });
+    const lines = nodes(geometry).filter(node => node.t === 'text').flatMap(node => node.lines as string[]);
+    expect(lines.filter(line => line.includes('655'))).toEqual(['Orders 655 orders']);
+    expect(lines).not.toContain('');
+    expect(lines.some(line => /\bto date\b/i.test(line))).toBe(false);
+  });
+
   // A part-week point without words reads as a drop.
   it('says "to date" on a single line\'s running value instead of the axis name', () => {
     const g = (measure({
