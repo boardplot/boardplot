@@ -427,6 +427,16 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
+  // The members' receipts name the same source column for a period, window and field.
+  const receiptColumns = { sums: new Map<string, Map<string, string>>(), ref: new Map<string, Map<string, string>>() };
+  const receiptColumn = (period: string, window: 'sums' | 'ref', field: string): string => {
+    const periods = receiptColumns[window];
+    let columns = periods.get(period);
+    if (!columns) periods.set(period, columns = new Map());
+    let id = columns.get(field);
+    if (id === undefined) columns.set(field, id = key(period, window, field));
+    return id;
+  };
   // Per member and window, the fields it reports in any period: one it reports anywhere is owed in every period.
   const reported = new Map<string, {sums: Set<string>; ref: Set<string>}>();
   const reportedBy = (id: string) => { let r = reported.get(id); if (!r) reported.set(id, r = {sums: new Set(), ref: new Set()}); return r; };
@@ -449,7 +459,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
           for(const field of fieldSet) {
             // A child that reports the field in any period owes it in every period, and a statement field is owed by every child that reports the period: a gap makes the total missing, not smaller.
             const owing=children.filter(child=>reportedBy(child.id)[window].has(field) || (facts.get(key(child.id,period.id))?.[window] !== undefined && statementFields.has(field)));
-            const inputs=owing.map(child=>({rowId:child.id,colId:key(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
+            const inputs=owing.map(child=>({rowId:child.id,colId:receiptColumn(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
             for(const child of owing) if(!Object.hasOwn(facts.get(key(child.id,period.id))?.[window] ?? {},field)) {
               const gap=gaps.get(child.id+window) ?? {member:child.id,window,periods:new Set<string>(),fields:new Set<string>()};
               gap.periods.add(period.id);gap.fields.add(field);gaps.set(child.id+window,gap);
@@ -457,9 +467,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
             const raw=inputs.some(i=>i.value===null)?null:cleanSum(inputs.map(i=>i.value!));
             next[window][field]=raw;
             if(window==='sums' && inputs.some(i=>i.value!==null || reaches.get(i.rowId)?.has(field))) {const set=reaches.get(member) ?? new Set<string>();set.add(field);reaches.set(member,set);}
-            records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
+            records.push({rowId:member,colId:receiptColumn(period.id,window,field),op:'dimswitch:partition-sum',inputs,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
             const authored=existing?.[window]?.[field];
-            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:key(period.id,window,field),value:authored},...inputs],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
+            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:receiptColumn(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:receiptColumn(period.id,window,field),value:authored},...inputs],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
           }
         }
         // A field only the parent reports (a target, say) stays beside the sums derived from the children.
@@ -542,7 +552,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const template=receiptOf(m,isChange);
     const inputs=template.refs.map(({field,total,reference})=>({
       rowId:total ? data.dimension.total.id : member,
-      colId:reference ? key(refPeriod ?? period,refPeriod ? 'sums' : 'ref',field) : key(period,'sums',field),
+      colId:reference ? receiptColumn(refPeriod ?? period,refPeriod ? 'sums' : 'ref',field) : receiptColumn(period,'sums',field),
       value:(reference ? total ? refTotal : ref : sums(total ? data.dimension.total.id : member,period))?.[field] ?? null,
     }));
     records.push({rowId,colId,op:template.op,inputs,raw:value.raw,state:value.state,displayed:'',kind:'calc'});
