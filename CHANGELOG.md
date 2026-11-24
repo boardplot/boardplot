@@ -33,6 +33,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Across the CLI, MCP tools and React, an empty `strings.toDate` hides the partial-period suffix and any generated note and marker that only carry that suffix, and an empty `strings.stackAverages` hides the averaging sentence and frees its space.
 - Grid categories accept ISO dates and empty axis labels, with a fallback name in hover cards, screen reader text, readings and notes.
 - React dimension-switch tables show a refusal card and report the CLI diagnostic when an invalid ID prevents the table from drawing.
+- A selected column value that would be hidden by the period name prints with the name at the column end and prints alone if the pair is too wide.
 
 ## 0.63.0
 

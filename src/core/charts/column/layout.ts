@@ -59,7 +59,7 @@ import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, type DigitSeats } from './labels';
+import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
 import { stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -1300,7 +1300,7 @@ function layoutColumnPass(
     && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
     && !digits.requests.length && !options.labelPlacements && !options.labelOffsets
     && requests.every(req => req.kind !== 'segment' || (req.redundant && !req.printedIn && req.pinnedSlot === undefined));
-  const growthPoints = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
+  const { growthPoints, namedExtreme } = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     density: domain.density,
     measure: domain.measure,
@@ -1322,6 +1322,7 @@ function layoutColumnPass(
         && requests.filter(request => request.owner.categoryId === id && columnValue(request)).length === 1) throw AXIS_FALLBACK;
     } : undefined;
   const solved = solveLabels(keepValuesWithoutAxis(requests, domain.density, domain.va.show === true), occupied, solveCtx, checkTotal);
+  if (namedExtreme) seatExtremeValue(domain, area, namedExtreme, solved, occupied, solveCtx);
   // A running period keeps a cue: a to-date value without a seat, or words wider than the drawn column, bring the hatch key back.
   const toDate = toDateOnValues(domain);
   if (toDate.size > 0 && (!toDateFits(domain.options.strings?.toDate ?? chartString(domain.options, 'toDate'), theme, domain.measure, toDateRoom(area.band.bandwidth))
