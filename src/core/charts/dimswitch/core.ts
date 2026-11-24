@@ -7,7 +7,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, projectDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -63,7 +63,7 @@ type WiderCard = { hide: number; prepared: PreparedForm };
  * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
  * Limit: 64 forms per data object, then the map starts again.
  */
-function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, wider?: WiderCard, projectedCard?: PreparedForm['compiled']): PreparedForm {
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projectedCard?: PreparedForm['compiled']): PreparedForm {
   const withProbe=(prepared:PreparedForm):PreparedForm=>{
     // Compiled note strings outlive the request-local metadata that gives them their kind.
     for (const [text,meta] of prepared.noteMetadata) {
@@ -75,13 +75,16 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     return {...prepared,compiled:{...prepared.compiled,options:current}};
   };
   const compute=(figures:CardFigures):PreparedForm=>{
+    const full = form.card && !form.hide ? forms.prepared.get('false:0') : undefined;
+    const wholeCard = full && wholeDimSwitchCard(options, full.compiled, full.resolved);
+    const wider = forms.wider;
     const projected = projectedCard ?? (wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
       ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
       : undefined);
-    const compiled = projected ?? compileDimSwitch(data,options,{...form,figures},true);
+    const compiled = wholeCard?.compiled ?? projected ?? compileDimSwitch(data,options,{...form,figures},true);
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     ownCompiledTable(compiled.data);
-    const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
+    const resolved=wholeCard?.resolved ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
@@ -109,7 +112,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   let prepared=forms.prepared.get(key);
   if (!prepared) {
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
-    prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms.wider,pending?.compiled ?? projected);
+    prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.compiled ?? projected);
     if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
       forms.wider = { hide: form.hide, prepared };
     }

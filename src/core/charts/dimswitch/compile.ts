@@ -4,6 +4,7 @@ import { NormalizeError } from '../../normalize/shared';
 import { bandFor } from '../../bandSelect';
 import { formatAutomaticPercent, formatPercentagePoints } from '../../format';
 import { ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP } from '../table/tracks';
+import type { ResolveResult } from '../table/resolve';
 import { defaultNotePlacement, disclosureNote, disclosuresShown, engineNote, shownNoteKinds } from '../../notes';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { saysToDate } from '../../partialPeriod';
@@ -238,6 +239,7 @@ export interface CardFigures { lines: Map<string, LineFigures>; relative: Map<st
 export const cardFigures = (): CardFigures => ({ lines: new Map(), relative: new Map(), point: new Map() });
 /** The label track of the card form. */
 const CARD_LABEL_WIDTH = 140;
+const cardLabelWidth = (labelWidth: number | undefined) => Math.min(labelWidth ?? CARD_LABEL_WIDTH, CARD_LABEL_WIDTH);
 
 /** Pure compiler. The host supplies all calendar windows and additive facts. */
 export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}, reuseReceiptInputs = false): CompiledDimSwitch {
@@ -1032,7 +1034,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // The card form: value tracks as wide as their content, the label track at most 140 px (its labels wrap).
   const fixed=(w:number)=>form.card ? {} : {width:w};
   const labelWidth=overrides?.label?.width ?? widths?.label;
-  const labelCap=form.card ? Math.min(labelWidth ?? CARD_LABEL_WIDTH, CARD_LABEL_WIDTH) : labelWidth ?? width.label;
+  const labelCap=form.card ? cardLabelWidth(labelWidth) : labelWidth ?? width.label;
   const headOf=(id:string,fallback:string)=>overrides?.[id]?.label ?? fallback;
   const aligned=(id:string)=>{const o=overrides?.[id];return {...(o?.align===undefined ? {} : {align:o.align}),...(o?.headAlign===undefined ? {} : {headAlign:o.headAlign})};};
   const track=(id:string,fallback:number)=>({...fixed(overrides?.[id]?.width ?? fallback),...aligned(id)});
@@ -1084,6 +1086,37 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       ...(data.effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),
       expansion:{collapsed:[...collapsed]}},computedCells,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,...(partialNote===undefined ? {} : {partialNote}),
   };
+}
+
+/**
+ * A by-measure card that keeps every period uses the full form's rows, figures and diagnostics.
+ * Only the track widths and the default spacing change. Authored width overrides can add card warnings.
+ */
+export function wholeDimSwitchCard(options: DimSwitchOptions, full: CompiledDimSwitch, model: ResolveResult):
+  { compiled: CompiledDimSwitch; resolved?: ResolveResult } | undefined {
+  if ((options.variant ?? 'by-measure') !== 'by-measure' || ENGINE_NOTES in options
+    || Object.values(options.columnOverrides ?? {}).some(override => override.width !== undefined)) return undefined;
+  const labelCap = cardLabelWidth(options.widths?.label);
+  const columns = full.data.columns.map(col => {
+    if (col.kind === 'rowLabel') {
+      const { maxTextWidth: _text, maxWidth: _cap, ...label } = col;
+      return { ...label, maxWidth: labelCap };
+    }
+    const { width: _fixed, ...content } = col;
+    return content;
+  });
+  const { labelIndent: _indent, cellPadX: _pad, [SOFT_LABEL_CAP]: _soft, ...unchanged } =
+    full.options as typeof full.options & { [SOFT_LABEL_CAP]?: true };
+  const cardOptions = { ...tableDefaults({ card: true }, full.options.stickyLabels), ...unchanged,
+    ...(Object.hasOwn(options, 'labelIndent') ? { labelIndent: options.labelIndent } : {}),
+    ...(Object.hasOwn(options, 'cellPadX') ? { cellPadX: options.cellPadX } : {}) };
+  for (const text of (full.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES] ?? []) disclosureNote(text);
+  const compiled = { ...full, data: { ...full.data, columns }, options: cardOptions };
+  // A layout that lifted nonzero figures must replay its formatting count. Its ordinary resolver does that.
+  if (model.lifted) return { compiled };
+  const resolvedColumns = model.table.columns.map(col => ({ ...col, width: undefined,
+    maxWidth: col.kind === 'rowLabel' ? labelCap : undefined, maxTextWidth: undefined }));
+  return { compiled, resolved: { ...model, table: { ...model.table, columns: resolvedColumns } } };
 }
 
 /**
