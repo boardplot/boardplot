@@ -13,6 +13,9 @@ import type { BaseOptionsFor } from './options';
 import type { Theme } from './theme';
 import type { Paint } from './scene';
 
+/** Marks compiled dimension switches that keep their current table formatting. */
+export const DIMSWITCH_TABLE = Symbol('dimSwitchTable');
+
 // ---------- authored data ----------
 
 /** `stickyLabels`: the 0.27 forms (`true`, a column count) and the object form that also pins the head to the page and the active section label. */
@@ -672,6 +675,8 @@ export interface ResolvedCell {
   polarity?: Direction;
   /** The value cell's own format-by-example, where it names one; it beats the row's and the column's. */
   format?: string;
+  /** The column format for this cell when its row keeps its own magnitude. */
+  columnFormat?: Pick<ResolvedColumn, 'format' | 'unitLabel' | 'unitScaled'>;
   scenario?: Scenario;
   role: RowRole;
   relation: RowRelation;

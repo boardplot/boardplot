@@ -17,7 +17,7 @@ import type { RuleSet } from '../../numberRule';
 import { requestMemo } from '../../layoutPlan';
 import { fixedNumbers } from '../../fixedLists';
 import { hasFormatRecord } from '../../formatPrecision';
-import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
+import { DIMSWITCH_TABLE, type CellState, type CellTone, type ComputedCellRecord, type TableCell, type TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
 import { maxOf } from '../../arrays';
@@ -1202,7 +1202,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const periodsFirst=options.columnOrder?.find(id=>id==='block' || id==='periods')==='periods';
   const pinned=1+(periodsFirst ? 0 : blockColumns.length);
   return {
-    data:{columns:[
+    data:{...(options.magnitude === 'thousand' || options.magnitude === 'million' ? {[DIMSWITCH_TABLE]:true} : {}),columns:[
       {id:'label',kind:'rowLabel',label:headOf('label',variant==='by-measure'?'KPI':data.dimension.label),...aligned('label'),...(labelWidth===undefined && !form.card ? {maxTextWidth:labelCap} : {maxWidth:labelCap})},
       ...(periodsFirst ? [...periodTracks,...blockTracks] : [...blockTracks,...periodTracks]),
     // Range and its comparisons form one block between labels and periods.

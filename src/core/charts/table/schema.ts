@@ -421,7 +421,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   inlineVisibility: idRecord(idSchema.describe('Inline-line group id.'), z.boolean().describe('True shows the lines of that group; false hides them.')).optional()
     .describe("Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry."),
   magnitude: z.enum(['auto', 'thousand', 'million']).optional()
-    .describe("Money scale for all rows and columns. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value."),
+    .describe("Money scale. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own at the forced scale. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value."),
   foldOn: z.enum(['row', 'toggle']).optional()
     .describe("React only. What folds a parent row. 'row': a click on the row folds it, and selects it too where the host made it selectable. 'toggle': only the fold mark folds; a row click only selects. Default: 'toggle' for a selectable row, else 'row'. Enter and Space follow the click."),
   groupGround: z.enum(['expanded', 'always', 'none']).optional()

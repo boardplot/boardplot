@@ -373,6 +373,50 @@ it('keeps fractional per-unit costs distinct with authored and default precision
   expect([table.rows[2]!.cells.w1!.displayed, table.rows[2]!.cells.w2!.displayed]).toEqual(['0.038', '0.042']);
 });
 
+// A forced table magnitude printed per-unit figures as zero and rescaled counts with their own formats.
+it('keeps per-unit, count and percent formats independent of the table magnitude', () => {
+  const examples = [
+    { scale: 'perUnit', format: '$1,234', value: 323.7 },
+    { scale: 'count', format: '1.23M', value: 5_505_000 },
+    { scale: 'percent', format: '1.2%', value: 68.23 },
+  ] as const;
+  for (const { scale, format, value } of examples) {
+    const data: TableData = {
+      columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'row', kind: 'value' }, { id: 'cell', kind: 'value' }, { id: 'column', kind: 'value', format }],
+      rows: [
+        { id: 'scaled', label: 'KPI', scale, format, cells: { row: value, cell: { v: value, format }, column: value } },
+        { id: 'automatic', label: 'Automatic KPI', scale, cells: { row: scale === 'perUnit' ? 29.0625 : value } },
+        { id: 'money', label: 'Revenue', scale: 'money', format: '$1,234', cells: { row: 2_430_000, cell: { v: 2_430_000, format: '$1,234' } } },
+        { id: 'unscaled', label: 'Sales', format: '$1,234', cells: { row: 2_610_000, cell: { v: 2_610_000, format: '$1,234' }, ...(scale === 'perUnit' ? { column: 2_610_000 } : {}) } },
+      ],
+    };
+    const figures = (magnitude?: 'thousand' | 'million') => {
+      const chart = layout('table', data, { magnitude, size: { width: 720, height: 320 } });
+      const text = (row: string, column: string) => {
+        const node = chart.scene.find((node): node is TextNode => node.t === 'text' && node.id === `cell:${row}:${column}`);
+        return node?.lines.join('') ?? '';
+      };
+      return {
+        scaled: ['row', 'cell', 'column'].map((column) => text('scaled', column)),
+        automatic: text('automatic', 'row'),
+        money: text('money', 'cell'),
+        unscaled: text('unscaled', 'cell'),
+      };
+    };
+    const expected = figures();
+    expect(expected.scaled.every(Boolean)).toBe(true);
+    expect(expected.automatic).not.toBe('');
+    for (const magnitude of ['thousand', 'million'] as const) {
+      const actual = figures(magnitude);
+      expect.soft(actual.scaled, `${scale}, ${magnitude}, row/cell/column format`).toEqual(expected.scaled);
+      expect.soft(actual.automatic, `${scale}, ${magnitude}, automatic format`).toBe(expected.automatic);
+      expect.soft([actual.money, actual.unscaled], `${scale}, ${magnitude}, money and unscaled rows`).toEqual(
+        magnitude === 'thousand' ? ['$2,430k', '2,610'] : ['$2.4M', '2.6'],
+      );
+    }
+  }
+});
+
 // An authored magnitude of thousand or million had no effect on money rows, which always climbed k, M, B.
 it('holds an authored magnitude on money rows and climbs for auto', () => {
   const printed = (cells: number[], magnitude?: 'auto' | 'thousand' | 'million') => resolveTable({
