@@ -1,5 +1,7 @@
 /** Dot-family registration (Cleveland dot / dumbbell / lollipop). */
 
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import type { ChartDefinition } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { DotOptions } from '../../types/options';
@@ -25,3 +27,5 @@ export const dotDefinition: ChartDefinition<ChartData, DotOptions, DotMarks, Dot
   dataSchema: dotDataSchema,
   optionsSchema: dotOptionsSchema,
 };
+
+keylessFitBounds.set(dotDefinition, implicitTopKey);

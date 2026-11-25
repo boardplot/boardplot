@@ -1,4 +1,6 @@
 import { chartString } from './strings';
+import { hasCompleteTextWidths } from './fontMetrics/injected';
+import { defaultMeasurer } from './text';
 import { needsSeriesKey, scatterGroupIdentities, scatterGroupNameIsDrawn } from './seriesIdentity';
 import { typeDocLints } from './lint/type';
 import { compactOptions } from './compact';
@@ -6,11 +8,16 @@ import { FOOTNOTE_REFS, LEGEND_HEIGHT, UNIT_LINE, unitMissing, unitPrinted, type
 import { furnitureBudget } from './aspect';
 import { resolveSubtitle } from './normalize/shared';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
-import { contentSized, prepareFitLayout, type FitLayout } from './sizing';
+import { CARD_CLASS_WIDTH, FORCE_COMPACT, contentSized, declaredSizing, hostlessHeight, prepareFitLayout, type FitLayout } from './sizing';
 import { EARLIER_PARTIAL_LEGEND_ID } from './partialPeriod';
 import { panelTypeClass, resolveTheme } from './theme';
 import type { LabelKind } from './types/options';
 import type { Geometry, LayoutResult, SceneNode } from './types/scene';
+
+/** Registered drawings that can bound the full chart without its automatic key. */
+export const keylessFitBounds = new WeakMap<object, (
+  type: string, data: unknown, options: ChartOptions, opening: number,
+) => ((keyed: Geometry<object, object>) => boolean) | undefined>();
 
 /** Internal layout marker; authored JSON cannot enable or retain it. */
 export const AUTO_LEGEND = Symbol('autoLegend');
@@ -288,12 +295,36 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
   return run;
 }
 
+function topKeyOptions<O extends ChartOptions>(type: string, options: O | undefined, mode: 'full' | 'compact' | undefined): O {
+  const next = Object.assign({} as O, options, { [AUTO_LEGEND]: true });
+  next.legend = 'top';
+  if (type !== 'mekko') next.mode = mode;
+  return next;
+}
+
 function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined,
   fitBaseline: FitLayout<O, M, DV>, fitCandidate: FitLayout<O, M, DV>,
 ): LayoutResult<M, DV> {
   const requested = options?.legend === 'auto';
   const baselineOptions = requested ? { ...options, legend: undefined } as O : options;
+  const size = baselineOptions?.size;
+  const bound = keylessFitBounds.get(definition);
+  let fullCandidate: LayoutResult<M, DV> | undefined;
+  if (bound && baselineOptions && size && typeof size === 'object'
+    && size.unit === undefined && size.width >= CARD_CLASS_WIDTH && hasCompleteTextWidths(baselineOptions.measure ?? defaultMeasurer)
+    && baselineOptions.legend === undefined && !definition.requiredKey && baselineOptions.mode !== 'compact'
+    && !(FORCE_COMPACT in baselineOptions) && panelTypeClass(options) === undefined) {
+    const policy = declaredSizing(definition, baselineOptions);
+    const opening = size.height ?? hostlessHeight(policy, size.width, policy.minHeight, true);
+    if (size.width >= policy.minWidth && opening >= policy.minHeight) {
+      const drawsKey = bound(definition.type, data, baselineOptions, opening);
+      if (drawsKey && (requested || resolveTheme(options?.theme).legend?.auto === true || needsSeriesKey(definition.type, data, baselineOptions))) {
+        const keyed = fullCandidate = fitCandidate(topKeyOptions(definition.type, baselineOptions, 'full'));
+        if (!keyed.refused && drawsKey(keyed)) return keyed;
+      }
+    }
+  }
   const baseline = fitBaseline(baselineOptions);
   // the grid core keeps its required key under legend 'none' and, unless the theme keys
   // automatically, with no legend set (gridRequiredKey in grid/gridKey.ts), so that code
@@ -305,12 +336,10 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   if (baseline.refused || (!requested &&
     (options?.legend !== undefined || panelTypeClass(options) !== undefined ||
       (resolveTheme(options?.theme).legend?.auto !== true && !needsSeriesKey(definition.type, data, options, baseline))))) return baseline;
-  const candidateOptions = Object.assign({} as O, baselineOptions, { [AUTO_LEGEND]: true });
-  candidateOptions.legend = 'top';
-  if (definition.type !== 'mekko') candidateOptions.mode = baseline.mode;
+  const candidateOptions = topKeyOptions(definition.type, baselineOptions, baseline.mode);
   const covering = definition.coveringKey?.(data, candidateOptions, baseline);
   if (covering && legendIsCovered(baseline, covering, data, baselineOptions)) return baseline;
-  const candidate = fitCandidate(candidateOptions);
+  const candidate = fullCandidate && (baseline.mode === 'full' || definition.type === 'mekko') ? fullCandidate : fitCandidate(candidateOptions);
   if (candidate.refused) {
     // A refused probe supplies keys only. It never reaches claims or serialization.
     const probe = definition.layout(data, baseline.mode === 'compact'
