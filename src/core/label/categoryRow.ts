@@ -412,7 +412,7 @@ function twoKept(a: number, b: number): PairKeep {
  * Uniform stride for a date/numeric row. Line-family rows count back from
  * the latest period. Other rows keep their existing first-period policy.
  */
-function strideAfterFontLadder(
+function strideAfterFontLadder<T>(
   labels: readonly string[],
   infos: CategoryLabelInfo[],
   baseFont: FontSpec,
@@ -432,14 +432,14 @@ function strideAfterFontLadder(
     infos: CategoryLabelInfo[],
     keep: boolean[],
     stepName: CategoryRowStep,
-    extra?: Partial<Pick<CategoryRowPlan, 'stride' | 'rotation' | 'warnings'>>,
-  ) => CategoryRowPlan,
+    extra: Pick<CategoryRowPlan, 'stride' | 'warnings'>,
+  ) => T,
   /** Labels that name the year: a routine label they overlap yields to them. */
   yearPins: readonly boolean[] = [],
   fromEnd = false,
   /** A calendar row thins by at least this step (the reference room's answer), in dateStride ordinals. */
   minStride = 0,
-): CategoryRowPlan {
+): T {
   const n = labels.length;
   // Only the two kept entries: fits() skips every hole, and a row of 100,000 dates no longer allocates one per check.
   const pair = twoKept;
@@ -482,7 +482,7 @@ function strideAfterFontLadder(
   // as their origin and never add an off-step label. Elsewhere the last label
   // shows where it fits beside the nearest drawn name and never pushes it out,
   // which would break the step (thin only where names collide).
-  const attempt = (k: number, restartAtYears: boolean): CategoryRowPlan | undefined => {
+  const attempt = (k: number, restartAtYears: boolean): T | undefined => {
     const from = (i: number) => fromEnd ? ordinal(n - 1) : (restartAtYears && restart[i]! >= 0 ? ordinal(restart[i]!) : 0);
     const onStride = (i: number) => (ordinal(i) - from(i)) % k === 0;
     const keep = labels.map((_, i) => (!fromEnd && pinned[i]!) || (onStride(i) && (requested?.[i] ?? true)));
@@ -1133,14 +1133,6 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     return infos;
   };
 
-  // Breaks can remove whitespace; a ZWJ or Unicode tag can join a word to the preceding space.
-  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean)
-    .flatMap(word => nameRow ? word.split(/(?<=-)(?=[^-])/) : [word]));
-  // A word wider than the slot must be cut at every line count; defer that work to the cut fallback.
-  const wholeRows = (font: FontSpec, maxLines: number, pad = padding, kept?: readonly boolean[]) =>
-    growingWidths(font) && words.some((parts, i) => (!kept || kept[i]) && parts.some(word => measure(word, font).width > Math.max(widthAt(i) - pad - (suffixAt(i) ? measure(suffixAt(i), font).width : 0), 1)))
-      ? undefined : measureAll(font, maxLines, false, pad);
-
   // A label centres on its category. Points on the plot edges
   // anchor their labels inward; a centred label never leaves the
   // outer edges of the first and last band, so it cannot reach into a
@@ -1162,8 +1154,8 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     return (i - step < 0 || x >= centers[i - step]!) && (i + step > n - 1 || x + w <= centers[i + step]!);
   };
 
-  const fits = (infos: CategoryLabelInfo[], keep: readonly boolean[], minGap = gap): boolean => {
-    const x = xOf(infos);
+  const fits = (infos: CategoryLabelInfo[], keep: readonly boolean[], minGap = gap, place = anchor): boolean => {
+    const x = (i: number) => place(i, infos[i]!.w);
     const two = (keep as PairKeep).pair;
     if (two) {
       const [a, b] = two;
@@ -1295,9 +1287,23 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   const referenceStride = (): number => {
     if (!calendarRule || !input.reference) return 0;
     const pitch = input.reference.width / n;
+    const start = input.reference.x;
+    const center = (i: number) => start + pitch * (i + 0.5);
+    if (dateNumeric && bundled && !input.widths) {
+      // Only the stride leaves the reference plot. A date label's text
+      // and dimensions stay the same when its centre moves.
+      const left = center(0) - pitch / 2, right = center(n - 1) + pitch / 2;
+      const place = (i: number, w: number) => centeredNameX(center(i), w, left, right);
+      const fitsReference = (infos: CategoryLabelInfo[], keep: readonly boolean[]) => fits(infos, keep, gap, place);
+      for (const font of fonts) if (fitsReference(measureAll(font, 1), all)) return 0;
+      const font = fonts.at(-1)!;
+      const stride = strideAfterFontLadder(labels, measureAll(font, 1), font, requested, pinned, input.dateStride,
+        fitsReference, (_font, _infos, _keep, _step, choice) => choice.stride, yearPins);
+      return stride * (input.dateStride?.perStep ?? 1);
+    }
     const reference = planRow({
       ...input, reference: undefined, step: pitch, edgeAnchored: false,
-      centers: labels.map((_, i) => input.reference!.x + pitch * (i + 0.5)),
+      centers: labels.map((_, i) => center(i)),
     }, sourceMeasure);
     return reference.step === 'stride' ? reference.stride * (input.dateStride?.perStep ?? 1) : 0;
   };
@@ -1381,6 +1387,14 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     if (input.onSingleLineFit && !input.widths) input.onSingleLineFit(row.infos);
     return row;
   }
+
+  // Breaks can remove whitespace; a ZWJ or Unicode tag can join a word to the preceding space.
+  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean)
+    .flatMap(word => nameRow ? word.split(/(?<=-)(?=[^-])/) : [word]));
+  // A word wider than the slot must be cut at every line count; defer that work to the cut fallback.
+  const wholeRows = (font: FontSpec, maxLines: number, pad = padding, kept?: readonly boolean[]) =>
+    growingWidths(font) && words.some((parts, i) => (!kept || kept[i]) && parts.some(word => measure(word, font).width > Math.max(widthAt(i) - pad - (suffixAt(i) ? measure(suffixAt(i), font).width : 0), 1)))
+      ? undefined : measureAll(font, maxLines, false, pad);
 
   // Prose: wrap to two lines, then three, then step the font down, then rotate.
   const two = wholeRows(baseFont, PROSE_TICK_MAX_LINES);
