@@ -620,8 +620,14 @@ export function completeDimSwitchProjection(data: TableData, wide: ResolveResult
   });
 }
 
-export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
+/**
+ * The table's values as the caller's own copy. `shared` returns the prepared values instead, which every later
+ * drawing of the same data reads too: only a caller that never writes to them, and hands none of them to outside
+ * code, may take them.
+ */
+export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data, shared = false): ResolveResult {
   const borrowed = resolvePreparedTable(prepareTableData(data, options, magnitudeSource), options);
+  if (shared) return borrowed;
   const owned = copyPlannedValue(borrowed);
   // Top-N consumes these private evaluated states after the public shape has been copied.
   evaluatedStates.set(owned, evaluatedStates.get(borrowed)!);
