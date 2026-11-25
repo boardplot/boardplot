@@ -29,6 +29,7 @@ import { withBlankCategoryLabelsOmitted } from '../../calendarData';
 import { displayFont } from '../cardRoles';
 import { unitOnNumber, withUnit } from '../../unitJoin';
 import { STACK_FOCUS } from '../../stackFocus';
+import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
 
 export interface MetricStackDerived {
   gap: number;
@@ -851,6 +852,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     // The focus look prints the value of each focus category only, kept inside the plot with its plate:
     // at the first and the last category it moves inward instead of leaving the plot.
     const valued=(ci:number)=>look ? stateOf(ci)==='focus' : onValueRhythm(ci)||ci===latest;
+    const valueId = (ci: number) => `${p.panel.id}:value:${data.categories[ci]!.id}`;
+    const peak = !look && thin && p.panel.type === 'column' && canTryRowPeak(options)
+      ? planCrowdedRow(p.values.map((value, ci) => visible(ci) ? value : null), plot, valued,
+        ci => !visible(ci) || p.states[ci] !== 'mature' || data.categories[ci]!.partial === true
+          || options.focus?.owner.categoryId === data.categories[ci]!.id || options.labelPlacements?.[valueId(ci)] !== undefined
+          || ci === latest,
+        valueId, options.labelDensity) : undefined;
     const seatX=(x:number,text:string)=>{ if(!look) return x; const w=measure(text,valueFont).width; return Math.min(Math.max(x-w/2,plotX+3),plotX+plotW-3-w)+w/2; };
     // A latest value off the thinned rhythm sits one column from its neighbour's; that neighbour yields where they collide.
     if(!look&&!onValueRhythm(latest)) yielding.add(`${p.panel.id}:value:${data.categories[latest-1]?.id}`);
@@ -905,10 +913,11 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
         emit({t:'circle',id:`${p.panel.id}:point:${category.id}`,cx:x,cy:top,r:4.5,fill:provisional?{token:'background'}:color,...(provisional?{stroke:muted,strokeWidth:strokeToken(theme, 'mark')}:{}),owner:cellOwner,part:provisional?'provisionalPoint':'point'},ci);
         occupied.claim({x:x-4.5,y:top-4.5,w:9,h:9},'mark',cellOwner,'point');
       }
-      if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,labelText,valueFont,seatX(x,labelText),top-labelGap-heightOf(valueFont),cellOwner,provisional?muted:{token:'ink'},'label','point',undefined,!look&&p.panel.type==='line'&&top+labelGap+heightOf(valueFont)<baseline-2?top+labelGap:undefined);
+      if(valued(ci)||peak?.index===ci)centerText(`${p.panel.id}:value:${category.id}`,labelText,valueFont,seatX(x,labelText),top-labelGap-heightOf(valueFont),cellOwner,provisional?muted:{token:'ink'},'label','point',undefined,!look&&p.panel.type==='line'&&top+labelGap+heightOf(valueFont)<baseline-2?top+labelGap:undefined);
       if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);
       // A line point value ranks as on the line chart: the latest is its endpoint, the others interior, so 'minimal' keeps the latest.
       const valueRequest=requests.at(-1);
+      if (peak?.index === ci && valueRequest?.id === valueId(ci)) valueRequest.rowPeak = peak.seat;
       if(p.panel.type==='line'&&valueRequest?.id===`${p.panel.id}:value:${category.id}`)valueRequest.priority=ci===latest?PRIORITY.endpoint:PRIORITY.interior;
     });
     if (p.panel.type === 'column') baseLine();

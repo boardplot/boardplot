@@ -33,6 +33,8 @@ import { composedTextRole } from '../../textRole';
 import { totalColumn } from './domain';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { rankValueLabels } from '../band/valueDensity';
+import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
+import { DENSITY_VALUES } from '../../frame';
 import { noteName } from '../../calendarData';
 import { chartString } from '../../strings';
 import { disclosuresShown } from '../../notes';
@@ -235,6 +237,19 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   // the latest column; the notes list names the others.
   const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)));
   const thinned = crowded && domain.columns.length > 1;
+  const skips = (ci: number) => thinned && !nets.has(ci) && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(domain.cats[ci]!.id);
+  const idAt = (ci: number) => `grandTotal:${domain.cats[ci]!.id}`;
+  const latest = thinned ? texts.reduce((last, text, ci) => text === null ? last : ci, -1) : -1;
+  const locked = (domain.options as { [DENSITY_VALUES]?: ReadonlySet<string> })[DENSITY_VALUES];
+  const protectedAt = (ci: number) => {
+    const c = domain.cats[ci]!;
+    return ci === latest || texts[ci] == null || nets.has(ci) || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
+      || c.partial === true || toDateIds.has(c.id) || authored.has(c.id) || domain.options.labelPlacements?.[idAt(ci)] !== undefined
+      || onePartDrawn(domain.columns.map(series => series.vals[ci]!.v));
+  };
+  const peak = thinned && canTryRowPeak(domain.options) && texts.filter((text, ci) => text && skips(ci)).length > 1
+    ? planCrowdedRow(texts.map((text, ci) => text && !nets.has(ci) ? posTop[ci] : null), area.plot,
+      ci => !skips(ci), protectedAt, idAt, domain.options.labelDensity) : undefined;
   // Under a floated line the columns keep a short band and the value row is
   // their only scale reading: where neighbour totals crowd, the tallest and the
   // lowest stack keep their value before the others.
@@ -356,7 +371,8 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       ...words?.request,
       typeRole: 'label', font: outerFont,
       ...(rowFont ? { fontStep: rowFont } : {}),
-      ...(thinned && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(c.id) ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
+      ...(skips(ci) ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
+      ...(peak?.index === ci && !locked?.has(idAt(ci)) ? { rowPeak: peak.seat } : {}),
       priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0) + (extremeTotals.has(ci) ? EXTREME_TOTAL_BONUS : 0),
       candidates: nearestOwnMarkFirst([
         // An average marker across this seat does not move the total: it

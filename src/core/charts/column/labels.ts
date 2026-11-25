@@ -25,6 +25,7 @@ import { lineBox } from '../../label/fitText';
 import { groupedOffsets } from '../band/groups';
 import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
+import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
 import { netLineName, onePartDrawn, printsValue } from '../band/stacks';
 import { restValueHiding, restValuesHidden } from '../../restLabels';
 import { emphasisWeight } from '../../theme';
@@ -723,6 +724,21 @@ export function planColumnTotals(
   // A stack still crowded at the step: every second total prints, counted back from
   // the latest column; the notes list names the others.
   const thinned = domain.dataSeries.length > 1 && valueRowCrowded(seats(totalFont));
+  const skips = (ci: number) => thinned && !totals[ci]?.net && ci % 2 !== (cats.length - 1) % 2 && !highlights.has(cats[ci]!.id);
+  const idAt = (ci: number) => `grandTotal:${cats[ci]!.id}`;
+  const latest = thinned ? totals.reduce((last, total, ci) => total === null ? last : ci, -1) : -1;
+  const protectedAt = (ci: number) => {
+    const c = cats[ci]!;
+    return ci === latest || highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
+      || c.partial === true || toDateIds.has(c.id) || !totals[ci] || totals[ci]!.net
+      || domain.options.labelPlacements?.[idAt(ci)] !== undefined
+      || onePartDrawn(domain.dataSeries.map(series => series.vals[ci]!.v))
+      || domain.dataSeries.some(series => typeof series.vals[ci]!.labelOverride === 'string');
+  };
+  // A row that omits only one total can use that omission to choose its automatic axis.
+  const peak = thinned && canTryRowPeak(domain.options) && totals.filter((total, ci) => total && skips(ci)).length > 1
+    ? planCrowdedRow(totals.map((total, ci) => total && !total.net ? posTopP[ci] : null), area.plot,
+      ci => !skips(ci), protectedAt, idAt, domain.options.labelDensity) : undefined;
   const valueAlone = gtContent?.join() === 'absolute';
   cats.forEach((c, ci) => {
     const total = totals[ci];
@@ -760,7 +776,7 @@ export function planColumnTotals(
             .map(n => y(posTopP[n]!) - tsize.height - 4));
           return clear < candidate.rect.y - 0.5 ? [candidate, { ...candidate, slot: 'aboveNeighbours', rect: { ...candidate.rect, y: clear }, penalty: candidate.penalty + 1, reach: 4 * lineBox(totalFont) + 2 * 4 }] : [candidate];
         });
-    const skipped = thinned && !net && ci % 2 !== (cats.length - 1) % 2 && !highlights.has(c.id);
+    const skipped = skips(ci);
     if (skipped && onOmittedTotal && !linked.has(`grandTotal:${c.id}`) && scene.bars.some(bar => bar.c.id === c.id)) onOmittedTotal();
     requests.push({
       id: `grandTotal:${c.id}`,
@@ -770,6 +786,7 @@ export function planColumnTotals(
       ...namesOnly(variant === 'stacked100' ? gtContent : gtContent?.filter((part) => part !== 'percent'), undefined),
       ...(net ? { role: 'category' as const } : {}),
       ...(skipped ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
+      ...(peak?.index === ci ? { rowPeak: peak.seat } : {}),
       ...(!net && !words && valueAlone && linked.has(`grandTotal:${c.id}`) ? { printedIn: linked.get(`grandTotal:${c.id}`) } : {}),
       owner: { categoryId: c.id },
       text,
