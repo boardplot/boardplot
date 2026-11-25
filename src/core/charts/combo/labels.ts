@@ -243,12 +243,12 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const locked = (domain.options as { [DENSITY_VALUES]?: ReadonlySet<string> })[DENSITY_VALUES];
   const protectedAt = (ci: number) => {
     const c = domain.cats[ci]!;
-    return ci === latest || texts[ci] == null || nets.has(ci) || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
+    return ci === latest || texts[ci] == null || nets.has(ci) || negBot[ci]! < 0 || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
       || c.partial === true || toDateIds.has(c.id) || authored.has(c.id) || domain.options.labelPlacements?.[idAt(ci)] !== undefined
       || onePartDrawn(domain.columns.map(series => series.vals[ci]!.v));
   };
   const peak = thinned && canTryRowPeak(domain.options) && texts.filter((text, ci) => text && skips(ci)).length > 1
-    ? planCrowdedRow(texts.map((text, ci) => text && !nets.has(ci) ? posTop[ci] : null), area.plot,
+    ? planCrowdedRow(texts.map((text, ci) => text ? posTop[ci] : null), area.plot,
       ci => !skips(ci), protectedAt, idAt, domain.options.labelDensity) : undefined;
   // Under a floated line the columns keep a short band and the value row is
   // their only scale reading: where neighbour totals crowd, the tallest and the

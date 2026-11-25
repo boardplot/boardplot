@@ -730,14 +730,17 @@ export function planColumnTotals(
   const protectedAt = (ci: number) => {
     const c = cats[ci]!;
     return ci === latest || highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
-      || c.partial === true || toDateIds.has(c.id) || !totals[ci] || totals[ci]!.net
+      || c.partial === true || toDateIds.has(c.id) || !totals[ci] || totals[ci]!.net || negBotP[ci]! < 0
       || domain.options.labelPlacements?.[idAt(ci)] !== undefined
       || onePartDrawn(domain.dataSeries.map(series => series.vals[ci]!.v))
       || domain.dataSeries.some(series => typeof series.vals[ci]!.labelOverride === 'string');
   };
   // A row that omits only one total can use that omission to choose its automatic axis.
-  const peak = thinned && canTryRowPeak(domain.options) && totals.filter((total, ci) => total && skips(ci)).length > 1
-    ? planCrowdedRow(totals.map((total, ci) => total && !total.net ? posTopP[ci] : null), area.plot,
+  const peak = thinned && variant !== 'stacked100' && canTryRowPeak(domain.options)
+    // Column value-line captions are seated after the value labels.
+    && !domain.annList.some(annotation => annotation.kind === 'valueLine')
+    && totals.filter((total, ci) => total && skips(ci)).length > 1
+    ? planCrowdedRow(totals.map((total, ci) => total ? posTopP[ci] : null), area.plot,
       ci => !skips(ci), protectedAt, idAt, domain.options.labelDensity) : undefined;
   const valueAlone = gtContent?.join() === 'absolute';
   cats.forEach((c, ci) => {
