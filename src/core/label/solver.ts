@@ -569,12 +569,13 @@ function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req:
     const yields = (req: LabelRequest) => row.neighbours.includes(req.id) && !pinOf(req) && !req.redundant && !req.protect && !req.keepWhenDense;
     const brushes = (req: LabelRequest, seat: SlotCandidate) =>
       rowValuesCrowd(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad));
-    const before = eligible ? ranked.findIndex(req => yields(req) && req.candidates.some(seat => brushes(req, seat))) : -1;
-    // Keep the seats of requests the peak may not displace, even when they normally run later.
-    const reserved = before >= 0 && ranked.slice(before).some(req => !req.redundant && !yields(req)
-      && req.candidates.some(seat => (req.kind === peak.kind && req.owner.seriesId === peak.owner.seriesId
-        ? brushes(req, seat)
-        : rectsOverlap(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad)))));
+    const before = eligible ? ranked.findIndex(req => yields(req) && req.candidates[0] && brushes(req, req.candidates[0])) : -1;
+    // A neighbour may yield its natural seat. Its fallbacks can carry a leader around a mark.
+    const reserved = before >= 0 && ranked.slice(before).some(req => !req.redundant
+      && req.candidates.some((seat, index) => (index !== 0 || !yields(req)) &&
+        (req.kind === peak.kind && req.owner.seriesId === peak.owner.seriesId
+          ? brushes(req, seat)
+          : rectsOverlap(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad)))));
     if (eligible && !reserved) {
       admitted.set(peak.id, before < 0 ? [] : ranked.filter(yields).map(req => req.id));
       ranked.splice(before < 0 ? ranked.length : before, 0, peak);
