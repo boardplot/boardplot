@@ -18,7 +18,7 @@ import { AUTHORED_EXAMPLES, withChartFormats, withUnitStandIns, writtenExamples 
 import { hasFormatRecord } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, heightOmitted, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -45,6 +45,10 @@ import { hasCompleteTextWidths } from './fontMetrics/injected';
 
 /** Chart types may refine shared mode names and label content. */
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
+
+type RepairReplacement<M extends object, DV extends object> = () => LayoutResult<M, DV> | undefined;
+type RegistryFitLayout<O extends ChartOptions, M extends object, DV extends object> = FitLayout<O, M, DV>
+  & ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => LayoutResult<M, DV>);
 
 /**
  * A layout that draws reports an estimated height and no patch: the estimate was never drawn, and a patch that
@@ -297,7 +301,9 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   // accidentally rendered.
   const sizing = def.sizing ?? chartSizing(def.type);
   const supported = new Set(def.annotationKinds);
-  const prepareLayout = (data: D, authored?: O, fitOnly = false): FitLayout<O, M, DV> => {
+  // Width-yielding layouts read repair sizes. A Gantt probe also updates the full-card context.
+  const canDiscardSize = builtIn && !def.finishLayout && def.type !== 'gantt' && def.type !== 'grid';
+  const prepareLayout = (data: D, authored?: O, fitOnly = false): RegistryFitLayout<O, M, DV> => {
     const annotations = prepareFractionAnnotations(authored?.annotations);
     if (annotations !== authored?.annotations) authored = { ...authored, annotations } as O;
     const target = authored?.target ?? DEFAULT_TARGET;
@@ -320,7 +326,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // Equal note text at another frame cannot reuse this note variant.
     let noteLayouts = new WeakMap<object, Map<string, FitLayout<O, M, DV>>>();
     const noteRuns: FitLayout<O, M, DV>[] = [];
-    const layoutBody = ((options?: O) => {
+    const layoutBody = ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => {
     // Only the frame and search markers change within this prepared call.
     const sizeTarget = options?.size === undefined && ['kpi', 'bullet', 'sparkline'].includes(def.type)
       && (target === 'slide' || target === 'print') ? 'report' : target;
@@ -531,10 +537,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         for (let pass = 0; pass < 6; pass++) {
           const width = Math.max(geo.size.width, floor.minWidth);
           const probe = probeAt(width, Math.max(geo.size.height, floor.minHeight));
-          // Once a repair draws, the search can only refine the size of this refusal.
-          if (fitOnly && resolved.fixed.height && !isRefused(probe)) return geo;
-          if (!isRefused(probe) && floor.minHeight <= geo.size.height) return sizeRefusal(def.type, def.title, geo.size, sClassMinimum(floor, geo.size));
           if (!isRefused(probe)) {
+            // A pinned footer can discover a countable note during the search.
+            if (resolved.fixed.height && !staticFrame.pinned) {
+              // On a live frame a passing repair only leaves the size of this refusal to refine.
+              if (fitOnly) return geo;
+              const replacement = replaceRepair?.();
+              if (replacement) return replacement;
+            }
+            if (floor.minHeight <= geo.size.height) return sizeRefusal(def.type, def.title, geo.size, sClassMinimum(floor, geo.size));
             // This larger size drew. The remaining search only refines the size refusal.
             // The counted or compact form can replace it before anyone reads its advice.
             const repair = (frame as { [FALLBACK_REPAIR]?: FallbackRepair } | undefined)?.[FALLBACK_REPAIR];
@@ -658,7 +669,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     return geo;
     });
     // Every number this layout formats follows the chart's smallValues mode and unit-only formats.
-    const layout = ((options?: O) => withChartFormats(prepared as BaseOptions, () => layoutBody(options))) as FitLayout<O, M, DV>;
+    const layout = ((options?: O, replaceRepair?: RepairReplacement<M, DV>) =>
+      withChartFormats(prepared as BaseOptions, () => layoutBody(options, replaceRepair))) as RegistryFitLayout<O, M, DV>;
     layout.finish = () => {
       legendLayout.finish();
       for (const run of noteRuns) run.finish();
@@ -691,11 +703,22 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   };
   // Full mode that lacks room on a pinned canvas falls back to compact, here at the outermost
   // call: the probes above ask the full chart what it needs and must keep their refusals.
-  const layoutFitted = (data: D, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>): LayoutResult<M, DV> => {
+  const layoutFitted = (data: D, options: O | undefined, layoutOnce: RegistryFitLayout<O, M, DV>): LayoutResult<M, DV> => {
     const repair = staticFrame.pinned && surveyRepairLayouts.has(def.layout)
       && (options?.measure === undefined || options.measure === defaultMeasurer)
       ? { deferred: false } : undefined;
-    const full = layoutOnce(repair ? { ...options, [FALLBACK_REPAIR]: repair } as unknown as O : options);
+    const fullOptions = repair ? { ...options, [FALLBACK_REPAIR]: repair } as unknown as O : options;
+    let compact: LayoutResult<M, DV> | undefined;
+    // A compact result can replace a full size refusal before its exact size is needed.
+    const tryCompactRepair = canDiscardSize && !staticFrame.pinned && !heightOmitted(options?.size);
+    const full = layoutOnce(fullOptions, tryCompactRepair ? () => {
+      if (!compactFallbackApplies(def, options, data) || !hasCompleteTextWidths(options?.measure ?? defaultMeasurer)) return undefined;
+      const requested = resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size);
+      if (!requested.fixed.height || !fitsSize(requested.sizePx, declaredSizing(def, options))) return undefined;
+      compact = layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as O);
+      return !isRefused(compact) || compact.warnings[0]?.code === 'size-below-floor' ? compact : undefined;
+    } : undefined);
+    if (full === compact) return full;
     // Only the retained full refusal needs the original midpoint and smaller-font searches.
     const fullAdvice = () => repair?.deferred ? layoutOnce(options) : full;
     // A band chart's full mode prints every category name (namesMustPrint). When the
@@ -732,20 +755,20 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // repeats the same refusal and its repair search.
     const requested = resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size);
     if (requested.fixed.height && !fitsSize(requested.sizePx, declaredSizing(def, options))) return fullAdvice();
-    const compact = layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options);
+    compact ??= layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options);
     // Compact replaces the full refusal only if it draws, or if it is a size refusal with the
     // size compact needs. Any other compact failure would hide the usable size advice of full mode.
     return !isRefused(compact) || compact.warnings[0]?.code === 'size-below-floor' ? compact : fullAdvice();
   };
   // A refusal keeps the retirement warnings that a drawn chart gets in layoutOnce (accept, ignore, warn).
-  const layoutBaseline = (data: D, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>, probe = false) => {
+  const layoutBaseline = (data: D, options: O | undefined, layoutOnce: RegistryFitLayout<O, M, DV>, probe = false) => {
     const geo = probe && !compactFallbackApplies(def, options, data) ? fullProbe(options, layoutOnce) : layoutFitted(data, options, layoutOnce);
     // Only a hard refusal skips layoutOnce's success tail; a lint refusal already carries the warnings.
     if (!geo.refused) return geo;
     const removed = (options as { [REMOVED_NAMES]?: LintWarning[] } | undefined)?.[REMOVED_NAMES] ?? removedNameWarnings(options);
     return removed.length ? { ...geo, warnings: [...geo.warnings, ...removed] } : geo;
   };
-  const layoutPlain = (data: D, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>, probe = false) => {
+  const layoutPlain = (data: D, options: O | undefined, layoutOnce: RegistryFitLayout<O, M, DV>, probe = false) => {
     const noteData = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
     return withDensityNotes(noteData, (options ?? {}) as BaseOptions, next => {
@@ -766,8 +789,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // memo keys a layout by its data object.
     const labelled = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
-    // Width-yielding layouts read repair sizes. A Gantt probe also updates the full-card context.
-    const discardSize = fitOnly && builtIn && !def.finishLayout && def.type !== 'gantt' && def.type !== 'grid'
+    const discardSize = fitOnly && canDiscardSize
       && hasCompleteTextWidths(options?.measure ?? defaultMeasurer);
     const layoutOnce = prepareLayout(labelled, { ...options, [CARD_HEIGHT_MEMO]: memo } as unknown as O, discardSize);
     const plain: typeof def.layout = (d, o) => {
