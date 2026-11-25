@@ -858,12 +858,23 @@ interface PointLabelInput {
   unitOnEvery?: boolean;
 }
 
+/** The drawn point indexes and their extrema, in category order. */
+function drawnPointRange(row: (number | null)[]) {
+  const drawn: number[] = [];
+  let min = Infinity;
+  let max = -Infinity;
+  row.forEach((value, ci) => {
+    if (value === null) return;
+    drawn.push(ci);
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  });
+  return { drawn, min, max };
+}
+
 function pointLabelSeeds(input: PointLabelInput): PointLabelSeed[] {
   const { series, row, cats } = input;
-  const drawn = row.flatMap((value, ci) => (value === null ? [] : [ci]));
-  const values = drawn.map((ci) => row[ci]!);
-  const min = minOf(values);
-  const max = maxOf(values);
+  const { drawn, min, max } = drawnPointRange(row);
   const last = drawn[drawn.length - 1];
   const seeds: PointLabelSeed[] = [];
   for (const ci of input.categoryIndices ?? drawn) {
@@ -1416,12 +1427,10 @@ export function pointLabelSelection(input: {
   return input.drawnSeries.flatMap((series, dataIdx) => {
     if (input.labelOnly !== undefined && !input.labelOnly.has(series.id)) return [];
     const row = input.pv[input.rowOf.get(series)!]!;
-    const drawn = row.flatMap((value, ci) => (value === null ? [] : [ci]));
+    const { drawn, min, max } = drawnPointRange(row);
     if (drawn.length === 0) return [];
     const first = drawn[0]!;
     const last = drawn[drawn.length - 1]!;
-    const values = drawn.map((ci) => row[ci]!);
-    const [min, max] = [minOf(values), maxOf(values)];
     const engine = mode === 'all' ? drawn
       : mode === 'extremes' ? drawn.filter((ci) => ci === first || ci === last || row[ci] === min || row[ci] === max)
         : mode === 'ends' ? [first, last]
