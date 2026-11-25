@@ -379,11 +379,12 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
-  const first = (request.options as { [INTERACTIVE_LAYOUT]?: boolean })[INTERACTIVE_LAYOUT]
+  const probe = table ? layoutWidthProbe : layoutOnce;
+  const result = (request.options as { [INTERACTIVE_LAYOUT]?: boolean })[INTERACTIVE_LAYOUT]
     && request.fixed.height && floorTextScale(request.target) === undefined
     && typeWidthClass(request.size.width) !== 'S' && !ownWidthGroups(request.type, request.options as WidthEntry['options']).length
-    ? layoutBeforeClassStep(request) : layoutOnce(request);
-  const result = afterFirstLayout(request, first, layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain);
+    ? layoutBeforeClassStep(request, probe)
+    : afterFirstLayout(request, layoutOnce(request), layoutOnce, probe, layoutPlain);
   // A table's tight-spacing size is checked once at that size. The dimswitch checks its own card in its layout;
   // the cohort's render advice is an estimate that errs wide, and its check would cost two layouts.
   if (request.type !== 'table' || isRefused(result)) return finish(result);
@@ -393,18 +394,26 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   }));
 }
 
-function layoutBeforeClassStep(request: ResolvedChartRequest): LayoutResult {
+function layoutBeforeClassStep(request: ResolvedChartRequest, probe: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult {
+  let notesOff: LayoutResult | undefined;
   let tried: { request: ResolvedChartRequest; drawn: LayoutResult | undefined } | undefined;
   const first = layoutOnce(request, refusal => {
-    if (refusal.size.width !== request.size.width || withoutAskedNotes(request, refusal)) return false;
+    if (refusal.size.width !== request.size.width) return false;
     // An error from a speculative draw must still wait for the ordinary step.
     try {
+      const plain = withoutAskedNotes(request, refusal);
+      if (plain) {
+        notesOff ??= layoutPlain(plain);
+        // A drawing without the notes uses the original repair in its warning.
+        if (!notesOff.refused) return false;
+      }
       tried ??= { request, drawn: classStep(request, refusal, layoutPlain) };
       return tried.drawn !== undefined;
     } catch { return false; }
   });
-  if (tried && first.refused && first.warnings[0]?.code === 'size-below-floor') classSteps.set(first, tried);
-  return first;
+  const refusedOnSize = first.refused && first.warnings[0]?.code === 'size-below-floor';
+  if (tried && refusedOnSize) classSteps.set(first, tried);
+  return afterFirstLayout(request, first, layoutOnce, probe, layoutPlain, refusedOnSize ? notesOff : undefined);
 }
 
 /**
@@ -413,13 +422,14 @@ function layoutBeforeClassStep(request: ResolvedChartRequest): LayoutResult {
  * returns before any layout where it does not apply. Width searches take the same steps (`widthProbers`).
  */
 function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
-  probe: (asked: ResolvedChartRequest) => LayoutResult, plainLayout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult {
+  probe: (asked: ResolvedChartRequest) => LayoutResult, plainLayout: (asked: ResolvedChartRequest) => LayoutResult,
+  notesOff?: LayoutResult): LayoutResult {
   const table = request.type === 'table' || request.type === 'dimswitch';
   const fitted = widthsGiveWay(request, first, layout, probe);
   if (fitted) return fitted[1];
   const [asked, result] = steppedType(request, first, layout) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && plainLayout(plainRequest);
+  const plain = plainRequest && (notesOff ?? plainLayout(plainRequest));
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
   // An unchanged refusal already tried the same authored widths.
   const fittedLate = table && asked === request && drawn === first
