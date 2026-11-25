@@ -185,6 +185,56 @@ describe('value integrity on the chart', () => {
     expect(texts('variance', data, { variant: 'relative', variance: { of: 'ac', vs: 'py' }, unit: '%' })).toContain('n.m. (+7)');
   });
 
+  // A crowded metric stack used to hide its tallest column when the week fell between the retained values.
+  it('keeps the tallest column value in a crowded metric stack', () => {
+    const categories = Array.from({ length: 60 }, (_, i) => ({
+      id: `W${String(i + 1).padStart(2, '0')}`, label: `W${i + 1}`,
+    }));
+    const values = categories.map((_, i) => i === 6 ? 34456 : i === 5 ? 33472 : 18000 + i * 130);
+    const data = {
+      categories,
+      measures: [
+        { id: 'units', label: 'Units', values },
+        { id: 'orders', label: 'Orders', values: values.map(value => Math.round(value * 0.03)) },
+      ],
+      panels: [
+        { id: 'counts', type: 'column', title: 'Units', unit: 'units', measure: { sum: ['units'] }, readout: 'change' },
+        { id: 'rate', type: 'line', title: 'Rate', unit: '%', measure: { numerator: ['orders'], denominator: 'units' }, readout: 'change' },
+      ],
+      windows: { grain: 'week', base: { from: 'W01', to: 'W04', label: 'Base' }, compare: { from: 'W55', to: 'W58', label: 'Compare' } },
+    };
+    const result = measure({ type: 'grid', data, options: {
+      stack: {}, sharedAxis: 'category', size: { width: 1440 }, labelDensity: 'full',
+    } } as never);
+    const peak = result.geometry?.labels.find(label => label.id === 'counts:value:W07' && !label.hidden);
+    expect(peak?.text).toBe('34,456');
+  });
+
+  // A metric stack neighbour that gives its seat to the tallest column stays out of the hidden-label note.
+  it('omits the displaced metric stack value like other skipped columns', () => {
+    const categories = Array.from({ length: 30 }, (_, i) => ({
+      id: `W${String(i + 1).padStart(2, '0')}`, label: `W${i + 1}`,
+    }));
+    const values = categories.map((_, i) => i === 5 ? 34000 : i === 6 ? 34500 : i === 7 ? 28500 : 12000 + i % 5 * 800);
+    const data = {
+      categories,
+      measures: [
+        { id: 'orders', label: 'Orders', values },
+        { id: 'completed', label: 'Completed', values: values.map((value, i) => Math.round(value * (0.12 + i % 6 * 0.01))) },
+      ],
+      panels: [
+        { id: 'orders', type: 'column', title: 'Weekly orders', unit: 'orders', measure: { sum: ['orders'] }, readout: 'change' },
+        { id: 'rate', type: 'line', title: 'Completion rate', unit: '%', measure: { numerator: ['completed'], denominator: 'orders' }, readout: 'change' },
+      ],
+      windows: { base: { from: 'W01', to: 'W04', label: 'Base' }, compare: { from: 'W27', to: 'W30', label: 'Latest' } },
+    };
+    const { geometry } = measure({ type: 'grid', data, options: {
+      stack: {}, sharedAxis: 'category', labelDensity: 'full', title: 'Weekly totals', size: { width: 1000 },
+    } } as never);
+    expect(geometry?.labels.find(label => label.id === 'orders:value:W07' && !label.hidden)?.text).toBe('34,500');
+    expect(geometry?.labels.find(label => label.id === 'orders:value:W06')).toBeUndefined();
+  });
+
   // With footnotes off no value carries a marker, so a numbered engine state note pointed at nothing.
   it('metric stack: footnotes off leaves no numbered engine note without its mark', () => {
     const definition = getChart('grid')!;

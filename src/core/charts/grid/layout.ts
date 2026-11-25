@@ -67,6 +67,7 @@ import {
 import { GRID_MAX_TRACKS } from './limits';
 import { DEFAULT_TARGET, floorTextScale, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { STACK_ROOM } from '../band/labels';
+import { KEEP_PANEL_LABEL_SELECTION } from '../band/crowdedRow';
 import { cellMeta, cellValue, type OwnerRef } from '../../types/cell';
 import type { ThemeRef } from '../../types/theme';
 import type { LegendOptions } from '../../types/options';
@@ -894,6 +895,10 @@ function layoutLegacyGrid(
       options: {
         ...panelOptions,
         ...(sharedAxis ? { valueAxis: { ...axis, gridlines: axis.gridlines ?? true, ...(index % columns === 0 ? {} : { show: false }) } } : {}),
+        // Tiers size each other from their labels, and sibling facets copy the first panel's gridlines.
+        ...(compactTiers && groupResult.panels.length > 1
+          || sharedAxis && columns > 1 && index % columns === 0 && index + 1 < groupResult.panels.length && axis.gridlines !== false
+          ? { [KEEP_PANEL_LABEL_SELECTION]: true as const } : {}),
         ...(compactTiers && panelOptions.title === undefined && panelTitle ? { title: panelTitle } : {}),
         ...(options.palette !== undefined && panelOptions.palette === undefined ? { palette: options.palette } : {}),
         ...compactPanelMode(panel, canvasWidth, options),
@@ -1826,6 +1831,7 @@ function layoutAuthoredChild(
     const resolvedOptions = {
       ...definition.defaults,
       ...panelOptions,
+      ...(compactTiers ? { [KEEP_PANEL_LABEL_SELECTION]: true as const } : {}),
       ...((panelOptions.locale ?? parentOptions.locale) === undefined ? {} : { locale: panelOptions.locale ?? parentOptions.locale }),
       ...(Object.keys(authoredStrings(parentOptions) ?? {}).length ? { strings: { ...authoredStrings(parentOptions), ...(panelOptions.strings as object) } } : {}),
       ...(compactTiers && panelOptions.title !== false && (authoredTitle !== undefined || panel.type === 'variance') ? { title: '' } : {}),
