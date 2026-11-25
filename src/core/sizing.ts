@@ -17,6 +17,7 @@ import { AUTO_LEGEND } from './legendPolicy';
 import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
 import { withCategoryRowPlans } from './label/categoryRow';
+import { hasCompleteTextWidths } from './fontMetrics/injected';
 import { defaultMeasurer, isCachedTextMeasurer, type TextMeasurer, withWrappedTexts } from './text';
 import { maxOf } from './arrays';
 import { sourceFollowsContent } from './sourceFollows';
@@ -1499,8 +1500,11 @@ export const COLUMN_MIDPOINT_SHORT = Symbol('columnMidpointShort');
 function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, atSize?: SizeLayout<O, M, DV>,
 ): LayoutResult<M, DV> {
+  const column = options as { variant?: string; categoryLabels?: string; measure?: TextMeasurer } | undefined;
   const columnSearch = definition.type === 'column' && widthOnly(options?.size)
-    && (options as { categoryLabels?: string }).categoryLabels === 'staircase' ? {} : undefined;
+    && (column?.categoryLabels === 'staircase' || column?.variant === 'stacked'
+      && classStepWidth(resolveSize(options.size, options.target).width) < WIDE_CANVAS_MIN_WIDTH
+      && hasCompleteTextWidths(column.measure ?? defaultMeasurer)) ? {} : undefined;
   const result = findFit(definition, data, options, compactFallback, atSize, columnSearch);
   if (result.refused || !measuredColumnHeights.has(result)) return result;
   // Only the winning height reaches the complete fixed-layout evaluator and its result cache.
@@ -1524,8 +1528,8 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
   // chart its aspect height, a content-fit chart the height its content needs
   // there, measured on a first pass at the aspect height.
   if (widthOnly(options?.size)) {
-    const column = options as { variant?: string; valueAxis?: { percent?: boolean }; annotations?: unknown[]; measure?: TextMeasurer };
-    const trials = columnSearch && column.variant === 'stacked' && !column.valueAxis?.percent && !column.annotations?.length
+    const column = options as { variant?: string; categoryLabels?: string; valueAxis?: { percent?: boolean }; annotations?: unknown[]; measure?: TextMeasurer };
+    const trials = columnSearch && column.categoryLabels === 'staircase' && column.variant === 'stacked' && !column.valueAxis?.percent && !column.annotations?.length
       && panelTypeClass(options) === undefined && isCachedTextMeasurer(column.measure ?? defaultMeasurer)
       ? new Map<number, LayoutResult<M, DV>>() : undefined;
     const at = (width: number, height: number, midpointFloor?: number, draw = false) => {

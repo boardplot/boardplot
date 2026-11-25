@@ -1,11 +1,20 @@
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { chartSizing } from '../../sizing';
+import { CARD_CLASS_WIDTH, chartSizing } from '../../sizing';
+import { staticFrame } from '../../footer';
+import { withEngineNotes } from '../../notes';
+import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
+import { columnPaints } from './paints';
+import { solveColumnFrame } from './plot';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { LEGEND_HEIGHT } from '../../frame';
+import { zeroLifts } from '../../formatPrecision';
+import { withLocaleStrings } from '../../strings';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { canvasMargin } from '../../theme';
+import { canvasMargin, classStepWidth, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from '../../theme';
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
 import { chartTheme } from '../chartEnv';
@@ -41,6 +50,46 @@ export const columnCore: ChartCore<
     const prepared = prepareFractionData(data);
     const column = layoutColumn(prepared, options);
     return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column), options);
+  },
+  coveringKey(data, options, baseline) {
+    const size = options.size;
+    if (baseline.legend?.items.length || baseline.mode !== 'full' || options.variant !== 'stacked'
+      || !options.seriesLabels || options.seriesLabels.only !== undefined || options.seriesLabels.cagr
+      || !size || typeof size !== 'object' || size.height !== undefined || size.unit !== undefined || size.width !== baseline.size.width
+      || size.width < CARD_CLASS_WIDTH || classStepWidth(size.width) >= WIDE_CANVAS_MIN_WIDTH
+      || !hasCompleteTextWidths(options.measure ?? defaultMeasurer) || staticFrame.pinned || panelTypeClass(options) !== undefined || HOST_CLAIMS in options
+      || COLLECT_IDENTITIES in options || options.footnotes || options.notes || baseline.frame.noteList?.some(note => note.kind !== 'source')
+      || baseline.labels.some(label => label.hidden) || options.annotations?.some(annotation => annotation.kind !== 'cagr')
+      || Object.keys(options).some(key => key !== 'annotations' && key !== 'seriesLabels' && !widthBoundOptions.has(key))) return;
+    // A plain stack has two possible keys: no items while its edge names fit, or all series.
+    // Dates keep the column form. Scenario, range and partial marks can bring additional keys.
+    if (data.series.length < 2 || data.categories.some(category => !category.date || Object.keys(category).some(key => key !== 'id' && key !== 'label' && key !== 'date'))
+      || data.series.some(series => Object.keys(series).some(key => key !== 'id' && key !== 'label' && key !== 'values')
+        || series.values.some(value => typeof value !== 'number' || !(value > 0)))
+      || Object.keys(data).some(key => key !== 'series' && key !== 'categories')) return;
+    if (baseline.labels.filter(label => !label.hidden && label.id.startsWith('seriesEdge:')).length !== data.series.length) return;
+    // Use the full key at the widest possible gutters. The value axis can only narrow those gutters.
+    const margin = { ...canvasMargin(chartTheme({ ...options, size: baseline.size }), size.width), ...options.margin };
+    if (!(margin.left >= 0 && margin.right >= 0)) return;
+    const counted = staticFrame.countable;
+    const lifts = zeroLifts.count;
+    try {
+      const forced = { ...withLocaleStrings(options), size: baseline.size, margin, [KEY_EDGE_SERIES]: true, [LEGEND_HEIGHT]: undefined };
+      const key = withEngineNotes(() => {
+        const domain = resolveColumnDomain(data, forced, []);
+        if (domain.variant !== 'stacked' || domain.annList.some(annotation => annotation.kind !== 'cagr')) return;
+        return solveColumnFrame(domain, columnPaints(domain, []), []).frame;
+      }, true);
+      if (key?.legend?.items.length !== data.series.length) return;
+      const names = key.legend.items.map(item => key.nodes.find(node => node.id === item.labelId));
+      const first = names[0];
+      // With one full row, the height budget cannot shorten a key: it only cuts above one row.
+      if (first?.t === 'text' && names.every(node => node?.t === 'text' && node.y === first.y
+        && node.lines.length === 1 && node.title === undefined)) return { legend: key.legend, scene: key.nodes };
+    } catch {
+      // A failure specific to the speculative frame belongs to the ordinary key decision.
+      return;
+    } finally { staticFrame.countable = counted; zeroLifts.count = lifts; }
   },
   notesBoundByWidth(data, options, geometry, noted) {
     const measure = options.measure ?? defaultMeasurer;

@@ -104,7 +104,7 @@ function subtitleCoversSeries(geometry: Geometry<object, object>, data: unknown,
 }
 
 /** Rendered names replace optional keys; numeric or hidden labels cannot. */
-export function legendIsCovered(baseline: Geometry<object, object>, candidate: Geometry<object, object>, data: unknown, options?: ChartOptions): boolean {
+export function legendIsCovered(baseline: Geometry<object, object>, candidate: Pick<Geometry, 'scene' | 'legend'>, data: unknown, options?: ChartOptions): boolean {
   const baselineItems = baseline.legend?.items ?? [];
   const onlyPartialKey = baselineItems.length === 1 && baselineItems[0]!.id === EARLIER_PARTIAL_LEGEND_ID;
   if (baselineItems.length && !onlyPartialKey && baseline.type !== 'scatter') return false;
@@ -308,6 +308,8 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   const candidateOptions = Object.assign({} as O, baselineOptions, { [AUTO_LEGEND]: true });
   candidateOptions.legend = 'top';
   if (definition.type !== 'mekko') candidateOptions.mode = baseline.mode;
+  const covering = definition.coveringKey?.(data, candidateOptions, baseline);
+  if (covering && legendIsCovered(baseline, covering, data, baselineOptions)) return baseline;
   const candidate = fitCandidate(candidateOptions);
   if (candidate.refused) {
     // A refused probe supplies keys only. It never reaches claims or serialization.

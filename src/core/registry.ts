@@ -110,6 +110,8 @@ export interface ChartCore<
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
   /** Returns the slope reference plot height when the chart can measure it without drawing. */
   referencePlotHeight?(data: D, options?: O): number | undefined;
+  /** The full one-row key when every automatic candidate can only omit its entries. */
+  coveringKey?(data: D, options: O, baseline: Geometry<M, DV>): Pick<Geometry, 'scene' | 'legend'> | undefined;
   /** True when every label in the note still needs it at any taller full-mode layout of this width. */
   notesBoundByWidth?(data: D, options: O, geometry: Geometry<M, DV>, noted: Geometry<M, DV>['labels']): boolean;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */

@@ -4,6 +4,10 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ## 0.65.0
 
+### Changed
+
+- Stacked column charts choose an automatic height faster at narrow widths. A chart with series names at the edge can skip laying out a second chart to check the legend. Straight growth arrows also find a clear path faster.
+
 ### Fixed
 
 - Earlier partial periods keep their incomplete marks, and only running periods say “to date”.

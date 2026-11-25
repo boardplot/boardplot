@@ -450,8 +450,11 @@ function drawStraightCagrArrow(
   const free = (rect: Rect) => !input.occupied.hits(rect, 2, (claim) => claim.part === 'referenceLine');
   const open = (p: Point, q: Point): boolean => {
     const steps = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / STRAIGHT_ARROW_PROBE);
+    // Endpoint labels often block the line. Keep the first probe, then check the same samples from the tip.
+    const fromTip = Number.isSafeInteger(steps);
     for (let i = 0; i <= steps; i++) {
-      const t = steps === 0 ? 0 : i / steps;
+      const sample = fromTip && i > 0 ? steps - (i - 1) : i;
+      const t = steps === 0 ? 0 : sample / steps;
       if (!free({ x: p.x + (q.x - p.x) * t - 1, y: p.y + (q.y - p.y) * t - 1, w: 2, h: 2 })) return false;
     }
     return free(ovalRect(middle(p, q)));
@@ -462,6 +465,8 @@ function drawStraightCagrArrow(
     const p = within(lifted(from, i * ARM_STEP));
     const q = within(lifted(to, i * ARM_STEP));
     if (open(p, q)) route = [p, q];
+    // Further lifts would clamp both endpoints to this same rejected line.
+    else if (horizontal ? p.x === edge && q.x === edge : p.y === edge && q.y === edge) break;
   }
   if (!route) {
     pass.addLegDeficit(ry * 2);
