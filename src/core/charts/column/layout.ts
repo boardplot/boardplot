@@ -47,6 +47,7 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
+import { zeroLifts } from '../../formatPrecision';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
@@ -1135,7 +1136,7 @@ interface ColumnPass {
   unseated: number;
   seatNeed: number;
   staircase?: StaircaseOutcome;
-  noteFrame?: { options: AnomalyColumnOptions; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
+  noteFrame?: { options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
 }
 
 function layoutColumnPass(
@@ -1147,7 +1148,10 @@ function layoutColumnPass(
   staircaseInputs?: Pick<AxisProbe, 'prepared'> & ColumnStaircaseMemo,
   noteParent?: ColumnPass,
 ): ColumnPass | { retry: StaircaseOutcome } {
-  const retry = staircaseInputs?.prepared;
+  // The direct retry adds only the segment note consumed by the frame.
+  const note = noteParent?.noteFrame;
+  const retry = staircaseInputs?.prepared ?? note?.prepared;
+  const lifts = zeroLifts.count;
   const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
   const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
@@ -1163,6 +1167,7 @@ function layoutColumnPass(
     staircaseInputs.prepared = { domain: { ...domain }, paints, warnings: [...warnings] };
   }
   const preparedWarnings = warnings.length;
+  const noteInputsUnchanged = domain.options === options && !domain.activeBreak && zeroLifts.count === lifts;
   const fallback = () => {
     axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
     throw AXIS_FALLBACK;
@@ -1197,7 +1202,7 @@ function layoutColumnPass(
     solve: (key, w) => solveColumnFrame(domain, paints, w, key, staircaseMemo),
     area: (framed, w) => {
       areaWarningsAt = w.length;
-      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo);
+      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo, note?.prepared ? note.area : undefined);
     },
     axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
     warnings,
@@ -1236,7 +1241,8 @@ function layoutColumnPass(
     && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
     && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
-    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice() } : undefined;
+    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
+      prepared: noteInputsUnchanged ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
   const before = noteParent?.noteFrame;
   if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
