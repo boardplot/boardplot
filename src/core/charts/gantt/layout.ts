@@ -2,6 +2,10 @@ import { chartString } from '../../strings/gantt';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { structureCount } from '../../structureCounts';
 import { withUnprintedClaims } from '../../claims/ids';
+import { requestMemo } from '../../layoutPlan';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
+import { staticFrame } from '../../footer';
 /**
  * Gantt / timeline — consulting Gantt layout: a two-tier calendar header
  * chosen by span (years+quarters / quarters+months / months+ISO weeks),
@@ -42,11 +46,11 @@ import { disclosureNote, disclosuresShown } from '../../notes';
 import { rectContains, rectsOverlap, segmentHitsRect, type Rect } from '../../geometry';
 import { accessibleTitle, resolveSize } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, sideKeyGivesWay } from '../../sizing';
+import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, sameContent, sideKeyGivesWay } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { getChart } from '../../registry';
 import { AUTO_LEGEND } from '../../legendPolicy';
-import { contrastInkPaint, panelTypeClass } from '../../theme';
+import { contrastInkPaint, layoutStepKey, panelTypeClass } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
@@ -344,6 +348,24 @@ function prepareGantt(data: GanttData, options: GanttOptions): GanttPreparation 
   return { env, domain: resolveGanttDomain(data, env, warnings), warnings };
 }
 
+function prepareHeightProbe(data: GanttData, options: GanttOptions & TargetSizeOptions & {
+  [ACCEPTANCE_PROBE]?: boolean; [CARD_HEIGHT_MEMO]?: unknown;
+}): GanttPreparation {
+  if (!options[ACCEPTANCE_PROBE] || !options[TARGET_SIZE]?.fixed.height || !data || typeof data !== 'object'
+    || !hasCompleteTextWidths(options.measure ?? defaultMeasurer)) return prepareGantt(data, options);
+  // The calendar and milestone plan read the width. The pass supplies its own height and row flags.
+  const { size, [CARD_HEIGHT_MEMO]: _call, ...settings } = options;
+  const { pinned, countable, live } = staticFrame;
+  const key = JSON.stringify(['gantt', resolveSize(size).width, pinned, countable, live,
+    layoutStepKey(), currentSmallValues(), formatScopeKey(options)]);
+  const plans = requestMemo(data, key, () => [] as { settings: typeof settings; prepared: GanttPreparation }[]);
+  const found = plans.find(plan => sameContent(plan.settings, settings));
+  if (found) return found.prepared;
+  const prepared = prepareGantt(data, options);
+  plans.push({ settings, prepared });
+  return prepared;
+}
+
 function layoutGanttPass(data: GanttData, options: GanttOptions, prepared: GanttPreparation | undefined, keyed: ReadonlySet<string> = new Set(), autoHeight = heightOmitted(options.size), flags: FlagPass = { rows: new Set() }): Geometry<GanttMarks, GanttDerived> {
   if (data && typeof data === 'object' && options.mode !== 'compact' && !(options as { [FORCE_COMPACT]?: boolean })[FORCE_COMPACT]) {
     const { [CARD_HEIGHT_MEMO]: _call, ...full } = options as GanttOptions & { [CARD_HEIGHT_MEMO]?: unknown };
@@ -560,7 +582,7 @@ export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geomet
 /** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
 function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   // A custom measurer can change between calls. Keep its full callback sequence.
-  const prepared = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? prepareGantt(data, options) : undefined;
+  const prepared = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? prepareHeightProbe(data, options) : undefined;
   const first = layoutGanttPass(data, options, prepared);
   if (options.labels === false || options.labels?.item === false) return first;
   // This open-height probe reads only width acceptance, not the repaired labels or height.
