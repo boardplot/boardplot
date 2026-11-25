@@ -175,7 +175,7 @@ const PANEL_GROUP_FRACTION = 0.72;
 const PANEL_GROUP_BAR = 76;
 
 /** The share of its category pitch a column had before the narrower default. */
-const COLUMN_FRACTION_MAX = 0.7;
+export const COLUMN_FRACTION_MAX = 0.7;
 /** The most of its category pitch a column group takes so that every series prints its values. */
 const GROUPED_FRACTION_MAX = 0.92;
 

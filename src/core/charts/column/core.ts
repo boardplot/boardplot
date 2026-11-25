@@ -6,7 +6,7 @@ import { staticFrame } from '../../footer';
 import { withEngineNotes } from '../../notes';
 import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
-import { solveColumnFrame } from './plot';
+import { COLUMN_FRACTION_MAX, solveColumnFrame } from './plot';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { LEGEND_HEIGHT } from '../../frame';
 import { zeroLifts } from '../../formatPrecision';
@@ -106,7 +106,9 @@ export const columnCore: ChartCore<
     const theme = chartTheme({ ...options, size: geometry.size });
     const margin = { ...canvasMargin(theme, width), ...options.margin };
     if (margin.left < 0 || margin.right < 0) return false;
-    const maxBand = Math.ceil(Math.max(10, width) / bars.length);
+    // A plain stack takes at most this share of each category step. Gutters,
+    // outer padding and category gaps can only narrow it at a taller height.
+    const maxBand = Math.ceil(COLUMN_FRACTION_MAX * Math.max(10, width) / bars.length);
     let font: FontSpec = { family: theme.type.family, ...theme.type.label };
     let smaller;
     while ((smaller = stepDownFont(theme, font, 'label', options.target, textScaleOf(options)))) font = smaller;
