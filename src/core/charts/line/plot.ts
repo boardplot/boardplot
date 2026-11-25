@@ -11,6 +11,7 @@ import type { Theme } from '../../types/theme';
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
 import { authoredDateTicks, dayCategories } from '../../calendarLabels';
+import { requestMemo } from '../../layoutPlan';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
@@ -23,7 +24,7 @@ import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ra
 import { round2 } from '../../geometry';
 import { linearScale, seatRoom } from '../../scale';
 import { logScale, logSpecFormat, logTickTiers } from '../logAxis';
-import type { FontSpec, TextMeasurer } from '../../text';
+import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer } from '../../text';
 import { strokeToken, dashToken, canvasMargin, emphasisWeight, secondaryFont } from '../../theme';
 import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan, type XTickPlan } from './xTicks';
 import { NATURAL_BAND_STEP, plotFloorRows } from '../../sizing';
@@ -597,6 +598,23 @@ function rowSignature(plan: CategoryRowPlan): string {
     plan.underRow?.items.map((item) => item.text), plan.cutNotes]);
 }
 
+/** Frame and end-label retries use the same calendar for the same dated categories. */
+function lineDateTicks(cats: LineDomain['cats'], options: LineDomain['options'], measure: TextMeasurer, warnings: LintWarning[]) {
+  if (options.categoryAxis?.dateTicks !== 'months' || (measure !== defaultMeasurer && measure !== measureText)) {
+    return authoredDateTicks(cats, options, warnings);
+  }
+  const key = JSON.stringify({
+    language: options.locale?.language, weekStartsOn: options.locale?.weekStartsOn,
+    categories: cats.map(c => ({ id: c.id, date: c.date })),
+  });
+  const saved = requestMemo(lineDateTicks, key, () => {
+    const notes: LintWarning[] = [];
+    return { ticks: authoredDateTicks(cats, options, notes), notes };
+  });
+  for (const note of saved.notes) warnings.push({ ...note });
+  return saved.ticks;
+}
+
 function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
   const { theme, measure } = env;
   const { options, cats, population } = domain;
@@ -620,7 +638,7 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
     return cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, span, grid));
   };
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
-  const ticked = authoredDateTicks(cats, options, warnings);
+  const ticked = lineDateTicks(cats, options, measure, warnings);
   // Line keys no running period, so its name says so where the note does not print.
   const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0), domain.running);
   ticked?.name(row);
