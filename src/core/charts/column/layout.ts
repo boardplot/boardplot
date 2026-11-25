@@ -1155,10 +1155,11 @@ function layoutColumnPass(
   const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
   const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
-  // Turning on a grouped axis changes no data, paints or domain. Only its
-  // options and frame change; keep preparation from the discarded pass.
+  // A stacked axis retry retains the original option fields. A grouped
+  // domain may carry rewritten options from its data window.
   const domain = retry ? { ...retry.domain, options }
-    : prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
+    : prepared ? { ...prepared.domain, options: prepared.domain.variant === 'stacked' ? options
+      : { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
     : resolveColumnDomain(data, options, warnings);
   const paints = prepared?.paints ?? columnPaints(domain, warnings);
   // A live window or share plan can rewrite the options. Rebuild those cases
@@ -1167,7 +1168,7 @@ function layoutColumnPass(
     staircaseInputs.prepared = { domain: { ...domain }, paints, warnings: [...warnings] };
   }
   const preparedWarnings = warnings.length;
-  const noteInputsUnchanged = domain.options === options && !domain.activeBreak && zeroLifts.count === lifts;
+  const reusablePreparation = domain.options === options && !domain.activeBreak && zeroLifts.count === lifts;
   const fallback = () => {
     axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
     throw AXIS_FALLBACK;
@@ -1242,7 +1243,7 @@ function layoutColumnPass(
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
     && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
     ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
-      prepared: noteInputsUnchanged ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
+      prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
   const before = noteParent?.noteFrame;
   if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
@@ -1307,7 +1308,10 @@ function layoutColumnPass(
   // At the smallest font one wide value hides the entire segment row. When
   // every stack has multiple parts and no authored value label, no total can
   // inherit a segment and no digit seat survives. Test the totals immediately.
-  const needAxis = () => { throw AXIS_FALLBACK; };
+  const needAxis = () => {
+    if (reusablePreparation) fallback();
+    throw AXIS_FALLBACK;
+  };
   const testTotals = probeStack ? () => {
     if (domain.dataSeries.length > 1 && domain.dataSeries.every(series =>
       series.vals.every(cell => cell.v !== null && cell.v !== 0 && cell.labelOverride === undefined))) {
