@@ -28,6 +28,7 @@ import {
   type LegendItemInput,
   authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
 import { copyFrame, staticFrame } from '../../footer';
+import { zeroLifts } from '../../formatPrecision';
 import { columnHeightSearch, measureColumnHeight, sameContent, type ColumnHeightTrial } from '../../sizing';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotatedNames, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
@@ -175,7 +176,7 @@ const PANEL_GROUP_FRACTION = 0.72;
 const PANEL_GROUP_BAR = 76;
 
 /** The share of its category pitch a column had before the narrower default. */
-const COLUMN_FRACTION_MAX = 0.7;
+export const COLUMN_FRACTION_MAX = 0.7;
 /** The most of its category pitch a column group takes so that every series prints its values. */
 const GROUPED_FRACTION_MAX = 0.92;
 
@@ -833,6 +834,7 @@ export function columnPlotArea(
   warnings: LintWarning[],
   beforeCategoryRow?: (bandwidth: number) => void,
   widthMemo?: ColumnStaircaseMemo,
+  noteArea?: ColumnArea,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
   const saved = widthMemo?.plotAtPad;
@@ -886,7 +888,14 @@ export function columnPlotArea(
     : undefined;
   // Staircase names replace the category row (options.categoryLabels).
   const stair = staircaseOn(options.categoryLabels, options) && kindSetting(options, 'category') !== false && cats.length > 1;
-  const { band, catPlan, intervalTicks } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow, widthMemo);
+  const bandWarnings = warnings.length;
+  const bandLifts = zeroLifts.count;
+  // The segment note can move the frame. Reuse its parent's horizontal positions
+  // and category row only when the frame supplied the same space and key.
+  const savedBand = noteArea?.quietBand && sameContent(noteArea.frame.plot, frame.plot)
+    && sameContent(noteArea.frame.legend, frame.legend) ? noteArea : undefined;
+  const { band, catPlan, intervalTicks } = savedBand ?? columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow, widthMemo);
+  const quietBand = warnings.length === bandWarnings && zeroLifts.count === bandLifts;
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan().warnings);
   if (showCatRow && catPlan().step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
@@ -1053,7 +1062,7 @@ export function columnPlotArea(
       : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
     return {
       frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
-      catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
+      quietBand, catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
       // The names may rise to the frame top, under the rule and the axis title.
       ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
       // A date row stays at the plot's bottom band; prose reads under the

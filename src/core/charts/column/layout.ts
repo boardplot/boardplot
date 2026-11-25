@@ -47,6 +47,7 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
+import { zeroLifts } from '../../formatPrecision';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
@@ -59,7 +60,7 @@ import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
+import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
 import { stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -1135,7 +1136,7 @@ interface ColumnPass {
   unseated: number;
   seatNeed: number;
   staircase?: StaircaseOutcome;
-  noteFrame?: { options: AnomalyColumnOptions; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
+  noteFrame?: { options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
 }
 
 function layoutColumnPass(
@@ -1147,14 +1148,18 @@ function layoutColumnPass(
   staircaseInputs?: Pick<AxisProbe, 'prepared'> & ColumnStaircaseMemo,
   noteParent?: ColumnPass,
 ): ColumnPass | { retry: StaircaseOutcome } {
-  const retry = staircaseInputs?.prepared;
+  // The direct retry adds only the segment note consumed by the frame.
+  const note = noteParent?.noteFrame;
+  const retry = staircaseInputs?.prepared ?? note?.prepared;
+  const lifts = zeroLifts.count;
   const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
   const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
-  // Turning on a grouped axis changes no data, paints or domain. Only its
-  // options and frame change; keep preparation from the discarded pass.
+  // A stacked axis retry retains the original option fields. A grouped
+  // domain may carry rewritten options from its data window.
   const domain = retry ? { ...retry.domain, options }
-    : prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
+    : prepared ? { ...prepared.domain, options: prepared.domain.variant === 'stacked' ? options
+      : { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
     : resolveColumnDomain(data, options, warnings);
   const paints = prepared?.paints ?? columnPaints(domain, warnings);
   // A live window or share plan can rewrite the options. Rebuild those cases
@@ -1163,6 +1168,7 @@ function layoutColumnPass(
     staircaseInputs.prepared = { domain: { ...domain }, paints, warnings: [...warnings] };
   }
   const preparedWarnings = warnings.length;
+  const reusablePreparation = domain.options === options && !domain.activeBreak && zeroLifts.count === lifts;
   const fallback = () => {
     axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
     throw AXIS_FALLBACK;
@@ -1197,7 +1203,7 @@ function layoutColumnPass(
     solve: (key, w) => solveColumnFrame(domain, paints, w, key, staircaseMemo),
     area: (framed, w) => {
       areaWarningsAt = w.length;
-      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo);
+      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo, note?.prepared ? note.area : undefined);
     },
     axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
     warnings,
@@ -1236,7 +1242,8 @@ function layoutColumnPass(
     && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
     && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
-    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice() } : undefined;
+    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
+      prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
   const before = noteParent?.noteFrame;
   if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
@@ -1290,7 +1297,6 @@ function layoutColumnPass(
   if (scene.paintStack) scene.nodes = scene.paintStack(!measureSegments);
   const noted = { items: new Map<string, string>(), slivers: new Set<string>() };
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
-  const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits);
   const labelWarnings: LintWarning[] = [];
   // When every segment is suppressed, an omitted total leaves that column with no number.
   // Digit seats, replacement values and annotations can still give a suppressed segment a number.
@@ -1298,9 +1304,24 @@ function layoutColumnPass(
     && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
     && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
     && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
-    && !digits.requests.length && !options.labelPlacements && !options.labelOffsets
+    && !options.labelPlacements && !options.labelOffsets;
+  // At the smallest font one wide value hides the entire segment row. When
+  // every stack has multiple parts and no authored value label, no total can
+  // inherit a segment and no digit seat survives. Test the totals immediately.
+  const needAxis = () => {
+    if (reusablePreparation) fallback();
+    throw AXIS_FALLBACK;
+  };
+  const testTotals = probeStack ? () => {
+    if (domain.dataSeries.length > 1 && domain.dataSeries.every(series =>
+      series.vals.every(cell => cell.v !== null && cell.v !== 0 && cell.labelOverride === undefined))) {
+      planColumnTotals(domain, area, scene, [], needAxis);
+    }
+  } : undefined;
+  const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits, testTotals);
+  const checkOmitted = probeStack && !digits.requests.length
     && requests.every(req => req.kind !== 'segment' || (req.redundant && !req.printedIn && req.pinnedSlot === undefined));
-  const { growthPoints, namedExtreme } = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
+  const { growthPoints, namedExtreme } = planColumnLabels(domain, area, scene, requests, labelWarnings, checkOmitted ? needAxis : undefined);
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     density: domain.density,
     measure: domain.measure,

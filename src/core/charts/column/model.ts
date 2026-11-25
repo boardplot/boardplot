@@ -224,6 +224,8 @@ export interface ColumnArea {
   /** Headroom above the plot: grand totals, PY growth, cagr arms, the rule band. */
   topPad: number;
   band: BandScale;
+  /** Measuring this band added no warnings or adjustments to number formatting. */
+  quietBand: boolean;
   catPlan: () => CategoryRowPlan;
   /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
   intervalTicks?: readonly boolean[];

@@ -363,6 +363,7 @@ export function planColumnValueLabels(
   noted: { items: Map<string, string>; slivers: Set<string> } = { items: new Map(), slivers: new Set() },
   /** Filled with the digit seats of slivers (digitSeat), when the caller seats them after every other label. */
   digits?: DigitSeats,
+  onHiddenRow?: () => void,
 ): FontSpec {
   if (domain.variant === 'grouped') return pointRequests(domain, paints, area, scene, requests, warnings);
   // Stacked segment labels, with the sliver gate: a segment shorter
@@ -450,6 +451,7 @@ export function planColumnValueLabels(
         tooWide.push(c.label ?? c.id);
         // A wider value makes the whole row try the next font. Only the last font supplies labels or warnings.
         if (canStep) break;
+        if (tooWide.length === 1) onHiddenRow?.();
       }
       pending.push({ id: `segment:${s.id}:${c.id}`, owed: owedHere && domain.density !== 'minimal', authored: typeof val.labelOverride === 'string' });
       const request: LabelRequest = {
@@ -671,29 +673,20 @@ export function partialWords(domain: ColumnDomain, ci: number): string | undefin
   return domain.variant === 'stacked' && domain.incompleteCats.has(domain.cats[ci]!.id) && disclosuresShown(domain.options) ? domain.options.strings!.incomplete! : undefined;
 }
 
-/**
- * Phase 3, second half, appended to the value labels: the grand totals
- * (signed: above the positive top, below the negative bottom), each with its
- * PY growth when integrated; the anomaly rule; the integrated PY tick's own
- * label (right of the tick, with fallbacks above, below and left); the net
- * line's label; the category row.
- */
-export function planColumnLabels(
+const box = (x: number, yy: number, size: { width: number; height: number }): Rect => ({ x, y: yy, w: size.width, h: size.height });
+
+/** Append the stack totals and their integrated growth values at the current scale. */
+export function planColumnTotals(
   domain: ColumnDomain,
   area: ColumnArea,
-  scene: Pick<ColumnMarkGeometry, 'bars' | 'planEnds' | 'netLineEnd'>,
+  scene: Pick<ColumnMarkGeometry, 'bars'>,
   requests: LabelRequest[],
-  warnings: LintWarning[],
   onOmittedTotal?: () => void,
 ) {
-  const { measure, highlights, cats, gtContent, stackTotals, variant, posTopP, negBotP, pyRef, pyGrowth, totalFmt } = domain;
-  const { strongFont, tickFont, band, y } = area;
+  const { measure, highlights, cats, gtContent, stackTotals, variant, posTopP, negBotP, pyGrowth, totalFmt } = domain;
+  const { strongFont, band, y } = area;
   const growthPoints: IntegratedVariancePoint[] = [];
-  // `labels: { growth: false }` drops the growth arrows and keeps the
-  // integrated PY ticks and their labels.
   const growthOn = kindSetting(domain.options, 'growth') !== false;
-  const box = (x: number, yy: number, size: { width: number; height: number }): Rect => ({ x, y: yy, w: size.width, h: size.height });
-  emptyCategoryMarkers(domain, area, requests);
   const totalAt = (ci: number) => stackTotalText(domain, ci, totalFmt);
   // Totals that would stand closer than the neighbour gap over their
   // stacks take one font step down, as a row.
@@ -818,6 +811,28 @@ export function planColumnLabels(
       tickNodeId: `ref:${integrated.referenceSeriesId}:${c.id}`,
     });
   });
+  return growthPoints;
+}
+
+/**
+ * Phase 3, second half, appended to the value labels: the grand totals
+ * (signed: above the positive top, below the negative bottom), each with its
+ * PY growth when integrated; the anomaly rule; the integrated PY tick's own
+ * label (right of the tick, with fallbacks above, below and left); the net
+ * line's label; the category row.
+ */
+export function planColumnLabels(
+  domain: ColumnDomain,
+  area: ColumnArea,
+  scene: Pick<ColumnMarkGeometry, 'bars' | 'planEnds' | 'netLineEnd'>,
+  requests: LabelRequest[],
+  warnings: LintWarning[],
+  onOmittedTotal?: () => void,
+) {
+  const { measure, cats, stackTotals, variant, pyRef, pyGrowth } = domain;
+  const { strongFont, tickFont, band, y } = area;
+  emptyCategoryMarkers(domain, area, requests);
+  const growthPoints = planColumnTotals(domain, area, scene, requests, onOmittedTotal);
   anomalyRuleRequest(domain, area, requests, warnings);
   const tickContent = contentOf(domain.options, 'tick', ['absolute', 'series']);
   const pyKeyed = pyTickKeyed(domain, area.frame.legend);
