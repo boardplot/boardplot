@@ -14,6 +14,7 @@ import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
 import { partialFootnotes, partialIds, runningPeriodIds, saysToDate } from '../../partialPeriod';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { heightOmitted } from '../../sizing';
+import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { structureCount } from '../../structureCounts';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { dashToken, strokeToken, canvasMargin, HATCH_STRENGTH_DEFAULT, markRolePaint, resolveTheme, secondaryFont, seriesPaint, themeForWidth } from '../../theme';
@@ -404,6 +405,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   }
   let size = resolveSize(options.size);
   const automatic = heightOmitted(options.size);
+  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !automatic;
   // A metric stack keeps at most 24 px side margins at every width; an authored margin still wins.
   const base = canvasMargin(theme, size.width);
   const margin = { ...base, left: Math.min(24, base.left), right: Math.min(24, base.right), ...options.margin };
@@ -853,7 +855,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     // at the first and the last category it moves inward instead of leaving the plot.
     const valued=(ci:number)=>look ? stateOf(ci)==='focus' : onValueRhythm(ci)||ci===latest;
     const valueId = (ci: number) => `${p.panel.id}:value:${data.categories[ci]!.id}`;
-    const peak = !look && thin && p.panel.type === 'column' && canTryRowPeak(options)
+    // Fixed-height stacks keep the value selection for their pinned frame.
+    const peak = !fixedHeight && !look && thin && p.panel.type === 'column' && canTryRowPeak(options)
       ? planCrowdedRow(p.values.map((value, ci) => visible(ci) ? value : null), plot, valued,
         ci => !visible(ci) || p.states[ci] !== 'mature' || data.categories[ci]!.partial === true
           || options.focus?.owner.categoryId === data.categories[ci]!.id || options.labelPlacements?.[valueId(ci)] !== undefined
@@ -917,7 +920,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);
       // A line point value ranks as on the line chart: the latest is its endpoint, the others interior, so 'minimal' keeps the latest.
       const valueRequest=requests.at(-1);
-      if (peak?.index === ci && valueRequest?.id === valueId(ci)) valueRequest.rowPeak = peak.seat;
+      if (peak?.index === ci && valueRequest?.id === valueId(ci)) valueRequest.rowPeak = { ...peak.seat, omitYielded: true };
       if(p.panel.type==='line'&&valueRequest?.id===`${p.panel.id}:value:${category.id}`)valueRequest.priority=ci===latest?PRIORITY.endpoint:PRIORITY.interior;
     });
     if (p.panel.type === 'column') baseLine();

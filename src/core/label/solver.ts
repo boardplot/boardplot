@@ -196,6 +196,8 @@ export interface RowPeak {
   plot: Rect;
   /** Only these ordinary values in the columns immediately beside the peak may yield. */
   neighbours: readonly Id[];
+  /** A skipped value in this row leaves no label record. */
+  omitYielded?: true;
 }
 
 export interface LabelRequest {
@@ -610,7 +612,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const baseOrder = [...owned].sort(labelOrder(pinOf, ctx.focus));
   const rowPeaks = peaks.length ? rankRowPeaks(baseOrder, peaks, pinOf, pad) : undefined;
   const order = rowPeaks?.ranked ?? baseOrder;
-  const yieldingTo = rowPeaks && new Map<Id, { rect: Rect; owner: OwnerRef; pad: number }>();
+  const yieldingTo = rowPeaks && new Map<Id, { rect: Rect; owner: OwnerRef; pad: number; omitYielded?: true }>();
 
   // Placed leaders of leaderAvoidsLabels requests: no later label sits on one.
   const splitLeader = ctx.splitLeader ?? leaderPieces;
@@ -1057,8 +1059,10 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const ambiguous: SlotCandidate[] = [];
     const yieldsToPeak = (cand: SlotCandidate): boolean => {
       if (!peakAhead || !rowValuesCrowd(peakAhead.rect, cand.rect, Math.max(peakAhead.pad, cand.pad ?? req.pad ?? pad))) return false;
-      base.owed = true;
-      hide('density', 'crowded by the highest column value');
+      if (!peakAhead.omitYielded) {
+        base.owed = true;
+        hide('density', 'crowded by the highest column value');
+      }
       return true;
     };
     const place = (cand: SlotCandidate, reason: string, leader?: PlacedLabel['leader']): void => {
@@ -1069,7 +1073,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       placed.push(label);
       occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
       if (peakNeighbours?.length) {
-        const peak = { rect: cand.rect, owner: req.owner, pad: cand.pad ?? req.pad ?? pad };
+        const peak = { rect: cand.rect, owner: req.owner, pad: cand.pad ?? req.pad ?? pad, omitYielded: req.rowPeak?.omitYielded };
         for (const neighbour of peakNeighbours) yieldingTo!.set(neighbour, peak);
       }
       claimLeader(label);

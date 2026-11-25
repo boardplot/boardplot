@@ -210,6 +210,31 @@ describe('value integrity on the chart', () => {
     expect(peak?.text).toBe('34,456');
   });
 
+  // A metric stack neighbour that gives its seat to the tallest column stays out of the hidden-label note.
+  it('omits the displaced metric stack value like other skipped columns', () => {
+    const categories = Array.from({ length: 30 }, (_, i) => ({
+      id: `W${String(i + 1).padStart(2, '0')}`, label: `W${i + 1}`,
+    }));
+    const values = categories.map((_, i) => i === 5 ? 34000 : i === 6 ? 34500 : i === 7 ? 28500 : 12000 + i % 5 * 800);
+    const data = {
+      categories,
+      measures: [
+        { id: 'orders', label: 'Orders', values },
+        { id: 'completed', label: 'Completed', values: values.map((value, i) => Math.round(value * (0.12 + i % 6 * 0.01))) },
+      ],
+      panels: [
+        { id: 'orders', type: 'column', title: 'Weekly orders', unit: 'orders', measure: { sum: ['orders'] }, readout: 'change' },
+        { id: 'rate', type: 'line', title: 'Completion rate', unit: '%', measure: { numerator: ['completed'], denominator: 'orders' }, readout: 'change' },
+      ],
+      windows: { base: { from: 'W01', to: 'W04', label: 'Base' }, compare: { from: 'W27', to: 'W30', label: 'Latest' } },
+    };
+    const { geometry } = measure({ type: 'grid', data, options: {
+      stack: {}, sharedAxis: 'category', labelDensity: 'full', title: 'Weekly totals', size: { width: 1000 },
+    } } as never);
+    expect(geometry?.labels.find(label => label.id === 'orders:value:W07' && !label.hidden)?.text).toBe('34,500');
+    expect(geometry?.labels.find(label => label.id === 'orders:value:W06')).toBeUndefined();
+  });
+
   // With footnotes off no value carries a marker, so a numbered engine state note pointed at nothing.
   it('metric stack: footnotes off leaves no numbered engine note without its mark', () => {
     const definition = getChart('grid')!;
