@@ -51,7 +51,7 @@ export const CATEGORY_ROW_FROM_END = Symbol('categoryRowFromEnd');
 /** Internal adapter override: a row that must rotate turns its names -90° (CategoryRowInput.rotate90). */
 export const CATEGORY_ROW_VERTICAL = Symbol('categoryRowVertical');
 
-interface CategoryRowInput {
+export interface CategoryRowInput {
   /** Pass the layout target to bound the axis font ladder. */
   target?: RenderTarget;
   /** The chart's `textScale`; the ladder's floor scales with it. */
@@ -734,6 +734,39 @@ function positionRotatedRow(input: CategoryRowInput, row: CategoryRowPlan): Cate
 
 function centeredNameX(center: number, width: number, left: number, right: number): number {
   return Math.max(left, Math.min(center - width / 2, right - width));
+}
+
+/**
+ * A line's default daily axis switches to months past four weeks. Every
+ * stride from the latest date keeps that date and the date one stride back.
+ * When those two labels collide at every eligible font and stride, the day
+ * plan can only select a larger stride. The caller checks the actual dates.
+ */
+export function needsMonthTicks(input: CategoryRowInput, limit: number): boolean {
+  const { labels, centers, calendar, fonts, secondary, measure } = input;
+  const last = labels.length - 1;
+  if (last < limit || (measure !== defaultMeasurer && measure !== measureText)
+    || !calendar || calendar.length !== labels.length || input.keep || input.dateStride
+    || !input.strideFromEnd || input.widths || input.under || input.pinned || input.suffixes?.some(Boolean)) return false;
+  // A complete day row has no sparse-name or short-month alternative, and
+  // already names its years below the dates.
+  if (!calendar.every((day, i) => day?.unit === 'day' && day.yearRow && !day.yearShown && !day.monthRow && /\d/.test(labels[i]!))) return false;
+  const rowStart = centers[0]! - input.step / 2;
+  const rowEnd = centers[last]! + input.step / 2;
+  const anchor = (i: number, width: number) => input.edgeAnchored
+    ? tickLabelX(centers[i]!, width, i, labels.length, true)
+    : centeredNameX(centers[i]!, width, rowStart, rowEnd);
+  const candidates = secondary && secondary.size < fonts[0]!.size
+    ? [{ ...secondary, size: fonts[0]!.size }, ...fonts] : fonts;
+  for (const font of candidates) {
+    const lastX = anchor(last, Math.max(measure(labels[last]!, font).width, 1));
+    for (let stride = 1; stride <= limit; stride++) {
+      const i = last - stride;
+      const width = Math.max(measure(labels[i]!, font).width, 1);
+      if (!(anchor(i, width) + width + Math.min(input.gap ?? 4, 4) > lastX)) return false;
+    }
+  }
+  return true;
 }
 
 function rotationWarning(n: number, step: number): LintWarning {
