@@ -60,7 +60,7 @@ import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
+import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
 import { stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -1296,7 +1296,6 @@ function layoutColumnPass(
   if (scene.paintStack) scene.nodes = scene.paintStack(!measureSegments);
   const noted = { items: new Map<string, string>(), slivers: new Set<string>() };
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
-  const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits);
   const labelWarnings: LintWarning[] = [];
   // When every segment is suppressed, an omitted total leaves that column with no number.
   // Digit seats, replacement values and annotations can still give a suppressed segment a number.
@@ -1304,9 +1303,21 @@ function layoutColumnPass(
     && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
     && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
     && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
-    && !digits.requests.length && !options.labelPlacements && !options.labelOffsets
+    && !options.labelPlacements && !options.labelOffsets;
+  // At the smallest font one wide value hides the entire segment row. When
+  // every stack has multiple parts and no authored value label, no total can
+  // inherit a segment and no digit seat survives. Test the totals immediately.
+  const needAxis = () => { throw AXIS_FALLBACK; };
+  const testTotals = probeStack ? () => {
+    if (domain.dataSeries.length > 1 && domain.dataSeries.every(series =>
+      series.vals.every(cell => cell.v !== null && cell.v !== 0 && cell.labelOverride === undefined))) {
+      planColumnTotals(domain, area, scene, [], needAxis);
+    }
+  } : undefined;
+  const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits, testTotals);
+  const checkOmitted = probeStack && !digits.requests.length
     && requests.every(req => req.kind !== 'segment' || (req.redundant && !req.printedIn && req.pinnedSlot === undefined));
-  const { growthPoints, namedExtreme } = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
+  const { growthPoints, namedExtreme } = planColumnLabels(domain, area, scene, requests, labelWarnings, checkOmitted ? needAxis : undefined);
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     density: domain.density,
     measure: domain.measure,
