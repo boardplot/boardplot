@@ -957,6 +957,17 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   /** Heat-only mode draws the grounds and leaves the figures out, where a heat column is drawn. */
   const figures = printsFigures(tableOptions?.figures, columns);
   const grid = useTableGridNavigation(rows, columns, table?.rows);
+  // Each comparison line that shows or hides runs its own height, margin and fade transition. Thousands of them
+  // delayed the first frame of a large table's switch by hundreds of ms, so a large switch shows its end state at once.
+  const switchedInline = useRef(inlineVisibility);
+  useLayoutEffect(() => {
+    const before = switchedInline.current;
+    switchedInline.current = inlineVisibility;
+    const element = grid.tableRef.current;
+    if (before === inlineVisibility || element === null) return;
+    // Set before the browser styles the switch, so no line starts its transition. The next switch decides again.
+    element.toggleAttribute('data-bp-lines-at-once', switchesManyLines(element, before, inlineVisibility));
+  }, [inlineVisibility, grid.tableRef]);
   const summaryId = `bp-table-summary-${useScopedId(checkedIdPrefix(idPrefix))}`;
 
   // Every column stays in the DOM and every track keeps its place in the
@@ -2810,11 +2821,30 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
   );
 });
 
+/** From this many line elements, a switch of inline groups shows its end state without moving each line. */
+const LINES_SWITCHED_AT_ONCE = 100;
+
+/** Whether a change of inline visibility shows or hides at least `LINES_SWITCHED_AT_ONCE` line elements in the grid. */
+function switchesManyLines(grid: HTMLElement, before: Record<Id, boolean>, after: Record<Id, boolean>): boolean {
+  const changed = new Set<string>();
+  for (const id of [...Object.keys(before), ...Object.keys(after)]) {
+    if ((before[id] !== false) !== (after[id] !== false)) changed.add(id);
+  }
+  if (changed.size === 0) return false;
+  const lines = grid.getElementsByClassName('bp-line');
+  let count = 0;
+  for (let index = 0; index < lines.length; index++) {
+    const group = lines[index]!.getAttribute('data-bp-inline');
+    if (group !== null && changed.has(group) && ++count >= LINES_SWITCHED_AT_ONCE) return true;
+  }
+  return false;
+}
+
 /**
  * The lines inside the cell: the row-label column prints each line's
  * authored label, a value column prints that line's own cell. A hidden group
  * keeps its elements and closes to nothing, so the Changes control animates
- * both ways. A signed change carries its judgment tone; a share or a
+ * both ways, unless it switches many lines at once. A signed change carries its judgment tone; a share or a
  * year-on-year reference whispers.
  */
 function inlineLines({ row, column, visibility, noteLine }: {

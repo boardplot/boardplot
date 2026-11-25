@@ -8,6 +8,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 - Charts in cards near or below their minimum size lay out faster.
 - Charts with hover and dimension-switch tables mount faster in React containers by spending less time preparing hover cards and reading number formats.
+- Large tables show or hide their comparison lines sooner. When one click switches 100 or more lines, they switch at once instead of moving one by one. Smaller switches keep their motion.
 
 ### Fixed
 
