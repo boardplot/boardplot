@@ -1,12 +1,60 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
+import { columnDefinition } from '../src/core/charts/column';
+import { comboDefinition } from '../src/core/charts/combo';
+import { keylessFitBounds } from '../src/core/legendPolicy';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, resolveChartRequest, type RequestInputOptions } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { runDocLints } from '../src/core/lint';
 import { paintColor, resolveTheme } from '../src/core/theme';
 import { normalizeGridData } from '../src/core/charts/grid/normalize';
+
+// A change to the frame or label rules can make the shortcut select a different drawing than the two-layout rule.
+it('keeps the complete automatic-key drawing for fixed and open chart sizes', () => {
+  const categories = Array.from({ length: 18 }, (_, i) => {
+    const date = `2025-01-${String(i + 1).padStart(2, '0')}`;
+    return { id: date, date };
+  });
+  const columns = ['Orders', 'Returns'].map((label, i) => ({
+    id: label.toLowerCase(), label, values: categories.map((_, day) => (day + 3) * (i + 1)),
+  }));
+  const line = { id: 'total', label: 'Total', kind: 'line', values: categories.map((_, day) => day + 12) };
+  for (const type of ['column', 'combo'] as const) {
+    const definition = type === 'column' ? columnDefinition : comboDefinition;
+    const original = keylessFitBounds.get(definition)!;
+    const data = { categories, series: type === 'column' ? columns : [...columns, line] };
+    for (const frame of [
+      { size: { width: 878 }, unit: 'EUR' },
+      { size: { width: 800, height: 360 }, target: 'dashboard', unit: 'EUR' },
+      { size: { width: 1144, height: 320 } },
+    ] as const) {
+      const options: RequestInputOptions & { variant?: 'stacked'; valueLabels?: 'all' } = {
+        title: 'Daily totals', subtitle: 'Orders and returns', source: 'Example records', ...frame,
+        ...(type === 'column' ? { variant: 'stacked' } : { valueLabels: 'all' }),
+      };
+      const draw = () => layoutResolvedRequest(resolveChartRequest({ type, data, options }));
+      let taken = 0;
+      try {
+        keylessFitBounds.set(definition, (...args) => {
+          const check = original(...args);
+          return check && (drawing => {
+            const accepted = check(drawing);
+            if (accepted) taken++;
+            return accepted;
+          });
+        });
+        const selected = draw();
+        expect(taken, `${type} at ${frame.size.width} px`).toBeGreaterThan(0);
+        keylessFitBounds.delete(definition);
+        expect(selected).toEqual(draw());
+      } finally {
+        keylessFitBounds.set(definition, original);
+      }
+    }
+  }
+});
 
 // A dense key must leave the plot its furniture budget while keeping every series identifiable.
 it('fits 25 long series names inside the furniture budget', () => {

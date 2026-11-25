@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { bandKeyFirst, keylessAreaFits } from '../band/keylessFit';
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
@@ -5,7 +7,7 @@ import { chartSizing } from '../../sizing';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer } from '../../text';
 import { canvasMargin } from '../../theme';
-import type { InternalFootnoteOptions } from '../../frame';
+import { keylessFrame, type InternalFootnoteOptions } from '../../frame';
 import { chartTheme } from '../chartEnv';
 import { fitsInside, INSIDE_MIN_W } from '../band/labels';
 /** Zod-free combo chart registration. */
@@ -13,6 +15,10 @@ import { fitsInside, INSIDE_MIN_W } from '../band/labels';
 import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions, ComboOptions } from '../../types/options';
+import { withLocaleStrings } from '../../strings';
+import { rankKeyShown } from '../../notes';
+import { resolveComboEnv, resolveComboDomain, TOTALS_AXIS } from './domain';
+import { comboPaints, comboPlotArea, solveComboFrame } from './plot';
 import { layoutCombo, type ComboDerived, type ComboMarks } from './layout';
 
 export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDerived> = {
@@ -50,3 +56,29 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   defaults: {},
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box']
 };
+
+export const comboKeyFirst = bandKeyFirst((data, options, opening) => {
+  const size = { width: (options.size as { width: number }).width, height: opening };
+  const base = withLocaleStrings({ ...options, size }) as ComboOptions;
+  const prepared = prepareFractionData(data);
+  const alternatives = base.valueAxis?.show === undefined ? [base, { ...base, [TOTALS_AXIS]: true }] : [base];
+  return alternatives.every(next => {
+    const warnings: import('../../types/scene').LintWarning[] = [];
+    const env = resolveComboEnv(next, warnings);
+    const domain = resolveComboDomain(prepared, next, warnings, env.theme);
+    if (domain.secondaryActive || domain.anomaly || domain.lineFloat || domain.options.averageMarker
+      || domain.dHi < 0 && domain.negBot.some(bottom => bottom < 0)) return false;
+    const paints = comboPaints(env, domain);
+    const framed = solveComboFrame(env, domain, paints, warnings);
+    const measured = keylessFrame(framed.frame);
+    if (!measured) return false;
+    const { frame, printedDisclosure } = measured;
+    const area = comboPlotArea(env, domain, paints, { ...framed, frame }, undefined, warnings, true);
+    // An endpoint retry can narrow a nominal category row and add pointed notes for its cut names.
+    if (area.showCatTickRow && rankKeyShown(options) && !area.catPlan.dateNumeric
+      && (domain.lines.length || area.catPlan.step !== 'fit' || !area.catPlan.keep.every(Boolean))) return false;
+    return keylessAreaFits(options, frame, area.plot, opening, printedDisclosure);
+  });
+});
+
+keylessFitBounds.set(comboCore, comboKeyFirst);

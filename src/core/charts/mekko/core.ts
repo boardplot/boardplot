@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
@@ -27,3 +29,5 @@ export const mekkoCore: ChartCore<
   defaults: { variant: 'stacked100' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'text', 'line', 'arrow', 'box']
 };
+
+keylessFitBounds.set(mekkoCore, implicitTopKey);

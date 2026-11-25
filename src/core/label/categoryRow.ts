@@ -29,6 +29,8 @@
 import { DEFAULT_TARGET, targetFloorsPx } from '../target';
 import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
+import type { Theme } from '../types/theme';
+import { secondaryFont } from '../theme';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
 import { defaultMeasurer, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
 import { hasCompleteTableWidths } from '../fontMetrics/injected';
@@ -250,6 +252,36 @@ export interface CategoryRowPlan {
 
 /** Gap between the category labels and the year row under them. */
 const YEAR_ROW_GAP = 2;
+function categoryTextHeight(rotation: number, width: number, line: number, lines: number): number {
+  const whole = Math.max(1, width);
+  return rotation === 90 ? whole : rotation ? whole * SIN45 + line * SIN45 : lines * line;
+}
+
+function withPeriodRow(height: number, line: number, present: boolean): number {
+  return height + (present ? YEAR_ROW_GAP + line : 0);
+}
+
+/** Maximum tick band of a plain category axis, as its font, stride and rotation change. */
+export function categoryHeightLimit(
+  categories: readonly { id: string; label?: string; date?: string; calendar?: CalendarInfo; footnote?: number }[],
+  theme: Theme, measure: TextMeasurer,
+): number {
+  const tick = { family: theme.type.family, ...theme.type.axis };
+  const secondary = secondaryFont(theme);
+  const fonts = [tick, { family: theme.type.family, ...theme.type.footnote }, { ...secondary, size: Math.max(secondary.size, tick.size) }];
+  const names = categories.map(c => c.label ?? c.id);
+  const calendar = categories.some(c => c.calendar || c.date || /^\d{4}-\d{2}-\d{2}/u.test(c.id));
+  const numeric = categories.every(c => c.calendar) || isDateNumericTickSequence(names);
+  const fontHeight = Math.max(...fonts.map(font => font.size * (font.lineHeight ?? 1.2)));
+  if (numeric && names.every(name => !/[\r\n]/u.test(name))) return withPeriodRow(fontHeight, fontHeight, calendar);
+  // A cut or rotated name never extends past its whole text. A printed note marker can extend it.
+  if (categories.some(c => c.footnote !== undefined)) return Infinity;
+  const lines = Math.max(PROSE_FLOOR_LINES, maxOf(names.map(name => name.split('\n').length)));
+  const widest = maxOf(fonts.map(font => Math.max(measure('…', font).width, maxOf(names.map(name => measure(name, font).width)))));
+  const height = Math.max(...[0, 45, 90].map(rotation => categoryTextHeight(rotation, widest, fontHeight, lines)));
+  return withPeriodRow(height, fontHeight, calendar);
+}
+
 /** Clear room between names the spread step moves apart (7.1 px at 320). */
 const SPREAD_GAP = 7.5;
 
@@ -1178,11 +1210,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     const drawn = infos.filter((_, i) => keep[i]);
     const maxLines = rotation ? 1 : Math.max(1, maxOf(drawn.map((info) => info.lines.length)));
     const lineH = font.size * (font.lineHeight ?? 1.2);
-    const labelsHeight = rotation === 90
-      ? Math.max(maxOf(drawn.map((info) => info.w)), 1)
-      : rotation
-        ? Math.max(maxOf(drawn.map((info) => info.w)), 1) * SIN45 + lineH * SIN45
-        : maxLines * lineH;
+    const labelsHeight = categoryTextHeight(rotation, rotation ? maxOf(drawn.map(info => info.w)) : 0, lineH, maxLines);
     // An upright `under` line centres under its name, inside the row's ends.
     const xAt = xOf(infos);
     const hasMonths = yearSpans.some(span => span.month);
@@ -1203,8 +1231,8 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
       const mid = xAt(i) + infos[i]!.w / 2;
       return [{ index: i, text, w, h: lineH, x: Math.max(rowStart, Math.min(mid - w / 2, rowEnd - w)) }];
     });
-    const namesHeight = labelsHeight + (underItems.length > 0 ? YEAR_ROW_GAP + lineH : 0);
-    const rowHeight = namesHeight + (years.length > 0 ? YEAR_ROW_GAP + lineH : 0);
+    const namesHeight = withPeriodRow(labelsHeight, lineH, underItems.length > 0);
+    const rowHeight = withPeriodRow(namesHeight, lineH, years.length > 0);
     return {
       dateNumeric,
       typeRole: secondary ? 'secondary' : 'axis',

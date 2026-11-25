@@ -1,5 +1,7 @@
 /** Waterfall chart registration. */
 
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import type { ChartDefinition } from '../../registry';
 import { parseData } from '../../schema/shared';
 import type { WaterfallData } from '../../types/data';
@@ -34,3 +36,5 @@ export const waterfallDefinition: ChartDefinition<
   dataSchema: waterfallDataSchema,
   optionsSchema: waterfallOptionsSchema,
 };
+
+keylessFitBounds.set(waterfallDefinition, implicitTopKey);

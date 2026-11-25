@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
@@ -20,3 +22,5 @@ export const barCore: ChartCore<ChartData, BarOptions, BarMarks, BarDerived> = {
   annotationKinds: ['valueLine', 'indicator100', 'callout', 'note', 'delta', 'abs', 'diff', 'band', 'cagr', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };
+
+keylessFitBounds.set(barCore, implicitTopKey);

@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
@@ -24,3 +26,5 @@ export const dotCore: ChartCore<ChartData, DotOptions, DotMarks, DotDerived> = {
   annotationKinds: ['valueLine', 'callout', 'note', 'delta', 'abs', 'diff', 'cagr', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };
+
+keylessFitBounds.set(dotCore, implicitTopKey);

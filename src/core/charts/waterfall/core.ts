@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import { chartSizing } from '../../sizing';
 /** Zod-free waterfall chart registration. */
 
@@ -22,3 +24,5 @@ export const waterfallCore: ChartCore<
   defaults: { build: 'up' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'bracket', 'text', 'line', 'arrow', 'box']
 };
+
+keylessFitBounds.set(waterfallCore, implicitTopKey);

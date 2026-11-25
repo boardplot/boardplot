@@ -1,5 +1,7 @@
 /** Mekko chart registration. */
 
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import type { ChartDefinition } from '../../registry';
 import { parseData } from '../../schema/shared';
 import type { ChartData } from '../../types/data';
@@ -37,3 +39,5 @@ export const mekkoDefinition: ChartDefinition<
   dataSchema: mekkoDataSchema,
   optionsSchema: mekkoOptionsSchema,
 };
+
+keylessFitBounds.set(mekkoDefinition, implicitTopKey);

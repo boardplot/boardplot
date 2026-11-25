@@ -1,11 +1,12 @@
 /** Column chart registration. */
 
+import { keylessFitBounds } from '../../legendPolicy';
 import type { ChartDefinition } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
 import { parseData } from '../../schema/shared';
 import type { ColumnDerived, ColumnMarks } from './layout';
-import { columnCore } from './core';
+import { columnCore, columnKeyFirst } from './core';
 import { columnDataSchema, columnOptionsSchema } from './schema';
 
 export { columnDataSchema, columnOptionsSchema };
@@ -30,3 +31,5 @@ export const columnDefinition: ChartDefinition<
   dataSchema: columnDataSchema,
   optionsSchema: columnOptionsSchema,
 };
+
+keylessFitBounds.set(columnDefinition, columnKeyFirst);

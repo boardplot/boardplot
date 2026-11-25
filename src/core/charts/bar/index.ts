@@ -1,5 +1,7 @@
 /** Bar chart registration (horizontal twin of column). */
 
+import { keylessFitBounds } from '../../legendPolicy';
+import { implicitTopKey } from '../implicitTopKey';
 import type { ChartDefinition } from '../../registry';
 import type { ChartData } from '../../types/data';
 import { parseData } from '../../schema/shared';
@@ -25,3 +27,5 @@ export const barDefinition: ChartDefinition<ChartData, BarOptions, BarMarks, Bar
   dataSchema: barDataSchema,
   optionsSchema: barOptionsSchema,
 };
+
+keylessFitBounds.set(barDefinition, implicitTopKey);

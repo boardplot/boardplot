@@ -1,3 +1,4 @@
+import { categoryHeightLimit } from '../../label/categoryRow';
 import { chartString } from '../../strings/column';
 import { stringFields } from '../../strings';
 import { DEFAULT_TARGET, scaleTextPx } from '../../target';
@@ -835,6 +836,7 @@ export function columnPlotArea(
   beforeCategoryRow?: (bandwidth: number) => void,
   widthMemo?: ColumnStaircaseMemo,
   noteArea?: ColumnArea,
+  keylessLimit = false,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
   const saved = widthMemo?.plotAtPad;
@@ -899,7 +901,10 @@ export function columnPlotArea(
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan().warnings);
   if (showCatRow && catPlan().step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
-  const tickReserve = showCatRow ? catPlan().rowHeight + 8 : 0;
+  const rowHeight = showCatRow && keylessLimit
+    ? categoryHeightLimit(cats, theme, measure)
+    : undefined;
+  const tickReserve = showCatRow ? (rowHeight ?? catPlan().rowHeight) + 8 : 0;
   // With a ratio tier the band additionally carries the tier's 19px caption
   // rhythm minus the tierGap the tier adds back below the band — the
   // same arithmetic as line's tier branch. The caption gap is a between-blocks
