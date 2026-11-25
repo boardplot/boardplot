@@ -65,7 +65,7 @@ import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
-import { layoutBar, stackedBarPlotHeight, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
+import { layoutBar, stackedBarPlotHeight, surveyFootnoteRows, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK } from '../bar/model';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -917,30 +917,34 @@ export function layoutLikert(
     return minimum;
   };
   const reuseNaturalMinimum = !stacked && !ownTracks && !fixedRows && !opts.annotations?.length && isCachedTextMeasurer(measure);
+  const barSettings = () => ({
+    ...likertBarOptions(opts, theme.type.label.size),
+    variant: 'stacked' as const,
+    // Every response share is a share of the same respondents.
+    sharesOfOneWhole: true,
+    grandTotalLabels: summary === 'net',
+    format: netLabelExample,
+    // The stack values are DERIVED float shares; their decimals are noise,
+    // not authored precision. The example above declares the display
+    // precision (whole points), so bar's exhibit raster must not read one
+    // from the values — "+75", never "+75.06".
+    rasterFromValues: false,
+    valueAxis: { ...(opts.valueAxis ?? {}), show: false },
+    ...(legend ? { legend } : { legend: 'none' as const }),
+    ...(halves ? { halves } : {}),
+    // Stacked statements are drawn here, above the bars; bar keeps no name column.
+    ...(stacked ? { labels: { ...(typeof opts.labels === 'object' ? opts.labels : {}), category: false } } : {}),
+    ...(labelOverride?.align !== undefined ? { rowLabels: { ...opts.rowLabels, align: labelOverride.align } } : {}),
+  });
+  const sharedSettings = isCachedTextMeasurer(measure) ? barSettings() : undefined;
   const withBarOptions = <T>(rows: Rows, run: (options: BarOptions) => T): T => {
     const footnotes = [...authoredNotes(opts), ...methodNotes(),
       ...(narrowNote ? [disclosureNote(chartString(opts, 'narrowSharesNotPrinted'))] : [])];
 
     // Only the author's own notes keep a number; the rest are derived.
     const barOptions = withAuthoredFootnotes({
-      ...likertBarOptions(opts, theme.type.label.size),
-      variant: 'stacked' as const,
-      // Every response share is a share of the same respondents.
-      sharesOfOneWhole: true,
-      grandTotalLabels: summary === 'net',
-      format: netLabelExample,
-      // The stack values are DERIVED float shares; their decimals are noise,
-      // not authored precision. The example above declares the display
-      // precision (whole points), so bar's exhibit raster must not read one
-      // from the values — "+75", never "+75.06".
-      rasterFromValues: false,
-      valueAxis: { ...(opts.valueAxis ?? {}), show: false },
-      ...(legend ? { legend } : { legend: 'none' as const }),
-      ...(halves ? { halves } : {}),
+      ...(sharedSettings ?? barSettings()),
       ...(opts.bandFraction === undefined && rows.bandFraction !== undefined ? { bandFraction: rows.bandFraction } : {}),
-      // Stacked statements are drawn here, above the bars; bar keeps no name column.
-      ...(stacked ? { labels: { ...(typeof opts.labels === 'object' ? opts.labels : {}), category: false } } : {}),
-      ...(labelOverride?.align !== undefined ? { rowLabels: { ...opts.rowLabels, align: labelOverride.align } } : {}),
     }, footnotes, opts.footnotes);
 
     // The bars are derived shares: a bar refusal names a likert option it was handed, or nothing.
@@ -964,6 +968,9 @@ export function layoutLikert(
   };
   const annotationPass = likertAnnotationPass(data, shares, net, opts.format, brackets);
   annotationPass.skipWhenEmpty = !opts.annotations?.length;
+  if (!ownTracks && !comparing && !fixedRows && annotationPass.skipWhenEmpty && isCachedTextMeasurer(measure)) {
+    annotationPass.footnoteRows = surveyFootnoteRows();
+  }
   const layoutWith = (rows: Rows) => {
     const check = reuseNaturalMinimum && !narrowNote && rows.bandFraction === defaultFraction && !rows.bandPad
       ? naturalMinimum : checkBarNaturalHeight;

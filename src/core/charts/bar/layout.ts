@@ -206,7 +206,39 @@ function warnRangeBarIgnoredRanking(
 export type BarAnnotationPass = ((input: AnnotatePassInput, marks: BarMarks) => AnnotatePassInput) & {
   /** The adapter reads only annotations supplied by the bar. */
   skipWhenEmpty?: boolean;
+  /** One survey layout can fit the same rows with a different disclosure footer. */
+  footnoteRows?: BarRowsForFrame<Geometry<BarMarks, BarDerived>>;
 };
+type BarRowsForFrame<R> = (domain: BarDomain, area: BarArea, claims: OccupiedIndex, warnings: LintWarning[]) =>
+  { result: R } | { save: (result: R) => void };
+
+/** Reuse only the drawing below an equivalent frame. The survey owns one set of rows and column tracks. */
+export function surveyFootnoteRows(): BarRowsForFrame<Geometry<BarMarks, BarDerived>> {
+  type Drawing = Geometry<BarMarks, BarDerived>;
+  type Entry = { frame: BarArea['frame']; plot: Rect; claims: ReturnType<OccupiedIndex['snapshot']>;
+    rows: BarArea['catLines']; before: LintWarning[]; geometry: Drawing; warnings: LintWarning[] };
+  const byBand = new Map<string, Entry>();
+  return (domain, area, occupied, warnings) => {
+    const { options, size } = domain;
+    const band = JSON.stringify([size.width, size.height, area.availH, options.bandFraction, (options as { [BAND_PAD]?: number })[BAND_PAD]]);
+    const old = byBand.get(band);
+    const claims = occupied.snapshot();
+    const frame = area.frame;
+    if (old && sameContent(old.plot, area.plot) && sameContent(old.rows, area.catLines)
+      && sameContent(old.frame.plot, frame.plot) && sameContent(old.frame.legend, frame.legend)
+      && sameContent(old.before, warnings) && sameContent(old.claims, claims) && sameContent(old.frame.nodes, frame.nodes)) {
+      return { result: { ...old.geometry, frame: frame.frame, legend: frame.legend,
+        labels: old.geometry.labels.map(label => ({ ...label })), warnings: [...warnings, ...old.warnings] } };
+    }
+    const start = warnings.length;
+    return { save(geometry) {
+      // The note pass changes labels and the caller can raise the reported natural height.
+      byBand.set(band, { frame, plot: area.plot, rows: area.catLines, claims, before: warnings.slice(0, start),
+        geometry: { ...geometry, labels: geometry.labels.map(label => ({ ...label })) }, warnings: warnings.slice(start) });
+    } };
+  };
+}
+
 export type BarNaturalMinimum = (width: number, height: number, drawMinimum: () => number | undefined) => number | undefined;
 
 const LABEL_PAD = 2;
@@ -321,7 +353,7 @@ function layoutBarVariant(
     if (options.baseValue !== undefined) fieldGeometry.warnings.push(baseValueIgnored());
     return fieldGeometry;
   }
-  const geometry = layoutStandardBar(data, options as BarOptions, annotationPass, assembleBarGeometry);
+  const geometry = layoutStandardBar(data, options as BarOptions, annotationPass, assembleBarGeometry, annotationPass?.footnoteRows);
   if (options.currentValue !== undefined) {
     geometry.warnings.push({
       code: 'current-value-ignored',
@@ -649,21 +681,26 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
   options: BarOptions,
   annotationPass: BarAnnotationPass | undefined,
   finish: (...parts: Parameters<typeof assembleBarGeometry>) => R,
+  rowsForFrame?: BarRowsForFrame<R>,
 ): R {
   const warnings: LintWarning[] = [];
-  const { domain, paints } = prepareBar(data, options, warnings, annotationPass === undefined);
+  const reuseData = annotationPass === undefined || (annotationPass.skipWhenEmpty === true && !options.annotations?.length && !options.averageMarker);
+  const { domain, paints } = prepareBar(data, options, warnings, reuseData);
   const framed = solveBarFrame(domain, paints, warnings);
   const occupied = framed.claims;
   const area = barPlotArea(domain, framed.frame, warnings);
   // The cut row names go to the notes once; the note moves the plot, so the chart refits.
   if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
-    return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass, finish);
+    return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass, finish, rowsForFrame);
   }
   // A caller that keeps the bar only when its rows fit (STOP_IF_TOO_TALL) learns it now, before the marks and labels cost anything.
   if ((options as { [STOP_IF_TOO_TALL]?: boolean })[STOP_IF_TOO_TALL] === true
     && standardBarSizing(domain, area, area.catLines).minHeight > domain.size.height + SIZE_TOLERANCE) throw new BarTooTall();
   const needsAnnotationPass = domain.passAnns.length > 0 || !isCachedTextMeasurer(domain.measure)
     || (annotationPass !== undefined && !annotationPass.skipWhenEmpty);
+  const rows = rowsForFrame && !needsAnnotationPass && !domain.localAnns.length && domain.running.size === 0
+    ? rowsForFrame(domain, area, occupied, warnings) : undefined;
+  if (rows && 'result' in rows) return rows.result;
   const scene = layoutBarMarks(domain, paints, area, needsAnnotationPass);
   const local = layoutBarLocalAnnotations(domain, area, warnings);
   pushAll(scene.nodes, local.nodes);
@@ -730,7 +767,9 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
     } as BarOptions, annotationPass, finish);
   }
   pushAll(warnings, annotated.warnings);
-  return finish(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
+  const result = finish(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
+  rows?.save(result);
+  return result;
 }
 
 /* ------------------------------------------------------------------------ *
