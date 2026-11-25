@@ -2429,13 +2429,52 @@ function polygonsPath(polygons: GeoPoint[][][]): string {
 }
 
 function polygonsPathOf(polygons: GeoPoint[][][]): string {
+  // Write the rounded hundredths as ASCII digits. One buffer holds part of a path,
+  // so the outline does not allocate a separate string for every projected coordinate.
+  const bytes = new Uint8Array(2048);
+  const decoder = typeof TextDecoder === 'undefined' ? undefined : new TextDecoder();
+  let used = 0;
   let path = '';
-  polygons.forEach((polygon) => polygon.forEach((ring) => {
-    if (ring.length === 0) return;
-    path += `M${coord(ring[0]!)}`;
-    for (let i = 1; i < ring.length; i++) if (i in ring) path += `L${coord(ring[i]!)}`;
-    path += 'Z';
+  const flush = () => {
+    const chunk = bytes.subarray(0, used);
+    path += decoder ? decoder.decode(chunk) : String.fromCharCode(...chunk);
+    used = 0;
+  };
+  const number = (hundredths: number) => {
+    if (hundredths < 0) { bytes[used++] = 45; hundredths = -hundredths; }
+    const whole = Math.floor(hundredths / 100);
+    if (whole >= 1000) bytes[used++] = 48 + Math.floor(whole / 1000);
+    if (whole >= 100) bytes[used++] = 48 + Math.floor(whole / 100) % 10;
+    if (whole >= 10) bytes[used++] = 48 + Math.floor(whole / 10) % 10;
+    bytes[used++] = 48 + whole % 10;
+    const fraction = hundredths % 100;
+    if (fraction) {
+      bytes[used++] = 46;
+      bytes[used++] = 48 + Math.floor(fraction / 10);
+      if (fraction % 10) bytes[used++] = 48 + fraction % 10;
+    }
+  };
+  polygons.forEach(polygon => polygon.forEach(ring => {
+    if (!ring.length) return;
+    for (let i = 0; i < ring.length; i++) {
+      if (i && !(i in ring)) continue;
+      const point = ring[i]!;
+      const x = Math.round(point[0] * 100), y = Math.round(point[1] * 100);
+      // Two signed coordinates below 10,000 px, the command, comma and closing Z take at most 19 bytes.
+      if (!(Math.abs(x) < 1_000_000 && Math.abs(y) < 1_000_000)) {
+        flush();
+        path += `${i ? 'L' : 'M'}${x / 100},${y / 100}`;
+        continue;
+      }
+      if (used + 19 > bytes.length) flush();
+      bytes[used++] = i ? 76 : 77;
+      number(x);
+      bytes[used++] = 44;
+      number(y);
+    }
+    bytes[used++] = 90;
   }));
+  flush();
   return path;
 }
 
