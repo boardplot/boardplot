@@ -429,6 +429,7 @@ figure.bp-table[data-bp-fill-height]{box-sizing:border-box;display:flex;flex-dir
 .bp-table-grid .bp-value,.bp-table-grid .bp-line{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .bp-table-grid:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow-wrap:normal}.bp-table-grid [data-bp-wrap]{white-space:pre-line}.bp-table-grid [data-bp-wrap] .bp-value{overflow:visible;text-overflow:clip;line-height:round(up,1.2em,1px);padding-top:calc(round(up,calc(1em*var(--bp-line-ratio)),1px) - round(up,1.2em,1px))}
 .bp-table-grid .bp-line{height:var(--bp-inline-box);margin-top:var(--bp-inline-gap);font-size:var(--bp-change-size);font-weight:${changeFace.weight};line-height:var(--bp-inline-box);color:var(--bp-ink-2);transition:height var(--bp-motion-layout) var(--bp-motion-easing),margin-top var(--bp-motion-layout) var(--bp-motion-easing),opacity var(--bp-motion-fade) ease}
+.bp-table-grid[data-bp-lines-at-once] .bp-line{transition:none}
 .bp-table-grid [role="rowheader"] .bp-line{box-sizing:border-box;padding-inline-start:${INLINE_LABEL_INDENT}px}
 .bp-table-grid .bp-line:not(.bp-line-off)~.bp-line,.bp-table-grid .bp-note-line~.bp-line,.bp-table-grid .bp-note-spacer~.bp-line{margin-top:0}
 .bp-table-grid .bp-line[data-tone="good"]{color:var(--bp-good-text)}.bp-table-grid .bp-line[data-tone="bad"]{color:var(--bp-bad-text)}.bp-table-grid .bp-line[data-tone="warn"]{color:var(--bp-warn-text)}

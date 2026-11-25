@@ -243,6 +243,34 @@ it('applies the larger change box only when a change line is visible', async () 
   expect(shownValue?.t === 'text' && shownValue.font.size).toBe(11);
 });
 
+// Thousands of line transitions delayed a large table's switch of comparison lines, and a small switch must keep its motion.
+it('switches many comparison lines without motion and keeps the motion of a small switch', () => {
+  const periods = Array.from({ length: 10 }, (_, index) => ({ id: `p${index}`, kind: 'value' as const, label: `P${index}` }));
+  const cells = Object.fromEntries(periods.map((column, index) => [column.id, 100 + index]));
+  const line = (row: number, group: string) =>
+    ({ id: `r${row}-${group}`, parentId: `r${row}`, label: group, inline: true as const, inlineGroup: group, relation: 'displayOnly' as const, cells });
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, ...periods],
+    rows: [...Array.from({ length: 10 }, (_, row) => [{ id: `r${row}`, label: `Row ${row}`, cells }, line(row, 'change')]).flat(), line(0, 'share')],
+  };
+  const draw = (inlineVisibility: Record<string, boolean>) =>
+    act(() => root.render(<TableChart data={data} size={{ width: 1200 }} inlineVisibility={inlineVisibility} />));
+  draw({ change: true, share: true });
+  expect(container.querySelectorAll('[data-bp-inline="change"]')).toHaveLength(110);
+  expect(container.querySelectorAll('[data-bp-inline="share"]')).toHaveLength(11);
+  const rule = Array.from(document.head.querySelector<HTMLStyleElement>('style[data-bp-table-theme]')!.sheet!.cssRules)
+    .find((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule && entry.selectorText.includes('[data-bp-lines-at-once]'))!;
+  expect(rule.style.getPropertyValue('transition')).toBe('none');
+  // Whether every comparison line in the grid has its transition switched off.
+  const still = () => Array.from(container.querySelectorAll('.bp-line')).every((element) => element.matches(rule.selectorText));
+  draw({ change: true, share: false });
+  expect(still()).toBe(false);
+  draw({ change: false, share: false });
+  expect(still()).toBe(true);
+  draw({ change: false, share: true });
+  expect(still()).toBe(false);
+});
+
 describe('TableChart uncontrolled state', () => {
   // Pinned summary columns must leave the period values reachable in a narrow card.
   it('reduces pins until a full scrolling column fits', () => {
