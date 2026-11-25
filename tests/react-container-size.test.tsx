@@ -1136,6 +1136,18 @@ it.each([
   expect(refused).toHaveBeenCalledOnce();
 });
 
+// A row measurement in a short status board must preserve the refusal and its repair size.
+it('matches the full status layout when only the frame establishes a refusal', () => {
+  const fixture = getFixtures('status').find(item => item.id === 'central-bank-decisions')!;
+  const fullMetrics = Object.assign((...args: Parameters<typeof defaultMeasurer>) => defaultMeasurer(...args), defaultMeasurer);
+  for (const size of [{ width: 800, height: 360 }, { width: 1144, height: 320 }, { width: 1144, height: 590 }]) {
+    const input = { type: 'status', data: fixture.data, options: fixture.options as object, target: 'dashboard' as const, size };
+    const ordinary = layoutContainerRequest(resolveChartRequest(input), 'fill');
+    const full = layoutContainerRequest(resolveChartRequest({ ...input, fontMetrics: fullMetrics }), 'fill');
+    expect(ordinary).toEqual(full);
+  }
+});
+
 // A container width with fractions (615.609375 px) is drawn and reported rounded; that is not a smaller display.
 it('warns observed-display-too-small only when the drawn width is a pixel or more short', () => {
   const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [1, 2] }] };

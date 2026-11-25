@@ -5,7 +5,7 @@ import { classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } 
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { singleStops } from './strings';
-import type { Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types/scene';
+import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types/scene';
 import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
@@ -1321,6 +1321,8 @@ export type MapWidthProbe = { [MAP_WIDTH_BOUND]?: { width: number } };
 export const FIXED_SIZE_PROBE = Symbol('boardplot.fixedSizeProbe');
 /** Set by a probe that reads only whether the chart draws (`isRefused`): it skips work that only words a warning. */
 export const ACCEPTANCE_PROBE = Symbol('boardplot.acceptanceProbe');
+export const FRAME_FIT_PROBE = Symbol('boardplot.frameFitProbe');
+export type FrameFitProbe = (size: Size, sizing: ResolvedSizing, frame: FrameGeometry) => RefusedLayout | undefined;
 
 export function isWidthProbe(type: string, options: ChartOptions | undefined): boolean {
   const probe = (options as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE];
@@ -2112,6 +2114,17 @@ export function sizeGate<D, O extends ChartOptions, M extends object, DV extends
   return { tight, gatePolicy };
 }
 
+function frameHeightFloor(height: number | undefined, frame: FrameGeometry, plot = 0): number {
+  return Math.max(height ?? 0, frame.minHeight ?? 0, frame.plotMinHeight ?? 0, plot);
+}
+
+function measuredFrameRefusal(type: string, title: string, size: Size, sizing: ResolvedSizing, frame: FrameGeometry): RefusedLayout {
+  const refusal = sizeRefusal(type, title, size, sizing);
+  const chrome = plotChromeFloor.get(frame);
+  if (chrome !== undefined) plotChromeFloor.set(refusal, chrome);
+  return refusal;
+}
+
 /** Lay out one fixed size. Height searches never enter the search again. */
 function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
@@ -2138,6 +2151,18 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // This marker reaches only the raw card layout, after the standalone size gate.
   const rawOptions = definition.type === 'kpi'
     ? { ...layoutOptions, typeClass: 'M' } as unknown as O : layoutOptions;
+  const probeFrame: FrameFitProbe | undefined = definition.type === 'status' && !nested && !staticFrame.pinned
+    && (options as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE]
+    && (options as TargetSizeOptions | undefined)?.[TARGET_SIZE]?.fixed.height
+    && hasCompleteTextWidths(options?.measure ?? defaultMeasurer)
+    ? (size, sizing, frame) => {
+      const gate = resolveSizing(gatePolicy, size, {
+        ...sizing,
+        minHeight: frameHeightFloor(sizing.minHeight, frame) - (liveFooterExtra.get(frame) ?? 0),
+        measuredMinHeight: frameHeightFloor(sizing.measuredMinHeight, frame),
+      });
+      return fitsSize(size, gate) ? undefined : measuredFrameRefusal(definition.type, definition.title, size, gate, frame);
+    } : undefined;
   const layout = (runOptions: O | undefined) => {
     const clean = withoutCallState(runOptions);
     // Gantt's own content-height rule requests the next wider card. It removes
@@ -2145,7 +2170,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
     const memo = (runOptions as (O & { [CARD_HEIGHT_MEMO]?: CardHeightMemo }) | undefined)?.[CARD_HEIGHT_MEMO];
     return definition.layout(data, definition.type === 'table' || definition.type === 'dimswitch' ? { ...clean, [PLAN_ONLY]: true } as unknown as O : definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
       ...((runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE] ? { [ACCEPTANCE_PROBE]: true } : {}),
-    } as unknown as O : clean);
+    } as unknown as O : probeFrame ? { ...clean, [FRAME_FIT_PROBE]: probeFrame } as unknown as O : clean);
   };
   const sourceCheck = layoutMemo && definition.frameOwnsSourceLimit === true && mode === 'compact' && options?.source
     && !staticFrame.pinned && !atHardMinimum(options) && !(COMPACT_SOURCE_LINES in options)
@@ -2181,7 +2206,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   if (geometry.refused) return geometry;
   // A React footer's button row takes the plot under its floor before the chart refuses (liveFooterExtra).
   const footerExtra = liveFooterExtra.get(geometry.frame) ?? 0;
-  const floorWithFooter = Math.max(geometry.sizing?.minHeight ?? 0, geometry.frame.minHeight ?? 0, geometry.frame.plotMinHeight ?? 0,
+  const floorWithFooter = frameHeightFloor(geometry.sizing?.minHeight, geometry.frame,
     (heightShort || tight) && HOLDS_COMPACT_PLOT.has(definition.type)
       ? Math.ceil(geometry.size.height + (atHardMinimum(options) && !HARD_KEEPS_COMPACT_PLOT.has(definition.type) ? HARD_COMPACT_PLOT : MIN_COMPACT_PLOT) - plotForFloor(geometry).h) : 0);
   const barFloor = definition.type === 'column' ? columnBarFloor(geometry) : 0;
@@ -2225,9 +2250,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // refusal and its measured repair instead of replacing it with a generic one.
   if (nested || geometry.warnings.some(w => w.code === 'invalid-options')
     || (definition.type === 'diagram' && isRefused(geometry)) || fitsSize(geometry.size, gate)) return geometry;
-  const refusal = sizeRefusal(definition.type, definition.title, geometry.size, gate);
+  const refusal = measuredFrameRefusal(definition.type, definition.title, geometry.size, gate, geometry.frame);
   if (sourceCheck?.unchanged && options) (singleLineRefusals ??= new WeakMap()).set(refusal, { options, state: sourceCheck.state });
-  const chrome = plotChromeFloor.get(geometry.frame);
-  if (chrome !== undefined) plotChromeFloor.set(refusal, chrome);
   return refusal;
 }
