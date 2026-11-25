@@ -13,6 +13,7 @@ export const scatterCore: ChartCore<
   ScatterDerived
 > = {
   type: 'scatter',
+  frameOwnsSourceLimit: true,
   sizing: chartSizing('scatter'),
   title: 'Scatter / bubble',
   summary: 'XY point cloud with group colors, spiral point labels, and area-true bubbles',

@@ -13,6 +13,7 @@ import type { LineOptions } from './types';
 
 export const lineCore: ChartCore<LineChartData, LineOptions, LineMarks, LineDerived> = {
   type: 'line',
+  frameOwnsSourceLimit: true,
   sizing: chartSizing('line'),
   title: 'Line / area',
   summary:

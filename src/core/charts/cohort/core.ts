@@ -18,6 +18,7 @@ export const cohortCore: ChartCore<
     'Cohorts by periods-since-start: counts in, every retention rate derived, weighted averages that are never the mean of percentages',
   aliases: ['retention'],
   layout: layoutCohort,
+  frameOwnsSourceLimit: true,
   defaults: { basis: 'cohort', averages: false, variant: 'heatmap' },
   annotationKinds: []
 };

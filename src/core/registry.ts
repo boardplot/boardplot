@@ -150,6 +150,8 @@ export interface ChartCore<
   hardMinimumKeepsNames?: boolean;
   /** False when hard-minimum fitting uses the same fixed frame and marks as ordinary compact fitting. */
   hasHardMinimum?: false;
+  /** The one-line source limit is read only by the frames this chart draws. */
+  frameOwnsSourceLimit?: true;
   /**
    * The layout under legend 'none' when the chart
    * keeps a key no drawn label replaces. It gets the 'none' layout and the

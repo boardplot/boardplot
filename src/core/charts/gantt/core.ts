@@ -13,6 +13,7 @@ export const ganttCore: ChartCore<GanttData, GanttOptions, GanttMarks, GanttDeri
   aliases: ['timeline'],
   layout: layoutGantt,
   hasHardMinimum: false,
+  frameOwnsSourceLimit: true,
   defaults: {},
   annotationKinds: ['event']
 };
