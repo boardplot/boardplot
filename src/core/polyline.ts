@@ -88,7 +88,27 @@ function preparedCloser(outline: ReturnType<typeof prepareRun>, distance: (rect:
 
 /** Exact outline distance, prepared once for fixed map rings. */
 export function prepareOutlineDistance(rings: readonly (readonly Point[])[]) {
-  return preparedDistance(rings.map(ring => prepareRun(ring, 16)));
+  const outlines = rings.map(ring => prepareRun(ring, 16));
+  const distance = preparedDistance(outlines);
+  const bounded = outlines.every(outline => outline.chunks !== null);
+  return (rect: Rect, ownDistance?: number, vertexDistance?: number): number => {
+    if (vertexDistance === undefined || ownDistance !== undefined || !bounded) return distance(rect, ownDistance);
+    const right = rect.x + rect.w, bottom = rect.y + rect.h;
+    const scale = Math.max(1, Math.abs(rect.x), Math.abs(rect.y), Math.abs(rect.w), Math.abs(rect.h), Math.abs(right), Math.abs(bottom));
+    if (!(scale <= MAX_COORDINATE && rect.w >= 0 && rect.h >= 0)) return distance(rect);
+    // A vertex bounds the nearest point. Only measured segment distances can supply the answer.
+    let best = Infinity;
+    for (const outline of outlines) for (const chunk of outline.chunks!) {
+      const bound = Math.min(best, vertexDistance);
+      const error = 64 * Number.EPSILON * Math.max(scale, chunk.scale);
+      const dx = Math.max(0, rect.x - chunk.maxX, chunk.minX - right);
+      const dy = Math.max(0, rect.y - chunk.maxY, chunk.minY - bottom);
+      if (dx - error > bound || dy - error > bound || Math.hypot(dx, dy) - error > bound) continue;
+      best = Math.min(best, rectLineDistance(rect, chunk.points));
+      if (best === 0) return 0;
+    }
+    return best;
+  };
 }
 
 /** Distance and touching tests for a stroke whose points stay fixed in one label pass. */
