@@ -115,7 +115,7 @@ export function registerCatalogue(): void {
   // of all concrete ones, so this is the widest honest type here.
   for (const definition of chartDefinitions as readonly ChartDefinition<any, any, any, any>[]) {
     catalogueOptionsSchemas.add(definition.optionsSchema);
-    if (!getChart(definition.type)?.dataSchema) registerChart(definition);
+    if (!getChart(definition.type)?.dataSchema) registerChart(definition, true);
   }
 }
 

@@ -41,6 +41,7 @@ import { withCalendarLabels } from './calendarData';
 import { staticFrame } from './footer';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
+import { hasCompleteTextWidths } from './fontMetrics/injected';
 
 /** Chart types may refine shared mode names and label content. */
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
@@ -188,7 +189,7 @@ export type RegisteredChart<
   M extends object = Record<string, unknown>,
   DV extends object = Record<string, unknown>,
 > = ChartCore<D, O, M, DV> & { sizing: ChartSizing;
-  [LAYOUT_CALL]?: (data: D, options?: O) => LayoutCall<O, M, DV>;
+  [LAYOUT_CALL]?: (data: D, options?: O, fitOnly?: boolean) => LayoutCall<O, M, DV>;
 } &
   Partial<Pick<ChartDefinition<D, O, M, DV>, 'normalize' | 'dataSchema' | 'dataSchemaByOption' | 'optionsSchema' | 'discovery'>>;
 
@@ -258,7 +259,7 @@ function isDefinition(
 }
 
 export function registerChart<D, O extends ChartOptions, M extends object, DV extends object>(
-  def: ChartCore<D, O, M, DV> | ChartDefinition<D, O, M, DV>,
+  def: ChartCore<D, O, M, DV> | ChartDefinition<D, O, M, DV>, builtIn = false,
 ): void {
   const existing = registry.get(def.type);
   const incomingIsDefinition = isDefinition(def);
@@ -294,7 +295,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   // accidentally rendered.
   const sizing = def.sizing ?? chartSizing(def.type);
   const supported = new Set(def.annotationKinds);
-  const prepareLayout = (data: D, authored?: O): FitLayout<O, M, DV> => {
+  const prepareLayout = (data: D, authored?: O, fitOnly = false): FitLayout<O, M, DV> => {
     const annotations = prepareFractionAnnotations(authored?.annotations);
     if (annotations !== authored?.annotations) authored = { ...authored, annotations } as O;
     const target = authored?.target ?? DEFAULT_TARGET;
@@ -528,6 +529,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         for (let pass = 0; pass < 6; pass++) {
           const width = Math.max(geo.size.width, floor.minWidth);
           const probe = probeAt(width, Math.max(geo.size.height, floor.minHeight));
+          // Once a repair draws, the search can only refine the size of this refusal.
+          if (fitOnly && resolved.fixed.height && !isRefused(probe)) return geo;
           if (!isRefused(probe) && floor.minHeight <= geo.size.height) return sizeRefusal(def.type, def.title, geo.size, sClassMinimum(floor, geo.size));
           if (!isRefused(probe)) {
             // This larger size drew. The remaining search only refines the size refusal.
@@ -750,7 +753,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     });
   };
   // Preparation and the full/compact policy belong to one call, including its size probes.
-  const createLayout = (data: D, authored?: O): LayoutCall<O, M, DV> => {
+  const createLayout = (data: D, authored?: O, fitOnly = false): LayoutCall<O, M, DV> => {
     checkItemBudget(def.type, data, authored);
     const options = withDefaultTarget(authored);
     const inherited = (options as { [CARD_HEIGHT_MEMO]?: CardHeightMemo } | undefined)?.[CARD_HEIGHT_MEMO];
@@ -761,7 +764,10 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // memo keys a layout by its data object.
     const labelled = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
-    const layoutOnce = prepareLayout(labelled, { ...options, [CARD_HEIGHT_MEMO]: memo } as unknown as O);
+    // Width-yielding layouts read repair sizes. A Gantt probe also updates the full-card context.
+    const discardSize = fitOnly && builtIn && !def.finishLayout && def.type !== 'gantt' && def.type !== 'grid'
+      && hasCompleteTextWidths(options?.measure ?? defaultMeasurer);
+    const layoutOnce = prepareLayout(labelled, { ...options, [CARD_HEIGHT_MEMO]: memo } as unknown as O, discardSize);
     const plain: typeof def.layout = (d, o) => {
       const run = prepareLayout(d, o);
       try { return layoutPlain(d, o, run); } finally { run.finish(); }
