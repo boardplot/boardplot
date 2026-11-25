@@ -1,3 +1,4 @@
+import { categoryHeightLimit } from '../../label/categoryRow';
 import { chartString } from '../../strings/combo';
 import { planLineStyle } from '../../planLineStyle';
 import { BAND_PAD, namedLineText, VALUE_LINE_RESERVE } from '../../annotateParts';
@@ -672,6 +673,7 @@ export function comboPlotArea(
   framed: { frame: FrameResult; leftAxisReserve: number },
   gutterOverride: EndpointGutters | undefined,
   warnings: LintWarning[],
+  keylessLimit = false,
 ): ComboArea {
   const { theme, measure, highlights, size } = env;
   const { frame, leftAxisReserve } = framed;
@@ -699,7 +701,7 @@ export function comboPlotArea(
     // the top, where a line through the column top (a Pareto's first share point) takes the seat.
     && frame.plot.w / Math.max(1, cats.length) * 0.6 >= Math.max(0, maxOf(cats.map((c, ci) => measure(composeText(domain, gtContent ?? ['absolute'],
       { abs: domain.stackTotals[c.id] ?? 0, isPct: totalColumn(domain, ci)?.vals[ci]?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci)), strongFont).width))) + 8;
-  const totalsRow = gtContent && !(domain.anatomy && columns.length === 1) && !totalsAirInScale ? gtH + 6 : 0;
+  const totalsRow = gtContent && !(domain.anatomy && columns.length === 1) && (keylessLimit || !totalsAirInScale) ? gtH + 6 : 0;
   // A tinted column fill is no text colour: its axis title takes the ink.
   const columnTitlePaint = (paint: Paint): Paint => ('tint' in paint && paint.tint !== undefined ? { token: 'ink' } : paint);
   const titles = { ...domain.options.axisTitles };
@@ -899,7 +901,10 @@ export function comboPlotArea(
     // caller that can publish it.
     if (catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
   }
-  const catBandH = showCatTickRow ? catPlan.rowHeight + 8 : 0;
+  const rowHeight = showCatTickRow && keylessLimit
+    ? categoryHeightLimit(cats, theme, measure)
+    : undefined;
+  const catBandH = showCatTickRow ? (rowHeight ?? catPlan.rowHeight) + 8 : 0;
   // The category row reads under the lowest column and the value or
   // total hanging under it; the plot makes that room.
   const hangingRoom = showCatTickRow && domain.options.labels !== false ? Math.max(measure('0', labelFont).height, gtH) + 4 : 0;

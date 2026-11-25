@@ -49,7 +49,7 @@ const hasOnly = (value: object, allowed: ReadonlySet<string>): boolean => Object
  * tested; a list of what bar drops would let it step to bars and be lost. The request alone decides, so a
  * column that stays pays for no bar layout.
  */
-function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): boolean {
+export function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): boolean {
   if (!hasOnly(options, SAME_OPTIONS)) return false;
   if (options.variant === 'stacked100' || (options.referenceStyle !== undefined && options.referenceStyle !== 'tick')) return false;
   if (options.netLine !== undefined && options.netLine !== true) return false;

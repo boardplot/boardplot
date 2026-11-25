@@ -1,12 +1,13 @@
 /** Combo chart registration. */
 
+import { keylessFitBounds } from '../../legendPolicy';
 import * as z from 'zod';
 import type { ChartDefinition } from '../../registry';
 import { parseData } from '../../schema/shared';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions } from '../../types/options';
 import type { ComboDerived, ComboMarks } from './layout';
-import { comboCore } from './core';
+import { comboCore, comboKeyFirst } from './core';
 import { comboDataSchema, comboOptionsSchema } from './schema';
 
 export { comboDataSchema, comboOptionsSchema };
@@ -41,3 +42,5 @@ export const comboDefinition: ChartDefinition<ChartData, BaseOptions, ComboMarks
   dataSchema: comboDataSchema,
   optionsSchema: comboOptionsSchema as unknown as z.ZodType<BaseOptions>,
 };
+
+keylessFitBounds.set(comboDefinition, comboKeyFirst);

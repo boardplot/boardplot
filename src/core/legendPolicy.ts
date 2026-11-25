@@ -320,8 +320,11 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
     if (size.width >= policy.minWidth && opening >= policy.minHeight) {
       const drawsKey = bound(definition.type, data, baselineOptions, opening);
       if (drawsKey && (requested || resolveTheme(options?.theme).legend?.auto === true || needsSeriesKey(definition.type, data, baselineOptions))) {
-        const keyed = fullCandidate = fitCandidate(topKeyOptions(definition.type, baselineOptions, 'full'));
-        if (!keyed.refused && drawsKey(keyed)) return keyed;
+        // A speculative failure cannot precede a refusal the normal policy would return.
+        try {
+          const keyed = fullCandidate = fitCandidate(topKeyOptions(definition.type, baselineOptions, 'full'));
+          if (!keyed.refused && drawsKey(keyed)) return keyed;
+        } catch { /* The ordinary path below owns the exception if it reaches this fit. */ }
       }
     }
   }

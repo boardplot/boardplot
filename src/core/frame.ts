@@ -26,7 +26,7 @@ import { isNumberAlone } from './textRole';
 import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { withLocaleStrings } from './strings';
-import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
+import { allQuiet, chartNotes, copyNote, defaultNotePlacement, disclosureNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
@@ -419,6 +419,33 @@ export function frameTextOptions(
     // chart's automatic key prints at the key size (13 px).
     ...(mode === 'compact' ? { legendFont: 'compact' as const } : {}),
   };
+}
+
+/** Measure the actual header, notes and source for each possible count of generated value notes.
+ * A band chart composes one note for segment values and one for other displaced labels. */
+export function keylessFrame(frame: FrameResult): { frame: FrameResult; printedDisclosure: boolean } | undefined {
+  const input = footerPlans.get(frame.frame);
+  if (!input || frame.legend || input.eventKey || input[COLLECT_IDENTITIES]) return;
+  // solveFrame already appended cut-label notes to this stored input.
+  const { [CUT_LABEL_NOTES]: _cut, ...projection } = input;
+  const generatedVisible = input.notes?.show?.includes('disclosure') === true;
+  const liveInfo = staticFrame.live && !staticFrame.pinned && (input.notes?.placement ?? defaultNotePlacement(input.target)) === 'info';
+  const printsDisclosure = (f: FrameResult) => f.frame.noteList?.some(note => note.kind === 'disclosure' && note.inFrame) === true;
+  let printedDisclosure = printsDisclosure(frame);
+  if (!generatedVisible && !liveInfo && !(staticFrame.live && input[LIVE_NOTE_SHOW]?.includes('disclosure'))) return { frame, printedDisclosure };
+  const notes = [...(projection.footnotes ?? [])];
+  let smallest = frame;
+  for (let added = 0; added < 2; added++) {
+    // Its words can be arbitrary. Only the count can be used if the footer keeps this record in the list.
+    const generated = '';
+    if (projection.footnotes?.includes(generated)) return;
+    notes.push(disclosureNote(generated));
+    const measured = solveFrame({ ...projection, footnotes: notes }, collectFrameClaims([]));
+    if (measured.frame.noteList?.some(note => note.text === generated && note.inFrame)) return;
+    printedDisclosure ||= printsDisclosure(measured);
+    if (measured.plot.h < smallest.plot.h || measured.deficit && measured.deficit > (smallest.deficit ?? 0)) smallest = measured;
+  }
+  return { frame: smallest, printedDisclosure };
 }
 
 export interface FrameResult {

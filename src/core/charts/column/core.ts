@@ -1,3 +1,5 @@
+import { keylessFitBounds } from '../../legendPolicy';
+import { bandKeyFirst, keylessAreaFits } from '../band/keylessFit';
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
@@ -6,9 +8,9 @@ import { staticFrame } from '../../footer';
 import { withEngineNotes } from '../../notes';
 import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
-import { COLUMN_FRACTION_MAX, solveColumnFrame } from './plot';
+import { COLUMN_FRACTION_MAX, columnPlotArea, solveColumnFrame } from './plot';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
-import { LEGEND_HEIGHT } from '../../frame';
+import { keylessFrame, LEGEND_HEIGHT } from '../../frame';
 import { zeroLifts } from '../../formatPrecision';
 import { withLocaleStrings } from '../../strings';
 import { HOST_CLAIMS } from '../../claims/ids';
@@ -18,6 +20,8 @@ import { canvasMargin, classStepWidth, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } f
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
 import { chartTheme } from '../chartEnv';
+import { rankKeyShown } from '../../notes';
+import { withValueLabelDefaults } from '../band/valueSelection';
 import { fitsInside } from '../band/labels';
 /** Zod-free column chart registration. */
 
@@ -25,7 +29,7 @@ import { prepareRangeData } from '../../rangeRules';
 import { captionSizedPanelLayouts, type ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
-import { stepToBar, withoutPatchesThatStep } from './stepToBar';
+import { barDrawsAlike, stepToBar, withoutPatchesThatStep } from './stepToBar';
 import { layoutColumn, type ColumnDerived, type ColumnMarks } from './layout';
 
 // These settings keep the segment text, font ladder and note policy fixed as a plain stack grows.
@@ -127,3 +131,35 @@ export const columnCore: ChartCore<
 };
 
 captionSizedPanelLayouts.add(columnCore.layout);
+
+export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
+  const size = { width: (options.size as { width: number }).width, height: opening };
+  if (options.valueAxis?.break || options.variant === 'stacked100' || options.valueAxis?.percent
+    || options.topN || options.window || options.viewDomain || options.netLine || options.categoryLabels === 'staircase') return false;
+  const base = withValueLabelDefaults(withLocaleStrings({ ...options, size }), 'column', options.variant, []);
+  const prepared = prepareFractionData(data);
+  const mayStep = barDrawsAlike(prepared, base);
+  // A lost value can turn the axis on. Measure the two frames the chart can use.
+  const axes = base.valueAxis?.show === undefined ? [base.valueAxis, { ...base.valueAxis, show: true }] : [base.valueAxis];
+  return axes.every(valueAxis => {
+    const warnings: import('../../types/scene').LintWarning[] = [];
+    const domain = resolveColumnDomain(prepared, { ...base, valueAxis }, warnings);
+    if (domain.annList.length || domain.activeBreak || domain.netLineOn || domain.averageMarker
+      || domain.dHi < 0 && domain.negBotP.some(bottom => bottom < 0)) return false;
+    const paints = columnPaints(domain, warnings);
+    const measured = keylessFrame(solveColumnFrame(domain, paints, warnings).frame);
+    if (!measured) return false;
+    const { frame, printedDisclosure } = measured;
+    const area = columnPlotArea(domain, frame, warnings, undefined, undefined, undefined, true);
+    if (area.showCatRow && (mayStep || rankKeyShown(options))) {
+      const row = area.catPlan();
+      // A numeric date row never makes rank or cut notes. A whole upright row keeps its names
+      // at this width, and gives stepToBar nothing to turn into horizontal bars.
+      const whole = row.step === 'fit' && row.keep.every(Boolean) && !row.cutNotes.length;
+      if (!whole && (mayStep || !row.dateNumeric)) return false;
+    }
+    return keylessAreaFits(options, frame, area.plot, opening, printedDisclosure);
+  });
+});
+
+keylessFitBounds.set(columnCore, columnKeyFirst);
