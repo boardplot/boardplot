@@ -10,7 +10,7 @@
  * in a row under the days. Authored
  * labels always win, and nothing changes unless every category has a date.
  */
-import { DATE_TICK_STRIDES, dateTickKeep, dateTickKeepCalendar, dateTickOrdinals, type DateTickInterval } from './dateFormat';
+import { DATE_TICK_STRIDES, planDateTicks, type DateTickInterval } from './dateFormat';
 import { dateNames } from './dateNames';
 import { wordLanguage } from './numberMarks';
 import { parseISODate, utcDate } from './isoDate';
@@ -105,7 +105,7 @@ export function calendarNames(categories: readonly Raw[], language?: string): (s
   return deriveCalendar(categories, language)?.names;
 }
 
-function deriveCalendar(categories: readonly Raw[], language?: string, yearRow = false) {
+function deriveCalendar(categories: readonly Raw[], language?: string, yearRow = false, labelsInYearRow?: string[]) {
   const unlabelled = (raw: Raw) => typeof raw === 'string' || raw.label === undefined;
   if (categories.length === 0 || !categories.some(unlabelled)) return undefined;
   const points = categories.map((raw) => calendarPoint(typeof raw === 'string' ? raw : raw.date ?? raw.id));
@@ -117,7 +117,7 @@ function deriveCalendar(categories: readonly Raw[], language?: string, yearRow =
   const tag = (wordLanguage(language) ?? 'en').toLowerCase().replace(/_/g, '-');
   const de = tag === 'de' || tag.startsWith('de-');
   const us = tag === 'en-us';
-  const months = dateNames(language).monthsShort;
+  const { monthsShort: months, daysShort } = dateNames(language);
   const inRow = yearRow && (unit === 'day' || unit === 'month' || unit === 'quarter');
   let previous: number | undefined;
   // Over more than one year a short name repeats ("Nov" twice): a note names each period with its year.
@@ -136,17 +136,24 @@ function deriveCalendar(categories: readonly Raw[], language?: string, yearRow =
       unit, year, yearShown, ...(inRow ? { yearRow: true as const } : {}),
     };
     const category: Category & { calendar: CalendarInfo } = typeof raw === 'string' ? { id: raw, calendar } : { ...raw, calendar };
-    if (!unlabelled(raw)) return { ...category, calendar: { ...category.calendar, yearShown: false } };
-    const week = String(point.week ?? isoWeek(date).week).padStart(2, '0');
+    if (!unlabelled(raw)) {
+      calendar.yearShown = false;
+      return category;
+    }
+    // A week point already carries the validated ISO week.
+    const week = unit === 'week' ? String(point.week).padStart(2, '0') : '';
     const base = unit === 'year' ? String(year)
       : unit === 'quarter' ? `Q${Math.floor(date.getUTCMonth() / 3) + 1}`
         : unit === 'month' ? month
           : unit === 'week' ? (de ? `KW ${week}` : `W${week}`)
             : de ? `${day}. ${month}` : us ? `${month} ${day}` : `${day} ${month}`;
-    if (inRow && unit === 'day') calendar.weekday = `${dateNames(language).daysShort[date.getUTCDay()]!} ${base}`;
+    if (inRow && unit === 'day') calendar.weekday = `${daysShort[date.getUTCDay()]!} ${base}`;
     const named = `${base}${us && unit === 'day' ? ',' : ''} ${year}`;
     names[i] = unit === 'year' ? base : named;
-    return { ...category, ...years && { calendar: { ...calendar, named } }, label: yearShown ? named : base };
+    category.label = yearShown ? named : base;
+    if (years) calendar.named = named;
+    if (labelsInYearRow) labelsInYearRow[i] = unit === 'day' || unit === 'month' || unit === 'quarter' ? base : category.label;
+    return category;
   });
   return { categories: derived, names };
 }
@@ -181,28 +188,27 @@ export function calendarMonths(texts: readonly (string | undefined)[]): { unit: 
 export function dateTickRow(cats: readonly Category[], dateTicks: DateTickInterval, language?: string, weekStartsOn?: 0 | 1) {
   const n = cats.length;
   const dates = cats.map((category) => category.date);
-  const ordinals = dateTickOrdinals(dates, dateTicks, weekStartsOn);
+  const ticks = planDateTicks(dates, dateTicks, weekStartsOn);
+  const ordinals = ticks?.ordinals;
   // Months, quarters and years sit on the calendar (the first category of each interval, round steps
   // from January); weeks and days count equal steps back from the latest period.
   const calendarTicks = dateTicks === 'months' || dateTicks === 'quarters' || dateTicks === 'years';
-  const keep = ordinals ? calendarTicks ? dateTickKeepCalendar(dates, dateTicks) : dateTickKeep(dates, dateTicks, weekStartsOn, true) : null;
   // The derived labels, once per row: a layout plans its row in several passes.
   const dated = cats.map((category) => ({ id: category.id, date: category.date }));
   let full: ReturnType<typeof calendarCategories> | null = null;
-  let inRow: ReturnType<typeof calendarCategories> | null = null;
-  const fullCalendar = () => (full === null ? (full = calendarCategories(dated, language)) : full);
-  const rowCalendar = () => (inRow === null ? (inRow = calendarCategories(dated, language, true)) : inRow);
+  // Only the label text of a separate year row is needed for the comparison below.
+  const labelsInYearRow: string[] = [];
+  const fullCalendar = () => (full === null ? (full = deriveCalendar(dated, language, false, labelsInYearRow)?.categories) : full);
   return {
     // A tick at the first category of each interval; the row thins them by the interval.
-    ticks: ordinals?.map((ordinal, i) => i === 0 || ordinal !== ordinals[i - 1]) ?? null,
-    plan: keep ? { keep, dateStride: { ordinals: ordinals!, strides: DATE_TICK_STRIDES[dateTicks], ...(calendarTicks ? { calendar: true as const } : {}) } } : {},
+    ticks: ticks?.ticks ?? null,
+    plan: ticks ? { keep: ticks.keep, dateStride: { ordinals: ticks.ordinals, strides: DATE_TICK_STRIDES[dateTicks], ...(calendarTicks ? { calendar: true as const } : {}) } } : {},
     name(row: { labels: string[]; calendar?: (CalendarInfo | undefined)[] }) {
       // A calendar interval names its year in the tick, without a separate year row.
       if (calendarTicks && row.calendar?.some(info => info?.unit === 'day' && info.yearRow)) {
-        const inRow = rowCalendar();
         const full = fullCalendar();
-        if (inRow && full) {
-          row.labels = row.labels.map((label, i) => label === inRow[i]!.label ? full[i]!.label! : label);
+        if (full) {
+          row.labels = row.labels.map((label, i) => label === labelsInYearRow[i] ? full[i]!.label! : label);
           row.calendar = full.map((category, i) => row.calendar![i] && category.calendar);
         }
       }

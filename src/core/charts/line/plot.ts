@@ -11,19 +11,20 @@ import type { Theme } from '../../types/theme';
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
 import { authoredDateTicks, dayCategories } from '../../calendarLabels';
+import { requestMemo } from '../../layoutPlan';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
-import { planCategoryRow, rotatedLeftOverhang, type CategoryRowPlan } from '../../label/categoryRow';
+import { needsMonthTicks, planCategoryRow, rotatedLeftOverhang, type CategoryRowInput, type CategoryRowPlan } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY } from '../../label/solver';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { round2 } from '../../geometry';
 import { linearScale, seatRoom } from '../../scale';
 import { logScale, logSpecFormat, logTickTiers } from '../logAxis';
-import type { FontSpec, TextMeasurer } from '../../text';
+import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer } from '../../text';
 import { strokeToken, dashToken, canvasMargin, emphasisWeight, secondaryFont } from '../../theme';
 import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan, type XTickPlan } from './xTicks';
 import { NATURAL_BAND_STEP, plotFloorRows } from '../../sizing';
@@ -597,6 +598,23 @@ function rowSignature(plan: CategoryRowPlan): string {
     plan.underRow?.items.map((item) => item.text), plan.cutNotes]);
 }
 
+/** Frame and end-label retries use the same calendar for the same dated categories. */
+function lineDateTicks(cats: LineDomain['cats'], options: LineDomain['options'], measure: TextMeasurer, warnings: LintWarning[]) {
+  if (options.categoryAxis?.dateTicks !== 'months' || (measure !== defaultMeasurer && measure !== measureText)) {
+    return authoredDateTicks(cats, options, warnings);
+  }
+  const key = JSON.stringify({
+    language: options.locale?.language, weekStartsOn: options.locale?.weekStartsOn,
+    categories: cats.map(c => ({ id: c.id, date: c.date })),
+  });
+  const saved = requestMemo(lineDateTicks, key, () => {
+    const notes: LintWarning[] = [];
+    return { ticks: authoredDateTicks(cats, options, notes), notes };
+  });
+  for (const note of saved.notes) warnings.push({ ...note });
+  return saved.ticks;
+}
+
 function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
   const { theme, measure } = env;
   const { options, cats, population } = domain;
@@ -615,56 +633,61 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
   const spanOf = (x0: number, width: number, own = inset) => categorySpan(insetRange(x0, width, own), grid?.span ?? n, crossesBetween, room);
   // On a proportional time axis the shortest gap is the step labels must fit.
   const categoryStepFor = (x0: number, width: number) => categoryStep(spanOf(x0, width).w, population ? n : grid?.span ?? n, crossesBetween);
-  const categoryCentersFor = (x0: number, width: number, own = inset) =>
-    cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width, own), grid));
+  const categoryCentersFor = (x0: number, width: number, own = inset) => {
+    const span = spanOf(x0, width, own);
+    return cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, span, grid));
+  };
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
-  const ticked = authoredDateTicks(cats, options, warnings);
+  const ticked = lineDateTicks(cats, options, measure, warnings);
   // Line keys no running period, so its name says so where the note does not print.
   const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0), domain.running);
   ticked?.name(row);
-  const planWith = (x0: number, width: number, fonts: typeof text.tickFont[]) =>
-    planCategoryRow({
-      target: options.target, textScale: textScaleOf(options),
-      ...row,
-      ordered: true,
-      strideFromEnd: true,
-      centers: categoryCentersFor(x0, width),
-      step: categoryStepFor(x0, width),
-      fonts,
-      secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
-      measure,
-      plotHeight: frame.plot.h,
-      reference: { x: frame.plot.x, width: frame.plot.w },
-      ...ticked?.plan,
-      ...(!crossesBetween && !domain.isArea ? { edgeAnchored: true } : {}),
-    });
-  const planRow = (x0: number, width: number) => {
-    const down = stepDownFont(theme, text.tickFont, 'axis', options.target, textScaleOf(options)) ??
-      { ...text.tickFont, size: targetFloorsPx(options.target ?? DEFAULT_TARGET, textScaleOf(options)).axis };
-    const plan = planWith(x0, width, [text.tickFont, down]);
+  const down = stepDownFont(theme, text.tickFont, 'axis', options.target, textScaleOf(options)) ??
+    { ...text.tickFont, size: targetFloorsPx(options.target ?? DEFAULT_TARGET, textScaleOf(options)).axis };
+  const rowInput = (x0: number, width: number): CategoryRowInput => ({
+    target: options.target, textScale: textScaleOf(options),
+    ...row,
+    ordered: true,
+    strideFromEnd: true,
+    centers: categoryCentersFor(x0, width),
+    step: categoryStepFor(x0, width),
+    fonts: [text.tickFont, down],
+    secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
+    measure,
+    plotHeight: frame.plot.h,
+    reference: { x: frame.plot.x, width: frame.plot.w },
+    ...ticked?.plan,
+    ...(!crossesBetween && !domain.isArea ? { edgeAnchored: true } : {}),
+  });
+  const planRow = (input: CategoryRowInput) => {
+    const plan = planCategoryRow(input);
     if (plan.maxLines <= 2 || plan.rotation !== 0) return plan;
     // A name that needs three lines steps down to the 9 px
     // floor on two instead, where every name then fits whole.
     const floor = stepDownFont(theme, text.tickFont, 'axis', options.target, textScaleOf(options)) ?? text.tickFont;
-    const stepped = planWith(x0, width, [floor]);
+    const stepped = planCategoryRow({ ...input, fonts: [floor] });
     return stepped.maxLines <= 2 && stepped.step !== 'stride' && !stepped.infos.some((info) => info.truncated) ? stepped : plan;
   };
-  let catPlan = planRow(categoryPlotX, categoryPlotWidth);
-  // A default day row that steps past four weeks prints day numbers that drift
-  // from month to month ("3 2 1 31 30"); the month calendar names that span instead.
-  const dated = dateTicks || catPlan.stride <= 28 ? undefined : dayCategories(cats);
-  if (dated) {
-    warnings.length = warningsBefore;
-    const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
-    return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
+  // Keep the day plan when four weeks or less can separate its labels.
+  const input = rowInput(categoryPlotX, categoryPlotWidth);
+  const limit = 28;
+  let catPlan = !dateTicks && needsMonthTicks(input, limit) ? undefined : planRow(input);
+  if (!dateTicks && (!catPlan || catPlan.stride > limit)) {
+    const dated = dayCategories(cats);
+    if (dated) {
+      warnings.length = warningsBefore;
+      const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
+      return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
+    }
   }
+  catPlan ??= planRow(input);
   // The overhang reads the centres without the inset, so the plot edge does not follow the inset.
   let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth, NO_CATEGORY_INSET), 4, categoryPlotWidth);
   let categoryRightOverhang = 0;
   if (categoryOverhang > 0) {
     categoryPlotX += categoryOverhang;
     categoryPlotWidth -= categoryOverhang;
-    catPlan = planRow(categoryPlotX, categoryPlotWidth);
+    catPlan = planRow(rowInput(categoryPlotX, categoryPlotWidth));
   }
   if (domain.isArea && !crossesBetween && catPlan.rotation === 0) {
     // Reserve space outside the plot for half of each edge label. The
@@ -677,7 +700,7 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
       categoryRightOverhang += right;
       categoryPlotX += left;
       categoryPlotWidth = Math.max(10, categoryPlotWidth - left - right);
-      catPlan = planRow(categoryPlotX, categoryPlotWidth);
+      catPlan = planRow(rowInput(categoryPlotX, categoryPlotWidth));
     }
     // Keep edge ticks centred on their points, including a thinned row.
     const centers = categoryCentersFor(categoryPlotX, categoryPlotWidth);

@@ -176,16 +176,27 @@ function axisLabelText(data: unknown, at: string | number, labelId: string): str
 
 /** Read the accepted geometry. This pass never changes labels, notes or layout. */
 export function labelOmissions(geo: Geometry<object, object>, options?: { labels?: unknown }, data?: unknown): LabelOmission[] {
+  return collectOmissions(geo, options, data, false);
+}
+
+function collectOmissions(geo: Geometry<object, object>, options: { labels?: unknown } | undefined, data: unknown, warningsOnly: boolean): LabelOmission[] {
   const omissions: LabelOmission[] = [];
+  const named = new Set<string>();
   const destinationOf = readableLabelDestination(geo);
-  for (const cut of cutLabels(geo)) omissions.push({ labelId: cut.labelId, text: cut.text,
-    reason: 'truncated', destination: destinationOf(cut.labelId, cut.text) ?? 'reading.omissions' });
+  for (const cut of cutLabels(geo)) {
+    named.add(cut.text);
+    if (!warningsOnly) omissions.push({ labelId: cut.labelId, text: cut.text,
+      reason: 'truncated', destination: destinationOf(cut.labelId, cut.text) ?? 'reading.omissions' });
+  }
   const labels = new Set<string>();
   for (const label of geo.labels) {
     labels.add(label.id);
     if (label.hidden === undefined) continue;
-    omissions.push({ labelId: label.id, text: label.noteText ?? label.text,
-      reason: label.noted ? 'note' : label.hidden,
+    const text = label.noteText ?? label.text;
+    const reason = label.noted ? 'note' : label.hidden;
+    named.add(text);
+    if (warningsOnly && reason === 'redundant') continue;
+    omissions.push({ labelId: label.id, text, reason,
       destination: destinationOf(label.id, label.text, label.owner, label.kind, label.noteText)
         ?? label.noteLocation ?? (label.printedIn ? `label:${label.printedIn}` : 'reading.omissions') });
   }
@@ -203,10 +214,11 @@ export function labelOmissions(geo: Geometry<object, object>, options?: { labels
     const disabled = choice === false || typeof choice === 'object' && choice !== null
       && (choice as Record<string, unknown>)[kind] === false;
     const text = axisLabelText(data, tick.at, tick.labelId);
+    named.add(text);
+    if (warningsOnly && disabled) continue;
     omissions.push({ labelId: tick.labelId, text, reason: disabled ? 'disabled' : 'density', destination: destinationOf(tick.labelId, text, {}, kind) ?? 'reading.omissions' });
   }
   // Cell and slice planners can move values straight to a note, without a solver request.
-  const named = new Set(omissions.map(omission => omission.text));
   for (const note of chartNotes(geo)) {
     const values = engineNoteMeta(note)?.values ?? [];
     values.forEach((text, index) => {
@@ -226,8 +238,8 @@ export function reportLabelOmissions(geo: Geometry<object, object>, options?: La
     placed ??= new Map(geo.labels.map(label => [label.id, label]));
     return placed.get(id);
   };
-  let hidden = labelOmissions(geo, options, data).filter(omission => {
-    if (omission.reason === 'truncated' || omission.reason === 'redundant' || omission.reason === 'disabled' || omission.destination.startsWith('scene:')) return false;
+  let hidden = collectOmissions(geo, options, data, true).filter(omission => {
+    if (omission.destination.startsWith('scene:')) return false;
     return !intentionalOmission(geo, options, data, omission, labelFor);
   });
   if (hidden.some(omission => omission.destination.startsWith('label:'))) {
