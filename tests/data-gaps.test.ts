@@ -35,6 +35,21 @@ function lay(type: string, data: unknown, options: Record<string, unknown> = {})
 }
 const texts = (g: Geometry): string[] => g.scene.flatMap((n) => (n.t === 'text' ? [n.lines.join(' ')] : []));
 const codes = (g: Geometry): string[] => g.warnings.map((w: LintWarning) => w.code);
+// A crowded stack row used to skip its tallest column when that column fell between the retained totals.
+it('keeps the tallest stacked column total in a crowded row', () => {
+  const data = {
+    categories: Array.from({ length: 20 }, (_, i) => ({ id: `d${i + 1}` })),
+    series: [
+      { id: 'a', values: [20, 22, 21, 25, 24, 23, 26, 30, 28, 27, 26, 25, 30, 32, 50, 29, 31, 33, 30, 28] },
+      { id: 'b', values: [4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 4, 6, 5, 4, 5, 6] },
+    ],
+  };
+  const chart = lay('column', data, { variant: 'stacked', size: { width: 420 }, grandTotalLabels: true });
+  const drawn = new Map(chart.labels.filter(label => label.kind === 'grandTotal' && !label.hidden)
+    .map(label => [label.owner.categoryId, label.text]));
+  expect([drawn.get('d14'), drawn.get('d15'), drawn.get('d16')]).toEqual(['37', '54', '35']);
+});
+
 const cats2 = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
 const partial = { categories: cats2, series: [{ id: 'a', label: 'A', values: [60, 50] }, { id: 'b', label: 'B', values: [null, 50] }] };
 
