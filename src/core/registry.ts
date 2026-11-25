@@ -794,8 +794,9 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const discardSize = fitOnly && canDiscardSize
       && hasCompleteTextWidths(options?.measure ?? defaultMeasurer);
     const layoutOnce = prepareLayout(labelled, { ...options, [CARD_HEIGHT_MEMO]: memo } as unknown as O, discardSize);
-    const plain: typeof def.layout = (d, o) => {
-      const run = prepareLayout(d, o);
+    const plain = (d: D, o?: O, fitOnly = false) => {
+      const discardRepair = fitOnly && canDiscardSize && hasCompleteTextWidths(o?.measure ?? defaultMeasurer);
+      const run = prepareLayout(d, o, discardRepair);
       try { return layoutPlain(d, o, run); } finally { run.finish(); }
     };
     const probes = new Map<string, LayoutResult<M, DV>>();
