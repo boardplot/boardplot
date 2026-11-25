@@ -2,6 +2,12 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.66.0
+
+### Changed
+
+- Charts in cards near or below their minimum size lay out faster.
+
 ## 0.65.0
 
 ### Changed

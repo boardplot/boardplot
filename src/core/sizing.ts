@@ -10,6 +10,8 @@ import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
 import { COMPACT_SOURCE_LINES, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
+import { withSourceLineCheck } from './frameText';
+import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER_TOLERANCE } from './aspect';
 import { isVarianceTier } from './grid/varianceTiers';
 import { isRefused } from './schema/refusals';
@@ -852,6 +854,8 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
     const copy = { ...result, ...(result.sizing ? { sizing: { ...result.sizing } } : {}) };
     const floor = plotChromeFloor.get(result);
     if (floor !== undefined) plotChromeFloor.set(copy, floor);
+    const source = singleLineRefusals?.get(result);
+    if (source && source.options === runOptions) singleLineRefusals!.set(copy, source);
     origins.set(copy, result);
     return copy;
   };
@@ -932,6 +936,8 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   const fixedFallback = options && (compact || definition.type === 'treemap' || definition.type === 'sankey') && options.belowMinimum !== 'refuse'
     && options.mode !== 'full'
     && panelTypeClass(options) === undefined && constraints.fixed.width && constraints.fixed.height;
+  const tryHardMinimum = fixedFallback && (definition.hasHardMinimum !== false
+    || !hasCompleteTextWidths(options.measure ?? defaultMeasurer));
   // The hard minimum is accepted only while every drawn series stays named and, for a chart
   // whose rows are named by their category (hardMinimumKeepsNames), while no category name is lost.
   const namesKept = (fitted: Geometry<M, DV>) => namesDrawnSeries(data, fitted)
@@ -950,7 +956,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   };
   // Keep the existing frame and its content before trying the optional footer
   // and subtitle steps. The comfortable plot and row air give way first.
-  if (fixedFallback) {
+  if (tryHardMinimum) {
     const fitted = fitAt(definition, data, { ...options, [HARD_MINIMUM]: true });
     if (!fitted.refused && namesKept(fitted)) return warnHardMinimum(fitted);
   }
@@ -959,6 +965,8 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
     && constraints.fixed.width && constraints.fixed.height);
   if (sourceStep && options) {
     for (const lines of [1, 0] as const) {
+      const source = lines === 1 ? singleLineRefusals?.get(first) : undefined;
+      if (source?.options === options && source.state === sourceLimitState(options)) continue;
       const fitted = fitAt(definition, data, { ...options, [COMPACT_SOURCE_LINES]: lines });
       if (!fitted.refused) return fitted;
     }
@@ -978,7 +986,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
     const moved = line === undefined ? footer
       : { ...footer, subtitle: undefined, footnotes: [...(authored.footnotes || []), line], [MOVED_SUBTITLE]: line } as O;
     for (const hard of [false, true]) {
-      if (!hard && line === undefined) continue;
+      if (hard ? !tryHardMinimum : line === undefined) continue;
       const fitted = fitAt(definition, data, hard ? { ...moved, [HARD_MINIMUM]: true } : moved);
       if (fitted.refused) continue;
       if (hard && !namesKept(fitted)) continue;
@@ -1842,6 +1850,12 @@ function withoutCallState<O extends ChartOptions>(options: O | undefined): O | u
  */
 // One entry per key: the layout, when it did not read the plot share, or its layouts by share.
 let layoutMemo: Map<string, { result?: LayoutResult<object, object>; byShare?: Map<number | undefined, LayoutResult<object, object>> }> | undefined;
+let singleLineRefusals: WeakMap<object, { options: ChartOptions; state: string }> | undefined;
+
+function sourceLimitState(options: ChartOptions): string {
+  const { pinned, countable, live } = staticFrame;
+  return `${pinned}:${countable}:${live}:${layoutStepKey()}:${currentSmallValues()}:${formatScopeKey(options)}`;
+}
 const memoObjectIds = new WeakMap<object, number>();
 // Symbol ids live for one request: a caller's fresh symbols are not kept after it.
 let memoSymbolIds = new Map<symbol, number>();
@@ -1851,7 +1865,11 @@ let memoNextId = 0;
 export function withLayoutMemo<T>(run: () => T): T {
   if (layoutMemo) return run();
   layoutMemo = new Map();
-  try { return withPlanInputs(() => withEngineNotes(() => withWrappedTexts(() => withCategoryRowPlans(run)))); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
+  try { return withPlanInputs(() => withEngineNotes(() => withWrappedTexts(() => withCategoryRowPlans(run)))); } finally {
+    layoutMemo = undefined;
+    singleLineRefusals = undefined;
+    memoSymbolIds = new Map();
+  }
 }
 
 function memoId(value: object | symbol): number {
@@ -2129,7 +2147,11 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
       ...((runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE] ? { [ACCEPTANCE_PROBE]: true } : {}),
     } as unknown as O : clean);
   };
-  let geometry = layout(rawOptions);
+  const sourceCheck = layoutMemo && definition.frameOwnsSourceLimit === true && mode === 'compact' && options?.source
+    && !staticFrame.pinned && !atHardMinimum(options) && !(COMPACT_SOURCE_LINES in options)
+    && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true && hasCompleteTextWidths(options.measure ?? defaultMeasurer)
+    ? { unchanged: true, state: sourceLimitState(options) } : undefined;
+  let geometry = sourceCheck ? withSourceLineCheck(sourceCheck, () => layout(rawOptions)) : layout(rawOptions);
   // The fixed-slot drop order in fitOrRepair keeps a subtitle that does not fit in the notes list.
   const heightShort = tight && requested.height < declared.minHeight;
   if (definition.type === 'slope' && !geometry.refused && (layoutOptions as { variant?: string } | undefined)?.variant === 'diverging') {
@@ -2204,6 +2226,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   if (nested || geometry.warnings.some(w => w.code === 'invalid-options')
     || (definition.type === 'diagram' && isRefused(geometry)) || fitsSize(geometry.size, gate)) return geometry;
   const refusal = sizeRefusal(definition.type, definition.title, geometry.size, gate);
+  if (sourceCheck?.unchanged && options) (singleLineRefusals ??= new WeakMap()).set(refusal, { options, state: sourceCheck.state });
   const chrome = plotChromeFloor.get(geometry.frame);
   if (chrome !== undefined) plotChromeFloor.set(refusal, chrome);
   return refusal;

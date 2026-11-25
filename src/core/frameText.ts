@@ -15,12 +15,23 @@ import type { LintWarning } from './types/scene';
 /**
  * The frame's text decisions: which notes the footer prints, which go to the
  * notes list, the pointer, the source line and the credit. `solveFrame` draws
- * what this returns, and the React table reads it for its HTML footer. It
- * reads no global state: the surface policy and the notes' kinds come in.
+ * what this returns, and the React table reads it for its HTML footer.
+ * The surface policy and the notes' kinds come from the input.
  */
 
 /** The note line the registered layout adds for labels the drawing hid. */
 export const HIDDEN_LABEL_LEAD = 'Not labelled on the chart';
+
+type SourceLineCheck = { unchanged: boolean };
+let sourceLineCheck: SourceLineCheck | undefined;
+
+/** Check every source and note-pointer wrap used by one layout. */
+export function withSourceLineCheck<T>(check: SourceLineCheck, run: () => T): T {
+  const outer = sourceLineCheck;
+  if (outer) outer.unchanged = false;
+  sourceLineCheck = check;
+  try { return run(); } finally { sourceLineCheck = outer; }
+}
 
 /** How the surface shows the frame: a pinned static image prints every enabled note; a live surface has the 'info' button. */
 export interface FrameTextPolicy {
@@ -239,8 +250,17 @@ export function frameText(input: FrameTextInput): FrameText {
     return pointer === undefined ? source : `${source}${/[.!?]$/.test(source) ? '' : '.'} ${pointer}`;
   };
   const sourceLines = (text: string): { lines: string[]; title?: string } => {
-    const fitted = !fullStatic && input.compactSourceLines === 1 ? fitText(markBold(text), footFont, footW, 1, footMeasure) : undefined;
-    return fitted ? { lines: fitted.lines, ...(fitted.title ? { title: fitted.title } : {}) } : { lines: wrapFootnote(markBold(text), footFont, footW, footMeasure) };
+    const marked = markBold(text);
+    if (!fullStatic && input.compactSourceLines === 1) {
+      const fitted = fitText(marked, footFont, footW, 1, footMeasure);
+      return { lines: fitted.lines, ...(fitted.title ? { title: fitted.title } : {}) };
+    }
+    const lines = wrapFootnote(marked, footFont, footW, footMeasure);
+    if (!fullStatic && input.compactSourceLines === undefined && sourceLineCheck?.unchanged) {
+      const fitted = lines.length === 1 ? fitText(marked, footFont, footW, 1, footMeasure) : undefined;
+      sourceLineCheck.unchanged = fitted !== undefined && !fitted.title && fitted.lines.length === 1 && fitted.lines[0] === lines[0];
+    }
+    return { lines };
   };
   const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
   // The most notes, in order, that fit the budget with the source line (and

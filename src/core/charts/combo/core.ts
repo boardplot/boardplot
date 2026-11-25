@@ -23,6 +23,7 @@ import { layoutCombo, type ComboDerived, type ComboMarks } from './layout';
 
 export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDerived> = {
   type: 'combo',
+  frameOwnsSourceLimit: true,
   sizing: chartSizing('combo'),
   title: 'Combo',
   summary: 'Stacked columns with line/area overlays; gated, tick-synced secondary axis',

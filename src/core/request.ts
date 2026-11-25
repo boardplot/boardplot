@@ -530,7 +530,7 @@ function measuredWithClassStep(measured: () => ChartMeasurement): ChartMeasureme
 
 /** One layout of the request, without the size advice a refusal searches for. */
 function layoutPlain(request: ResolvedChartRequest): LayoutResult {
-  const run = preparedLayout(request);
+  const run = preparedLayout(request, false, request.fixed.height);
   try { return run(request.options); } finally { run.finish(); }
 }
 
@@ -1096,7 +1096,7 @@ function stackPaletteWarnings(type: string, data: unknown, options: RequestOptio
 }
 
 /** Prepare the registry once for this call; probes change only its frame and mode markers. */
-function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): LayoutCall<any, any, any> {
+function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fitOnly = false): LayoutCall<any, any, any> {
   const def = getChart(request.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${request.type}'`);
   const ref = request.options.theme;
@@ -1108,7 +1108,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
     ...(verifyAdvice ? { [VERIFY_ADVICE]: true } : {}),
   };
   const warnings = request.inputWarnings ?? [];
-  const run = def[LAYOUT_CALL]?.(request.data, options);
+  const run = def[LAYOUT_CALL]?.(request.data, options, fitOnly);
   const disclose = (result: LayoutResult): LayoutResult => {
     if (result.refused) return result;
     const extra = [...warnings, ...stackPaletteWarnings(request.type, request.data, request.options, result)];

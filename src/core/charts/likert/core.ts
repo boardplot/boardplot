@@ -23,6 +23,7 @@ export const likertCore: ChartCore<
     'Agreement across statements as a diverging stacked bar centred on the declared neutral midpoint — shares, sign, segment order and net score all derived, and the neutral convention stated rather than assumed',
   aliases: ['diverging-stacked'],
   layout: layoutLikert,
+  frameOwnsSourceLimit: true,
   defaults: { neutral: 'split', summary: 'net', sortBy: 'sheet' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'text', 'line', 'arrow', 'box']
 };

@@ -30,7 +30,7 @@ type AnyChartCore = ChartCore<any, any, any, any>;
 
 /** Registers `definition` if it is not registered yet and returns its type. */
 export function registeredType(core: AnyChartCore): string {
-  if (!getChart(core.type)) registerChart(core);
+  if (!getChart(core.type)) registerChart(core, true);
   return core.type;
 }
 
