@@ -882,6 +882,36 @@ describe('TableChart resolution memo', () => {
     });
     expect(resolveProbe).toHaveBeenCalledTimes(2);
   });
+
+  // Grids without row or warning callbacks share prepared values, so a host's edit of what it received must not reach another drawing.
+  it('gives a host that receives rows or warnings values of its own', () => {
+    const data: TableData = {
+      columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Value' }],
+      rows: [{ id: 'a', label: 'Alpha', cells: { v: 120 } }, { id: 'b', label: 'Beta', cells: { v: 80 } }],
+    };
+    const unknownToggle = (warnings: { code: string; message: string }[]) => warnings.find((warning) => warning.code === 'column-visibility-ref-unknown');
+    const edited: string[] = [];
+    act(() => root.render(<TableChart data={data} size={{ width: 400 }} columnVisibility={{ missing: false }}
+      onRowSelect={() => {}} isRowSelectable={(row) => { row.label = 'Edited'; row.cells.v!.displayed = 'edited'; return true; }}
+      onWarnings={(warnings) => { const warning = unknownToggle(warnings)!; edited.push(warning.message); warning.message = 'edited'; }} />));
+    expect(edited[0]).toContain("unknown toggle 'missing'");
+    const later = document.createElement('div');
+    document.body.append(later);
+    const laterRoot = createRoot(later);
+    try {
+      act(() => laterRoot.render(<TableChart data={data} size={{ width: 400 }} columnVisibility={{ missing: false }} />));
+      expect(later.querySelector('[data-row-id="a"]')?.textContent).toBe('Alpha120');
+      const reported: string[] = [];
+      act(() => laterRoot.render(<TableChart data={data} size={{ width: 400 }} columnVisibility={{ missing: false }}
+        onWarnings={(warnings) => reported.push(unknownToggle(warnings)!.message)} />));
+      expect(reported).toEqual([edited[0]]);
+      // The host's drawing took a copy, the plain drawing shared the prepared values, the warning listener took a copy.
+      expect(resolveProbe.mock.calls.map((call) => call[3])).toEqual([false, true, false]);
+    } finally {
+      act(() => laterRoot.unmount());
+      later.remove();
+    }
+  });
 });
 
 describe('TableChart carries the unit (the third surface of the twin)', () => {

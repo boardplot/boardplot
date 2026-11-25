@@ -660,9 +660,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // first pass does not resolve the table again.
   const { size: _resolveSize, ...sizeFreeOptions } = tableOptions ?? {};
   const resolveKey = useStableValue(tableOptions === undefined ? undefined : sizeFreeOptions as Record<string, unknown>);
+  // The grid only reads the values. While no host callback receives a row or a warning, the grid reads the prepared
+  // values and skips a copy of every row and cell on each change of view. A host that receives them gets its own
+  // copy, so a change it makes never reaches a later drawing. An exporter receives the request, not these values.
+  const sharesValues = !onWarnings && !onRowSelect && !isRowSelectable && !rowLabelLead;
   const resolved = useMemo(() => !layoutRequest || !tableOptions ? undefined : initialPrepared
     ? { table: { ...initialPrepared.table, provenance: {} }, warnings: initialPrepared.warnings ?? [] }
-    : resolveTable(layoutRequest.data as TableData, tableOptions), [layoutRequest?.data, resolveKey, initialPrepared]);
+    : resolveTable(layoutRequest.data as TableData, tableOptions, undefined, sharesValues),
+  [layoutRequest?.data, resolveKey, initialPrepared, sharesValues]);
   // Selection, labels and prepared snapshots expose mutable rows. Re-read those rows wherever
   // a fresh request previously refreshed the width plan, footer and hover records.
   const exposedTable = useRef<ResolvedTable>(undefined);
