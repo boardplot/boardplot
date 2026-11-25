@@ -144,6 +144,8 @@ export interface ChartCore<
    * the full-mode check and the grid probes alone.
    */
   hardMinimumKeepsNames?: boolean;
+  /** False when hard-minimum fitting uses the same fixed frame and marks as ordinary compact fitting. */
+  hasHardMinimum?: false;
   /**
    * The layout under legend 'none' when the chart
    * keeps a key no drawn label replaces. It gets the 'none' layout and the

@@ -932,6 +932,8 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   const fixedFallback = options && (compact || definition.type === 'treemap' || definition.type === 'sankey') && options.belowMinimum !== 'refuse'
     && options.mode !== 'full'
     && panelTypeClass(options) === undefined && constraints.fixed.width && constraints.fixed.height;
+  const tryHardMinimum = fixedFallback && (definition.hasHardMinimum !== false
+    || !hasCompleteTextWidths(options.measure ?? defaultMeasurer));
   // The hard minimum is accepted only while every drawn series stays named and, for a chart
   // whose rows are named by their category (hardMinimumKeepsNames), while no category name is lost.
   const namesKept = (fitted: Geometry<M, DV>) => namesDrawnSeries(data, fitted)
@@ -950,7 +952,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   };
   // Keep the existing frame and its content before trying the optional footer
   // and subtitle steps. The comfortable plot and row air give way first.
-  if (fixedFallback) {
+  if (tryHardMinimum) {
     const fitted = fitAt(definition, data, { ...options, [HARD_MINIMUM]: true });
     if (!fitted.refused && namesKept(fitted)) return warnHardMinimum(fitted);
   }
@@ -978,7 +980,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
     const moved = line === undefined ? footer
       : { ...footer, subtitle: undefined, footnotes: [...(authored.footnotes || []), line], [MOVED_SUBTITLE]: line } as O;
     for (const hard of [false, true]) {
-      if (!hard && line === undefined) continue;
+      if (hard ? !tryHardMinimum : line === undefined) continue;
       const fitted = fitAt(definition, data, hard ? { ...moved, [HARD_MINIMUM]: true } : moved);
       if (fitted.refused) continue;
       if (hard && !namesKept(fitted)) continue;

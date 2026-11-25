@@ -12,6 +12,7 @@ export const ganttCore: ChartCore<GanttData, GanttOptions, GanttMarks, GanttDeri
   summary: 'Project timeline: adaptive calendar, activity spans, cadence rows, events, and elapsed-time context',
   aliases: ['timeline'],
   layout: layoutGantt,
+  hasHardMinimum: false,
   defaults: {},
   annotationKinds: ['event']
 };
