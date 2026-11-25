@@ -159,6 +159,22 @@ describe('hover card and highlight on a column fixture', () => {
     expect(shown.style.translate).toBe('320px 220px');
   });
 
+  // After a wheel scroll the card stayed at the still pointer and named the mark that had been under it, while another mark was.
+  it('closes a card at the pointer when a scroll moves the chart under it', async () => {
+    const at = { x: 0, y: 0 };
+    vi.spyOn(SVGSVGElement.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      ({ x: at.x, y: at.y, left: at.x, top: at.y, right: at.x + 800, bottom: at.y + 450, width: 800, height: 450, toJSON() {} }));
+    await render(<ColumnChart {...props} hover />);
+    const target = await nodeOf('column', column.data, column.options as object, column.hover!.owner);
+    move(target, 100, 100);
+    expect(drawn('interaction-outline')).toBe(true);
+    at.y = -127;
+    act(() => { window.dispatchEvent(new Event('scroll')); });
+    await act(() => new Promise(resolve => requestAnimationFrame(() => resolve(undefined))));
+    expect(drawn('interaction-outline')).toBe(false);
+    expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.opacity).toBe('0');
+  });
+
   it('fades a closed card out and glides a card that opens again soon from its place', async () => {
     await render(<ColumnChart {...props} hover />);
     const target = await nodeOf('column', column.data, column.options as object, column.hover!.owner);

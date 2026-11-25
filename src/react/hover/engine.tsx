@@ -192,18 +192,25 @@ export function watchHover(selection: HoverSelection, setSelection: Dispatch<Set
   if (!measurement || !win || !selection.ids.length) return;
   const { host } = measurement;
   let pending: number | undefined;
+  let scrolled = false;
   const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelection({ ids: [] }); };
   // A tap leaves no pointer to move away, so a pointer down outside the chart closes its card, as on a table.
   const outside = (event: globalThis.PointerEvent) => { if (!host.contains(event.target as Node)) setSelection({ ids: [] }); };
-  const update = () => {
+  const update = (event?: Event) => {
+    if (event?.type === 'scroll') scrolled = true;
     if (pending !== undefined) return;
     pending = win.requestAnimationFrame(() => {
       pending = undefined;
+      const moved = scrolled;
+      scrolled = false;
       const viewport = hoverViewport(host, size);
       if (JSON.stringify(viewport) === JSON.stringify(measurement.viewport)) return;
       measurement.viewport = viewport;
       measurement.size = size;
+      // A scroll moves another mark under a pointer that stays still, so a card at the pointer would name the wrong record.
+      // It closes, and the next pointer move opens the card of the mark under the pointer.
       setSelection(current => current.measurement !== measurement ? current
+        : moved && current.position?.follow ? { ids: [] }
         : { ...current, position: { ...current.position, viewport: pointedViewport(measurement) } });
     });
   };
@@ -211,7 +218,7 @@ export function watchHover(selection: HoverSelection, setSelection: Dispatch<Set
   host.ownerDocument.addEventListener('pointerdown', outside, true);
   win.addEventListener('scroll', update, { capture: true, passive: true });
   win.addEventListener('resize', update);
-  const observer = typeof win.ResizeObserver === 'undefined' ? undefined : new win.ResizeObserver(update);
+  const observer = typeof win.ResizeObserver === 'undefined' ? undefined : new win.ResizeObserver(() => update());
   observer?.observe(host);
   const svg = host.querySelector('svg');
   if (svg) observer?.observe(svg);
