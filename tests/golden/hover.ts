@@ -21,7 +21,7 @@ export interface HoverPreview {
   type: string;
   family: string;
   fixture: string;
-  placement: 'beside' | 'frame' | 'overlay';
+  placement: 'beside' | 'frame' | 'overlay' | 'pointer';
   target: Rect | null;
   /** The frame the card had to stay inside: the drawn canvas. */
   frame: Rect;

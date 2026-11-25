@@ -33,7 +33,7 @@ export function a11ySurfaceStyle(theme: Theme): string {
     '.bp-interaction-card :is(text,tspan){font-variant-numeric:tabular-nums!important}',
     '[data-bp-hover] [data-part^="interaction-"]{pointer-events:none}',
     '@keyframes bp-chart-card-in{from{opacity:0}}',
-    '@media (prefers-reduced-motion:reduce){[data-bp-chart-card]{animation:none!important}}',
+    '@media (prefers-reduced-motion:reduce){[data-bp-chart-card]{animation:none!important;transition:none!important}}',
     '@media (forced-colors: active){',
     ':is(.bp-interaction-card,.bp-interaction-card-slot){background:Canvas!important;box-shadow:none!important}',
     `${surface} svg>rect:not([data-id]){fill:Canvas}`,

@@ -16,6 +16,7 @@ import { prepareChart } from '../src/react/prepare';
 import { BoardplotChart } from '../src/react/spec';
 import { mount, mountedMarkup } from './helpers/spec-chunks';
 import { loadHoverEngine } from '../src/react/useHover';
+import { followSeat } from '../src/react/hover/labelCard';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -37,6 +38,13 @@ async function render(element: React.ReactElement) {
 function pointer(target: Element, kind: string, pointerType = 'mouse') {
   const event = new Event(kind, { bubbles: true });
   Object.assign(event, { pointerType, clientX: 0, clientY: 0 });
+  act(() => target.dispatchEvent(event));
+}
+
+/** A mouse move over `target` at client (x, y). */
+function move(target: Element, x: number, y: number) {
+  const event = new Event('pointermove', { bubbles: true });
+  Object.assign(event, { pointerType: 'mouse', clientX: x, clientY: y });
   act(() => target.dispatchEvent(event));
 }
 
@@ -80,6 +88,24 @@ function card(): string | undefined {
   return texts.length ? texts.join(' | ') : undefined;
 }
 
+describe('the seat of a card that follows the pointer', () => {
+  const chart = { x: 0, y: 0, w: 800, h: 450 };
+  const view = { x: -300, y: -300, w: 1400, h: 1000 };
+  it('sits 20 px right of and below the pointer', () => {
+    expect(followSeat({ x: 100, y: 100 }, 150, 80, chart, view)).toMatchObject({ x: 120, y: 120 });
+  });
+  it('flips each axis on its own at the chart edge', () => {
+    expect(followSeat({ x: 700, y: 100 }, 150, 80, chart, view)).toMatchObject({ x: 530, y: 120 });
+    expect(followSeat({ x: 100, y: 400 }, 150, 80, chart, view)).toMatchObject({ x: 120, y: 300 });
+  });
+  it('leaves a chart too small for the card on its usual side, inside the viewport', () => {
+    expect(followSeat({ x: 100, y: 20 }, 150, 80, { x: 0, y: 0, w: 176, h: 42 }, view)).toMatchObject({ x: 120, y: 40 });
+  });
+  it('clamps into a viewport where neither side fits', () => {
+    expect(followSeat({ x: 100, y: 50 }, 150, 80, chart, { x: 0, y: 0, w: 200, h: 100 })).toMatchObject({ x: 50, y: 20 });
+  });
+});
+
 describe('hover card and highlight on a column fixture', () => {
   const props = { data: column.data, ...column.options as object, size } as unknown as ComponentProps<typeof ColumnChart>;
 
@@ -94,20 +120,86 @@ describe('hover card and highlight on a column fixture', () => {
     expect(card()).toContain('low: | $89m');
     expect(drawn('interaction-outline')).toBe(true);
     pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
-    // The card stays for a moment, so a pointer can cross a gap onto it.
+    // The card closes 100 ms after the pointer leaves, fades out and unmounts 500 ms later.
     await act(() => new Promise(resolve => setTimeout(resolve, 200)));
-    expect(drawn('interaction-card')).toBe(false);
     expect(drawn('interaction-outline')).toBe(false);
+    expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.visibility).toBe('hidden');
+    await act(() => new Promise(resolve => setTimeout(resolve, 600)));
+    expect(drawn('interaction-card')).toBe(false);
   });
 
-  // The card could not be hovered: moving the pointer onto it picked the mark under it and replaced the card (WCAG 1.4.13).
-  it('keeps the card open while the pointer is on it', async () => {
+  // The card jumped between seats beside each mark. It now follows the pointer as one element, as an ECharts tooltip does.
+  it('follows the pointer within one record without drawing the chart again', async () => {
     await render(<ColumnChart {...props} hover />);
-    pointer(await nodeOf('column', column.data, column.options as object, column.hover!.owner), 'pointermove');
-    const before = card();
-    pointer(document.querySelector('[data-bp-chart-card] [data-part="interaction-label"]')!, 'pointermove');
-    expect(card()).toBe(before);
-    expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.pointerEvents).toBe('auto');
+    const target = await nodeOf('column', column.data, column.options as object, column.hover!.owner);
+    move(target, 100, 100);
+    const shown = document.querySelector<HTMLElement>('[data-bp-chart-card]')!;
+    expect(shown.style.translate).toBe('120px 120px');
+    expect(shown.style.pointerEvents).toBe('none');
+    expect(shown.style.transition).toContain('translate 400ms cubic-bezier(0.23, 1, 0.32, 1)');
+    const changes: MutationRecord[] = [];
+    const observer = new MutationObserver(records => changes.push(...records));
+    observer.observe(host.querySelector('svg')!, { subtree: true, attributes: true, childList: true, characterData: true });
+    const content = shown.innerHTML;
+    // The first move within the record shows at once, a second within 50 ms waits for the next step and ends at the last point.
+    move(target, 110, 140);
+    expect(shown.style.translate).toBe('130px 160px');
+    move(target, 130, 150);
+    expect(shown.style.translate).toBe('130px 160px');
+    await act(() => new Promise(resolve => setTimeout(resolve, 80)));
+    expect(shown.style.translate).toBe('150px 170px');
+    observer.disconnect();
+    expect(changes).toEqual([]);
+    expect(shown.innerHTML).toBe(content);
+    // Another record changes the content of the same element, which keeps gliding.
+    const other = Array.from(host.querySelectorAll('[data-part="bar"]')).find(node => node !== target)!;
+    move(other, 300, 200);
+    expect(document.querySelector('[data-bp-chart-card]')).toBe(shown);
+    expect(shown.innerHTML).not.toBe(content);
+    expect(shown.style.translate).toBe('320px 220px');
+  });
+
+  // After a wheel scroll the card stayed at the still pointer and named the mark that had been under it, while another mark was.
+  it('closes a card at the pointer when a scroll moves the chart under it', async () => {
+    const at = { x: 0, y: 0 };
+    vi.spyOn(SVGSVGElement.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      ({ x: at.x, y: at.y, left: at.x, top: at.y, right: at.x + 800, bottom: at.y + 450, width: 800, height: 450, toJSON() {} }));
+    await render(<ColumnChart {...props} hover />);
+    const target = await nodeOf('column', column.data, column.options as object, column.hover!.owner);
+    move(target, 100, 100);
+    expect(drawn('interaction-outline')).toBe(true);
+    at.y = -127;
+    act(() => { window.dispatchEvent(new Event('scroll')); });
+    await act(() => new Promise(resolve => requestAnimationFrame(() => resolve(undefined))));
+    expect(drawn('interaction-outline')).toBe(false);
+    expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.opacity).toBe('0');
+  });
+
+  it('fades a closed card out and glides a card that opens again soon from its place', async () => {
+    await render(<ColumnChart {...props} hover />);
+    const target = await nodeOf('column', column.data, column.options as object, column.hover!.owner);
+    const other = Array.from(host.querySelectorAll('[data-part="bar"]')).find(node => node !== target)!;
+    move(target, 100, 100);
+    const shown = document.querySelector<HTMLElement>('[data-bp-chart-card]')!;
+    pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
+    await act(() => new Promise(resolve => setTimeout(resolve, 150)));
+    expect(shown.isConnected).toBe(true);
+    expect(shown.style.opacity).toBe('0');
+    expect(shown.getAttribute('aria-hidden')).toBe('true');
+    // Within 500 ms the same element opens again at the new point: it glides there and fades in.
+    move(other, 300, 200);
+    expect(document.querySelector('[data-bp-chart-card]')).toBe(shown);
+    expect(shown.style.opacity).toBe('1');
+    expect(shown.style.translate).toBe('320px 220px');
+    pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
+    // React renders a timer's update when `act` ends: one wait for the close after 100 ms, one for the 500 ms the faded card stays.
+    await act(() => new Promise(resolve => setTimeout(resolve, 150)));
+    expect(shown.style.opacity).toBe('0');
+    await act(() => new Promise(resolve => setTimeout(resolve, 600)));
+    expect(shown.isConnected).toBe(false);
+    // Later the card mounts afresh: it fades in at the pointer without travel.
+    move(target, 100, 100);
+    expect(document.querySelector('[data-bp-chart-card]')).not.toBe(shown);
   });
 
   // A card seated on a small sparkline's line caught the pointer moving along the line, so the earlier points could not be reached.
@@ -224,11 +316,11 @@ describe('hover card and highlight on a column fixture', () => {
     expect(top + height).toBeLessThanOrEqual(window.innerHeight - 8);
     expect(portal.getAttribute('role')).toBe('tooltip');
     expect(portal.getAttribute('aria-label')).toContain('$96m');
-    expect(portal.style.pointerEvents).toBe('auto');
+    expect(portal.style.pointerEvents).toBe('none');
     expect(portal.style.zIndex).toBe('8');
     expect(portal.style.animation).toContain('bp-chart-card-in');
     const style = host.querySelector('style')!.textContent!;
-    expect(style).toContain('@media (prefers-reduced-motion:reduce){[data-bp-chart-card]{animation:none!important}}');
+    expect(style).toContain('@media (prefers-reduced-motion:reduce){[data-bp-chart-card]{animation:none!important;transition:none!important}}');
     expect(portal.classList.contains('bp-interaction-card')).toBe(true);
     expect(style).toContain('.bp-interaction-card [data-part="interaction-card"]{forced-color-adjust:none;fill:Canvas;stroke:CanvasText}');
   });

@@ -9,7 +9,7 @@ Boardplot gives readers who cannot see a chart a text alternative, and keyboard 
 - **Keyboard:** a chart with `hover` on, or with `onRecordClick`, has one tab stop for its records. The arrow keys follow the drawn chart, Home and End go to the first and last record, and Enter or Space calls `onRecordClick`. See [Keyboard](reference/react.md#keyboard).
 - **Screen readers:** the focused record uses the W3C APG listbox pattern with `aria-activedescendant`. A reader who does not enter the chart gets its name and description.
 - **Colour:** a render checks the colour roles in the chart, and `validateTheme(theme)` from `boardplot/validate` checks a full theme. A finding names the measured colours, the vision mode and the floor.
-- **Motion:** React stories and tables follow `prefers-reduced-motion`.
+- **Motion:** React stories, tables and the hover card follow `prefers-reduced-motion`.
 
 ## Known barriers
 

@@ -122,6 +122,8 @@ export interface LabelCardInput {
   /** The chart in the boundary's units: the frame of a record scrolled out of the viewport. Canvas is the fallback. */
   chart?: Rect;
   pointer?: Point;
+  /** The card follows `pointer` (`followSeat`); the seat solver beside the mark does not run. */
+  follow?: boolean;
   previousSide?: CardSide;
   band?: 'x' | 'y';
   /**
@@ -144,8 +146,8 @@ export interface LabelCardInput {
 }
 export type CardSide = 'right' | 'left' | 'above' | 'below';
 export interface LabelCardLayout extends LabelCardContent {
-  /** Beside the mark on a free side, beside it over the content, or (with no mark) in free space in the frame. */
-  placement: 'beside' | 'frame' | 'overlay';
+  /** Beside the mark on a free side, beside it over the content, (with no mark) in free space in the frame, or at the pointer. */
+  placement: 'beside' | 'frame' | 'overlay' | 'pointer';
   rect: Rect;
   scene: SceneNode[];
   decisions: PlaceDecision[];
@@ -933,9 +935,37 @@ export function layoutLabelCardContent(input: LabelCardInput, content: LabelCard
   const { rows, measured } = rowsWithinHeight(content.rows, theme, frameHeight, frameWidth - 2 * pad, measure, input.locale);
   const width = Math.min(frameWidth, Math.max(0, maxOf(measured.map(size => size.width))) + 2 * pad);
   const height = Math.min(frameHeight, cardHeight(measured));
-  const seat = placeLabelCard(input, width, height);
+  const seat = input.follow && input.pointer
+    ? { placement: 'pointer' as const, rect: followSeat(input.pointer, width, height, input.chart ?? canvas, input.boundary), decisions: [] }
+    : placeLabelCard(input, width, height);
   return { ...content, rows, ...seat,
     scene: rows.length ? cardScene(input, rows, seat.rect, measured, content.accessibleText) : [] };
+}
+
+/** The pointer card's distance from the pointer on each axis, in CSS pixels. */
+export const FOLLOW_GAP = 20;
+
+/**
+ * The seat of a card that follows the pointer: `FOLLOW_GAP` right of and
+ * below it. On each axis the card flips to the other side of the pointer
+ * where it would cross the edge of the chart or the viewport. Where neither
+ * side fits in the chart, it may extend beyond the chart inside the viewport.
+ * Where neither side fits in the viewport, it clamps into the viewport. All
+ * values are CSS pixels from the chart's origin; `boundary` is the viewport,
+ * the chart is the fallback.
+ */
+export function followSeat(pointer: Point, width: number, height: number, chart: Rect, boundary: Rect = chart): Rect {
+  const axis = (at: number, size: number, chartFrom: number, chartTo: number, viewFrom: number, viewTo: number): number => {
+    const after = at + FOLLOW_GAP;
+    const before = at - FOLLOW_GAP - size;
+    for (const [from, to] of [[Math.max(chartFrom, viewFrom), Math.min(chartTo, viewTo)], [viewFrom, viewTo]] as const) {
+      if (after >= from && after + size <= to) return after;
+      if (before >= from && before + size <= to) return before;
+    }
+    return Math.max(viewFrom, Math.min(after, viewTo - size));
+  };
+  return { x: Math.round(axis(pointer.x, width, chart.x, chart.x + chart.w, boundary.x, boundary.x + boundary.w)),
+    y: Math.round(axis(pointer.y, height, chart.y, chart.y + chart.h, boundary.y, boundary.y + boundary.h)), w: width, h: height };
 }
 
 /** One seat search and what it tried. */

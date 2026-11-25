@@ -247,7 +247,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'motion.easing': "Easing of the shared interaction transitions: 'linear', 'ease-out', or a cubic-bezier() curve of four numeric control points; default 'ease-out'.",
   'motion.hoverIntent': 'Delay before a hover interaction activates, in milliseconds; default 80.',
   'motion.fade': 'Duration of opacity transitions, in milliseconds; default 120.',
-  'motion.travel': 'Duration of positional transitions, in milliseconds; default 160.',
+  'motion.travel': 'Duration of positional transitions, in milliseconds; default 400. The hover card that follows the pointer glides to each new place over this time; 0 moves it at once.',
   'motion.layout': 'Duration of layout transitions — rows opening, columns appearing, a table growing — in milliseconds; default 160.',
   surface: 'Surface anatomy for chips, row tints, and schedule washes.',
   'surface.chipTint': 'How far a chip background steps toward the surface (0.05 to 0.97).',
