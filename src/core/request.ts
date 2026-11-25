@@ -400,7 +400,7 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   if (fitted) return fitted[1];
   const [asked, result] = steppedType(request, first, layout) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && layout(plainRequest);
+  const plain = plainRequest && plainLayout(plainRequest);
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
   // An unchanged refusal already tried the same authored widths.
   const fittedLate = table && asked === request && drawn === first
