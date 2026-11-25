@@ -10,6 +10,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Dense stacked column charts lay out faster at desktop widths. They skip taller layouts when segment values are too wide to print and reuse stack and label measurements when adding value notes or a value axis.
 - Charts with several series lay out faster when they need an automatic legend. The chart skips drawing the version without the key when it can select the same result directly.
 - Likert charts with many statements render faster. When notes leave the rows in place, the chart reuses their label positions. Fixed-size slides also skip height advice for drawings that a more compact form replaces.
+- Line charts with long daily series lay out faster at desktop widths. Dates, point labels and warnings stay the same.
 
 ### Fixed
 
