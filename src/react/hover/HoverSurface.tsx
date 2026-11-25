@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useId, useMemo, type CSSProperties, type ReactElement } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { useIsomorphicLayoutEffect } from '../useIsomorphicLayoutEffect';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { A11yTablePlacement } from '../../core/a11y/accessibility';
 import type { Id } from '../../core/types/cell';
@@ -39,8 +40,10 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   /** A metric stack's focus look: the category the pointer or the keyboard rests on, undefined at rest. The chart lays the stack out with it. */
   onStackFocus?: (category: string | undefined) => void;
 }): ReactElement {
-  const { engine, view, origin, handlers, focusStops, keys, cursor, cardRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick,
+  const { engine, view, origin, follow, handlers, focusStops, keys, cursor, cardRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick,
     custom: renderHoverContent !== undefined });
+  const { card: shown, fading } = useFadingCard(engine && !renderHoverContent && view.card && origin
+    ? { layout: view.card, theme: view.cardTheme!, origin, follow } : undefined);
   useEffect(() => { onStackFocus?.(focusCategory); }, [onStackFocus, focusCategory]);
   const contentId = `${useId()}-card`;
   const active = view.active?.[0];
@@ -64,9 +67,32 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
     {keys && <RecordKeys geometry={geometry} responsive={responsive} cursor={cursor} describedBy={custom ? contentId : undefined} />}
     {engine && custom && <engine.CustomCard input={view.cardInput!} theme={view.cardTheme!} origin={origin} label={active!.label}
       contentId={contentId} locale={request.locale?.language} cardRef={cardRef}>{content}</engine.CustomCard>}
-    {engine && !renderHoverContent && view.card && origin && <engine.ChartCard layout={view.card} theme={view.cardTheme!} origin={origin} cardRef={cardRef} />}
+    {engine && shown && <engine.ChartCard {...shown} cardRef={cardRef} hidden={fading} />}
     {dataTable && table && <dataTable.DataTable request={request} geometry={geometry} prepared={prepared} mode={table} />}
   </div>;
+}
+
+/** How long a closed card that followed the pointer stays mounted and faded out, in milliseconds. */
+const LINGER = 500;
+
+/**
+ * The default card to draw and whether it is fading out. A card that followed
+ * the pointer stays mounted for `LINGER` after it closes, so it fades out, and a
+ * card that opens again within that time glides from where it was. Later it
+ * unmounts, and the next card fades in at the pointer without travel.
+ */
+function useFadingCard<T extends { follow: boolean }>(open: T | undefined): { card?: T; fading: boolean } {
+  const last = useRef<T | undefined>(undefined);
+  const [, expire] = useState(0);
+  useIsomorphicLayoutEffect(() => { if (open) last.current = open; });
+  const kept = open === undefined && last.current?.follow ? last.current : undefined;
+  useEffect(() => {
+    if (open !== undefined || !last.current) return;
+    if (!last.current.follow) { last.current = undefined; return; }
+    const timer = setTimeout(() => { last.current = undefined; expire(count => count + 1); }, LINGER);
+    return () => clearTimeout(timer);
+  }, [open === undefined]);
+  return { card: open ?? kept, fading: kept !== undefined };
 }
 
 const HIDDEN: CSSProperties = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden',

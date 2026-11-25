@@ -553,7 +553,7 @@ export interface Theme {
     hoverIntent?: number;
     /** Duration of opacity transitions; default 120ms. */
     fade?: number;
-    /** Duration of positional transitions; default 160ms. */
+    /** Duration of positional transitions, such as the hover card's glide after the pointer; default 400ms. */
     travel?: number;
     /**
      * Duration of layout transitions — rows opening, columns appearing,

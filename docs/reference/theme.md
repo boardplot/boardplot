@@ -230,11 +230,11 @@ Defaults are the `bridge` preset.
 | interaction | object |  |  | `{"dim":0.25,"outlineWidth":1}` | Optional host interaction paint tokens. They change paint only; chart geometry is unaffected. |
 | interaction.dim | number |  |  | `0.25` | Opacity applied to marks outside the active interaction set (0 to 1); default 0.25. |
 | interaction.outlineWidth | number |  |  | `1` | Focus and selection outline width in CSS pixels; default 1. |
-| motion | object |  |  | `{"easing":"ease-out","hoverIntent":80,"fade":120,"travel":160,"layout":160}` | Optional host interaction timings in milliseconds. They change transitions only; chart geometry is unaffected. |
+| motion | object |  |  | `{"easing":"ease-out","hoverIntent":80,"fade":120,"travel":400,"layout":160}` | Optional host interaction timings in milliseconds. They change transitions only; chart geometry is unaffected. |
 | motion.easing | string |  |  | `'ease-out'` | Easing of the shared interaction transitions: 'linear', 'ease-out', or a cubic-bezier() curve of four numeric control points; default 'ease-out'. |
 | motion.hoverIntent | number |  |  | `80` | Delay before a hover interaction activates, in milliseconds; default 80. |
 | motion.fade | number |  |  | `120` | Duration of opacity transitions, in milliseconds; default 120. |
-| motion.travel | number |  |  | `160` | Duration of positional transitions, in milliseconds; default 160. |
+| motion.travel | number |  |  | `400` | Duration of positional transitions, in milliseconds; default 400. The hover card that follows the pointer glides to each new place over this time; 0 moves it at once. |
 | motion.layout | number |  |  | `160` | Duration of layout transitions — rows opening, columns appearing, a table growing — in milliseconds; default 160. |
 | scheme | string |  | `'light'`, `'dark'` | `'light'` | Fixed color scheme of the family: a `light` theme stays light on a dark host and a `dark` theme stays dark. Absent means light-slot behavior with the standard automatic dark pair. |
 | surface | object |  |  | `{"chipTint":0.9,"rowTint":0.94,"elapsedTint":0.95,"anchorTint":0.97,"chipRadius":2,"panelShadow":"0 1px 2px rgba(11,27,58,0.10), 0 6px 20px rgba(11,27,58,0.08)"}` | Surface anatomy for chips, row tints, and schedule washes. |

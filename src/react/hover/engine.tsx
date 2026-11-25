@@ -27,7 +27,7 @@ import { isFullGeometry, type PreparedChart, type RenderGeometry } from '../prep
 import { SceneRenderer } from '../SceneRenderer';
 import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlight';
 import { hitTestRecords } from './hitTest';
-import { cardSurface, describedWithCard, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
+import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
   layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, type CardSide, type CompositionOptions, type LabelCardInput, type LabelCardLayout, type LabelCardRow } from './labelCard';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
@@ -63,6 +63,8 @@ export interface HoverPosition {
   viewport?: HoverViewport;
   panel?: string;
   previousSide?: CardSide;
+  /** A mouse or pen opened the default card: it follows the pointer instead of taking a seat beside the mark. */
+  follow?: boolean;
 }
 
 interface HoverMeasurement {
@@ -102,14 +104,60 @@ export function hoverSelection(model: HoverModel, request: ResolvedChartRequest,
   const next = hoverTargets(model, request, { nodeId: element?.getAttribute('data-id') ?? undefined,
     point: viewport?.pointer }, custom).map(record => record.id);
   if (!source && !next.length) return selection;
-  // Reuse the seat only while it stays clear of the pointer.
+  // A mouse or pen moves the default card with the pointer; a tap, the keyboard and a host's own card keep the seat beside the mark.
+  const follow = !custom && source !== undefined && 'pointerType' in source && source.pointerType !== 'touch';
+  // Reuse the selection while the records stay. A seat beside the mark is reused only while it stays clear of the pointer;
+  // a following card never covers the pointer, and the move itself goes to `cardFollower`, outside React.
   if (measurement === selection.measurement && next.length === selection.ids.length
-    && next.every((id, index) => id === selection.ids[index])
-    && !(view.card && viewport?.pointer && rectContains(view.card.rect, {
+    && next.every((id, index) => id === selection.ids[index]) && (selection.position?.follow ?? false) === follow
+    && (follow || !(view.card && viewport?.pointer && rectContains(view.card.rect, {
       x: viewport.pointer.x * viewport.scale, y: viewport.pointer.y * viewport.scale, w: 0, h: 0,
-    }))) return selection;
+    })))) return selection;
   return { ids: next, measurement: next.length ? measurement : undefined,
-    position: { viewport, panel: view.panel, previousSide: view.card?.side } };
+    position: { viewport, panel: view.panel, previousSide: view.card?.side, follow } };
+}
+
+/** The pause between two pointer-driven moves of the card, in milliseconds; the card's travel transition fills the frames between. */
+const FOLLOW_INTERVAL = 50;
+
+export interface CardFollower {
+  /** Move the open card to follow the pointer at client (x, y): at once, then at most once per `FOLLOW_INTERVAL`, always ending at the last point. */
+  move(node: HTMLElement | null, selection: HoverSelection, size: Size, x: number, y: number): void;
+  /** Drop a pending move: the records changed, the keyboard took over or the card closed. */
+  cancel(): void;
+}
+
+/**
+ * The pointer card's mover. A move within one record writes the card's
+ * `translate` directly, so the chart SVG and the card's content do not render
+ * again. The card's CSS transition animates each move.
+ */
+export function cardFollower(): CardFollower {
+  let last = -Infinity;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: (() => void) | undefined;
+  const run = () => { timer = undefined; last = Date.now(); const apply = pending; pending = undefined; apply?.(); };
+  return {
+    move(node, selection, size, x, y) {
+      const viewport = selection.measurement?.viewport;
+      if (!node || !viewport || !selection.position?.follow) return;
+      pending = () => {
+        if (!node.isConnected) return;
+        const { scale, origin } = viewport;
+        const seat = followSeat({ x: x - origin.x, y: y - origin.y }, parseFloat(node.style.width) || 0, parseFloat(node.style.height) || 0,
+          { x: 0, y: 0, w: size.width * scale, h: size.height * scale },
+          { x: viewport.boundary.x * scale, y: viewport.boundary.y * scale, w: viewport.boundary.w * scale, h: viewport.boundary.h * scale });
+        node.style.translate = `${seat.x + origin.x}px ${seat.y + origin.y}px`;
+      };
+      const win = node.ownerDocument.defaultView;
+      // Without motion, each move shows at once: a pause would read as a stutter.
+      if (win?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { run(); return; }
+      const wait = last + FOLLOW_INTERVAL - Date.now();
+      if (wait <= 0 && timer === undefined) run();
+      else timer ??= setTimeout(run, Math.max(0, wait));
+    },
+    cancel() { if (timer !== undefined) clearTimeout(timer); timer = undefined; pending = undefined; },
+  };
 }
 
 /**
@@ -350,35 +398,38 @@ export function hoverView(
   const scale = position.viewport?.scale ?? 1;
   const cssPoint = (point: Point) => ({ x: point.x * scale, y: point.y * scale });
   const cssRect = (rect: Rect): Rect => ({ ...cssPoint(rect), w: rect.w * scale, h: rect.h * scale });
-  const marks = active.map(record => {
-    if (model.markBounds?.has(record)) return model.markBounds.get(record);
-    // A rectangular anchor can be only the bar. Include its range rails,
-    // caps and other mark nodes before taking this record's bounds.
-    const anchor = record.anchor && 'w' in record.anchor ? record.anchor : undefined;
-    const bounds = [anchor, recordBounds(anchor ? { ...record, anchor: undefined } : record, geometry.scene, occupied)]
-      .filter(Boolean) as Rect[];
-    const box = bounds.length ? boundsOf(bounds) : undefined;
-    const mark = box && { x: box.x - (box.w ? 0 : 3), y: box.y - (box.h ? 0 : 3), w: box.w || 6, h: box.h || 6 };
-    model.markBounds?.set(record, mark);
-    return mark;
-  });
-  const bounds = [...marks.filter(Boolean) as Rect[], ...activeLabelBounds(active, geometry.scene, occupied)];
   // A panel projects the option keys this question needs, so a panel's card
   // words its share exactly as the same chart would on its own.
   const cardOptions = { hundredPercent: hundredPercentComposition(panel?.type ?? request.type,
     panel ? panel.composition : request.options as CompositionOptions) };
-  const input = { record: first, canvas,
-    boundary: position.viewport && cssRect(position.viewport.boundary), chart: cssRect(canvas),
-    pointer: position.viewport?.pointer && cssPoint(position.viewport.pointer),
-    occupied: occupied.map(item => ({ ...item, rect: cssRect(item.rect) })),
-    target: marks[0] && cssRect(first.anchor && !('w' in first.anchor) ? boundsOf(marks.filter(Boolean) as Rect[]) : marks[0]),
-    forbidden: bounds.map(cssRect),
-    previousSide: position.panel === first.target.panel ? position.previousSide : undefined,
-    band: first.target.owner.annotationId !== undefined ? undefined : bandTypes[panel?.type ?? request.type],
-    path: first.target.owner.annotationId !== undefined ? undefined : pointsPath(model, panel?.type ?? request.type, first)?.map(cssPoint),
-    mark: marks[0] && cssRect(marks[0]),
-    theme, measure: request.fontMetrics, locale,
-    idPrefix: 'hover-card', card: cardOptions };
+  const pointer = position.viewport?.pointer && cssPoint(position.viewport.pointer);
+  const base = { record: first, canvas,
+    boundary: position.viewport && cssRect(position.viewport.boundary), chart: cssRect(canvas), pointer,
+    theme, measure: request.fontMetrics, locale, idPrefix: 'hover-card', card: cardOptions };
+  // A card that follows the pointer needs no seat beside the mark: skip the marks, labels and path the seat solver reads.
+  const input: LabelCardInput = position.follow && pointer ? { ...base, occupied: [], follow: true } : (() => {
+    const marks = active.map(record => {
+      if (model.markBounds?.has(record)) return model.markBounds.get(record);
+      // A rectangular anchor can be only the bar. Include its range rails,
+      // caps and other mark nodes before taking this record's bounds.
+      const anchor = record.anchor && 'w' in record.anchor ? record.anchor : undefined;
+      const bounds = [anchor, recordBounds(anchor ? { ...record, anchor: undefined } : record, geometry.scene, occupied)]
+        .filter(Boolean) as Rect[];
+      const box = bounds.length ? boundsOf(bounds) : undefined;
+      const mark = box && { x: box.x - (box.w ? 0 : 3), y: box.y - (box.h ? 0 : 3), w: box.w || 6, h: box.h || 6 };
+      model.markBounds?.set(record, mark);
+      return mark;
+    });
+    const bounds = [...marks.filter(Boolean) as Rect[], ...activeLabelBounds(active, geometry.scene, occupied)];
+    return { ...base,
+      occupied: occupied.map(item => ({ ...item, rect: cssRect(item.rect) })),
+      target: marks[0] && cssRect(first.anchor && !('w' in first.anchor) ? boundsOf(marks.filter(Boolean) as Rect[]) : marks[0]),
+      forbidden: bounds.map(cssRect),
+      previousSide: position.panel === first.target.panel ? position.previousSide : undefined,
+      band: first.target.owner.annotationId !== undefined ? undefined : bandTypes[panel?.type ?? request.type],
+      path: first.target.owner.annotationId !== undefined ? undefined : pointsPath(model, panel?.type ?? request.type, first)?.map(cssPoint),
+      mark: marks[0] && cssRect(marks[0]) };
+  })();
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
   const card = !flags.card ? undefined : withChartFormats(request.options, () => active.length > 1
     ? layoutLabelCardContent(input, sharedLabelCardContent(active, locale, cardOptions, geometry.scene, model.cardRows)) : layoutLabelCard(input));
@@ -390,17 +441,37 @@ export function hoverView(
   return { ...geometry, a11y, scene, card, cardTheme: theme, ...(card ? { cardInput: input, active } : {}), panel: first.target.panel };
 }
 
-/** A card renders at 1 CSS pixel per layout unit, even on a scaled chart. */
-export function ChartCard({ layout, theme, origin, cardRef }: { layout: LabelCardLayout; theme: Theme; origin: Point;
-  cardRef?: (node: HTMLDivElement | null) => void }): ReactElement | null {
+/** The curve of the following card's glide: fast at first, then a soft landing, as the ECharts tooltip moves. */
+const GLIDE_EASING = 'cubic-bezier(0.23, 1, 0.32, 1)';
+
+/**
+ * A card renders at 1 CSS pixel per layout unit, even on a scaled chart.
+ *
+ * `follow`: the card a mouse or pen opened. It stays one element while the
+ * pointer moves, glides to each new seat over `motion.travel` and fades in and
+ * out over `motion.fade`; `hidden` keeps it mounted and faded out for a short
+ * while after it closes, so a card that opens again glides from where it was.
+ */
+export function ChartCard({ layout, theme, origin, cardRef, follow = false, hidden = false }: { layout: LabelCardLayout; theme: Theme; origin: Point;
+  cardRef?: (node: HTMLDivElement | null) => void; follow?: boolean; hidden?: boolean }): ReactElement | null {
+  // A scroll or resize moves the chart under a fixed card: the card moves with it at once, without trailing the page.
+  const seen = useRef(origin);
+  const scrolled = seen.current.x !== origin.x || seen.current.y !== origin.y;
+  useIsomorphicLayoutEffect(() => { seen.current = origin; });
   if (!layout.scene.length) return null;
   const size: CSSProperties = { width: layout.rect.w, height: layout.rect.h, maxWidth: 'none',
     overflow: 'visible', boxSizing: 'content-box' };
-  // A card clear of the points' path takes the pointer (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
-  // A card over the path of a line, area, combo or sparkline lets the pointer through, so the reader reaches every point.
+  const motion = interactionTokens(theme);
+  const fade = `${motion.fade}ms ${motion.easing}`;
+  // A following card never stands under the pointer, so it lets the pointer through to every mark.
+  // A card beside its mark clear of the points' path takes the pointer (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  // A card beside its mark over the path of a line, area, combo or sparkline lets the pointer through, so the reader reaches every point.
+  const moving: CSSProperties = follow ? { pointerEvents: 'none', opacity: hidden ? 0 : 1, visibility: hidden ? 'hidden' : 'visible', willChange: 'translate',
+    transition: `${scrolled ? '' : `translate ${motion.travel}ms ${GLIDE_EASING},`}opacity ${fade},visibility ${fade}` }
+    : { pointerEvents: layout.overPath ? 'none' : 'auto' };
   const card = <div popover={topLayer() ? 'manual' : undefined} ref={node => { cardRef?.(node); showCard(node); }} data-bp-chart-card="" data-bp-card-overlay="" className="bp-interaction-card"
-    role="tooltip" dir="ltr" aria-label={layout.accessibleText}
-    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: layout.overPath ? 'none' : 'auto', ...size }}>
+    role="tooltip" dir="ltr" aria-label={layout.accessibleText} aria-hidden={hidden || undefined}
+    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), ...moving, ...size }}>
     <SceneRenderer geometry={labelCardGeometry(layout)} theme={theme} responsive={false} style={size} />
   </div>;
   // Keep the portal fallback where showPopover is missing.

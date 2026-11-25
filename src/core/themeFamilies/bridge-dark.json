@@ -223,7 +223,7 @@
     "easing": "ease-out",
     "hoverIntent": 80,
     "fade": 120,
-    "travel": 160,
+    "travel": 400,
     "layout": 160
   }
 }

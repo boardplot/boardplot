@@ -22,7 +22,7 @@ export function interactionTokens(theme: Theme): InteractionTokens {
     outlineWidth: theme.interaction?.outlineWidth ?? 1,
     hoverIntent: theme.motion?.hoverIntent ?? 80,
     fade: theme.motion?.fade ?? 120,
-    travel: theme.motion?.travel ?? 160,
+    travel: theme.motion?.travel ?? 400,
     layout: theme.motion?.layout ?? 160,
     cardRadius: theme.surface?.chipRadius ?? 2,
     cardHairline: theme.color.axis,
