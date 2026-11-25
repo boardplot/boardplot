@@ -7,6 +7,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 ### Changed
 
 - Stacked column charts choose an automatic height faster at narrow widths. A chart with series names at the edge can skip laying out a second chart to check the legend. Straight growth arrows also find a clear path faster.
+- Dense stacked column charts lay out faster at desktop widths. They skip taller layouts when segment values are too wide to print and reuse stack and label measurements when adding value notes or a value axis.
 
 ### Fixed
 
