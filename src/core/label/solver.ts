@@ -192,6 +192,12 @@ export interface SlotCandidate {
   onFill?: { seriesId: Id; fill: string; paint: Paint; pattern?: import('../types/scene').HatchPattern };
 }
 
+export interface RowPeak {
+  plot: Rect;
+  /** Only these ordinary values in the columns immediately beside the peak may yield. */
+  neighbours: readonly Id[];
+}
+
 export interface LabelRequest {
   id: Id;
   kind: LabelKind;
@@ -235,6 +241,8 @@ export interface LabelRequest {
    * number. At the S widths, 12 px values fit 2 px apart.
    */
   valueRow?: true;
+  /** Try the first seat before its ordinary neighbours, leaving a density drop in place if it fails. */
+  rowPeak?: RowPeak;
   candidates: SlotCandidate[]; // ordered = the placement cascade for this kind
   /** Suppress instead of place (redundancy gates decided by the chart). */
   /**
@@ -546,12 +554,45 @@ function anyHit(occupied: OccupiedIndex, rect: Rect, pad: number, test: (claim: 
   return occupied.some ? occupied.some(rect, pad, test) : occupied.hitsWhich(rect, pad).some(test);
 }
 
+/** Adjacent values keep a horizontal gap whenever their rows overlap. */
+function rowValuesCrowd(a: Rect, b: Rect, pad: number): boolean {
+  return rectsOverlap(a, b, pad) || (a.y < b.y + b.h && b.y < a.y + a.h && rectsOverlap(a, b, SERIES_VALUE_GAP));
+}
+
+function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req: LabelRequest) => SlotId | undefined, pad: number) {
+  const ranked = order.filter(req => !req.rowPeak);
+  const admitted = new Map<Id, readonly Id[]>();
+  for (const peak of peaks) {
+    const first = peak.candidates[0];
+    const row = peak.rowPeak!;
+    const eligible = first !== undefined && rectContains(row.plot, first.rect) && !pinOf(peak);
+    const yields = (req: LabelRequest) => row.neighbours.includes(req.id) && !pinOf(req) && !req.redundant && !req.protect && !req.keepWhenDense;
+    const brushes = (req: LabelRequest, seat: SlotCandidate) =>
+      rowValuesCrowd(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad));
+    const before = eligible ? ranked.findIndex(req => yields(req) && req.candidates.some(seat => brushes(req, seat))) : -1;
+    // Keep the seats of requests the peak may not displace, even when they normally run later.
+    const reserved = before >= 0 && ranked.slice(before).some(req => !req.redundant && !yields(req)
+      && req.candidates.some(seat => (req.kind === peak.kind && req.owner.seriesId === peak.owner.seriesId
+        ? brushes(req, seat)
+        : rectsOverlap(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad)))));
+    if (eligible && !reserved) {
+      admitted.set(peak.id, before < 0 ? [] : ranked.filter(yields).map(req => req.id));
+      ranked.splice(before < 0 ? ranked.length : before, 0, peak);
+    } else if (peak.redundant) ranked.push(peak);
+  }
+  return { ranked, admitted };
+}
+
 function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, onHidden?: (label: PlacedLabel) => void): SolveResult {
   const placed: PlacedLabel[] = [];
   const decisions: PlaceDecision[] = [];
   const warnings: LintWarning[] = [];
   const hiddenWarningByLabel = new Map<Id, LintWarning>();
-  const printedIn = new Map(requests.flatMap(req => req.printedIn ? [[req.id, req.printedIn] as const] : []));
+  const peaks: LabelRequest[] = [];
+  const printedIn = new Map(requests.flatMap(req => {
+    if (req.rowPeak) peaks.push(req);
+    return req.printedIn ? [[req.id, req.printedIn] as const] : [];
+  }));
   const pad = ctx.labelPad ?? 2;
   const darkInk = ctx.darkInk ?? '#111827';
   const lightInk = ctx.lightInk ?? '#ffffff';
@@ -565,7 +606,10 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const ownedPoint = (req: LabelRequest): boolean => req.kind === 'point' && ownership?.pointOf(req.owner.seriesId, req.owner.categoryId) !== undefined;
   const ownershipLimited = new Set(owned.flatMap((req, i) => req !== requests[i] ? [req.id] : []));
   // Deterministic order: pinned first, then priority desc, then id.
-  const order = [...owned].sort(labelOrder(pinOf, ctx.focus));
+  const baseOrder = [...owned].sort(labelOrder(pinOf, ctx.focus));
+  const rowPeaks = peaks.length ? rankRowPeaks(baseOrder, peaks, pinOf, pad) : undefined;
+  const order = rowPeaks?.ranked ?? baseOrder;
+  const yieldingTo = rowPeaks && new Map<Id, { rect: Rect; owner: OwnerRef; pad: number }>();
 
   // Placed leaders of leaderAvoidsLabels requests: no later label sits on one.
   const splitLeader = ctx.splitLeader ?? leaderPieces;
@@ -586,6 +630,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
     const markValue = isMarkValue(req);
+    const peakNeighbours = rowPeaks?.admitted.get(req.id);
+    const peakAhead = yieldingTo?.get(req.id);
     const claimIds = requestClaims(req, ctx);
     const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
       id: req.id,
@@ -678,7 +724,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const pinOverDensity = req.redundant === true && req.suppressedAs === 'density' && !req.owed && pin !== undefined;
 
     // Redundancy gate (chart decided).
-    if (req.redundant && !pinOverDensity) {
+    if (req.redundant && !pinOverDensity && !peakNeighbours) {
       const why = req.suppressedAs ?? 'redundant';
       hide(why, why === 'density' ? 'density gate' : 'redundancy gate');
       continue;
@@ -759,14 +805,14 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // side by side keep the same gap as two values of a series, or read as one number.
     const crowdsTotal = (rect: Rect): boolean => TOTAL_KINDS.has(req.kind)
       && anyHit(occupied, rect, SERIES_VALUE_GAP, (o) => o.kind === 'label' && o.part === TOTAL_PART && o.owner.seriesId === req.owner.seriesId
-        && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId
+        && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId && o.owner !== peakAhead?.owner
         // Two totals on one row: their boxes share at least half of one line (0.1 px absorbs scale noise).
         // A total one stair step lower reads as its own number; the 6 px would hide it for nothing.
         // One line, not the box: a two-line total's second line beside the other's first reads as one number.
         && Math.min(o.rect.y + o.rect.h, rect.y + rect.h) - Math.max(o.rect.y, rect.y) >= rect.h / Math.max(1, req.lines.length) / 2 - 0.1);
     const crowdsSeries = (rect: Rect, touching = false): boolean => crowdsTotal(rect) || (req.kind === 'point' || req.kind === 'segment') && (req.owner.seriesId !== undefined || req.valueRow === true || outsideSegment(touching))
       && occupied.hitsWhich(rect, SERIES_VALUE_GAP).some((o) => o.kind === 'label' && (outsideSegment(touching) || o.owner.seriesId === req.owner.seriesId)
-        && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId
+        && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId && o.owner !== peakAhead?.owner
         && Math.min(o.rect.y + o.rect.h, rect.y + rect.h) > Math.max(o.rect.y, rect.y) && (!touching || marksTouch(rect, o.rect)));
     // A bare value in the tick label column reads as a tick; a name or a named reference ('50.0 Plan') does not.
     const inTickColumn = (rect: Rect, air = 0): boolean => ['point', 'segment', 'total', 'grandTotal'].includes(req.kind)
@@ -802,6 +848,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           // Any inside seat reads on its own mark, which draws over an area fill (combo draws its columns in front).
           if (o.kind === 'mark' && o.part === AREA_FILL_PART && (cand.slot.startsWith('insideBand') || cand.insideFill !== undefined)) return false;
           if (o.kind === 'label') {
+            if (o.owner === peakAhead?.owner) return false;
             sawLabel = true;
             return false;
           }
@@ -1007,6 +1054,12 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // A seat too near its anchor to draw a leader is kept as the last resort,
     // so the rule never hides a label the cascade can place.
     const ambiguous: SlotCandidate[] = [];
+    const yieldsToPeak = (cand: SlotCandidate): boolean => {
+      if (!peakAhead || !rowValuesCrowd(peakAhead.rect, cand.rect, Math.max(peakAhead.pad, cand.pad ?? req.pad ?? pad))) return false;
+      base.owed = true;
+      hide('density', 'crowded by the highest column value');
+      return true;
+    };
     const place = (cand: SlotCandidate, reason: string, leader?: PlacedLabel['leader']): void => {
       const label = finalize(base, req, cand, false, darkInk, lightInk);
       if (leader) label.leader = leader;
@@ -1014,9 +1067,22 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       if (cand.overValueLines && anyHit(occupied, cand.rect, req.pad ?? pad, isValueLine)) label.halo = true;
       placed.push(label);
       occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
+      if (peakNeighbours?.length) {
+        const peak = { rect: cand.rect, owner: req.owner, pad: cand.pad ?? req.pad ?? pad };
+        for (const neighbour of peakNeighbours) yieldingTo!.set(neighbour, peak);
+      }
       claimLeader(label);
       decisions.push({ labelId: req.id, strategy: 'candidatesOccupied', tried, chose: cand.slot, reason: note(reason) });
     };
+    if (peakNeighbours) {
+      const seat = first!;
+      if (!seat.leaderFrom && !req.anchor && blockAt(0, seat.pad ?? req.pad ?? pad) === 'free') {
+        tried.push(seat.slot);
+        delete base.owed;
+        place(seat, 'first candidate free');
+      } else if (req.redundant) hide('density', 'density gate');
+      continue;
+    }
     // A leaderAvoidsLabels label still takes a free seat whose leader crosses
     // a label when no other seat is free: a crossing reads, a dropped name does not.
     let crossing: SlotCandidate | undefined;
@@ -1036,7 +1102,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           if (!cand.onFill) ambiguous.push(cand);
           continue;
         }
-        place(settled(cand, cand.pad ?? req.pad ?? pad), tried.length === 1 ? 'first candidate free' : `candidate ${tried.length} free`);
+        if (!yieldsToPeak(cand)) place(settled(cand, cand.pad ?? req.pad ?? pad), tried.length === 1 ? 'first candidate free' : `candidate ${tried.length} free`);
         done = true;
         break;
       }
@@ -1081,6 +1147,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && !crossesLabel(leaderFor(cand)) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
         !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))));
       if (across >= 0) {
+        if (yieldsToPeak(req.candidates[across]!)) continue;
         const cand = settled(req.candidates[across]!, req.pad ?? pad);
         const label = finalize(base, req, cand, false, darkInk, lightInk);
         label.halo = true;
@@ -1159,8 +1226,10 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     }
   }
   // `order` steers only which label claims a seat first; output keeps the id order, so paint order stays put.
-  if (owned.some(req => req.order !== undefined)) {
-    const rank = new Map([...owned].sort(labelOrder(pinOf, ctx.focus, false)).map((req, i) => [req.id, i]));
+  const authoredOrder = owned.some(req => req.order !== undefined);
+  if (authoredOrder || rowPeaks) {
+    const paintOrder = authoredOrder ? [...owned].sort(labelOrder(pinOf, ctx.focus, false)) : baseOrder;
+    const rank = new Map(paintOrder.map((req, i) => [req.id, i]));
     const byRank = (a: Id, b: Id): number => (rank.get(a) ?? 0) - (rank.get(b) ?? 0);
     placed.sort((a, b) => byRank(a.id, b.id));
     decisions.sort((a, b) => byRank(a.labelId, b.labelId));
