@@ -9,6 +9,10 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Charts in cards near or below their minimum size lay out faster.
 - Charts with hover and dimension-switch tables mount faster in React containers by spending less time preparing hover cards and reading number formats.
 
+### Fixed
+
+- Crowded stacked column and combo charts, and column panels in metric stacks, show the tallest column’s value when its label fits.
+
 ## 0.65.0
 
 ### Changed
