@@ -47,7 +47,7 @@ interface StoryOptions extends Pick<BaseOptions, 'margin' | 'canvas'> {
 }
 
 /** The chart's layout without the story pass, to lay it out again at another size. */
-type Relayout = (data: unknown, options: object) => LayoutResult;
+type Relayout = (data: unknown, options: object, fitOnly?: boolean) => LayoutResult;
 
 const asList = (ids: Id | Id[] | undefined): Id[] => (ids === undefined ? [] : Array.isArray(ids) ? ids : [ids]);
 
@@ -188,7 +188,7 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   if (!spec) return geo;
   if (panelTypeClass(options) !== undefined) return { ...geo, warnings: [...geo.warnings, error('story-in-grid-panel', 'a grid panel cannot carry a story: the panels share one canvas and one reading order', 'Drop story from the panel options, or draw the chart on its own.', [])] };
   const again = (size: { width: number; height?: number }) => {
-    const next = relayout(data, { ...options, size });
+    const next = relayout(data, { ...options, size }, size.height !== undefined);
     return isRefused(next) ? undefined : next as Geometry<object, object>;
   };
   const errors: LintWarning[] = [];
@@ -272,8 +272,10 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
       for (;;) {
         // Reserve inside the fixed canvas, so the standalone canvas minimum
         // is not charged again to the chart above the story panel.
+        // Only the last failed reserve can supply the size in the story's refusal.
+        const fitOnly = below.limits.title > 1 || below.texts.some(text => text.body.length > 0);
         const result = relayout(data, { ...options, size: geo.size,
-          canvas: { margin: { ...options.canvas?.margin, bottom: bottom + reserve } } });
+          canvas: { margin: { ...options.canvas?.margin, bottom: bottom + reserve } } }, fitOnly);
         if (!result.refused) {
           // The story reserve is not canvas margin; the static footer must not add it again.
           const plan = footerPlans.get(result.frame);

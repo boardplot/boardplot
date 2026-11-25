@@ -31,12 +31,12 @@ import { defaultMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, colorblindPaint, hatchGroundPaint, markRolePaint, paintColor, panelTypeClass, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
 import type { ColorRole, Id, OwnerRef } from '../../types/cell';
 import type { BaseOptionsFor, LabelKind, LegendOptions } from '../../types/options';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { LayoutResult, LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
-import { heightOmitted, matrixWidths, NARROW_FORM, rowSizing } from '../../sizing';
+import { FRAME_FIT_PROBE, heightOmitted, matrixWidths, NARROW_FORM, rowSizing, type FrameFitProbe } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -185,10 +185,10 @@ export function lintStatus(data: StatusData, options: StatusOptions): LintWarnin
 
 export function layoutStatus(
   data: StatusData,
-  options: StatusOptions = { states: [] },
+  options: StatusOptions & { [FRAME_FIT_PROBE]?: FrameFitProbe } = { states: [] },
   /** 'tight': the pinned names take the smaller font; 'single': one line each. */
   rowLines?: 'tight' | 'single',
-): Geometry<StatusMarks, StatusDerived> {
+): LayoutResult<StatusMarks, StatusDerived> {
   const { rows, columns, cells, states } = normalizeStatusInput(data, options);
   const stateById = new Map(states.map((state) => [state.id, state]));
   let missingState = EMPTY_STATE;
@@ -476,6 +476,20 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     });
     if (grow !== undefined) return layoutStatus(data, { ...options, size: { width: size.width, height: grow } }, rowLines);
   }
+  const measureRows = () => rowSizing('status', size, {
+    chromeH: size.height - gridH,
+    // The row name sets the pitch. A state printed without a key can need more room.
+    minimumRowsH: rows.length * Math.max(rowFloorH, maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
+    // Keep the ordinary 28 px pitch when this board chooses its own height.
+    naturalRowsH: rows.length * Math.max(naturalCellH, 28) + (rows.length - 1) * CELL_GAP,
+    ...authoredMatrixWidths(matrixWidths(size.width - gridRoom - (rowBandW - rowBandFloor), columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)), tracks, size.width - gridRoom, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
+  });
+  const probeFrame = options[FRAME_FIT_PROBE];
+  // A one-line name cannot trigger the shorter name pass. A keyed board keeps this frame.
+  if (probeFrame && fixedHeight && rowMaxLines === 1 && legend && !warnings.some(warning => warning.code === 'invalid-options')) {
+    const refusal = probeFrame(size, measureRows(), frameResult.frame);
+    if (refusal) return refusal;
+  }
 
   // Monthly columns ('2024-01') keep calendar-aligned heads at one
   // stride (every month, quarter, half or year) to the end of the axis, and a
@@ -723,7 +737,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     !label.hidden && label.id.startsWith('state:') && label.lines[0] === state.label
     && cellByBinding.get(`${label.owner.seriesId}\u0000${label.owner.categoryId}`)?.state === state.id))) {
     const key = legendRequired(options.legend, warnings, 'status', theme, 'cell state names are not drawn');
-    const keyed = layoutStatus(data, { ...options, legend: key }, rowLines);
+    const keyed = layoutStatus(data, { ...options, legend: key, [FRAME_FIT_PROBE]: undefined }, rowLines);
     pushAll(keyed.warnings, warnings.filter(warning => warning.code === 'status-legend-required'));
     return keyed;
   }
@@ -772,14 +786,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   return withUnprintedClaims({
     type: 'status' as const,
     size,
-    sizing: rowSizing('status', size, {
-      chromeH: size.height - gridH,
-      // A two-line row name sets the pitch: its height and the solver's gap, of which the cell gap gives one px.
-      minimumRowsH: rows.length * Math.max(rowFloorH, maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
-      // The natural height keeps the 28 px row the floor used to set, so an unpinned board is as tall as before.
-      naturalRowsH: rows.length * Math.max(naturalCellH, 28) + (rows.length - 1) * CELL_GAP,
-      ...authoredMatrixWidths(matrixWidths(size.width - gridRoom - (rowBandW - rowBandFloor), columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)), tracks, size.width - gridRoom, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
-    }),
+    sizing: measureRows(),
     plot,
     scene,
     labels: solved.placed,

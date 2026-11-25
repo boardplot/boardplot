@@ -4,8 +4,9 @@ import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { PLAN_ONLY, RETAIN_TABLE_RESULT, withPlanInputs, requestMemo, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
+import { INTERACTIVE_LAYOUT } from './footer';
 import { shownNoteKinds } from './notes';
-import { canonicalChartType, getChart } from './registry';
+import { canonicalChartType, getChart, type DiscardRepair } from './registry';
 import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
@@ -378,7 +379,12 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
-  const result = afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain);
+  const probe = table ? layoutWidthProbe : layoutOnce;
+  const result = (request.options as { [INTERACTIVE_LAYOUT]?: boolean })[INTERACTIVE_LAYOUT]
+    && request.fixed.height && floorTextScale(request.target) === undefined
+    && typeWidthClass(request.size.width) !== 'S' && !ownWidthGroups(request.type, request.options as WidthEntry['options']).length
+    ? layoutBeforeClassStep(request, probe)
+    : afterFirstLayout(request, layoutOnce(request), layoutOnce, probe, layoutPlain);
   // A table's tight-spacing size is checked once at that size. The dimswitch checks its own card in its layout;
   // the cohort's render advice is an estimate that errs wide, and its check would cost two layouts.
   if (request.type !== 'table' || isRefused(result)) return finish(result);
@@ -388,19 +394,42 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   }));
 }
 
+function layoutBeforeClassStep(request: ResolvedChartRequest, probe: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult {
+  let notesOff: LayoutResult | undefined;
+  let tried: { request: ResolvedChartRequest; drawn: LayoutResult | undefined } | undefined;
+  const first = layoutOnce(request, refusal => {
+    if (refusal.size.width !== request.size.width) return false;
+    // An error from a speculative draw must still wait for the ordinary step.
+    try {
+      const plain = withoutAskedNotes(request, refusal);
+      if (plain) {
+        notesOff ??= layoutPlain(plain);
+        // A drawing without the notes uses the original repair in its warning.
+        if (!notesOff.refused) return false;
+      }
+      tried ??= { request, drawn: classStep(request, refusal, layoutPlain) };
+      return tried.drawn !== undefined;
+    } catch { return false; }
+  });
+  const refusedOnSize = first.refused && first.warnings[0]?.code === 'size-below-floor';
+  if (tried && refusedOnSize) classSteps.set(first, tried);
+  return afterFirstLayout(request, first, layoutOnce, probe, layoutPlain, refusedOnSize ? notesOff : undefined);
+}
+
 /**
  * Render's steps after its first layout of a request: authored widths give way, the type steps down
  * on a slide or print canvas, asked notes move to the notes list, the next smaller type class. Each
  * returns before any layout where it does not apply. Width searches take the same steps (`widthProbers`).
  */
 function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
-  probe: (asked: ResolvedChartRequest) => LayoutResult, plainLayout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult {
+  probe: (asked: ResolvedChartRequest) => LayoutResult, plainLayout: (asked: ResolvedChartRequest) => LayoutResult,
+  notesOff?: LayoutResult): LayoutResult {
   const table = request.type === 'table' || request.type === 'dimswitch';
   const fitted = widthsGiveWay(request, first, layout, probe);
   if (fitted) return fitted[1];
   const [asked, result] = steppedType(request, first, layout) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && layout(plainRequest);
+  const plain = plainRequest && (notesOff ?? plainLayout(plainRequest));
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
   // An unchanged refusal already tried the same authored widths.
   const fittedLate = table && asked === request && drawn === first
@@ -644,8 +673,8 @@ function withClipWarnings(result: LayoutResult, measure: TextMeasurer): LayoutRe
   return clipped.length ? { ...result, warnings: [...result.warnings, ...clipped] } : result;
 }
 
-function layoutOnce(request: ResolvedChartRequest): LayoutResult {
-  const run = preparedLayout(request);
+function layoutOnce(request: ResolvedChartRequest, discardRepair?: (refusal: RefusedLayout) => boolean): LayoutResult {
+  const run = preparedLayout(request, false, discardRepair);
   try { return drawnAdvice(request, run(request.options), run); } finally { run.finish(); }
 }
 
@@ -1096,7 +1125,7 @@ function stackPaletteWarnings(type: string, data: unknown, options: RequestOptio
 }
 
 /** Prepare the registry once for this call; probes change only its frame and mode markers. */
-function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fitOnly = false): LayoutCall<any, any, any> {
+function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fitOnly: DiscardRepair = false): LayoutCall<any, any, any> {
   const def = getChart(request.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${request.type}'`);
   const ref = request.options.theme;

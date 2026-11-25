@@ -47,6 +47,7 @@ import { hasCompleteTextWidths } from './fontMetrics/injected';
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
 
 type RepairReplacement<M extends object, DV extends object> = () => LayoutResult<M, DV> | undefined;
+export type DiscardRepair = boolean | ((refusal: RefusedLayout) => boolean);
 type RegistryFitLayout<O extends ChartOptions, M extends object, DV extends object> = FitLayout<O, M, DV>
   & ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => LayoutResult<M, DV>);
 
@@ -197,7 +198,7 @@ export type RegisteredChart<
   M extends object = Record<string, unknown>,
   DV extends object = Record<string, unknown>,
 > = ChartCore<D, O, M, DV> & { sizing: ChartSizing;
-  [LAYOUT_CALL]?: (data: D, options?: O, fitOnly?: boolean) => LayoutCall<O, M, DV>;
+  [LAYOUT_CALL]?: (data: D, options?: O, discardRepair?: DiscardRepair) => LayoutCall<O, M, DV>;
 } &
   Partial<Pick<ChartDefinition<D, O, M, DV>, 'normalize' | 'dataSchema' | 'dataSchemaByOption' | 'optionsSchema' | 'discovery'>>;
 
@@ -305,7 +306,9 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   const supported = new Set(def.annotationKinds);
   // Width-yielding layouts read repair sizes. A Gantt probe also updates the full-card context.
   const canDiscardSize = builtIn && !def.finishLayout && def.type !== 'gantt' && def.type !== 'grid';
-  const prepareLayout = (data: D, authored?: O, fitOnly = false): RegistryFitLayout<O, M, DV> => {
+  // These charts validate their data and options before choosing a height-dependent drawing.
+  const canTryClassBeforeRepair = canDiscardSize && ['cohort', 'combo', 'column', 'likert', 'line', 'scatter'].includes(def.type);
+  const prepareLayout = (data: D, authored?: O, fitOnly: DiscardRepair = false): RegistryFitLayout<O, M, DV> => {
     const annotations = prepareFractionAnnotations(authored?.annotations);
     if (annotations !== authored?.annotations) authored = { ...authored, annotations } as O;
     const target = authored?.target ?? DEFAULT_TARGET;
@@ -543,9 +546,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             // A pinned footer can discover a countable note during the search.
             if (resolved.fixed.height && !staticFrame.pinned) {
               // On a live frame a passing repair only leaves the size of this refusal to refine.
-              if (fitOnly) return geo;
+              if (fitOnly === true) return geo;
               const replacement = replaceRepair?.();
               if (replacement) return replacement;
+              // The smaller class uses the refused frame. If it draws, this height advice has no reader.
+              if (typeof fitOnly === 'function' && width === geo.size.width && floor.minHeight > geo.size.height && fitOnly(geo)) return geo;
             }
             if (floor.minHeight <= geo.size.height) return sizeRefusal(def.type, def.title, geo.size, sClassMinimum(floor, geo.size));
             // This larger size drew. The remaining search only refines the size refusal.
@@ -780,7 +785,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     });
   };
   // Preparation and the full/compact policy belong to one call, including its size probes.
-  const createLayout = (data: D, authored?: O, fitOnly = false): LayoutCall<O, M, DV> => {
+  const createLayout = (data: D, authored?: O, fitOnly: DiscardRepair = false): LayoutCall<O, M, DV> => {
     checkItemBudget(def.type, data, authored);
     const options = withDefaultTarget(authored);
     const inherited = (options as { [CARD_HEIGHT_MEMO]?: CardHeightMemo } | undefined)?.[CARD_HEIGHT_MEMO];
@@ -791,11 +796,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // memo keys a layout by its data object.
     const labelled = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
-    const discardSize = fitOnly && canDiscardSize
-      && hasCompleteTextWidths(options?.measure ?? defaultMeasurer);
+    const discardSize = fitOnly && (fitOnly === true ? canDiscardSize : canTryClassBeforeRepair)
+      && hasCompleteTextWidths(options?.measure ?? defaultMeasurer) ? fitOnly : false;
     const layoutOnce = prepareLayout(labelled, { ...options, [CARD_HEIGHT_MEMO]: memo } as unknown as O, discardSize);
-    const plain: typeof def.layout = (d, o) => {
-      const run = prepareLayout(d, o);
+    const plain = (d: D, o?: O, fitOnly = false) => {
+      const discardRepair = fitOnly && canDiscardSize && hasCompleteTextWidths(o?.measure ?? defaultMeasurer);
+      const run = prepareLayout(d, o, discardRepair);
       try { return layoutPlain(d, o, run); } finally { run.finish(); }
     };
     const probes = new Map<string, LayoutResult<M, DV>>();
