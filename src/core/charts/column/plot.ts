@@ -691,7 +691,8 @@ function columnBand(
 ): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
   const { options, theme, measure, cats } = domain;
   const size = options.size;
-  const search = heightSearch ?? (memo && domain.variant === 'stacked' && typeof size === 'object' ? columnHeightSearch.get(size) : undefined);
+  const search = heightSearch ?? ((memo || options.categoryLabels !== 'staircase') && domain.variant === 'stacked' && typeof size === 'object'
+    ? columnHeightSearch.get(size) : undefined);
   const keyed = !!domain.pyRef && pyTickKeyed(domain, frame.legend);
   const { x, w } = frame.plot;
   const axisShown = !!domain.va.show;
