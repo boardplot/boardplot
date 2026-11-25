@@ -764,9 +764,14 @@ function mapExamples<T>(node: T, change: (example: string, owner: Record<string,
     if (plain && (!descriptor || !('value' in descriptor) || !Object.is(descriptor.value, child))) plain.value = false;
     const example = keys === 'all' || (keys === 'format' && key === 'format');
     // `cells` is keyed by column id, so a text column named format holds no example; a cell object's own format does.
-    const childPath = [...path, Array.isArray(node) ? Number(key) : key];
-    const next = typeof child === 'string' ? (example ? change(child, node, childPath) : child)
-      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format', childPath, plain);
+    let next = child;
+    if (typeof child === 'string') {
+      if (example) next = change(child, node, [...path, Array.isArray(node) ? Number(key) : key]);
+    } else if (child !== null && typeof child === 'object') {
+      path.push(Array.isArray(node) ? Number(key) : key);
+      next = mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format', path, plain);
+      path.pop();
+    }
     if (next === child) continue;
     changed ??= Array.isArray(node) ? [...node] as unknown as Record<string, unknown> : Object.assign(Object.create(Object.getPrototypeOf(node) as object | null) as object, node) as Record<string, unknown>;
     changed[key] = next;

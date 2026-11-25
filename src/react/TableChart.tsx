@@ -628,7 +628,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const requestModules = linked ?? (keepRequest ? noLinkedModules : undefined);
   const newlyKept = linked === undefined && keepRequest && !plainRequest;
   const registrations = newlyKept ? themeRegistrations() : undefined;
-  const { request: paintRequest, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, requestModules, false, registrations);
+  // The engine owns the compiled values. The viewport changes the grid, not the formats read from those values.
+  const measuredFrame = compiledRequest && keepRequest && size === 'container' ? container.size : undefined;
+  const { request: paintRequest, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({
+    type: 'table', data, target, options: measuredFrame === undefined ? requestOptions : { ...requestOptions, size: { width: 1, height: 1 } },
+    scope, fontMetrics,
+  }, {}, prepared, requestModules, false, registrations, measuredFrame);
   // Inline visibility changes the drawn lines, not their values or widths.
   // Keep the full request for prepared-snapshot matching; reuse resolution
   // while the reader switches the lines on or off.

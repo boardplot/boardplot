@@ -7,6 +7,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 ### Changed
 
 - Charts in cards near or below their minimum size lay out faster.
+- Charts with hover and dimension-switch tables mount faster in React containers by spending less time preparing hover cards and reading number formats.
 
 ## 0.65.0
 

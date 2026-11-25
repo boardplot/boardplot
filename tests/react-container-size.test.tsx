@@ -1110,6 +1110,29 @@ it('draws a small container table once, at its first measured width', () => {
   expect(host.querySelector('.bp-table-grid')).not.toBeNull();
 });
 
+// Keeping the compiled request must not keep the fallback frame's grid or warnings after a resize.
+it('matches fresh compiled-table requests at each container width', () => {
+  const customMeasure = Object.assign((...args: Parameters<typeof defaultMeasurer>) => defaultMeasurer(...args), defaultMeasurer);
+  for (const variant of ['by-measure', 'by-member'] as const) {
+    const fixture = getFixtures('dimswitch').find(candidate => candidate.id === variant)!;
+    const mount = (measure: typeof defaultMeasurer) => {
+      const warnings = vi.fn();
+      act(() => root.render(<BoardplotTheme target="dashboard"><DimSwitchChart data={fixture.data} {...fixture.options}
+        size="container" fallbackSize={{ width: 800, height: 360 }} fontMetrics={measure} onWarnings={warnings} /></BoardplotTheme>));
+      const grid = () => host.querySelector('.bp-table-grid')!.outerHTML.replace(/_r_[0-9a-z]+_/g, '_r_');
+      const grids = [grid()];
+      for (const width of [640, 1144]) {
+        resize(width, 0);
+        flush();
+        grids.push(grid());
+      }
+      act(() => root.render(null));
+      return { grids, warnings: warnings.mock.calls };
+    };
+    expect(mount(defaultMeasurer)).toEqual(mount(customMeasure));
+  }
+});
+
 // A cohort or status label-hidden refusal can clear with more width, so it waits for the size; a fixed label collision cannot, so it shows at once.
 it.each([
   { code: 'label-hidden', waits: true },
