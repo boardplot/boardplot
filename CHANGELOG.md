@@ -11,6 +11,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Charts with several series lay out faster when they need an automatic legend. The chart skips drawing the version without the key when it can select the same result directly.
 - Likert charts with many statements render faster. When notes leave the rows in place, the chart reuses their label positions. Fixed-size slides also skip height advice for drawings that a more compact form replaces.
 - Line charts with long daily series lay out faster at desktop widths. Dates, point labels and warnings stay the same.
+- US state maps with a value for each state lay out faster. Maps write outline coordinates in blocks and skip distant boundary segments when placing labels.
 
 ### Fixed
 

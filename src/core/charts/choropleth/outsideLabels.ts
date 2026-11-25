@@ -64,10 +64,10 @@ function makeGuard(regions: readonly FittedGeoRegion[]): Guard {
     }
     return false;
   };
-  const distance = (shape: Shape, rect: Rect, ownDistance?: number) => {
+  const distance = (shape: Shape, rect: Rect, ownDistance?: number, vertexDistance?: number) => {
     if (!shape.polygons.length) return Math.max(0, rectLineDistance(rect, [shape.marker]) - shape.marker.radius);
     if (contains(shape, { x: rect.x, y: rect.y })) return 0;
-    return shape.outlineDistance(rect, ownDistance);
+    return shape.outlineDistance(rect, ownDistance, vertexDistance);
   };
   // Every sample is an actual outline vertex, so its point-to-box distance is an upper bound
   // for the full outline distance. The exact distance is needed only when a rival is that near.
@@ -115,7 +115,8 @@ function makeGuard(regions: readonly FittedGeoRegion[]): Guard {
     if (cached && Object.is(cached.x, rect.x) && Object.is(cached.y, rect.y) && Object.is(cached.w, rect.w) && Object.is(cached.h, rect.h)
       && Object.is(cached.fromX, fromX) && Object.is(cached.fromY, fromY) && Object.is(cached.toX, toX) && Object.is(cached.toY, toY)) return cached.fits;
     let ownDistance: number | undefined;
-    let limit = upperDistance(own, rect) + 0.02;
+    const vertexDistance = upperDistance(own, rect);
+    let limit = vertexDistance + 0.02;
     const right = rect.x + rect.w, bottom = rect.y + rect.h;
     const routeBox = from && to ? { x: Math.min(from[0], to[0]), y: Math.min(from[1], to[1]),
       w: Math.abs(to[0] - from[0]), h: Math.abs(to[1] - from[1]) } : undefined;
@@ -142,7 +143,7 @@ function makeGuard(regions: readonly FittedGeoRegion[]): Guard {
       if (gapX <= limit && gapY <= limit) {
         const gap = Math.hypot(gapX, gapY);
         if (gap <= limit) {
-          ownDistance ??= distance(own, rect);
+          ownDistance ??= distance(own, rect, undefined, vertexDistance);
           limit = ownDistance + 0.02;
           if (gap <= limit) {
             const otherDistance = distance(shape, rect, ownDistance);
