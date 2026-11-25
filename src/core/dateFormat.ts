@@ -107,19 +107,25 @@ export const DATE_TICK_STRIDES: Record<DateTickInterval, readonly number[]> = {
  * parseable ISO date, which is the combination the caller refuses and reports
  * rather than guessing an interval from authored label text.
  */
-export function dateTickOrdinals(
+function readTickDates(
   dates: readonly (string | undefined)[],
   interval: DateTickInterval,
   weekStartsOn?: 0 | 1,
-): number[] | null {
-  const start: 0 | 1 = weekStartsOn === 0 ? 0 : 1;
+) {
+  const start = weekStartsOn === 0 ? 0 : 1;
+  const parsed: Date[] = [];
   const ordinals: number[] = [];
   for (const raw of dates) {
     const date = raw === undefined ? null : parseISODate(raw);
     if (!date) return null;
+    parsed.push(date);
     ordinals.push(intervalOrdinal(date, interval, start));
   }
-  return ordinals.length === 0 ? null : ordinals;
+  return parsed.length ? { parsed, ordinals } : null;
+}
+
+function startsOfIntervals(ordinals: number[]): boolean[] {
+  return ordinals.map((ordinal, i) => i === 0 || ordinal !== ordinals[i - 1]);
 }
 
 /** Calendar boundaries by default; with fromEnd, matching periods counted back from the latest date. */
@@ -129,62 +135,49 @@ export function dateTickKeep(
   weekStartsOn?: 0 | 1,
   fromEnd = false,
 ): boolean[] | null {
-  if (fromEnd) {
-    const parsed = dates.map(raw => raw === undefined ? null : parseISODate(raw));
-    const latest = parsed.at(-1);
-    if (!latest || parsed.some(date => !date)) return null;
-    const monthEnd = (date: Date) => { const end = new Date(date); end.setUTCMonth(date.getUTCMonth() + 1, 0); return end.getUTCDate(); };
-    const atMonthEnd = latest.getUTCDate() === monthEnd(latest);
-    const ordinals = dateTickOrdinals(dates, interval, weekStartsOn)!;
-    const lastOrdinal = ordinals.at(-1)!;
-    const keep = dates.map(() => false);
-    let group: number | undefined;
-    let target = 0;
-    let best = -1;
-    for (let i = 0; i < parsed.length; i++) {
-      const ordinal = ordinals[i]!;
-      if (ordinal !== group) {
-        group = ordinal;
-        best = -1;
-        const back = lastOrdinal - ordinal;
-        const date = new Date(latest);
-        if (interval === 'days' || interval === 'weeks') date.setUTCDate(latest.getUTCDate() - back * (interval === 'weeks' ? 7 : 1));
-        else {
-          date.setUTCDate(1);
-          date.setUTCMonth(latest.getUTCMonth() - back * (interval === 'years' ? 12 : interval === 'quarters' ? 3 : 1));
-          date.setUTCDate(atMonthEnd ? monthEnd(date) : Math.min(latest.getUTCDate(), monthEnd(date)));
-        }
-        target = date.getTime();
-      }
-      // A partial first interval may drop. Within a calendar interval use
-      // the nearest available period, so a weekend does not erase its month.
-      if (target < parsed[0]!.getTime()) continue;
-      if (best < 0 || Math.abs(parsed[i]!.getTime() - target) < Math.abs(parsed[best]!.getTime() - target)) {
-        if (best >= 0) keep[best] = false;
-        best = i;
-        keep[i] = true;
-      }
-    }
-    return keep;
-  }
-  return dateTickOrdinals(dates, interval, weekStartsOn)?.map((ordinal, i, all) => i === 0 || ordinal !== all[i - 1]) ?? null;
+  const series = readTickDates(dates, interval, weekStartsOn);
+  if (!series) return null;
+  return fromEnd ? keepFromEnd(series.parsed, series.ordinals, interval) : startsOfIntervals(series.ordinals);
 }
 
-/**
- * Calendar ticks: the first category of each calendar year, quarter
- * or month. A first category that does not begin its interval (data from
- * November, ticks by quarter) is not a quarter start and gets no tick: it
- * sits more than one category step after the interval start, so an earlier
- * category of that interval is missing. A period-end date counts as its period.
- */
-export function dateTickKeepCalendar(
-  dates: readonly (string | undefined)[],
-  interval: 'years' | 'quarters' | 'months',
-): boolean[] | null {
-  const keep = dateTickKeep(dates, interval);
-  if (!keep?.[0]) return keep;
-  const parsed = dates.map(raw => raw === undefined ? null : parseISODate(raw));
-  if (parsed.some(date => !date)) return keep;
+function keepFromEnd(parsed: Date[], ordinals: number[], interval: DateTickInterval): boolean[] {
+  const latest = parsed.at(-1)!;
+  const monthEnd = (date: Date) => { const end = new Date(date); end.setUTCMonth(date.getUTCMonth() + 1, 0); return end.getUTCDate(); };
+  const atMonthEnd = latest.getUTCDate() === monthEnd(latest);
+  const lastOrdinal = ordinals.at(-1)!;
+  const keep = parsed.map(() => false);
+  let group: number | undefined;
+  let target = 0;
+  let best = -1;
+  for (let i = 0; i < parsed.length; i++) {
+    const ordinal = ordinals[i]!;
+    if (ordinal !== group) {
+      group = ordinal;
+      best = -1;
+      const back = lastOrdinal - ordinal;
+      const date = new Date(latest);
+      if (interval === 'days' || interval === 'weeks') date.setUTCDate(latest.getUTCDate() - back * (interval === 'weeks' ? 7 : 1));
+      else {
+        date.setUTCDate(1);
+        date.setUTCMonth(latest.getUTCMonth() - back * (interval === 'years' ? 12 : interval === 'quarters' ? 3 : 1));
+        date.setUTCDate(atMonthEnd ? monthEnd(date) : Math.min(latest.getUTCDate(), monthEnd(date)));
+      }
+      target = date.getTime();
+    }
+    // A partial first interval may drop. Within a calendar interval use
+    // the nearest available period, so a weekend does not erase its month.
+    if (target < parsed[0]!.getTime()) continue;
+    if (best < 0 || Math.abs(parsed[i]!.getTime() - target) < Math.abs(parsed[best]!.getTime() - target)) {
+      if (best >= 0) keep[best] = false;
+      best = i;
+      keep[i] = true;
+    }
+  }
+  return keep;
+}
+
+/** Keep a partial first calendar interval only when the data starts within one category step of its boundary. */
+function keepCalendar(parsed: Date[], interval: 'years' | 'quarters' | 'months', keep: boolean[]): boolean[] {
   const first = parsed[0]!;
   const months = interval === 'years' ? 12 : interval === 'quarters' ? 3 : 1;
   const start = new Date(first);
@@ -194,6 +187,18 @@ export function dateTickKeepCalendar(
   for (let i = 1; i < parsed.length; i++) gap = Math.min(gap, (parsed[i]!.getTime() - parsed[i - 1]!.getTime()) / 86400000);
   if ((first.getTime() - start.getTime()) / 86400000 > gap) keep[0] = false;
   return keep;
+}
+
+/** The tick mask and planner use the same parsed dates and interval ordinals. */
+export function planDateTicks(dates: readonly (string | undefined)[], interval: DateTickInterval, weekStartsOn?: 0 | 1) {
+  const series = readTickDates(dates, interval, weekStartsOn);
+  if (!series) return null;
+  const { parsed, ordinals } = series;
+  const ticks = startsOfIntervals(ordinals);
+  const keep = interval === 'months' || interval === 'quarters' || interval === 'years'
+    ? keepCalendar(parsed, interval, ticks.slice())
+    : keepFromEnd(parsed, ordinals, interval);
+  return { ordinals, ticks, keep };
 }
 
 /** Date format-by-example → formatDate pattern (tokens in this file). */
