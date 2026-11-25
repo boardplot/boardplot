@@ -1,6 +1,9 @@
 import { useContext, useMemo } from 'react';
 import { asFirstFrame, DeferredCoreError, type DeferredName } from '../core/deferred';
+import { copyPlannedValue } from '../core/layoutPlan';
 import { resolveChartRequest, type ChartRequest, type RequestContext, type ResolvedChartRequest } from '../core/request';
+import { resolveTargetSize } from '../core/target';
+import type { BaseOptions } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import { requestRenderKey, type PreparedHeader } from './prepared';
 import { BoardplotThemeContext } from './themeContext';
@@ -27,7 +30,7 @@ import { AUTHORED_TYPE_SIZE } from '../core/text';
  * snapshot's key matches it, so hydration draws the server's chart while the
  * checks load in the background.
  */
-export function useResolvedChartRequest(input: ChartRequest, context: RequestContext = {}, prepared?: PreparedHeader, linked: readonly DeferredName[] = [], idle = false, registrations?: number) {
+export function useResolvedChartRequest(input: ChartRequest, context: RequestContext = {}, prepared?: PreparedHeader, linked: readonly DeferredName[] = [], idle = false, registrations?: number, tableFrame?: BaseOptions['size']) {
   const provider = useContext(BoardplotThemeContext);
   const options = useStableValue(input.options ?? {});
   const request = useStableValue({ ...input, options });
@@ -48,7 +51,16 @@ export function useResolvedChartRequest(input: ChartRequest, context: RequestCon
     // memo recompute once the module a failed resolve asked for has landed.
   }, [request, inherited, revision, prepared?.theme, prepared?.requestKey, linked, idle, registrations]);
   useDeferredModule(attempt.seeded ? 'theme-rules' : undefined);
-  const resolved = attempt.resolved;
+  // The compiled table's request reads formats, annotations and warnings before the live grid uses its frame.
+  // Each frame gets its own warnings because a listener can keep and edit them.
+  const resolved = useMemo(() => {
+    const seed = attempt.resolved;
+    if (seed === undefined || tableFrame === undefined) return seed;
+    const { sizePx, fixed } = resolveTargetSize(seed.target, tableFrame);
+    const options = Object.assign(Object.create(Object.getPrototypeOf(seed.options)) as typeof seed.options, seed.options, { size: tableFrame });
+    return { ...seed, options, size: sizePx, fixed,
+      ...(seed.inputWarnings && { inputWarnings: copyPlannedValue(seed.inputWarnings) }) };
+  }, [attempt.resolved, tableFrame]);
   // The hooks below stay unconditional, and read nothing while there is no
   // request: their keys are stable placeholders that nothing is drawn from.
   const { theme: _theme, locale: _locale, ...layoutOptions } = resolved?.options ?? ({} as Partial<ResolvedChartRequest['options']>);
