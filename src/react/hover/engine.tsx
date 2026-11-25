@@ -16,6 +16,7 @@ export { labelCardGeometry } from './labelCard';
 export { keyboardOrder, keyboardReading, keyboardSelection, keyboardStep } from './keyboard';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { ResolvedChartRequest } from '../../core/request';
+import type { Id, OwnerRef } from '../../core/types/cell';
 import type { OccupiedRect } from '../../core/types/scene';
 import type { ResolvedColumn, ResolvedTable } from '../../core/types/table';
 import type { Theme } from '../../core/types/theme';
@@ -198,10 +199,27 @@ export function hoverModel(request: ResolvedChartRequest, geometry: RenderGeomet
 function hoverOccupied(model: HoverModel, geometry: RenderGeometry) {
   const occupied = model.placement?.occupied ?? (isFullGeometry(geometry) ? geometry.debug.occupied : []);
   const markIds = new Set(model.records.flatMap(record => record.nodeIds));
-  const filled = geometry.scene.filter(node => markIds.has(node.id) && (node.t === 'image'
-    || ((node.t === 'rect' || node.t === 'path') && (node.fill || node.pattern)))
-    && !/marker/i.test(node.part ?? ''));
-  return occupied.map(item => ({ ...item, filled: filled.some(node => ownerContains(item.owner, node.owner)) }));
+  const owners = new Map<keyof OwnerRef, Map<Id | undefined, OwnerRef[]>>();
+  for (const node of geometry.scene) {
+    if (!markIds.has(node.id) || !(node.t === 'image' || ((node.t === 'rect' || node.t === 'path') && (node.fill || node.pattern)))
+      || /marker/i.test(node.part ?? '')) continue;
+    // A match must agree on this field before any other owner fields matter.
+    const key = (Object.keys(node.owner) as (keyof OwnerRef)[]).at(-1);
+    if (key === undefined) continue;
+    let byId = owners.get(key);
+    if (byId === undefined) owners.set(key, byId = new Map());
+    const id = node.owner[key];
+    const group = byId.get(id);
+    if (group === undefined) byId.set(id, [node.owner]);
+    else group.push(node.owner);
+  }
+  const filled = (owner: OwnerRef) => {
+    for (const [key, byId] of owners) {
+      if (byId.get(owner[key])?.some(required => ownerContains(owner, required))) return true;
+    }
+    return false;
+  };
+  return occupied.map(item => ({ ...item, filled: filled(item.owner) }));
 }
 
 /** Forced-colors and contrast rules for the hover outline and card. */
