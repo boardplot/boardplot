@@ -8,7 +8,8 @@ Consulting-grade charts from a DataFrame. The package runs Boardplot's own JavaS
 git clone https://github.com/boardplot/boardplot.git && cd boardplot
 npm ci
 node python/js/build.mjs                     # writes python/src/boardplot/_assets/ and _version.py
-cd python && pip install build && python -m build --wheel
+cd python && python -m venv .venv && source .venv/bin/activate   # a system Python may refuse pip installs
+pip install build && python -m build --wheel
 pip install dist/boardplot-*.whl
 ```
 
