@@ -12,6 +12,8 @@ import { cardFigures, compileDimSwitch, selectedPeriodRecords, periodCardTail, p
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
+import { defaultMeasurer } from '../../text';
+import { isExactExample, parseFormatExample, unitOfSpec, withChartFormats } from '../../formatSpec';
 import { checkedTightAdvice } from '../tableFit';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { retiredSettings } from './retired';
@@ -225,7 +227,8 @@ function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: 
   const regular={...options,[REGULAR_SPACING]:true} as DimSwitchOptions;
   const card=(hide:number)=>tryCard(data,regular,hide,forms);
   const steps=options.belowMinimum !== 'refuse';
-  const latest=steps && !openWidth && periods>PROBE_PERIODS ? latestThatFit(card,periods) : undefined;
+  const latest=steps && !openWidth && periods>PROBE_PERIODS
+    ? narrowPeriodBracket(data, regular, periods, card, forms) ?? latestThatFit(card,periods) : undefined;
   // measure()'s width search asks whether the full table draws: where the latest 16, 32 ... periods alone miss, it cannot.
   if (!latest && !openWidth && isWidthProbe('dimswitch',options)) for (let shown=PROBE_PERIODS; shown<periods; shown*=2) {
     const latestOnly=card(periods-shown);
@@ -310,6 +313,49 @@ function mostShown(card: (hide: number) => CardTrial, periods: number, missed: {
     bisect=guessed && hi.shown-(lo?.shown ?? 0)>before/2;
   }
   return lo ?? {shown:0,geometry:card(periods)};
+}
+
+/** Below the dense-head threshold, a period-only card with fixed row formats adds
+ * independent value tracks. The five-period miss also excludes the original
+ * sixteen-period opening. Other cards retain the ordinary search. */
+function narrowPeriodBracket(data: DimSwitchData, options: DimSwitchOptions, periods: number,
+  card: (hide: number) => CardTrial, forms: FoldForms): ReturnType<typeof mostShown> | undefined {
+  const size = options.size;
+  if (forms.wider || typeof size !== 'object' || size.width === undefined || size.width >= 480 ||
+    (size.height !== undefined && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false) ||
+    (options.measure !== undefined && options.measure !== defaultMeasurer) || (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE] ||
+    options.columnVisibility?.range !== false || options.columnVisibility?.pp !== false ||
+    (data.periods.some(p => p.kind === 'plan') && options.columnVisibility.pl !== false) ||
+    options.columnHeads === false || options.notes?.show?.length !== 0 || options.footnotes ||
+    options.magnitude || options.encodings || options.highlight || options.sort || options.format || options.unit ||
+    options.inlineVisibility?.change !== false || options.rowVisibility || options.columnOverrides ||
+    options.bars === false || data.dimension.sums || data.periods.some(p => p.partial) ||
+    data.measures.some(m => m.drivers || m.partOf || m.result || m.sign !== undefined || m.judge?.family === 'effect')) return;
+  // The latest period keeps the same inline rows across every nonempty card.
+  const eligible = hostPeriods(data, options);
+  // An earlier period with a reserved or repeated id can make the original opening refuse.
+  if (new Set(data.periods.map(p => p.id)).size !== data.periods.length
+    || eligible.some(p => p.id === 'label' || p.id === 'range' || p.id === 'pp' || p.id === 'pl')) return;
+  const last = eligible.at(-1)!;
+  if (!data.facts.some(f => f.periodId === last.id && f.ref)) return;
+  const shown = 5;
+  const first = card(periods - shown);
+  if (fixedFits(first)) return;
+  const prepared = forms.prepared.get(`true:${periods - shown}`);
+  if (!prepared) return;
+  const { compiled, resolved } = prepared;
+  if (resolved.lifted || resolved.warnings.length || resolved.table.footnotes.length ||
+    compiled.warnings.some(w => w.code !== 'dimswitch-measure-omitted')) return;
+  const omitted = new Set(compiled.omissions.map(o => o.labelId));
+  if (!withChartFormats(compiled.options, () => data.measures.every(m => {
+    if (omitted.has('measure:' + m.id)) return true;
+    if (m.format === undefined || m.scale === 'money' || m.scale === 'perUnit' || !isExactExample(m.format)) return false;
+    const spec = parseFormatExample(m.format, true);
+    return spec.magnitude === 'none' && unitOfSpec(spec) === null;
+  }))) return;
+  const selected = mostShown(card, periods, { shown, geometry: first });
+  // A successful projection verifies the retained periods' cells and rows use independent formats.
+  if (selected.shown > 0 && forms.projections?.has(periods - selected.shown)) return selected;
 }
 
 /** Probe recent periods in doubling groups. The first miss supplies the search bracket. */

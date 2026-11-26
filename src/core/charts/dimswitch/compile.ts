@@ -584,7 +584,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return sum === undefined ? (p.sign === -1 ? { op: 'mul', a: -1, b: term } : term) : { op: p.sign === -1 ? 'sub' : 'add', a: sum, b: term };
   }, undefined)!;
   const exprOf = (m: DimSwitchMeasure) => valueOf(m.id);
-  for (const m of data.measures) exprOf(m);
+  const measureFields = new Map(data.measures.map(m => [m, fields(exprOf(m))]));
 
   const sourceFacts = requestMemo(data, 'dimswitch:source-facts', () => new Map(data.facts.map(f => [key(f.memberId, f.periodId), {
     ...f, sums: Object.setPrototypeOf({ ...f.sums }, null) as DimSwitchSums,
@@ -592,7 +592,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }])));
   // Each partition replaces its derived parent entries. The original facts stay available to other forms.
   const facts = data.dimension.sums ? new Map(sourceFacts) : sourceFacts;
-  const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
+  const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => measureFields.get(m)!));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
   // The members' receipts name the same source column for a period, window and field.
@@ -668,13 +668,13 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return byPeriod.get(period);
   };
   const sums = (member:string, period:string) => factOf(member,period)?.sums;
-  const has = (m: DimSwitchMeasure, member:string) => fields(exprOf(m)).every(field=>available.get(member)?.has(field));
+  const has = (m: DimSwitchMeasure, member:string) => measureFields.get(m)!.every(field=>available.get(member)?.has(field));
   const omissions: CompiledDimSwitch['omissions'] = [];
   // A measure the Total lacks is left out everywhere, so both variants show the same measures. A statement line never leaves: it prints missing.
   const applies = (m: DimSwitchMeasure, member:string) => {
     if (inStatement(m)) return true;
     if (!has(m, data.dimension.total.id)) {
-      const field = fields(exprOf(m)).find(f => !available.get(data.dimension.total.id)?.has(f))!;
+      const field = measureFields.get(m)!.find(f => !available.get(data.dimension.total.id)?.has(f))!;
       if (!omissions.some(o => o.labelId === `measure:${m.id}`)) omissions.push({ labelId: `measure:${m.id}`, text: m.label, reason: 'no-number', destination: 'reading.omissions' });
       warn('dimswitch-measure-omitted', m.id, `Measure '${m.id}' is left out of the table: the Total has no number for field '${field}'${data.dimension.sums ? ', and no member has one' : ''}. Check the field name in facts[].sums and in the measure value, or declare it in dimension.total.fields to keep the measure with a missing Total.`);
       return false;
@@ -844,6 +844,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     if (line) return line;
     const levels: number[] = [], relative: (number | null)[] = [], point: (number | null)[] = [];
     const ownFormat = m.format === undefined && m.unit === undefined, expr = exprOf(m);
+    const relativeChange = m.change !== 'pp' && m.change !== 'absolute';
+    const needsChange = relativeChange || ownFormat;
     const own = factsInOrder(member), totals = factsInOrder(totalId);
     for (let i = 0; i < authoredPeriods.length; i++) {
       const values = cachedPeriods?.[i];
@@ -851,18 +853,18 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       const current = values?.current ?? evaluate(expr, fact?.sums, total?.sums);
       if (current.raw !== null) levels.push(current.raw);
       let delta: number | null = null;
-      if (withRef.has(authoredPeriods[i]!.id)) {
+      if (needsChange && withRef.has(authoredPeriods[i]!.id)) {
         delta = values ? values.delta.raw : change(current, evaluate(expr, fact?.ref, total?.ref), m.change, m.format, decimalsOf).raw;
       }
       // An absolute change without a format joins the levels' set. A relative change is cleaned of float noise, as a drawn one is below.
       if (delta !== null && m.change === 'absolute' && ownFormat) levels.push(delta);
-      let cleaned = null;
-      if (delta !== null && m.change !== 'pp' && m.change !== 'absolute') {
-        const drawn = i >= hidden.length ? changes[authoredPeriods[i]!.id] : undefined;
-        cleaned = drawn && typeof drawn === 'object' && typeof drawn.v === 'number' ? drawn.v : Number(delta.toPrecision(12));
+      if (relativeChange) {
+        const drawn = delta !== null && i >= hidden.length ? changes[authoredPeriods[i]!.id] : undefined;
+        relative.push(delta === null ? null : drawn && typeof drawn === 'object' && typeof drawn.v === 'number'
+          ? drawn.v : Number(delta.toPrecision(12)));
+      } else if (m.change === 'pp' && ownFormat) {
+        point.push(delta);
       }
-      relative.push(cleaned);
-      point.push(delta !== null && m.change === 'pp' && ownFormat ? delta : null);
     }
     line = { levels: fixedNumbers(levels), relative, point };
     shared!.lines.set(id, line);
@@ -904,7 +906,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       values.set(col,current);
       // Bands judge the level. A change judgement colours the change it judged, never the level.
       if (comparisonKind!=='plan' && (!p.kind || rangeDrawn)) {
-        const levelJudgement=m.bands ? judgeBand(m,current,[currentSums,...(usesTotal(exprOf(m)) ? [total] : [])],p.partial === true,options) : NEUTRAL;
+        const levelJudgement=m.bands ? judgeBand(m,current,[currentSums,...(needsTotal ? [total] : [])],p.partial === true,options) : NEUTRAL;
         cells[col]=cell(current,levelJudgement);
         if (!deferred) record(id,col,m,member,p.id,current,receiptPeriod);
       }
