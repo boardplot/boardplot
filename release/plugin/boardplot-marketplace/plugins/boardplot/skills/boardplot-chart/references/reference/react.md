@@ -589,7 +589,7 @@ A static output (SVG, PNG, the CLI and `export`) draws one step without buttons:
 
 ## Export
 
-`boardplot/react/export` writes files from the canonical geometry, not from the live DOM. `useExport()` returns `svg()`, `png(scale = 2)`, `csv()`, `copyImage()` and `copyData()`; the same functions exist standalone as `exportSvg`, `exportPng`, `exportCsv`, `copyImage` and `copyData`. Each resolves to `{ ok: true, artifact: { format, bytes, text, mediaType, filename }, document, receipt }` or `{ ok: false, code, message }`. The entry links no chart engine: each call loads the engine and schemas of the type it exports.
+`boardplot/react/export` writes files from the canonical geometry, not from the live DOM. `useExport()` returns `svg()`, `png(scale = 2)`, `csv()`, `copyImage()` and `copyData()`; the same functions exist standalone as `exportSvg`, `exportPng(input, scale)`, `exportCsv`, `copyImage` and `copyData`; the standalone `exportPng` needs its `scale`. Each resolves to `{ ok: true, artifact: { format, bytes, text, mediaType, filename }, document, receipt }` or `{ ok: false, code, message }`. The entry links no chart engine: each call loads the engine and schemas of the type it exports.
 
 Call `downloadSvg()`, `downloadPng(scale = 2)` or `downloadCsv()` on the handle to export and request a browser download. Each returns the export result so you can display a failure. Without a browser document the download returns `code: 'unsupported'`. Use `downloadArtifact(result)` to download a result you already exported, for example from a toolbar outside React.
 
