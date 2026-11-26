@@ -937,16 +937,20 @@ const axisTests = new WeakMap<object, Map<boolean, AxisHeightTest>>();
 function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?: ColumnStaircaseMemo): void {
   const { options, size } = domain;
   const floor = options.size && typeof options.size === 'object' && columnMidpointFloor.get(options.size);
-  if ((!floor && !memo?.heightAxes && !memo?.growthTrial) || !staircaseShortOnHeight(options) || !memo?.plotAtPad
-    || !area.showCatRow || options.mode === 'compact' || panelTypeClass(options) !== undefined
+  const compact = options.mode === 'compact';
+  // A compact size can use a different theme or content at another height.
+  // Only reject its current midpoint after measuring the actual frame and row.
+  if ((compact ? !floor || !hasCompleteTextWidths(domain.measure) : !floor && !memo?.heightAxes && !memo?.growthTrial)
+    || !staircaseShortOnHeight(options) || !memo?.plotAtPad
+    || !area.showCatRow || panelTypeClass(options) !== undefined
     || domain.variant !== 'stacked' || domain.activeBreak || domain.anomaly || domain.annList.length
     || domain.refSeries.length || domain.netLineOn || domain.ribbonsOn || domain.connectorsOn || area.tier
     || domain.cats.some(c => c.partial || c.footnote !== undefined) || domain.dataSeries.some(s => s.vals.some(v => v.range))
     || options.seriesLabels !== undefined || kindSetting(options, 'segment') !== false
-    || options.notes !== undefined || options.footnotes !== undefined || staticFrame.pinned || staticFrame.live
-    || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
+    || options.notes !== undefined || (options.footnotes !== undefined && !(compact && Array.isArray(options.footnotes) && options.footnotes.length === 0))
+    || staticFrame.pinned || staticFrame.live || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
     || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
-  if (memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
+  if (!compact && memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
     const search = columnHeightSearch.get(options.size);
     if (search) {
       if (!options.valueAxis?.show && memo.upperTrial) search.upperTrial = memo.upperTrial;
@@ -968,7 +972,7 @@ function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?
   }
   // Plain fallback rows keep this plot when the label solver hides a value. The
   // non-live default frame lists generated disclosures outside the source footer.
-  if (memo.growthTrial && memo.plotHeightAt && !staticFrame.live && !domain.averageMarker && !domain.pyRef
+  if (!compact && memo.growthTrial && memo.plotHeightAt && !staticFrame.live && !domain.averageMarker && !domain.pyRef
     && !domain.incompleteCats.size && !area.frame.deficit && !options.labelOffsets && !options.labelPlacements
     && !plotChromeFloor.has(area.frame.frame)) {
     const frame = area.frame.frame;
