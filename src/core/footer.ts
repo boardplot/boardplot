@@ -85,7 +85,11 @@ export const slotDemandHeight = new WeakSet<FrameGeometry>();
 
 /** Keep the static footer plan, the freed room and the part need when layout copies its frame. */
 export function copyFrame(frame: FrameGeometry, patch?: Partial<FrameGeometry>): FrameGeometry {
-  const copy = { ...frame, ...patch };
+  return retainFrameState(frame, { ...frame, ...patch });
+}
+
+/** Keep chart-owned measurements when the footer is solved again on the same canvas. */
+export function retainFrameState(frame: FrameGeometry, copy: FrameGeometry): FrameGeometry {
   const storyFit = storyFrameFit.get(frame);
   if (storyFit) storyFrameFit.set(copy, storyFit);
   const plan = footerPlans.get(frame);

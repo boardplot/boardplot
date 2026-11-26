@@ -8,6 +8,7 @@ import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
  */
 
 import { drawnStroke } from '../../curve';
+import { linePlans } from './marks';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { sideAwayFrom, type Rect } from '../../geometry';
@@ -522,6 +523,39 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
   pushAll(requests, yearRowRequests(catPlan, area.catRowY + 6));
 }
 
+function appendEndpointRequests(
+  env: ComboEnv, domain: ComboDomain, area: ComboArea, plans: ComboMarkGeometry['plans'], requests: LabelRequest[],
+  strokes: readonly PolylineQueries[], fills: readonly Rect[], segmentSeats: readonly Rect[], totalSeats: readonly Rect[],
+): void {
+  const { frame, labelFont, band } = area;
+  const rightAxisActive = domain.rightTicks.length > 0;
+  for (const { s, pts } of plans) {
+    for (const endpoint of [
+      { point: pts[pts.length - 1]!, end: area.last.get(s.id), first: false },
+      { point: pts[0]!, end: area.first.get(s.id), first: true },
+    ]) {
+      if (endpoint.end === undefined) continue;
+      requests.push(comboEndpointRequest({ s, last: endpoint.point, lastCat: domain.cats[endpoint.point.ci]!,
+        text: endpoint.end.text, ...(endpoint.end.shows ? { shows: endpoint.end.shows } : {}), labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
+        adjacentAxisActive: endpoint.first ? domain.showPrimaryAxis : rightAxisActive, highlights: env.highlights, first: endpoint.first, firstBelowTotals: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
+        sharesOnColumns: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
+        allowOnColumn: !domain.lineBand,
+        bounds: s.kind === 'line' && (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] !== true ? { x0: area.plot.x, x1: area.plot.x + area.plot.w, y0: area.plot.y, y1: area.plot.y + area.plot.h } : { x0: frame.plot.x, x1: frame.plot.x + frame.plot.w }, strokes, fills, segmentSeats, totalSeats, anatomy: domain.anatomy }));
+    }
+  }
+}
+
+/** Without marks or occupied seats, the Pareto's possible curve seats include every seat the final solver can use. */
+export function paretoCurveFitsWithoutGutters(env: ComboEnv, domain: ComboDomain, area: ComboArea): boolean {
+  const plans = linePlans(domain, area);
+  const requests: LabelRequest[] = [];
+  appendEndpointRequests(env, domain, area, plans, requests, [], [], [], []);
+  linePointLabels(env, domain, area, { plans }, requests, [], []);
+  return requests.every(request => request.candidates.every(({ rect }) =>
+    (!area.gutters.first || rect.x >= area.plot.x - 0.5)
+    && (!area.gutters.last || rect.x + rect.w <= area.plot.x + area.plot.w + 0.5)));
+}
+
 /**
  * A combo line's interior points. An authored `label` string is drawn
  * where it was written in every mode; `valueLabels: 'all'` adds the value of
@@ -531,7 +565,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
  * where the other lines leave more air there, and never nearer
  * another line than its own.
  */
-function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: ComboMarkGeometry, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
+function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: Pick<ComboMarkGeometry, 'plans'>, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
   const { labelFont, frame } = area;
   const labelH = env.measure('0', labelFont).height;
   const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
@@ -677,7 +711,7 @@ export function planComboLabels(
   warnings: LintWarning[],
   probeEndpoints?: (requests: LabelRequest[]) => boolean,
 ): LabelRequest[] | undefined {
-  const { frame, labelFont, band } = area;
+  const { frame, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
   // Each authored title sits over its own tick column.
   const anchored = anchorComboAxisTitles(area.axisTitles, {
@@ -739,21 +773,7 @@ export function planComboLabels(
   // End labels leave the total's first seat clear before the solver ranks them.
   const totalSeats = requests.flatMap((r) =>
     r.kind === 'grandTotal' && !r.redundant && r.candidates[0] ? [r.candidates[0].rect] : []);
-  // first and last drawable line labels
-  for (const { s, pts } of geometry.plans) {
-    for (const endpoint of [
-      { point: pts[pts.length - 1]!, end: area.last.get(s.id), first: false },
-      { point: pts[0]!, end: area.first.get(s.id), first: true },
-    ]) {
-      if (endpoint.end === undefined) continue;
-      requests.push(comboEndpointRequest({ s, last: endpoint.point, lastCat: domain.cats[endpoint.point.ci]!,
-        text: endpoint.end.text, ...(endpoint.end.shows ? { shows: endpoint.end.shows } : {}), labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
-        adjacentAxisActive: endpoint.first ? domain.showPrimaryAxis : rightAxisActive, highlights: env.highlights, first: endpoint.first, firstBelowTotals: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
-        sharesOnColumns: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
-        allowOnColumn: !domain.lineBand,
-        bounds: s.kind === 'line' && (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] !== true ? { x0: area.plot.x, x1: area.plot.x + area.plot.w, y0: area.plot.y, y1: area.plot.y + area.plot.h } : { x0: frame.plot.x, x1: frame.plot.x + frame.plot.w }, strokes, fills, segmentSeats, totalSeats, anatomy: domain.anatomy }));
-    }
-  }
+  appendEndpointRequests(env, domain, area, geometry.plans, requests, strokes, fills, segmentSeats, totalSeats);
   const interiorAt = requests.length;
   if (!probeEndpoints) linePointLabels(env, domain, area, geometry, requests, strokes, fills);
   // A value may sit on an area where it clears that fill's edges by the solver's pad; another series' value keeps off a shaded one.

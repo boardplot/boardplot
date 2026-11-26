@@ -1,5 +1,6 @@
 import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
-import { copyFrame } from '../../footer';
+import { copyFrame, footerPlans, retainFrameState, staticFrame } from '../../footer';
+import { hasBold } from '../../inlineBold';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/combo';
@@ -59,7 +60,7 @@ import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
-import { rankKeyShown } from '../../notes';
+import { engineNoteMeta, rankKeyShown } from '../../notes';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import { bandSizing } from '../../sizing';
@@ -70,13 +71,13 @@ import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode, S
 import { applyComboAxisTitlePaint, comboAxisTitleSwatches } from './axisTitles';
 import { resolveComboDomain, resolveComboEnv, totalColumn, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, INSIDE_ENDPOINT_IDS, insideEndpointGutters, unusedEndpointGutters, type EndpointGutters } from './endpoints';
-import { applyGrowthInk, planComboLabels } from './labels';
+import { applyGrowthInk, paretoCurveFitsWithoutGutters, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
 import { comboPaints, contentOf, comboPlotArea, drawComboFrame, eventFrameHeights, prepareComboFrame, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
+import { collectFrameClaims, solveFrame, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -389,6 +390,26 @@ const CATEGORY_NOTED = Symbol('categoryNoted');
 const UNPRINTED = Symbol('unprintedValues');
 interface Unprinted { named: Map<string, [number, string]>; runs: number }
 
+/** A hidden Pareto value can go straight into the notes list when it takes no space.
+ * Run the real frame again so note fitting, numbering and export use the same plan. */
+function refreshParetoListNote(geo: Geometry<ComboMarks, ComboDerived>, before: ComboOptions, after: ComboOptions): boolean {
+  const input = footerPlans.get(geo.frame);
+  if (!input || staticFrame.live || staticFrame.pinned || input.footnotesOff || input.notes || input.pointedNotes
+    || input.numberedFootnotes?.length || input[COLLECT_IDENTITIES] || !hasCompleteTextWidths(input.measure)) return false;
+  const previous = authoredNotes(before);
+  const notes = authoredNotes(after);
+  if (notes.length !== 1 || engineNoteMeta(notes[0]!)?.kind !== 'disclosure' || hasBold(notes[0]!)
+    || previous.length > 1 || previous.some(note => engineNoteMeta(note)?.kind !== 'disclosure' || hasBold(note))
+    || previous.length !== (input.footnotes?.length ?? 0)
+    || previous.some((note, i) => note !== input.footnotes![i])) return false;
+  const updated = solveFrame({ ...input, footnotes: notes }, collectFrameClaims([])).frame;
+  if (!updated.notes || updated.noteList?.some(entry => entry.kind === 'disclosure' && entry.inFrame)) return false;
+  // Start with the resolved frame so the public note fields keep their order in JSON.
+  geo.frame = retainFrameState(geo.frame, { ...updated, ...geo.frame, notes: updated.notes, noteList: updated.noteList });
+  footerPlans.set(geo.frame, footerPlans.get(updated)!);
+  return true;
+}
+
 export function layoutCombo(
   data: ChartData,
   options: ComboOptions = {},
@@ -417,7 +438,7 @@ export function layoutCombo(
     }
     delete (geometry as { [BAND_PAD]?: number })[BAND_PAD];
     return geometry;
-  });
+  }, (base as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] ? refreshParetoListNote : undefined);
   // The final footer pass counts density omissions after sizing. Its note
   // must not send the chart through a different value-label selection.
   return Object.assign(geo, { [DEFER_DENSITY_NOTES]: true });
@@ -551,6 +572,7 @@ function layoutComboFramePass(
   noteMarks?: ComboNoteMarks,
 ): Geometry<ComboMarks, ComboDerived> {
   const warnings = [...domainWarnings];
+  const canRetainGutterFrame = domain.options === options && !domain.withLineBandClearance;
   const { size } = env;
   const hasEvents = domain.options.annotations?.some(annotation => annotation.kind === 'event');
   // With one column, its total has no segment replacement. A total locked into the
@@ -666,6 +688,21 @@ function layoutComboFramePass(
     const current = authoredNotes(options).filter((note) => !printed.includes(note));
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
+  }
+  // A Pareto share cannot fill a gutter if all its candidates stay on the plot, even before collision checks.
+  // Keep the full trial if an earlier sizing retry, authored move or annotation can change that decision.
+  if (!gutterOverride && (area.gutters.first > 0 || area.gutters.last > 0)
+    && (options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS]
+    && hasCompleteTextWidths(env.measure) && !(COLLECT_IDENTITIES in options)
+    && !Object.keys(options.labelOffsets ?? {}).length && area.stairTop === undefined
+    && (domain.showPrimaryAxis || domain.options.valueAxis?.show !== undefined) && !domain.running.size
+    && !domain.anatomy && !domain.anomaly && domain.lines.length === 1 && domain.lines[0]!.kind === 'line'
+    && domain.options.annotations?.every(annotation => annotation.kind === 'valueLine')
+    && paretoCurveFitsWithoutGutters(env, domain, area)) {
+    const gutters = { first: 0, last: 0 };
+    // A viewport, average marker or refitted scale can change the options or warnings on the next pass.
+    if (canRetainGutterFrame) return layoutComboFramePass(data, domain.options, gutters, env, domain, paints, domainWarnings, frameSeed);
+    return layoutComboPass(data, domain.options, gutters);
   }
   const trialOptions = options as ComboNoteTrialOptions;
   const bandTrial = trialOptions[BAND_NOTE_TRIAL] && !noteMarks && !gutterOverride && !noted && !(UNPRINTED in options) && TOTALS_AXIS in options

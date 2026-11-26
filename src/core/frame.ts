@@ -1219,6 +1219,7 @@ export function dataOrder(data: unknown, labels: readonly PlacedLabel[], annotat
  */
 export function withDensityNotes<O extends BaseOptions, M extends object, D extends object>(
   data: unknown, options: O, layout: (options: O) => LayoutResult<M, D>,
+  clearer?: (first: Geometry<M, D>, owed: ReadonlyMap<Id, string>) => LayoutResult<M, D> | undefined,
 ): LayoutResult<M, D> {
   const first = layout({ ...options, [VALUE_SELECTION]: true });
   if (first.refused || !(first as Geometry & { [DEFER_DENSITY_NOTES]?: boolean })[DEFER_DENSITY_NOTES]
@@ -1228,6 +1229,8 @@ export function withDensityNotes<O extends BaseOptions, M extends object, D exte
   const density = new Map(labels.flatMap(label => label.hidden === 'density' && ['point', 'grandTotal'].includes(label.kind)
     && owed.has(label.id) ? [[label.id, owed.get(label.id)!] as const] : []));
   if (density.size === 0) return first;
+  const alternative = clearer?.(first, density);
+  if (alternative) return alternative;
   // Merge earlier collision notes and deferred density values before the one cap.
   for (const [id, text] of owed) density.set(id, text);
   const fixed = resolveTargetSize(options.target ?? 'report', options.size).fixed.height;

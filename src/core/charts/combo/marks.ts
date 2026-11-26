@@ -242,7 +242,7 @@ function pathFor(points: readonly { x: number; y: number }[], interpolation: Lin
 }
 
 /** Each line series' points and drawable runs; a series with no plotted point is dropped. */
-function linePlans(domain: ComboDomain, area: ComboArea): LinePlan[] {
+export function linePlans(domain: ComboDomain, area: ComboArea): LinePlan[] {
   const { cats, secondaryActive } = domain;
   return domain.lines
     .map((s, li) => {
