@@ -620,7 +620,7 @@ function sweepStrippedOptionKeys(
     const parent = keyPath.slice(0, -1);
     const field = [...source.segments, ...keyPath];
     // A type that switches its own orientation through another option (waterfall: variant) names that option below.
-    const orientation = known || switchedOption(schema, parent, key, expectedObjectKeys(schema, parent), valueAtPath(authored, keyPath))
+    const orientation = known || type === 'waterfall' || switchedOption(schema, parent, key, expectedObjectKeys(schema, parent), valueAtPath(authored, keyPath))
       ? undefined : orientationOptionAdvice(keyPath);
     if (orientation) {
       envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
@@ -879,7 +879,7 @@ function unknownKeyText(
     return { message, suggest, ...(fix ? { fix } : {}) };
   }
   const switched = switchedOption(schema, path.slice(0, -1), key, known, valueAtPath(authored, path));
-  const orientation = switched || optionsType === undefined ? undefined : orientationOptionAdvice(path);
+  const orientation = switched || optionsType === undefined || optionsType === 'waterfall' ? undefined : orientationOptionAdvice(path);
   if (orientation) return orientation;
   if (switched) {
     const parent = source?.same ? source.parent : undefined;

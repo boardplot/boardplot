@@ -860,7 +860,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         reportLabelOmissions(geo, options, data);
         const sourceId = geo.frame?.sourceNodeId;
         const source = options?.source;
-        const fallback = sourceId && source ? englishSourceFallback(options) : undefined;
+        // diagram and creative take no options.strings, so the author has no way to replace the word there.
+        const fallback = sourceId && source && def.type !== 'diagram' && def.type !== 'creative' ? englishSourceFallback(options) : undefined;
         if (fallback && source && sourceLine(source, fallback.word) !== source) {
           const { word, language } = fallback;
           const node = geo.scene.find(item => item.id === sourceId);
@@ -869,10 +870,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             && !geo.warnings.some(warning => warning.code === 'mixed-language' && warning.message === message)) {
             geo.warnings = [...geo.warnings, {
               code: 'mixed-language', severity: 'warn', field: ['options', 'source'], message,
-              // diagram and creative take no options.strings, so the source text carries its own word there.
-              suggest: def.type === 'diagram' || def.type === 'creative'
-                ? "Start options.source with the word to print, written in the chart's language."
-                : 'Set options.strings.source to the word to print.',
+              suggest: 'Set options.strings.source to the word to print.',
             }];
           }
         }
