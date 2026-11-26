@@ -13,6 +13,7 @@ import type { ChartRequest, RequestOptions } from '../core/request';
 import type { Annotation } from '../core/types/annotations';
 import { withAnnotationOrigins } from '../core/annotationOrigin';
 import type { Id } from '../core/types/cell';
+import type { DataInput } from '../core/types/dataInput';
 import type { Geometry, LintWarning } from '../core/types/scene';
 import type { OptionsInput } from '../core/types/optionInput';
 import type { RenderTarget } from '../core/types/options';
@@ -159,7 +160,7 @@ type ChartHostProps = PerTypeSizeOptions & RefusalProps & EmptyProps & {
  * (`boardplot/rows` documents the roles); `data` is then the template.
  */
 export type ChartDataProps<D> =
-  | { data: D; rows?: undefined; columns?: undefined; onRowsReading?: undefined }
+  | { data: DataInput<D>; rows?: undefined; columns?: undefined; onRowsReading?: undefined }
   | (Required<Pick<RowsProps, 'rows' | 'columns'>> & Pick<RowsProps, 'onRowsReading'> & { data?: Partial<D> });
 
 /** Grid's own `rows` and `columns` options lay out its panels; a grid takes no rows mapping. */

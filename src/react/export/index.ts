@@ -16,6 +16,7 @@ export { exportSvg } from './svg';
 export { exportCsv } from './csv';
 export { exportPng } from './png';
 export { copyImage, copyData } from './clipboard';
+export { downloadArtifact } from './download';
 export type {
   ArtifactBytesReceipt,
   ExportArtifact,

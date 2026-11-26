@@ -22,6 +22,7 @@ import { footerNodeIds, footerNodes, type FooterFrame } from './footerFrame';
 import type { Theme } from '../core/types/theme';
 import type { RenderGeometry } from './prepared';
 import { useScopedId } from './idPrefix';
+import { safeHref } from './safeHref';
 
 /**
  * The one place the footer reads its type: the small role as the layout drew
@@ -40,7 +41,9 @@ function linked(text: string, links: readonly CreditLink[] | undefined): ReactNo
   for (const link of links ?? []) {
     const at = text.indexOf(link.text);
     if (at < 0) continue;
-    parts.push(text.slice(0, at), <a key={parts.length} href={link.href} rel="noopener noreferrer" target="_blank" style={{ color: 'inherit' }}>{link.text}</a>);
+    const href = safeHref(link.href);
+    parts.push(text.slice(0, at), href === undefined ? link.text
+      : <a key={parts.length} href={href} rel="noopener noreferrer" target="_blank" style={{ color: 'inherit' }}>{link.text}</a>);
     text = text.slice(at + link.text.length);
   }
   return [...parts, text];
@@ -225,12 +228,12 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
  * link that wraps keeps its link on both lines.
  */
 function linkedLines(lines: readonly string[], text: string, links: readonly CreditLink[] | undefined): ReactNode[] {
-  const ranges: { from: number; to: number; href: string }[] = [];
+  const ranges: { from: number; to: number; href: string | undefined }[] = [];
   let from = 0;
   for (const link of links ?? []) {
     const at = text.indexOf(link.text, from);
     if (at < 0) continue;
-    ranges.push({ from: at, to: at + link.text.length, href: link.href });
+    ranges.push({ from: at, to: at + link.text.length, href: safeHref(link.href) });
     from = at + link.text.length;
   }
   let at = 0;
@@ -243,7 +246,9 @@ function linkedLines(lines: readonly string[], text: string, links: readonly Cre
       if (range.to <= cursor || range.from >= at) continue;
       if (range.from > cursor) parts.push(text.slice(cursor, range.from));
       const end = Math.min(range.to, at);
-      parts.push(<a key={`${i}-${range.from}`} href={range.href} rel="noopener noreferrer" target="_blank" style={{ color: 'inherit' }}>{text.slice(Math.max(cursor, range.from), end)}</a>);
+      const label = text.slice(Math.max(cursor, range.from), end);
+      parts.push(range.href === undefined ? label
+        : <a key={`${i}-${range.from}`} href={range.href} rel="noopener noreferrer" target="_blank" style={{ color: 'inherit' }}>{label}</a>);
       cursor = end;
     }
     if (cursor < at) parts.push(text.slice(cursor, at));

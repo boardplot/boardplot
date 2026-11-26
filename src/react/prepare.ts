@@ -9,6 +9,7 @@ import { sceneThemeBindings } from '../core/repaintGeometry';
 import { resolveChartRequest, planResolvedRequest, tableViewportFrame, measureResolvedRequest, type ChartRequest, type RequestInputOptions } from '../core/request';
 import type { TableData, TableOptions } from '../core/types/table';
 import type { ResolvedChartRequest } from '../core/request';
+import type { DataInput } from '../core/types/dataInput';
 import { loadChartTypes } from './loadChartTypes';
 import { requestChartTypes } from './parseChartSpec';
 import { containerFit, layoutContainerRequest } from './containerLayout';
@@ -29,7 +30,7 @@ linkAnnotateEngine();
 linkStoryLayer();
 
 export type PrepareChartRequest<D = unknown, O extends object = RequestInputOptions> =
-  (| (Omit<ChartRequest<D, O>, 'size'> & { rows?: undefined; columns?: undefined })
+  (| (Omit<ChartRequest<DataInput<D>, O>, 'size'> & { rows?: undefined; columns?: undefined })
    | (Omit<ChartRequest<D, O>, 'size' | 'data'> & { data?: Partial<D>; rows: NonNullable<RowsProps['rows']>; columns: RowsColumns }))
   & ContainerSizeOptions & { window?: LiveWindowOptions };
 

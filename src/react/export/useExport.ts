@@ -5,6 +5,7 @@ import { useBoardplotTheme } from '../themeContext';
 import { EXPORT_LINK, type DrawnChart, type ExportLink } from '../exportLink';
 import { copyData, copyImage } from './clipboard';
 import { exportCsv } from './csv';
+import { downloadExport } from './download';
 import { DRAWN, type DrawnExportInput } from './frame';
 import { exportPng } from './png';
 import { exportSvg } from './svg';
@@ -12,8 +13,11 @@ import type { ExportFailed, ExportInput, ExportResult } from './types';
 
 export interface UseExport extends ExportLink {
   svg(): Promise<ExportResult>;
-  png(scale: number): Promise<ExportResult>;
+  png(scale?: number): Promise<ExportResult>;
   csv(): Promise<ExportResult>;
+  downloadSvg(): Promise<ExportResult>;
+  downloadPng(scale?: number): Promise<ExportResult>;
+  downloadCsv(): Promise<ExportResult>;
   copyImage(): Promise<ExportResult>;
   copyData(): Promise<ExportResult>;
 }
@@ -44,14 +48,20 @@ export function useExport(input: ExportInput = {}): UseExport {
       const input = current();
       return 'ok' in input ? Promise.resolve(input) : format(input);
     };
+    const svg = run(exportSvg);
+    const png = (scale = 2) => run((input) => exportPng(input, scale))();
+    const csv = run(exportCsv);
     return {
       [EXPORT_LINK]: (owner: object, drawn: DrawnChart | undefined) => {
         if (drawn) charts.current.set(owner, drawn);
         else charts.current.delete(owner);
       },
-      svg: run(exportSvg),
-      png: (scale: number) => run((input) => exportPng(input, scale))(),
-      csv: run(exportCsv),
+      svg,
+      png,
+      csv,
+      downloadSvg: () => downloadExport('svg', svg),
+      downloadPng: (scale) => downloadExport('png', () => png(scale)),
+      downloadCsv: () => downloadExport('csv', csv),
       copyImage: run(copyImage),
       copyData: run(copyData),
     };

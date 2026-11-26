@@ -30,6 +30,7 @@ import { DataTableContext } from './hover/HoverSurface';
 import type { ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
 export type { ParsedChartSpec, BoardplotSpecSettings } from './specValidation';
+export type { BoardplotSpec } from '../core/types/specInput';
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
 export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps, EmptyProps, RowsProps {

@@ -1,5 +1,6 @@
 import { plainText } from '../core/inlineBold';
 import { inlineBold } from './ChartFooter';
+import { safeHref } from './safeHref';
 import type { EngineNoteMeta } from '../core/notes';
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
@@ -338,8 +339,6 @@ interface StyleEntry {
 
 /** Per document or shadow root: a style in `document.head` does not reach into a shadow tree. */
 const styleRegistry = new WeakMap<Node, Map<string, StyleEntry>>();
-/** The cell a heat-only grid draws: ground alone, 22 px wide. */
-const SAFE_HREF = /^(?:https?:\/\/|mailto:|#)/i;
 
 function encodeStructuralIds(ids: readonly Id[]): string {
   return `${ids.length}:${ids.map((id) => `${id.length}:${id}`).join('')}`;
@@ -3397,12 +3396,6 @@ function CellContent({
   const value = mark === undefined || mark === null ? drawn : <span className="bp-label-line">{mark}{drawn}</span>;
   if (!underLabel) return value;
   return <>{value}<span className="bp-note-line">{cell.note}</span></>;
-}
-
-function safeHref(href: string | undefined): string | undefined {
-  if (href === undefined) return undefined;
-  const trimmed = href.trim();
-  return SAFE_HREF.test(trimmed) ? trimmed : undefined;
 }
 
 function TableThemeStyle({ stylesheet, scope, nonce, freshMount }: { stylesheet: string; scope: string; nonce?: string; freshMount: boolean }): ReactElement | null {
