@@ -31,6 +31,7 @@ import type { ChartSizing } from '../../types/sizing';
 import type { Theme } from '../../types/theme';
 import { emitSparklineMarks, plotSparkline, sparklineDomain, sparkStyle, type SparklineStyle } from '../sparkline/layout';
 import { deriveCreativeFatigue, type CreativeFatigue } from './fatigue';
+import { creativeMetrics, NUMBER_COLUMNS, tablePlan, type NumberColumn, type TablePlan } from './tablePlan';
 import type { CreativeData, CreativeOptions } from './types';
 import { composedTextRole } from '../../textRole';
 import { pushAll } from '../../arrays';
@@ -45,10 +46,6 @@ export const creativeSizing: ChartSizing = { aspect: 'content', minWidth: 320, m
 const STACKED_BELOW = 640;
 const COLUMN_GAP = 28;
 const THREE_SPARK_H = 34;
-export const creativeMetrics = [
-  ['ctr', 'CTR', '%'], ['cpa', 'CPA', 'currency'], ['roas', 'ROAS', '×'],
-  ['hookRate', 'Hook rate', '%'], ['holdRate', 'Hold rate', '%'], ['frequency', 'Frequency', '×'],
-] as const;
 /** Which way is better per metric: 1 higher, -1 lower, 0 neither (frequency is context, not a goal). */
 const BETTER = { ctr: 1, cpa: -1, roas: 1, hookRate: 1, holdRate: 1, frequency: 0 } as const;
 /** `deltas`: the printed "vs median" change per metric, for the claims. */
@@ -244,28 +241,9 @@ function mediaCaption(data: CreativeData, options: CreativeOptions): string | un
 /** Air from a row's text box to its rule, and from the rule to the next row. */
 const ROW_RULE_GAP = 3;
 
-type NumberColumn = 'value' | 'median' | 'delta';
 type ColumnAlign = 'left' | 'right' | 'center';
-const NUMBER_COLUMNS: readonly NumberColumn[] = ['value', 'median', 'delta'];
 const NUMBER_GAP = 8;
 const TEXT_ALIGN = { left: 'start', right: 'end', center: 'middle' } as const;
-
-/** What the authored column and row keys leave of the table. Hidden is display only: fatigue and the medians read the data. */
-interface TablePlan {
-  columns: readonly NumberColumn[];
-  rows: readonly (typeof creativeMetrics)[number][];
-  /** False while no key changes the table: the card keeps its fixed edges. */
-  authored: boolean;
-}
-
-export function tablePlan(options: CreativeOptions): TablePlan {
-  const listed = (options.columnOrder ?? []).filter((id): id is NumberColumn => (NUMBER_COLUMNS as readonly string[]).includes(id));
-  const columns = [...new Set([...listed, ...NUMBER_COLUMNS])].filter((id) => options.columnVisibility?.[id] !== false);
-  const named = (options.rowOrder ?? []).flatMap((id) => creativeMetrics.filter(([key]) => key === id));
-  const rows = [...new Set([...named, ...creativeMetrics])].filter(([key]) => options.rowVisibility?.[key] !== false);
-  return { columns, rows, authored: options.columnVisibility !== undefined || options.columnOverrides !== undefined || options.columnOrder !== undefined
-    || options.rowVisibility !== undefined || options.rowOrder !== undefined || options.rowOverrides !== undefined };
-}
 
 const longestWord = (texts: readonly string[], font: FontSpec, measure: TextMeasurer) =>
   Math.max(0, ...texts.flatMap((text) => text.split(/\s+/).map((word) => Math.ceil(measure(word, font).width) + 1)));

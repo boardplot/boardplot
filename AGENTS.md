@@ -29,7 +29,8 @@ Before you open a pull request that changes code, run once:
 - The test files of the area you changed: `npx vitest run <files>`. Add `tests/golden-svg.test.ts` when the change can affect chart output.
 - When the change can affect chart output, also the layout scorecard of each chart type whose goldens changed: `npm run check:scorecard -- --only <type,...>`. One type takes seconds. Record intended changes before the first push, as the Tests section says, so CI does not fail on a stale baseline. Update the React markup the same way: `MARKUP_UPDATE=1 npx vitest run tests/entry-markup.test.tsx`.
 - `npm run docs:build` when you change documentation or its generator. Check that it leaves no unexpected diff.
-- `npm run smoke:package` only for packaging or bundle changes. It builds through `npm pack`, so do not build first.
+- `npm run smoke:package` for every change to `src/react/`, code a React entry links, packaging or bundles. Package smoke builds through `npm pack`, prints measured sizes against `scripts/package-sizes.json` and fails when any grows by more than 2 percent.
+  For an intended change to the stored sizes, run `npm run smoke:package -- --write-sizes && npm run docs:build` and commit the size file and the generated manual changes.
 
 `npm run check:ci` checks the manual's code blocks, documentation anchors, font metrics, generated chart entries, choropleth fixtures and discovery size limits. It needs a build; reuse the build from the package smoke if you just ran it.
 
@@ -66,4 +67,4 @@ Vitest's default reporter hides `console.log` of a passing test. For debug outpu
 
 ## Generated files
 
-`docs/reference/`, `llms.txt`, the catalog table in `README.md`, the type size tables in `docs/manual.md` and `tests/golden/manifest.json` are generated. Do not edit or merge them by hand. On a conflict, take the version from `main` and generate them again (`npm run docs:build`; for the manifest, `GOLDEN_UPDATE=1 npx vitest run tests/golden-svg.test.ts`).
+`docs/reference/`, `llms.txt`, the catalog table in `README.md`, the type size tables and the “Small bundles” paragraph in `docs/manual.md`, and `tests/golden/manifest.json` are generated. The “Small bundles” paragraph uses `scripts/package-sizes.json` as its source. Do not edit or merge them by hand. On a conflict, take the version from `main`. Regenerate documentation with `npm run docs:build` and the golden manifest with `GOLDEN_UPDATE=1 npx vitest run tests/golden-svg.test.ts`.
