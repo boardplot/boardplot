@@ -47,10 +47,12 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import { zeroLifts } from '../../formatPrecision';
+import { currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
+import { requestMemo } from '../../layoutPlan';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { isCachedTextMeasurer, type FontSpec } from '../../text';
-import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
+import { colorblindPaint, joinHatchPeers, layoutStepKey, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -59,7 +61,7 @@ import { bandValueLabelUniformity, compactValueLabelFont, groupedValueLabelPolic
 import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
-import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
+import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, rightEdgeSeriesLabels, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
 import { stackedStaircaseSeatsFit } from './staircaseSeats';
@@ -70,7 +72,7 @@ import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
-import { dataOrder, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
+import { dataOrder, hiddenNoteBodyOptions, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
 import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
@@ -1154,6 +1156,19 @@ interface ColumnPass {
   noteFrame?: { options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
 }
 
+interface KeyedColumnBody {
+  options: object;
+  pass: ColumnPass;
+}
+
+/** The caller can mark labels as noted and change the selected geometry during sizing. */
+function copyColumnBody(pass: ColumnPass, area: ColumnArea): ColumnPass {
+  const g = pass.geometry;
+  return { ...pass, geometry: { ...g, frame: area.frame.frame, legend: area.frame.legend,
+    labels: g.labels.map(label => ({ ...label })), scene: g.scene.map(node => ({ ...node })),
+    warnings: [...g.warnings], a11y: { ...g.a11y } } };
+}
+
 function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
@@ -1254,25 +1269,39 @@ function layoutColumnPass(
   const staircaseNote = area.stairTop !== undefined && options.mode === 'compact' && domain.va.show === true
     && kindSetting(options, 'segment') === false && !area.ruleH && !domain.pyRef
     && !domain.dataSeries.some(s => s.vals.some(v => v.range || v.labelOverride !== undefined));
-  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && hasCompleteTextWidths(domain.measure)
+  // A registry note can repeat the entire height search. Keep separate bodies for each
+  // fixed size and internal note pass when the legend already names every series.
+  const keyed = domain.variant === 'stacked' && options.seriesLabels?.at === 'right-edge'
+    && options.categoryLabels !== 'staircase' && !options.window && !options.viewDomain
+    && !options.seriesLabels.cagr && !domain.seriesCagr.size && panelTypeClass(options) === undefined
+    && !(COLLECT_IDENTITIES in options) && area.frame.legend !== undefined
+    && domain.dataSeries.every(series => area.frame.legend!.items.some(item => item.id === series.id))
+    && !rightEdgeSeriesLabels(domain).length;
+  const noteFrame = domain.variant === 'stacked' && (keyed || domain.cats.length > 12 && !options.seriesLabels) && hasCompleteTextWidths(domain.measure)
     && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
     && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
-    && !options.seriesLabels && !options.shareLabels && !area.tier
+    && !options.shareLabels && !area.tier
     && (staircaseNote || options.categoryLabels !== 'staircase' && !(typeof options.size === 'object' && measureColumnHeight.has(options.size)))
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
     && !domain.uniformScenario.size
     ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
       prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
-  const before = noteParent?.noteFrame;
+  const bodies = keyed && noteFrame && !noteParent && reusablePreparation
+    ? requestMemo<KeyedColumnBody[]>(data, `column-note:${size.width}:${size.height}:${keepEachValue}:${probeAxis}:${layoutStepKey()}:${currentSmallValues()}:${formatScopeKey(options)}`, () => []) : undefined;
+  const bodyOptions = bodies && hiddenNoteBodyOptions(options);
+  const saved = bodyOptions && NOTED_LABELS in options ? bodies?.find(entry => sameContent(entry.options, bodyOptions)) : undefined;
+  const parent = noteParent ?? saved?.pass;
+  const before = parent?.noteFrame;
   if (before && noteFrame && (!staircaseNote || sameContent(staircaseState(before.options), staircaseState(options)))
     && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
     && sameContent(before.claims, noteFrame.claims) && sameContent(before.warnings, warnings)
     && area.band.step === before.area.band.step && area.band.bandwidth === before.area.band.bandwidth
     && sameContent(before.area.y.domain, area.y.domain) && sameContent(before.area.y.range, area.y.range)) {
-    const geometry = { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend };
-    if (measuredColumnHeights.has(noteParent.geometry)) measuredColumnHeights.add(geometry);
-    return { ...noteParent, geometry, noteFrame };
+    const geometry = saved ? copyColumnBody(saved.pass, area).geometry
+      : { ...parent.geometry, frame: area.frame.frame, legend: area.frame.legend };
+    if (measuredColumnHeights.has(parent.geometry)) measuredColumnHeights.add(geometry);
+    return { ...parent, geometry, noteFrame };
   }
   const testingAxis = PROBE_COLUMN_AXIS in options;
   if (testingAxis && area.stairTop === undefined) throw AXIS_PROBE_INCONCLUSIVE;
@@ -1458,5 +1487,10 @@ function layoutColumnPass(
       ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
     : [];
   const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  const pass: ColumnPass = { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  if (bodies && bodyOptions && !(NOTED_LABELS in options) && zeroLifts.count === lifts
+    && geometry.labels.some(label => label.hidden && !label.noted)) {
+    bodies.push({ options: bodyOptions, pass: copyColumnBody(pass, area) });
+  }
+  return pass;
 }
