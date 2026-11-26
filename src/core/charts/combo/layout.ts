@@ -71,10 +71,10 @@ import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, IN
 import { applyGrowthInk, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { comboPaints, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
+import { comboPaints, contentOf, comboPlotArea, drawComboFrame, eventFrameHeights, prepareComboFrame, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
+import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -563,15 +563,27 @@ function layoutComboFramePass(
     return { ...framed, frame: { ...framed.frame, frame: copyFrame(framed.frame.frame) } };
   };
   // The event lane sizes itself and the key with the frame and plot passes.
-  const settle = () => settleEventLane({
-    annotations: domain.options.annotations ?? [], categories: domain.cats, events: options.events, language: options.locale?.language,
-    inline: false, footnotesOff: (options as InternalFootnoteOptions).footnotesOff,
-    theme: env.theme, measure: env.measure, size, compact: options.mode === 'compact',
-    solve,
-    area: (framed, w) => comboPlotArea(env, domain, paints, framed, gutterOverride, w),
-    axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
-    warnings,
-  });
+  const settle = () => {
+    const frameWarnings: LintWarning[] = [];
+    const reuse = hasEvents && hasCompleteTextWidths(env.measure);
+    let prepared: ReturnType<typeof prepareComboFrame> | undefined;
+    const rows: FrameWidthMeasurements = {};
+    return settleEventLane({
+      annotations: domain.options.annotations ?? [], categories: domain.cats, events: options.events, language: options.locale?.language,
+      inline: false, footnotesOff: (options as InternalFootnoteOptions).footnotesOff,
+      theme: env.theme, measure: env.measure, size, compact: options.mode === 'compact',
+      solve: reuse ? (key, out) => {
+        prepared ??= prepareComboFrame(env, domain, paints, frameWarnings);
+        pushAll(out, frameWarnings);
+        return drawComboFrame(prepared, key, rows);
+      } : solve,
+      area: (framed, w) => comboPlotArea(env, domain, paints, framed, gutterOverride, w),
+      axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
+      warnings,
+      keyHeights: reuse ? () => eventFrameHeights(prepared!.input) : undefined,
+      reuseDateArea: reuse,
+    });
+  };
   let settled = settle();
   let area = settled.area;
   // The scale pair clears a measured total-label row, rather than a fixed percentage.

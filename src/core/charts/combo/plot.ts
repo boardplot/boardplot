@@ -15,8 +15,12 @@ import { measureValueAxisWidth } from '../../axis';
 import { bandedCrossesBetween } from '../../intervalTicks';
 import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import type { Rect } from '../../geometry';
-import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
-import { plotFloorRows } from '../../sizing';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameWidthMeasurements, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { plotFloorRows, sameContent } from '../../sizing';
+import { layoutStepKey } from '../../theme';
+import { staticFrame } from '../../footer';
+import { requestMemo } from '../../layoutPlan';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { CATEGORY_ROW_FROM_END, CATEGORY_ROW_VERTICAL, calendarLike, categoryRowTop, hangingLabelReserve, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { segmentSeparationStroke } from '../../markVisibility';
@@ -63,7 +67,7 @@ import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMar
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
 import { textScaleOf } from '../../typeFloors';
 import { scaleTextPx } from '../../target';
-import { disclosureNote, disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
+import { engineNoteMeta, disclosureNote, disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
@@ -507,6 +511,11 @@ export function solveComboFrame(
   warnings: LintWarning[],
   eventKey?: FrameBand,
 ): { frame: FrameResult; claims: OccupiedIndex; leftAxisReserve: number; margin: ReturnType<typeof comboFrameMargins>['margin'] } {
+  return drawComboFrame(prepareComboFrame(env, domain, paints, warnings), eventKey);
+}
+
+/** The event lane tries different keys against one title, footer, margin and series legend. */
+export function prepareComboFrame(env: ComboEnv, domain: ComboDomain, paints: ComboPaints, warnings: LintWarning[]) {
   const { theme, size, measure } = env;
   const { options } = domain;
   if (domain.anomaly && options.legend === 'none') {
@@ -518,41 +527,62 @@ export function solveComboFrame(
     });
   }
   const { margin, leftAxisReserve } = comboFrameMargins(env, domain);
-  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const legend = comboLegend(env, domain, paints);
   const growthNote = growthStatements(env, domain).note;
   const frameOptions = (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? options : withCategoryNoteNames(options, domain.cats);
-  const frame = solveFrame(
-    {
-      size,
-      margin,
-      ...frameTextOptions(frameOptions),
-      // The subtitle names the unit only when every plotted series is in it ("in $m" beside a series in k).
-      ...(options.unit && domain.data.some((s) => s.unit !== undefined && !sameUnit(s.unit, options.unit!))
-        ? { subtitle: resolveSubtitle(options.subtitle), unit: undefined } : {}),
-      footnotes: [
-        ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain)), ...authoredNotes(frameOptions),
-        ...noteLine(knownPartsLead(options), domain.columnsAdd ? domain.cats.flatMap((c, ci) => {
-          if (!domain.incompleteCats.has(c.id)) return [];
-          const missing = domain.columns.filter(s => s.vals[ci]!.v === null).map(s => s.label);
-          return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
-        }) : [], options.notes?.maxListed === undefined ? undefined : options),
-        // The anomaly rule, stated on the exhibit (column prints it over the plot).
-        ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
-        // The growth statements on a card, where the column beside the plot would cost it the width.
-        ...(growthNote === undefined ? [] : [growthNote]),
-        // Two scales without tick columns: the note says each series reads on its own.
-        ...(domain.secondaryActive && domain.ticksFromLabels === true ? [disclosureNote(chartString(options, 'comboOwnScale'))] : []),
-        // Moved shares matter only where the segments print them.
-        ...(contentOf(domain, 'segment', ['absolute'])?.includes('percent') ? domain.shareNotes : []),
-      ],
-      legend,
-      ...(eventKey ? { eventKey } : {}),
-      theme,
-      measure,
-    },
-    claims,
-  );
+  const input: FrameInput = {
+    size,
+    margin,
+    ...frameTextOptions(frameOptions),
+    // The subtitle names the unit only when every plotted series is in it ("in $m" beside a series in k).
+    ...(options.unit && domain.data.some((s) => s.unit !== undefined && !sameUnit(s.unit, options.unit!))
+      ? { subtitle: resolveSubtitle(options.subtitle), unit: undefined } : {}),
+    footnotes: [
+      ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain)), ...authoredNotes(frameOptions),
+      ...noteLine(knownPartsLead(options), domain.columnsAdd ? domain.cats.flatMap((c, ci) => {
+        if (!domain.incompleteCats.has(c.id)) return [];
+        const missing = domain.columns.filter(s => s.vals[ci]!.v === null).map(s => s.label);
+        return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
+      }) : [], options.notes?.maxListed === undefined ? undefined : options),
+      // The anomaly rule, stated on the exhibit (column prints it over the plot).
+      ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
+      // The growth statements on a card, where the column beside the plot would cost it the width.
+      ...(growthNote === undefined ? [] : [growthNote]),
+      // Two scales without tick columns: the note says each series reads on its own.
+      ...(domain.secondaryActive && domain.ticksFromLabels === true ? [disclosureNote(chartString(options, 'comboOwnScale'))] : []),
+      // Moved shares matter only where the segments print them.
+      ...(contentOf(domain, 'segment', ['absolute'])?.includes('percent') ? domain.shareNotes : []),
+    ],
+    legend,
+    theme,
+    measure,
+  };
+  return { input, leftAxisReserve, margin };
+}
+
+/** Rejected event keys report a single height. Keep that measurement for this exact
+ * frame, including note classifications that can change within the same request. */
+export function eventFrameHeights(input: FrameInput): Map<FrameBand, number> | undefined {
+  if (input[COLLECT_IDENTITIES]) return undefined;
+  const state = `${layoutStepKey()}:${staticFrame.pinned}:${staticFrame.live}:${input.size.width}:${input.size.height}`;
+  const entries = requestMemo<{ input: FrameInput; notes: unknown; heights: Map<FrameBand, number> }[]>(input.theme, `combo-event-heights:${state}`, () => []);
+  const notes = input.footnotes?.map(text => {
+    const meta = engineNoteMeta(text);
+    return meta && { ...meta };
+  });
+  const saved = entries.find(entry => sameContent(entry.input, input) && sameContent(entry.notes, notes));
+  if (saved) return saved.heights;
+  const heights = new Map<FrameBand, number>();
+  entries.push({ input, notes, heights });
+  return heights;
+}
+
+export function drawComboFrame(prepared: ReturnType<typeof prepareComboFrame>, eventKey?: FrameBand, rows?: FrameWidthMeasurements) {
+  const { input, margin, leftAxisReserve } = prepared;
+  const claims = createOccupiedIndex({ x: 0, y: 0, w: input.size.width, h: input.size.height });
+  // The event key can supply different legend entries, including at the top of the frame.
+  if (rows) rows.topKey = undefined;
+  const frame = solveFrame(eventKey ? { ...input, eventKey } : input, claims, rows);
   return { frame, claims, leftAxisReserve, margin };
 }
 

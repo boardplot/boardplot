@@ -381,7 +381,20 @@ function keyBand(key: EventKeyInput, x0: number, width: number, theme: Theme, me
 
 /** The event key as a frame band, with the key-row entries its marks need when the key does not name them. */
 function eventKeyBand(key: EventKeyInput, theme: Theme, measure: TextMeasurer, legend: LegendItemInput[] = [], yields = false): FrameBand {
-  return { layout: (x, width) => keyBand(key, x, width, theme, measure), ...(legend.length > 0 ? { legend, ...(yields ? { legendYieldsToSeries: true } : {}) } : {}) };
+  const make = (): FrameBand => {
+    const layout: FrameBand['layout'] = (x, width) => keyBand(key, x, width, theme, measure);
+    return { layout, ...(legend.length > 0 ? { legend, ...(yields ? { legendYieldsToSeries: true } : {}) } : {}) };
+  };
+  if (!hasCompleteTextWidths(measure)) return make();
+  // The key wraps at the available width. Its draw function takes the final top and node IDs.
+  const bands = requestMemo<Map<TextMeasurer, FrameBand>>(theme, 'event-key:' + JSON.stringify([key, legend, yields]), () => new Map());
+  let band = bands.get(measure);
+  if (!band) {
+    const fresh = make();
+    band = { ...fresh, layout: (x, width) => requestMemo(fresh, `${x}:${width}`, () => fresh.layout(x, width)) };
+    bands.set(measure, band);
+  }
+  return band;
 }
 
 /**
@@ -468,6 +481,13 @@ function measureHeader(ev: LaneEvent, f: Fonts, measure: TextMeasurer): number {
 
 /** Title at most two lines, detail at most three, both never cut; null when the block cannot be set inline. */
 function measureBlock(ev: LaneEvent, maxW: number, f: Fonts, measure: TextMeasurer): Block | null {
+  if (!hasCompleteTextWidths(measure)) return wrapEventBlock(ev, maxW, f, measure);
+  const key = JSON.stringify([maxW, f, ev.title, ev.more, ev.detail, ev.group, ev.date, ev.glyph]);
+  const block = requestMemo(measure, 'event-block:' + key, () => wrapEventBlock(ev, maxW, f, measure));
+  return block && { ...block, ev };
+}
+
+function wrapEventBlock(ev: LaneEvent, maxW: number, f: Fonts, measure: TextMeasurer): Block | null {
   const title: string[] = [];
   for (const line of shownTitle(ev).split('\n')) {
     const r = balancedWrap(line, f.title, maxW, 2 - title.length, measure);
@@ -692,6 +712,9 @@ export interface LaneSettleInput<F, A> {
   area: (framed: F, warnings: LintWarning[]) => A;
   axis: (area: A) => LaneAxis;
   warnings: LintWarning[];
+  /** The date check and final draw use the same plot calculation and frame. */
+  reuseDateArea?: boolean;
+  keyHeights?: () => Map<FrameBand, number> | undefined;
 }
 
 export function settleEventLane<F extends { frame: FrameResult }, A>(input: LaneSettleInput<F, A>): SettledLane<F, A> {
@@ -703,6 +726,7 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   const f = eventFonts(s.theme);
   const firstWarnings: LintWarning[] = [];
   const first = s.solve(undefined, firstWarnings);
+  const keyHeights = s.keyHeights?.();
   const axis = s.axis(s.area(first, []));
   const band = first.frame.plot;
   const bounds: [number, number] = [Math.max(band.x, axis.plot.x - 20), Math.min(band.x + band.w, axis.plot.x + axis.plot.w + 20)];
@@ -716,6 +740,8 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   let plan: LanePlan | undefined;
   let framed = first;
   let frameWarnings: LintWarning[];
+  let dateArea: A | undefined;
+  let dateAreaWarnings: LintWarning[] = [];
   const dropped: string[] = [];
   const compacted: string[] = [];
   // The plot band the full key leaves, measured before the key drops a part.
@@ -726,8 +752,12 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
     const key = keyInput(plan, { detail, group, dates, dense: lean }, s.options?.keyTitle);
     frameWarnings = key ? [] : firstWarnings;
     // The key row explains the event colours and brackets whether or not the key keeps its detail lines.
-    framed = key ? s.solve(eventKeyBand(key, s.theme, s.measure, group ? [] : eventLegendItems(plan.keyed, s.language), lean), frameWarnings) : first;
-    const bandH = framed.frame.plot.h;
+    const keyBand = key && eventKeyBand(key, s.theme, s.measure, group ? [] : eventLegendItems(plan.keyed, s.language), lean);
+    const knownHeight = keyBand && keyHeights?.get(keyBand);
+    const drawKey = () => keyBand ? s.solve(keyBand, frameWarnings) : first;
+    if (knownHeight === undefined) framed = drawKey();
+    const bandH = knownHeight ?? framed.frame.plot.h;
+    if (keyBand && knownHeight === undefined) keyHeights?.set(keyBand, bandH);
     if (plan.rows > 0 && bandH - plan.height < LANE_PLOT_FLOOR * s.size.height) {
       rows = plan.rows - 1;
       plan = undefined;
@@ -746,17 +776,21 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
     }
     // The compact form may not leave the plot under its floor: its key then shortens to "n title". Full mode keeps its own ladder
     // (rows, detail, kind labels): its size floor is measured with the full lane, and a pinned canvas that lacks room draws compact.
+    if (knownHeight !== undefined) framed = drawKey();
     const canDropDates = key && dates && key.entries.some((entry) => entry.date);
     // A custom measurer can change on each call. Keep its original plot trial.
     if (canDropDates || !stableMetrics) {
       const shifted = plan.height > 0
         ? { ...framed, frame: { ...framed.frame, plot: { ...framed.frame.plot, y: framed.frame.plot.y + plan.height, h: framed.frame.plot.h - plan.height } } }
         : framed;
-      if (s.axis(s.area(shifted, [])).plot.h < COMPACT_PLOT_FLOOR && canDropDates) {
+      dateAreaWarnings = [];
+      const checked = s.area(shifted, dateAreaWarnings);
+      if (s.axis(checked).plot.h < COMPACT_PLOT_FLOOR && canDropDates) {
         dates = false;
         compacted.push('dates');
         continue;
       }
+      if (s.reuseDateArea) dateArea = checked;
     }
     break;
   }
@@ -790,7 +824,8 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
     : framed;
   // An automatic height grows to the canvas whose plot band holds the full key at its floor; the frame around the band keeps its height.
   if (fullBand !== undefined) recordPartNeed(framed.frame.frame, Math.ceil((s.size.height - fullBand) / (1 - KEY_BAND_FLOOR) - 1e-6));
-  return { framed: shifted, area: s.area(shifted, s.warnings), lane: { plan, top } };
+  if (dateArea !== undefined) pushAll(s.warnings, dateAreaWarnings);
+  return { framed: shifted, area: dateArea ?? s.area(shifted, s.warnings), lane: { plan, top } };
 }
 
 export interface EmittedLane {
