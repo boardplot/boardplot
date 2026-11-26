@@ -354,6 +354,41 @@ On bar, column and table, `threshold` also drops a kept category whose absolute 
 
 In a stacked column, bar or combo, `null` means a value that is unknown. A stack with a `null` part prints the sum of its known parts as a plain total. The notes list names the missing parts ("Totals add the known parts only: Q1 without B"), and the chart gives one `incomplete-composition` warning. With `notes: { show: ["disclosure"] }` the total also prints "(partial)" under its value, and the note prints under the chart. When a component is known to be zero in a category, because it does not apply there, give it `0`. Then the total is complete. Keep `null` for values that are really missing.
 
+### Two stacks per period
+
+To place two stacks side by side in each period, list both stacks in `data.categories` as consecutive entries. Set `gapAfter` on the second entry of each pair, and label each stack on two lines with `\n`. This layout gives no shared quarter label under each pair and no group totals.
+
+```json
+{
+  "type": "column",
+  "data": {
+    "categories": [
+      { "id": "FY24q1", "label": "FY24\nQ1" },
+      { "id": "FY25q1", "label": "FY25\nQ1", "gapAfter": 0.6 },
+      { "id": "FY24q2", "label": "FY24\nQ2" },
+      { "id": "FY25q2", "label": "FY25\nQ2", "gapAfter": 0.6 },
+      { "id": "FY24q3", "label": "FY24\nQ3" },
+      { "id": "FY25q3", "label": "FY25\nQ3", "gapAfter": 0.6 },
+      { "id": "FY24q4", "label": "FY24\nQ4" },
+      { "id": "FY25q4", "label": "FY25\nQ4" }
+    ],
+    "series": [
+      { "id": "north", "label": "North", "values": [40, 46, 44, 50, 48, 55, 52, 60] },
+      { "id": "south", "label": "South", "values": [30, 32, 31, 36, 33, 38, 35, 41] },
+      { "id": "west", "label": "West", "values": [20, 24, 22, 25, 21, 27, 24, 30] }
+    ]
+  },
+  "options": {
+    "variant": "stacked",
+    "title": "Revenue grew in every quarter of FY25 versus FY24",
+    "unit": "$k",
+    "grandTotalLabels": true,
+    "size": { "width": 960, "height": 540 },
+    "source": "Illustrative data"
+  }
+}
+```
+
 ### SVG size and identifiers
 
 The SVG carries its size as `width` and `height` and shrinks to a narrower container. A label halo is a second, stroked copy of the text under it. It works in importers that ignore `paint-order`, such as LibreOffice.
@@ -463,7 +498,7 @@ export function RevenueMix() {
 
 The entry stays small because it links no chart engine and no chart schema. `BoardplotChart` reads the type a spec names and fetches three chunks. Spec validation — the document parser, the diagnostics and zod — serves every type, so a page loads it once. The type's data and options schemas are their own chunk, and its engine a third. A grid's engine links no panel engine: it fetches the engines its panels name, all at once. The repository's package check (`npm run smoke:package`) prints the current sizes of the entry and of the first chart of each type. Until the chunks arrive it draws the busy placeholder, the box a refused chart uses with the wording of `strings.loading`; in the browser an engine the page already holds needs no second wait. A server pass always draws the placeholder, whatever that server loaded for an earlier request, so its output stays the same as it warms up and hydration matches it; `prepared` is no exception, because a prepared chart's request is resolved against the type's registration before its scene is attached. Put a chart in the server HTML with the type's own component, such as `ColumnChart` from `boardplot/react/column`. A chunk that does not arrive leaves the diagnostic card in the chart's place and the next render asks for it again.
 
-`BoardplotTheme` sets the theme, locale and built-in wording for every chart below it. The language sets words only: `locale="de-DE"` prints `1,234.5`, and `locale={{ language: 'de-DE', decimal: ',', thousands: '.' }}` prints `1.234,5`. For server rendering, `prepareChart` lays the chart out once on the server; pass its result as `prepared` with the same props, and the first client render reuses it. `prepareChart` and `parseChartSpec` return promises, because they load only the types the spec names.
+`BoardplotTheme` sets the theme, locale and built-in wording for every chart below it. The language sets words only: `locale="de-DE"` prints `1,234.5`, and `locale={{ language: 'de-DE', decimal: ',', thousands: '.' }}` prints `1.234,5`. For server rendering, `prepareChart` lays the chart out once on the server. Pass its result as `prepared` with the same props, and the first client render reuses it. `BoardplotChart` still writes the placeholder into server HTML, while the type's own component, such as `BarChart` from `boardplot/react/bar`, puts the chart there. `prepareChart` and `parseChartSpec` return promises, because they load only the types the spec names.
 
 ```tsx
 import { BoardplotTheme } from 'boardplot/react/theme';
@@ -854,7 +889,7 @@ A chart with nothing to draw (no categories, series, rows or points) is reported
 
 A chart whose drawn list holds more than 2,000 entries (the categories of a column, bar, combo, dot, variance, butterfly, funnel, waffle or bartable chart; the rows and columns of a heatmap or status matrix; the rows of a bullet or gantt chart; the items of a pareto, waterfall, likert or treemap chart; the bands of a pyramid; the cohorts of a cohort chart; a likert chart draws at most 500 items, and a mekko chart 20,000 categories) refuses at once with `too-many-items`, at the path of that list. Its layout would take minutes, and no entry would be wider than a pixel. The budget counts what the chart draws: the categories left after `topN` (bar, butterfly, column, dot, mekko, pareto, likert, pyramid, variance), after `viewDomain` and `window.last` on a column or combo, and after a pareto's automatic fold of a crowded tail into Rest. Aggregate the list first, or keep the largest with `topN` where the type takes it. A pie keeps its seven largest slices by default, and a pvm bridge draws aggregate effects, so neither has a budget. A dated line or area samples a long series instead. A line or area also refuses with `too-many-items`, at `/data/series`, when its cost is over 300,000 (drawn categories times series, plus 100 for each series; 1,999 categories by 200 series ran out of memory), or when drawn categories times series times series is over 100 million (300 categories by 700 series is only 210,000 points and still runs out of memory), counted after `viewDomain`, `window.last` and the sampling, so draw fewer series, aggregate the periods or draw part of them. A combo refuses the same way when its cost is over 20,000 (drawn categories times all its series, plus 40 for each series; 300 categories by 51 series take 10 s and 2.1 GB, and 10 by 1,000 do not finish). A column or bar chart with many series keeps its limit on categories only. Tables, scatter, histogram and box plots draw every row.
 
-On a canvas the host pinned, a chart of a type with a compact floor (bar, bartable, box, butterfly, cohort, column, combo, dot, funnel, gantt, heatmap, histogram, likert, line, pareto, pvm, pyramid, scatter, variance, waffle, waterfall) that lacks room in full mode is drawn compact, and refused only when compact does not fit either; the refusal names the size compact needs. `belowMinimum: 'refuse'` keeps the full-mode refusal. A width alone and the fixed default canvas of `target: "slide"` and `target: "print"` count as pinned too. A chart with no size on `dashboard` or `report` grows to its full floor instead.
+On a canvas the host pinned, a chart of a type with a compact floor (bar, bartable, box, butterfly, cohort, column, combo, dot, funnel, gantt, grid, heatmap, histogram, likert, line, pareto, pie, pvm, pyramid, scatter, slope, variance, waffle, waterfall) draws compact when it lacks room in full mode. It refuses only when compact does not fit either, and the refusal names the size compact needs. On `grid`, the compact form runs only as a fallback when a full layout refuses, stacking a multi-column grid into one column. `belowMinimum: 'refuse'` keeps the full-mode refusal. A width alone and the fixed default canvas of `target: "slide"` and `target: "print"` count as pinned too. A chart with no size on `dashboard` or `report` grows to its full floor instead.
 
 React reader cards reserve the chart frame. Loading and reader frames scale with the host, as the SVG does; `fixedSize` keeps their intrinsic size. A cold content-sized chart estimates its height from the data row count and row pitch plus fixed space for the chart frame. Pass `prepared` for the exact loading height, including measured text and automatic content height. The message sits in the centre and uses the chart theme. Valid full theme objects keep their tokens even when the spec is invalid. Invalid themes use the default theme. The card keeps a supplied title and source. A long host message shows at most three lines; its `title` attribute keeps the full text. The reader body and host refusal content load when needed. The server and first browser pass use a minimal busy frame with the title and source. This frame inherits host typography and paint; theme resolution and theme tokens load with the reader body. It keeps findings in `data-bp-diagnostics`; individual code and path markers load with the reader body. Developer details load only in full mode.
 
@@ -1171,7 +1206,7 @@ A full token object with its own `name` works too. `boardplot_describe` with typ
 
 In code, `registerTheme` makes a full token object available under its `name` to every chart, and `resolveTheme` returns a theme resolved and frozen, from a name or from `{ preset, overrides }`. Import both from `boardplot/theme`: it links no chart engine. The package root exports them too, but it registers the whole catalogue, so a host that draws through `boardplot/react/<type>` would carry every engine in its main bundle.
 
-Layout measures text with bundled width tables for Geist, Helvetica and Arial, taking the first family of the stack that has one. Helvetica Neue is measured with the Helvetica widths (Liberation Sans), because no free Helvetica Neue font exists; for exact Helvetica Neue widths, build tables with `boardplot fonts build` ([FONTS.md](FONTS.md)). Inter has no table: the capital and glass presets lead with Inter and are measured as Helvetica Neue, the next family in their stack, so on a machine with Inter installed their text draws a little wider than measured. A leading family outside these, Inter and the metric clones Arimo, Liberation Sans and Nimbus Sans returns the warning `family-outside-metric-class`, a licensed brand font included; `boardplot fonts build <font-dir>` writes the tables for a licensed font ([FONTS.md](FONTS.md)). Boardplot rejects a theme for low contrast (`contrast-ink` below 4.5:1, `contrast-ink-muted` below 3:1), an unsupported colour (`unparseable-color`; see [Design system colours](#design-system-colours)), good and bad colours that look alike (`good-bad-similar`) or an unknown token (`invalid-theme`). These errors carry the path `/theme`.
+Layout measures text with bundled width tables for Geist, Helvetica and Arial, taking the first family of the stack that has one. Helvetica Neue uses the Helvetica widths (Liberation Sans), because no free Helvetica Neue font exists. For exact Helvetica Neue widths, build tables with `boardplot fonts build` ([FONTS.md](FONTS.md)). Inter has no table. Layout measures Inter with the next family of its stack and draws it without a warning. The capital and glass presets lead with Inter and measure as Helvetica Neue, so on a machine with Inter installed their text draws a little wider than measured. Arimo, Liberation Sans and Nimbus Sans also draw without a warning. Any other leading family, such as Open Sans or a licensed brand font, returns the warning `family-outside-metric-class`. Run `boardplot fonts build <font-dir>` to write tables for a licensed font ([FONTS.md](FONTS.md)). Boardplot rejects a theme for low contrast (`contrast-ink` below 4.5:1, `contrast-ink-muted` below 3:1), an unsupported colour (`unparseable-color`, see [Design system colours](#design-system-colours)), good and bad colours that look alike (`good-bad-similar`) or an unknown token (`invalid-theme`). These errors carry the path `/theme`.
 
 ## Where the reference is
 

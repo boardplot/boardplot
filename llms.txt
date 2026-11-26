@@ -27,7 +27,6 @@ For supported row mappings, render and measure accept a local file through `rows
 - [column](docs/reference/column.md): Vertical bars, grouped or stacked
 - [bar](docs/reference/bar.md): Horizontal bars per item
 - [line](docs/reference/line.md): Lines and areas over time
-- [dimswitch](docs/reference/dimswitch.md): KPIs by one dimension and period, from sums
 - [table](docs/reference/table.md): Management table with totals; rows [label,id]
 - [waterfall](docs/reference/waterfall.md): Bridge; rows label,value[,type]
 - [kpi](docs/reference/kpi.md): Single-metric card
@@ -60,6 +59,10 @@ For supported row mappings, render and measure accept a local file through `rows
 - [pyramid](docs/reference/pyramid.md): Mirrored bands on one scale
 - [diagram](docs/reference/diagram.md): Node and edge diagrams, including system architecture
 - [tilemap](docs/reference/tilemap.md): Equal-size region tiles
+
+### Specialized
+
+- [dimswitch](docs/reference/dimswitch.md): KPIs by one dimension and period, from sums
 - [creative](docs/reference/creative.md): Ad-creative review card (early alpha)
 
 ## Optional

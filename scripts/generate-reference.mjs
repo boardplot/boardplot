@@ -321,7 +321,7 @@ function themePage() {
     '## Errors', '', table(['Code', 'Raised when'], Object.entries(theme.errorCodes)), '',
     'A retired key, such as `space.barGap`, is accepted for good: the theme draws without it and warns `option-deprecated` with a JSON Patch that removes it. A retired preset name, such as `ibcs`, draws as its successor and warns with a patch that rewrites it. An unknown key that never existed is refused with a suggest that names it and a JSON Patch that removes it. The CLI, the MCP tools, React and `parseThemeJson` from `boardplot/validate` give the same warnings, suggests and patches; `parseThemeJson` throws a refusal as an `invalid-theme` error whose patch paths start at the theme file.', '',
     'A resolved theme is FROZEN, all the way down. `resolveTheme`, the `theme` on a resolved request and the one a React component reads are the same deeply frozen object, so a write to one throws where it is written instead of changing a theme the engine has already judged and cached. A variant is a new object: spread the resolved theme, or pass `overrides` and let the engine merge and check them. The engine keeps the merged theme for the `overrides` object it was given, so a change to that object after the call is not seen: pass a new object for a new theme.', '',
-    '## Fonts', '', 'Layout measures text with bundled width tables for Geist, Inter, Helvetica, Helvetica Neue, Arial and their metric clones. Helvetica Neue is measured with the Liberation Sans widths of Helvetica; a host that needs exact Helvetica Neue widths builds its own tables with `boardplot fonts build`. Another leading family returns the warning `family-outside-metric-class`, a licensed brand font included. [FONTS.md](../FONTS.md) describes `boardplot fonts build`, which writes the tables for a licensed font.', '',
+    '## Fonts', '', 'Layout measures text with bundled width tables for Geist, Helvetica and Arial. Helvetica Neue uses the Liberation Sans widths of Helvetica. A host that needs exact Helvetica Neue widths builds its own tables with `boardplot fonts build`. Inter has no table. Layout measures Inter with the next family of its stack and draws it without a warning. Arimo, Liberation Sans and Nimbus Sans also draw without a warning. Any other leading family, such as Open Sans or a licensed brand font, returns the warning `family-outside-metric-class`. [FONTS.md](../FONTS.md) describes `boardplot fonts build`, which writes the tables for a licensed font.', '',
   ]).join('\n');
 }
 
@@ -394,7 +394,10 @@ function fixturesPage(types) {
 }
 
 function llmsIndex(list) {
-  const summaries = list.types.map((entry) => `- [${entry.type}](docs/reference/${entry.type}.md): ${entry.summary}`);
+  const specialized = new Set(['dimswitch', 'creative']);
+  const summary = (entry) => `- [${entry.type}](docs/reference/${entry.type}.md): ${entry.summary}`;
+  const general = list.types.filter((entry) => !specialized.has(entry.type)).map(summary);
+  const special = list.types.filter((entry) => specialized.has(entry.type)).map(summary);
   return ['# Boardplot', '',
     '> Boardplot draws consulting-grade business charts, tables and maps as SVG or PNG, and provides responsive React components. Use its six MCP tools, CLI or React package. The local runtime needs Node.js 22.12 or newer. PowerPoint receives a chart image, with no editable chart data.', '',
     '## MCP start', '',
@@ -411,7 +414,7 @@ function llmsIndex(list) {
     '- [Sizing](docs/manual.md#sizing): targets, units and container dimensions',
     '- [Use cases](docs/use-cases.md): slide decks, analysis pages, React dashboards, Word or PDF reports and recurring reports',
     '- [CLI](docs/manual.md#getting-a-chart-with-the-cli): command arguments and file output', '',
-    '## Chart references', '', ...summaries, '',
+    '## Chart references', '', ...general, '', '### Specialized', '', ...special, '',
     '## Optional', '',
     '- [Shared options](docs/reference/options.md): common options, type-specific exceptions, value cells and annotation anchors',
     '- [Theme](docs/reference/theme.md): presets, every token and the theme errors',
@@ -433,8 +436,14 @@ function countsText(list) {
 export const plainSummary = (entry) => entry.summary.replace(/; rows .*$/, '');
 
 function catalogBlock(list, counts) {
+  const specialized = new Set(['dimswitch', 'creative']);
+  const catalogRow = (entry) => [`[\`${entry.type}\`](docs/reference/${entry.type}.md)`, (entry.aliases ?? []).map((alias) => `\`${alias}\``).join(', '), plainSummary(entry)];
+  const general = list.types.filter((entry) => !specialized.has(entry.type)).map(catalogRow);
+  const special = list.types.filter((entry) => specialized.has(entry.type)).map(catalogRow);
   return [BEGIN_MARKER, GENERATED, '## The catalog', '', `${counts[0].toUpperCase()}${counts.slice(1)}. [fixtures.md](docs/reference/fixtures.md) lists every example spec.`, '',
-    table(['Type', 'Aliases', 'Summary'], list.types.map((entry) => [`[\`${entry.type}\`](docs/reference/${entry.type}.md)`, (entry.aliases ?? []).map((alias) => `\`${alias}\``).join(', '), plainSummary(entry)])),
+    table(['Type', 'Aliases', 'Summary'], general), '',
+    '### Specialized', '',
+    table(['Type', 'Aliases', 'Summary'], special),
     END_MARKER].join('\n');
 }
 
