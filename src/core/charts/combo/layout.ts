@@ -400,7 +400,7 @@ export function layoutCombo(
   const base = withLocaleStrings(options);
   // The hidden-total note reruns the same fixed canvas, first with the original gutter
   // and then with room for any endpoints that failed there.
-  const trials: ComboNoteTrial[] | undefined = data.categories.length > DENSE_CATEGORY_COUNT && options.mode === 'compact'
+  const trials: ComboNoteTrial[] | undefined = options.mode === 'compact' && (data?.categories?.length ?? 0) > DENSE_CATEGORY_COUNT
     ? [] : undefined;
   const geo = withBandValueNotes(data, base, (next, hiddenNote) => {
     const useTrials = trials && (next === base || hiddenNote);
