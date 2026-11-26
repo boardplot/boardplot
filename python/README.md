@@ -5,8 +5,14 @@ Consulting-grade charts from a DataFrame. The package runs Boardplot's own JavaS
 ## Install
 
 ```bash
-pip install boardplot
+git clone https://github.com/boardplot/boardplot.git && cd boardplot
+npm ci
+node python/js/build.mjs                     # writes python/src/boardplot/_assets/ and _version.py
+cd python && python -m build --wheel
+pip install dist/boardplot-*.whl
 ```
+
+The package is not on PyPI yet, so `pip install boardplot` finds nothing. The steps above build the wheel from the source and need Node 22. See [Development](#development).
 
 The V8 engine comes from the `mini-racer` dependency. It has wheels for macOS, Linux (x86_64 and aarch64) and Windows (AMD64 and ARM64). On other platforms, such as Pyodide, JupyterLite, 32-bit Linux, ppc64le and s390x, the install still works, but every chart raises `EngineUnavailableError` with the reason.
 
@@ -51,6 +57,10 @@ Each role names a source column. The chart type sets the rows shape and its role
 | map | choropleth, tilemap | `category`, `value`, and `pack=` | `state` |
 | waterfall | waterfall | `label`, `value` | `item_type` (delta, subtotal or total) |
 | scatter | scatter | `x`, `y` | `size`, `label`, `group` |
+| histogram | histogram | `value` | |
+| box | box | `category`, `value` | `category_label`, `date` |
+| flow | sankey | `source`, `target`, `value` | `source_stage`, `target_stage` |
+| table | table | none, but `template=` holds `data.columns` | `label`, `id` |
 
 Rules:
 
@@ -82,9 +92,10 @@ Rules:
 - `state` names a column with the reason a cell has no value: `na` (not available), `nm` (not meaningful) or `suppressed` (withheld). A row with a state needs an empty value. Leave the state empty for a row with a value. The drawn chart shows a cell with a state as a missing value. The states are kept in `c.reading["data"]["states"]` only.
 - `x` and `y` are scatter roles only. A bar chart uses `category` and `value`.
 - Python does not aggregate, sort or sample. It sends only the mapped columns to the engine.
-- Numbers in `category`, `series`, `category_label`, `series_label`, `label` and `group` columns become text: the year 2024 becomes the id `"2024"`.
+- A table takes its cells from the source columns that `template=` names in `data.columns`: each `value`, `text`, `status` or `date` column reads the source column of its id. `label` fills the row label, and `id` names the row. Without `data.columns` the engine refuses the table.
+- Numbers in `category`, `series`, `category_label`, `series_label`, `label`, `group`, `source`, `target`, `source_stage`, `target_stage` and `id` columns become text: the year 2024 becomes the id `"2024"`.
 - A datetime column whose values are all midnight, without a time zone, arrives as dates (`2024-01-01`). Monthly or daily data then works with `date=` and prints as dates. Other datetimes arrive in ISO 8601 with their offset and full precision.
-- Other chart types (table, histogram, box and the others) take a spec: `bp.Chart.from_spec(spec)`. A spec can be a dict, a JSON string or a `pathlib.Path` to a JSON file.
+- Chart types without a rows mapping (bullet, cohort, creative, diagram, dimswitch, gantt, grid, kpi, likert, pareto, pvm, pyramid, sparkline, status and treemap) take a spec: `bp.Chart.from_spec(spec)`. A spec can be a dict, a JSON string or a `pathlib.Path` to a JSON file.
 
 Other arguments: `options=` (the Boardplot spec options), `title=` (short for `options["title"]`), `annotations=`, `theme=`, `name=`, `pack=` (choropleth and tilemap) and `template=` (a partial spec whose labels, colours and formats the rows keep).
 
@@ -216,7 +227,7 @@ The browser bundle (3.8 MB) goes to the page once per kernel, not once per chart
 ## Streamlit
 
 ```bash
-pip install "boardplot[streamlit]"
+pip install "$(ls dist/boardplot-*.whl)[streamlit]"   # the wheel from the Install section
 ```
 
 ```python

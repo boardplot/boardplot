@@ -40,6 +40,11 @@ ROLE_KEYS: dict[str, str] = {
     "y": "y",
     "size": "size",
     "group": "group",
+    "source": "source",
+    "target": "target",
+    "source_stage": "sourceStage",
+    "target_stage": "targetStage",
+    "id": "id",
 }
 
 # The roles each rows shape takes, as readColumns in src/core/rows.ts lists them. A category
@@ -49,13 +54,24 @@ SHAPE_ROLES: dict[str, tuple[str, ...]] = {
     "map": ("category", "value", "state"),
     "waterfall": ("label", "value", "item_type"),
     "scatter": ("x", "y", "size", "label", "group"),
+    "histogram": ("value",),
+    "box": ("category", "value", "category_label", "date"),
+    "flow": ("source", "target", "value", "source_stage", "target_stage"),
+    "table": ("label", "id"),
 }
 REQUIRED_ROLES: dict[str, tuple[str, ...]] = {
     "category": ("category", "value"),
     "map": ("category", "value"),
     "waterfall": ("label", "value"),
     "scatter": ("x", "y"),
+    "histogram": ("value",),
+    "box": ("category", "value"),
+    "flow": ("source", "target", "value"),
+    "table": (),
 }
+# The roles that name an id or a label: a number in such a column reads as its text.
+TEXT_ROLES = ("category", "series", "category_label", "series_label", "label", "group",
+              "source", "target", "source_stage", "target_stage", "id")
 VALUE_KINDS = ("number", "percent", "fraction")
 
 _shapes: dict[str, Any] | None = None
@@ -535,9 +551,20 @@ def _check_callback(callback: Any) -> None:
                          code="invalid-argument", suggest="Pass a function, for example clicks.append or a def that takes one record.")
 
 
+def _unsupported_shape(type_name: str) -> InputError:
+    """A rows shape that this version of the Python package has no column roles for."""
+    return InputError(
+        f"'{type_name}' takes rows in a form that bp.chart() cannot map yet",
+        code="rows-unsupported-type",
+        suggest="Write its spec and use boardplot.Chart.from_spec().",
+    )
+
+
 def _role_columns(shape: str, roles: dict[str, Any], type_name: str) -> None:
     """Refuse roles the shape does not take, and missing required roles."""
-    allowed = SHAPE_ROLES[shape]
+    allowed = SHAPE_ROLES.get(shape)
+    if allowed is None:
+        raise _unsupported_shape(type_name)
     given = [role for role, value in roles.items() if value is not None]
     wrong = [role for role in given if role not in allowed]
     if wrong:
@@ -548,7 +575,7 @@ def _role_columns(shape: str, roles: dict[str, Any], type_name: str) -> None:
             f"'{type_name}' does not take {', '.join(f'{role}=' for role in wrong)}; it takes "
             f"{', '.join(f'{role}=' for role in allowed)}.{hint}",
             code="invalid-role",
-            suggest=f"Use {', '.join(f'{role}=' for role in REQUIRED_ROLES[shape])} for '{type_name}'.",
+            suggest=f"Use {', '.join(f'{role}=' for role in (REQUIRED_ROLES[shape] or allowed))} for '{type_name}'.",
         )
     missing = [role for role in REQUIRED_ROLES[shape] if roles.get(role) is None]
     if missing:
@@ -592,6 +619,11 @@ def chart(
     y: str | None = None,
     size: str | None = None,
     group: str | None = None,
+    source: str | None = None,
+    target: str | None = None,
+    source_stage: str | None = None,
+    target_stage: str | None = None,
+    id: str | None = None,
     value_kind: str = "number",
     pack: str | None = None,
     title: str | None = None,
@@ -607,6 +639,12 @@ def chart(
     chart without ``series`` draws one series named after the value column;
     ``value=["a", "b"]`` draws one series per column. ``options`` are the
     Boardplot spec options; ``title=`` is short for ``options["title"]``.
+
+    The other rows shapes take these roles: ``histogram`` takes ``value``; ``box``
+    takes ``category`` and ``value`` (and ``category_label``, ``date``); ``sankey``
+    takes ``source``, ``target`` and ``value`` (and ``source_stage``,
+    ``target_stage``); ``table`` takes ``label`` and ``id``, and its
+    ``template=`` holds ``data.columns``, whose ids name the source columns.
     """
     if not isinstance(type, str) or not type:
         raise InputError(f"type is a chart type name such as 'bar', not {type!r}", code="invalid-argument")
@@ -635,6 +673,7 @@ def chart(
         "category": category, "series": series, "value": value, "category_label": category_label,
         "series_label": series_label, "unit": unit, "date": date, "state": state, "label": label,
         "item_type": item_type, "x": x, "y": y, "size": size, "group": group,
+        "source": source, "target": target, "source_stage": source_stage, "target_stage": target_stage, "id": id,
     }
     # An unknown type is the engine's to refuse, with its own suggestions; map its roles as a category chart's.
     _role_columns(shape or "category", roles, type)
@@ -663,10 +702,18 @@ def chart(
     for column in values or []:
         if column not in mapped:
             mapped.append(column)
+    if shape == "table":
+        # A table column takes its cells from the source column of its id, so those columns are read too.
+        template_data = (template or {}).get("data") if isinstance(template, Mapping) else None
+        table_columns = template_data.get("columns") if isinstance(template_data, Mapping) else None
+        for table_column in table_columns if isinstance(table_columns, list) else []:
+            column = table_column.get("id") if isinstance(table_column, Mapping) else None
+            if table_column.get("kind") in ("value", "text", "status", "date") and isinstance(column, str) and column not in mapped:
+                mapped.append(column)
     rows = to_rows(data, mapped)
     # The engine takes ids and labels as text: a year column (2024) becomes "2024".
     numeric = {roles["x"], roles["y"], roles["size"], *(values or [value])}
-    for role in ("category", "series", "category_label", "series_label", "label", "group"):
+    for role in TEXT_ROLES:
         column = roles[role]
         if isinstance(column, str) and column not in numeric:
             for row in rows:
