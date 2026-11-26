@@ -70,7 +70,7 @@ import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
-import { dataOrder, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
+import { dataOrder, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
 import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
@@ -648,7 +648,7 @@ export function layoutColumn(
 }
 
 /** Whether the value axis was turned on for columns left with no number: decided once per chart. */
-interface AxisFallback { on: boolean }
+interface AxisFallback { on: boolean; noteParent?: ColumnPass }
 
 const AXIS_FALLBACK = Symbol('columnAxisFallback');
 const SHORT_WITHOUT_AXIS = Symbol('shortWithoutAxis');
@@ -786,7 +786,7 @@ function layoutColumnWithNotes(
     }
     axis.on = true;
   }
-  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe, undefined, heightAxes)!;
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe, undefined, heightAxes, axis)!;
 }
 
 /** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
@@ -797,6 +797,7 @@ function layoutColumnSettled(
   probe: AxisProbe,
   stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
   heightAxes?: 'auto' | 'fixed',
+  axis?: AxisFallback,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
@@ -840,7 +841,9 @@ function layoutColumnSettled(
     }
     return next;
   };
-  options = run(options, stopAfterFirst !== undefined);
+  const noteParent = axis && NOTED_LABELS in options ? axis.noteParent : undefined;
+  if (axis) axis.noteParent = undefined;
+  options = run(options, stopAfterFirst !== undefined, noteParent);
   if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
@@ -922,6 +925,10 @@ function layoutColumnSettled(
   // Extra label notes can disappear at a taller frame; the first note-free bound still applies.
   if (Number.isFinite(minimumChrome)) plotChromeFloor.set(pass.geometry.frame, minimumChrome);
   else plotChromeFloor.delete(pass.geometry.frame);
+  if (axis && !noteParent && pass.noteFrame?.area.stairTop !== undefined
+    && pass.geometry.labels.some(label => label.kind === 'grandTotal' && label.hidden === 'collision')) {
+    axis.noteParent = pass;
+  }
   return pass.geometry;
 }
 
@@ -1240,21 +1247,28 @@ function layoutColumnPass(
   rejectShortColumnMidpoint(domain, area, staircaseMemo);
   // A segment note can live outside the drawing. Make its actual frame first.
   // Only this direct retry owns the previous body, and only if its drawing space is unchanged.
+  const staircaseNote = area.stairTop !== undefined && options.mode === 'compact' && domain.va.show === true
+    && kindSetting(options, 'segment') === false && !area.ruleH && !domain.pyRef
+    && !domain.dataSeries.some(s => s.vals.some(v => v.range || v.labelOverride !== undefined));
   const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && hasCompleteTextWidths(domain.measure)
     && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
     && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
-    && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
+    && !options.seriesLabels && !options.shareLabels && !area.tier
+    && (staircaseNote || options.categoryLabels !== 'staircase' && !(typeof options.size === 'object' && measureColumnHeight.has(options.size)))
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
-    && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
+    && !domain.uniformScenario.size
     ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
       prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
   const before = noteParent?.noteFrame;
-  if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
+  if (before && noteFrame && (!staircaseNote || sameContent(staircaseState(before.options), staircaseState(options)))
+    && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
     && sameContent(before.claims, noteFrame.claims) && sameContent(before.warnings, warnings)
     && area.band.step === before.area.band.step && area.band.bandwidth === before.area.band.bandwidth
     && sameContent(before.area.y.domain, area.y.domain) && sameContent(before.area.y.range, area.y.range)) {
-    return { ...noteParent, geometry: { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend }, noteFrame };
+    const geometry = { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend };
+    if (measuredColumnHeights.has(noteParent.geometry)) measuredColumnHeights.add(geometry);
+    return { ...noteParent, geometry, noteFrame };
   }
   const testingAxis = PROBE_COLUMN_AXIS in options;
   if (testingAxis && area.stairTop === undefined) throw AXIS_PROBE_INCONCLUSIVE;
