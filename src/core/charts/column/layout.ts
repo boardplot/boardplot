@@ -844,6 +844,7 @@ function layoutColumnSettled(
   const noteParent = axis && NOTED_LABELS in options ? axis.noteParent : undefined;
   if (axis) axis.noteParent = undefined;
   options = run(options, stopAfterFirst !== undefined, noteParent);
+  const firstBody = pass;
   if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
@@ -925,9 +926,12 @@ function layoutColumnSettled(
   // Extra label notes can disappear at a taller frame; the first note-free bound still applies.
   if (Number.isFinite(minimumChrome)) plotChromeFloor.set(pass.geometry.frame, minimumChrome);
   else plotChromeFloor.delete(pass.geometry.frame);
-  if (axis && !noteParent && pass.noteFrame?.area.stairTop !== undefined
+  if (axis && !noteParent && pass.noteFrame
     && pass.geometry.labels.some(label => label.kind === 'grandTotal' && label.hidden === 'collision')) {
-    axis.noteParent = pass;
+    if (pass.noteFrame.area.stairTop !== undefined) axis.noteParent = pass;
+    // The band note starts again before the segment note. If the column kept its first
+    // drawing through every note and reserve, compare that original body to the new frame.
+    else if (options.categoryLabels !== 'staircase' && firstBody.geometry.labels === pass.geometry.labels) axis.noteParent = firstBody;
   }
   return pass.geometry;
 }
