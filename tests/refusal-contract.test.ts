@@ -269,9 +269,9 @@ describe('refusal contract', () => {
     const status = (render({ spec: { type: 'table', data: { ...(table.data as object), rows }, options: table.options } }).body.errors as Finding[])[0]!;
     expect(status.suggest).toContain("{ state: 'na' }");
     const column = getFixtures('column')[0]!;
-    const rowsResult = JSON.parse(callTool('boardplot_render', { spec: { type: 'column', data: column.data, options: column.options }, rows: [{ month: 'Jan', revenue: 3 }], columns: { category: 'month', value: 'revenue' } }).text) as { errors: Finding[] };
+    const rowsResult = JSON.parse(callTool('boardplot_render', { spec: { type: 'column', data: column.data, options: column.options }, rows: [{ month: 'Jan', revenue: 3 }], columns: { category: 'month', series: '', value: 'revenue' } }).text) as { errors: Finding[] };
     expect(rowsResult.errors[0])
-      .toMatchObject({ path: '/columns/series', suggest: expect.stringContaining('same series name on every row') });
+      .toMatchObject({ path: '/columns/series', suggest: expect.stringContaining('omit columns.series to use one series') });
     expect((render({ spec: { type: 'column', data: column.data, options: column.options, theme: 'dark' } as never }).body.errors as Finding[])[0]!.suggest)
       .toMatch(/^Use bridge-dark, standard-dark or notation-dark;/);
   });

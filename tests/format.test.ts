@@ -48,6 +48,28 @@ describe('ordinary number examples', () => {
     return { request, texts: requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'point' && !label.hidden).map(label => label.text) };
   };
 
+  // A format code or a second literal number can print misleading text while the chart succeeds.
+  it('warns once per format code or two-number example and preserves printed text', () => {
+    const examples = ['$,.0f', ',.0f', '.1%', '%d', '%.2f', '2h 14m'];
+    const ordinary = ['#1', '0.0%', '%', '$M', '@@@', '1.2E+06', 'CO2 1.2', 'EUR1bn (2020 USD)', '1kg / 100m²', '1 kg per 100 m²', '$1M in 2020 prices', '#,##0', '<0.1%'];
+    const result = readFormatExamples({
+      series: [...examples, ...ordinary].map(format => ({ format })),
+      columns: [{ kind: 'date', format: '30 Sep 2026' }],
+      facts: { format: '9:16 Video' },
+    }, { format: '$,.0f', xAxis: { type: 'time', format: '30 Sep 2026' } });
+    const warnings = result.warnings.filter(warning => warning.code === 'format-not-example');
+    expect(warnings).toHaveLength(examples.length);
+    for (const [i, replacement] of ['$1,234', '1,234', '1.2%', '1234', '1.23', '1,234 s'].entries()) {
+      expect(warnings[i]).toMatchObject({ severity: 'warn', suggest: expect.stringContaining(`'${replacement}'`) });
+    }
+    expect(result.warnings.some(warning => warning.code === 'format-spreadsheet-code')).toBe(true);
+    expect(column('$,.0f', [1_234_567.89, 2_000_000]).texts).toContain('$,1,234,567.9f');
+    expect(column('2h 14m', [8040, 7000]).texts).toContain('8,040h 14m');
+    const rejected = render({ spec: { type: 'column', data: { categories: ['A'], series: [{ id: 's', values: [12] }] }, options: { format: '%d' } } });
+    expect(rejected.body.errors).toMatchObject([{ code: 'invalid-format', path: '/options/format' }]);
+    expect(rejected.body.warnings).toContainEqual(expect.objectContaining({ code: 'format-not-example', path: '/options/format' }));
+  });
+
   // Prevents currency scale words from naming thousands or millions while the cells print base units.
   it('scales spaced currency magnitudes and currency affixes while keeping physical units literal', () => {
     for (const [example, expected] of [['$1.2 k', '$1.2 k'], ['€1.2 m', '€0.0 m'], ['CHF 1.2 m', 'CHF 0.0 m'],

@@ -140,6 +140,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `callout-arrow-no-room` | warn |  | core/annotateCallout.ts |
 | `callout-side-changed` | info |  | core/annotate.ts |
 | `cap-ignored` | warn | yes | heatmap |
+| `categories-are-dates` | warn |  | core/request.ts |
 | `category-font-stepped` | info |  | core/label/categoryRow.ts |
 | `category-labels-rotated` | info |  | core/label/categoryRow.ts |
 | `category-labels-truncated` | info, warn |  | core/label/categoryRow.ts |
@@ -271,6 +272,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `dimswitch-subtotal-footing` | warn |  | dimswitch |
 | `direction-ignored` | warn |  | heatmap |
 | `discrete-quintiles` | warn |  | heatmap |
+| `doughnut-option-missing` | warn |  | core/doc/chartValidation.ts |
 | `draw-crosses-text` | warn |  | core/annotateDrawing.ts |
 | `dual-axis` | warn |  | combo |
 | `dual-axis-anatomy-off` | info |  | combo |
@@ -348,6 +350,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `footnotes-off` | info |  | core/eventLane.ts, core/frameText.ts, core/request.ts |
 | `format-hides-values` | warn | yes | core/formatSpec.ts |
 | `format-ignored` | warn |  | band, variance |
+| `format-not-example` | warn |  | core/formatSpec.ts |
 | `format-reads-as-group` | warn |  | core/formatSpec.ts |
 | `format-spreadsheet-code` | warn |  | core/formatSpec.ts |
 | `format-unscaled` | warn | yes | core/formatSpec.ts |
@@ -597,6 +600,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `missing-value` | error, info |  | bartable, core/dataGaps.ts, core/rows.ts, scatter, waterfall |
 | `missing-variance` | error |  | variance |
 | `mixed-directions` | error |  | heatmap |
+| `mixed-language` | warn |  | core/registry.ts |
 | `more-errors` | not stated at the site |  | cli/result.ts |
 | `name-slugified` | warn | yes | core/doc/document.ts |
 | `negative-value` | error, warn |  | funnel, waffle |

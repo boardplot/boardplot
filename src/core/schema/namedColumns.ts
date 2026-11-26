@@ -1,7 +1,7 @@
 /**
  * Named-column adapter — optional, chart-family targets only.
  *
- * A caller who receives a flat table names three columns and gets canonical
+ * A caller who receives a flat table names category and value columns and gets canonical
  * `categories` and `series` for the category chart family. The adapter never
  * guesses a column's meaning: every column it reads is named in the contract,
  * every mapping it cannot make exactly is refused with a code and a path, and
@@ -31,8 +31,8 @@ export const NAMED_STATE_PATTERN = { suppressed: 'crosshatch', nm: 'horizontal',
 export interface NamedColumnContract {
   /** Column holding the category id. Required. */
   category: string;
-  /** Column holding the series id. Required. */
-  series: string;
+  /** Column holding the series id. Without it, the value column names one series. */
+  series?: string;
   /** Column holding the cell value. Required. */
   value: string;
   /** Column holding a category label, which defaults to the id. */
@@ -84,32 +84,28 @@ interface Draft {
   states: NamedColumnStateEntry[];
 }
 
-const REQUIRED_COLUMNS = ['category', 'series', 'value'] as const;
-const OPTIONAL_COLUMNS = ['categoryLabel', 'seriesLabel', 'unit', 'date', 'state'] as const;
+const COLUMN_ROLES = ['category', 'series', 'value', 'categoryLabel', 'seriesLabel', 'unit', 'date', 'state'] as const;
 
 function refuse(code: string, path: string, message: string, suggest?: string): never {
   throw new NormalizeError(code, path, message, suggest);
 }
 
-function contractColumns(contract: NamedColumnContract): { required: string[]; optional: string[] } {
-  const read = (key: keyof NamedColumnContract): string | undefined => {
-    const value = contract[key];
-    if (value === undefined) return undefined;
-    if (typeof value !== 'string' || !value.trim()) {
-      refuse('invalid-contract', `contract.${key}`, 'column name must be a non-empty string');
+function contractColumns(contract: NamedColumnContract): string[] {
+  const names: string[] = [];
+  for (const role of COLUMN_ROLES) {
+    const name = contract[role];
+    if (name === undefined && role !== 'category' && role !== 'value') continue;
+    if (typeof name !== 'string' || !name.trim()) {
+      refuse('invalid-contract', `contract.${role}`, 'column name must be a non-empty string');
     }
-    return value;
-  };
-  const required = REQUIRED_COLUMNS.map((key) => read(key) as string);
-  const optional = OPTIONAL_COLUMNS.map(read).filter((name): name is string => name !== undefined);
-  // The category column may also be the date column: its ids are then the category dates.
-  const roles = OPTIONAL_COLUMNS.filter((key) => key !== 'date' || contract.date !== contract.category);
-  const names = [...required, ...roles.map((key) => contract[key]).filter((name): name is string => name !== undefined)];
-  const duplicate = names.find((name, index) => names.indexOf(name) !== index);
-  if (duplicate !== undefined) {
-    refuse('invalid-contract', 'contract', `column '${duplicate}' is named for more than one role; one column cannot fill two roles`);
+    // The category column may also give the category date.
+    if (role === 'date' && name === contract.category) continue;
+    if (names.includes(name)) {
+      refuse('invalid-contract', 'contract', `column '${name}' is named for more than one role. One column cannot fill two roles.`);
+    }
+    names.push(name);
   }
-  return { required, optional };
+  return names;
 }
 
 function requireColumns(rows: Record<string, unknown>[], columns: string[]): void {
@@ -226,15 +222,13 @@ export function adaptNamedColumns(input: NamedColumnsInput): NamedColumnsResult 
   if (!Array.isArray(rows) || rows.some((row) => typeof row !== 'object' || row === null || Array.isArray(row))) {
     refuse('invalid-rows', 'rows', 'rows must be an array of objects');
   }
-  const { required, optional } = contractColumns(contract);
+  const columns = contractColumns(contract);
   if (!rows.length) {
     refuse('rows-empty', 'rows', 'there are no data rows, only a header or an empty list',
       'An empty query result has nothing to draw; check the row count before the call.');
   }
-  requireColumns(rows, [...required, ...optional]);
-  const categoryColumn = required[0] as string;
-  const seriesColumn = required[1] as string;
-  const valueColumn = required[2] as string;
+  requireColumns(rows, columns);
+  const { category: categoryColumn, series: seriesColumn, value: valueColumn } = contract;
 
   const draft: Draft = {
     categoryIds: [], categories: new Map(), seriesIds: [], seriesMeta: new Map(), cells: new Map(), states: [],
@@ -242,11 +236,11 @@ export function adaptNamedColumns(input: NamedColumnsInput): NamedColumnsResult 
   const seenPairs = new Map<string, number>();
   rows.forEach((row, rowIndex) => {
     const categoryId = readIdentity(row, categoryColumn, rowIndex, 'category');
-    const seriesId = readIdentity(row, seriesColumn, rowIndex, 'series');
+    const seriesId = seriesColumn === undefined ? valueColumn : readIdentity(row, seriesColumn, rowIndex, 'series');
     const pair = `${categoryId}\u0000${seriesId}`;
     const first = seenPairs.get(pair);
     if (first !== undefined) {
-      refuse('ambiguous-mapping', `rows[${rowIndex}].${seriesColumn}`,
+      refuse('ambiguous-mapping', `rows[${rowIndex}].${seriesColumn ?? categoryColumn}`,
         `category '${categoryId}' and series '${seriesId}' appear twice (rows ${first + 1} and ${rowIndex + 1}); one value per pair is required, and identical repeats are refused as well`);
     }
     seenPairs.set(pair, rowIndex);
@@ -274,7 +268,7 @@ export function adaptNamedColumns(input: NamedColumnsInput): NamedColumnsResult 
     draft.cells.set(seriesId, values);
   });
 
-  const named = new Set([...required, ...optional]);
+  const named = new Set(columns);
   const ignoredColumns = [...new Set(rows.flatMap((row) => Object.keys(row)))]
     .filter((column) => !named.has(column)).sort();
   return { data: toCanonical(draft), states: draft.states, ignoredColumns };

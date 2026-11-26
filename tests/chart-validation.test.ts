@@ -223,6 +223,42 @@ describe('actionable input refusals', () => {
   const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
   const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
 
+  // An unsupported chart name needs a usable chart type or variant in the refusal.
+  it('offers an area variant and alternatives for unsupported chart forms', () => {
+    const area = errors({ type: 'area', data: {} })[0];
+    expect(area).toMatchObject({ code: 'unknown-type', suggest: expect.stringContaining('type line with variant area') });
+    for (const [type, alternative] of [['gauge', 'bullet'], ['radar', 'dot'], ['spider', 'dot'], ['control-chart', 'line']]) {
+      expect(errors({ type, data: {} })[0]).toMatchObject({ code: 'unknown-type', suggest: expect.stringContaining(`type '${alternative}'`) });
+    }
+    expect(errors({ type: 'control-chart', data: {} })[0]?.suggest).toContain('options.referenceBands');
+  });
+
+  // A donut alias silently drew a solid pie when the caller had omitted the hole size.
+  it('warns once when a donut alias has no doughnut option', () => {
+    const data = { categories: ['A', 'B'], series: [{ id: 'sales', values: [1, 2] }] };
+    const draw = (type: string, doughnut?: number) => render({ spec: { type, data, options: { title: 'Sales mix', doughnut } }, return: ['svg'] }).body;
+    const warnings = (body: ReturnType<typeof draw>) => (body.warnings as { code: string }[]).filter(warning => warning.code === 'doughnut-option-missing');
+    for (const type of ['donut', 'doughnut']) {
+      const result = draw(type);
+      expect(result.ok).toBe(true);
+      expect(warnings(result)).toMatchObject([{ severity: 'warn', path: '/options/doughnut', suggest: expect.stringContaining('0.55') }]);
+      expect(warnings(draw(type, 0))).toEqual([]);
+    }
+    expect(warnings(draw('pie'))).toEqual([]);
+  });
+
+  // Switching a line or column to two axes needs series kinds and acknowledgement as well as the combo type.
+  it('names every setting needed to move a line or column to two axes', () => {
+    const data = { categories: ['A', 'B'], series: [{ id: 'sales', axis: 'secondary', values: [1, 2] }] };
+    for (const type of ['line', 'column']) {
+      const error = errors({ type, data })[0];
+      expect(error).toMatchObject({ code: 'invalid-data', path: '/data/series/0/axis' });
+      expect(error?.suggest).toContain("type 'combo'");
+      expect(error?.suggest).toContain("kind to 'line' or 'column'");
+      expect(error?.suggest).toContain('options.secondaryAxis: { acknowledge: true }');
+    }
+  });
+
   // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
   it('sets Brevinth metadata and edge labels in muted secondary type and centres the node text block', () => {
     const data: DiagramData = {
@@ -723,14 +759,19 @@ describe('ignored options', () => {
     const draw = (type: string, options: object, chartData: unknown = data) => render({ spec: { type, data: chartData, options }, return: ['svg'] }).body;
     const ignored = (body: ReturnType<typeof draw>) => (body.warnings as { code: string; severity: string; path: string; fix?: unknown }[])
       .filter(warning => warning.code === 'option-ignored');
-    const lineOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4, secondaryAxis: { acknowledge: true }, animate: true };
+    const ignoredOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4, secondaryAxis: { acknowledge: true } };
+    const lineOptions = { ...ignoredOptions, animate: true, debug: true };
     const untouched = structuredClone(lineOptions);
     const line = draw('line', lineOptions);
     expect(line.ok, JSON.stringify(line.errors)).toBe(true);
-    expect(ignored(line)).toHaveLength(5);
-    for (const key of Object.keys(lineOptions)) {
+    expect(ignored(line)).toHaveLength(4);
+    for (const key of Object.keys(ignoredOptions)) {
       expect(ignored(line)).toContainEqual(expect.objectContaining({ severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }] }));
     }
+    const retired = (line.warnings as { code: string }[]).filter(warning => warning.code === 'option-deprecated');
+    expect(retired).toMatchObject(['animate', 'debug'].map(key => ({
+      severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }],
+    })));
     expect(line.svg).toBe(draw('line', {}).svg);
     expect(lineOptions).toEqual(untouched);
 

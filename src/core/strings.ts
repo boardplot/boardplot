@@ -1,4 +1,5 @@
 import { formatExactNumber } from './format';
+import { wordLanguage } from './numberMarks';
 import type { BaseOptions } from './types/options';
 
 /** Built-in chart wording. Unsupported languages use English. */
@@ -275,6 +276,15 @@ function fieldText(match: string, field: string, fields: Record<string, string |
 /** The caller's own words, without the locale fill: what a grid hands its panels, so each panel fills its own locale. */
 export function authoredStrings(options: Pick<BaseOptions, 'strings'>): Record<string, string | undefined> | undefined {
   return (options as Authored)[LOCALE_STRINGS] ?? options.strings as Record<string, string | undefined> | undefined;
+}
+
+/** The built-in source word when the chart asked for a language that has no wording table. */
+export function englishSourceFallback(options: Pick<BaseOptions, 'locale' | 'strings'> | undefined): { language: string; word: string } | undefined {
+  const language = wordLanguage(options?.locale?.language);
+  if (options && language && !/^(?:en|de)(?:[-_]|$)/i.test(language) && authoredStrings(options)?.source === undefined) {
+    return { language, word: EN.source };
+  }
+  return undefined;
 }
 
 /**

@@ -234,6 +234,26 @@ describe('unknown option keys are refused on every type', () => {
     const tree: OptionKeyTree = { title: 0, axisTitles: { x: 0, y: 0 } };
     expect(wordUnknownKeys([{ path: ['yTitle'], node: tree }], tree)[0]).toMatchObject({ suggest: "Remove 'yTitle' here and set options.axisTitles.y instead." });
   });
+  // A chart author following the orientation hint used to reach another refusal at transpose.
+  it('sends orientation options to concrete chart types without a rename patch', () => {
+    const data = getFixtures('column')[0]!.data;
+    const options = { orientation: 'horizontal', horizontal: true, vertical: true };
+    const tree: OptionKeyTree = { transpose: 0 };
+    for (const errors of [
+      cliErrors({ type: 'column', data, options }).errors,
+      wordUnknownKeys(Object.keys(options).map(key => ({ path: [key], node: tree })), tree),
+    ]) {
+      expect(errors).toHaveLength(3);
+      for (const key of Object.keys(options)) {
+        const finding = errors.find(error => error.path?.endsWith(key));
+        expect(finding).toMatchObject({ code: 'unknown-option', suggest: expect.stringContaining(`Remove '${key}'. Use type 'bar' for horizontal bars or type 'column' for vertical columns`) });
+        expect(finding).not.toHaveProperty('fix');
+      }
+    }
+    // A waterfall turns on its own variant option, which the refusal still names with its patch.
+    const waterfall = cliErrors({ type: 'waterfall', data: getFixtures('waterfall')[0]!.data, options: { horizontal: true } }).errors;
+    expect(waterfall).toContainEqual(expect.objectContaining({ code: 'unknown-option', fix: expect.any(Array), suggest: expect.stringContaining('variant') }));
+  });
   // A patch that renames a nested key onto a boolean option but keeps the string 'yes' leaves the chart refused.
   it('patches a nested typo only when the renamed key takes the authored value', () => {
     const data = getFixtures('column')[0]!.data;

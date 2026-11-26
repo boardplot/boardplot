@@ -26,7 +26,7 @@ type RowContract = Partial<Record<ColumnRole, string>>;
 
 /** The roles each rows shape reads; a shape the generator adds fails to compile until it is listed here. */
 const SHAPE_ROLES: Record<RowsShape, { required: readonly ColumnRole[]; roles: readonly ColumnRole[] }> = {
-  category: { required: ['category', 'series', 'value'], roles: CATEGORY_ROLES },
+  category: { required: ['category', 'value'], roles: CATEGORY_ROLES },
   map: { required: ['category', 'value'], roles: ['category', 'value', 'state'] },
   waterfall: { required: ['label', 'value'], roles: ['label', 'value', 'type'] },
   scatter: { required: ['x', 'y'], roles: ['x', 'y', 'size', 'label', 'group'] },
@@ -100,6 +100,7 @@ function readColumns(columns: unknown, shape: RowsShape): { contract: RowContrac
     });
   }
   const { valueKind = 'number', ...contract } = columns;
+  if (shape === 'category' && contract.series === undefined) delete contract.series;
   if (!(VALUE_KINDS as readonly unknown[]).includes(valueKind)) {
     throw new InputError('invalid-argument', `valueKind must be one of ${VALUE_KINDS.join(', ')}`, {
       path: '/columns/valueKind', expected: { values: [...VALUE_KINDS] },
@@ -131,9 +132,8 @@ function readColumns(columns: unknown, shape: RowsShape): { contract: RowContrac
   if (missing !== undefined) {
     throw new InputError('invalid-argument', `columns.${missing} must name the source column that holds the ${missing}`, {
       path: `/columns/${missing}`, expected: { types: ['string'] },
-      // One series is still a series column: the rows carry no default series name.
       suggest: missing === 'series'
-        ? 'For one series, add a source column with the same series name on every row and name it in columns.series.'
+        ? 'Name the source series column or omit columns.series to use one series named after columns.value.'
         : `Name the source column that holds the ${missing} in columns.${missing}.`,
     });
   }
@@ -672,7 +672,7 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     const seriesIndices = new Map(adapted.data.series.map((entry, i) => [entry.id, i]));
     rows.forEach((row, i) => {
       const category = categoryIndices.get(String(row[contract.category]))!;
-      const series = seriesIndices.get(String(row[contract.series]))!;
+      const series = seriesIndices.get(contract.series === undefined ? contract.value : String(row[contract.series]))!;
       // A bar table keys its one panel's values by segment id (bartablePanel).
       const cell = bartable
         ? `/data/panels/0/values/${adapted.data.series[series]!.id.replace(/~/g, '~0').replace(/\//g, '~1')}/${category}`
@@ -710,6 +710,9 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
   }
   const categories = byId(data.categories);
   const series = byId(data.series);
+  if (!map && contract.series === undefined) {
+    series.set(contract.value, { label: contract.value, ...series.get(contract.value) });
+  }
   const named = (key: keyof NamedColumnContract) => contract[key] !== undefined;
   const labelled = new Set(contract.categoryLabel === undefined ? [] : rows
     .filter((row) => ![undefined, null, ''].includes(row[contract.categoryLabel!] as never)).map((row) => String(row[contract.category])));

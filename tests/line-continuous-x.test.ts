@@ -45,6 +45,34 @@ function refusal(data: unknown, options: Record<string, unknown>): string | unde
 
 const series = (n: number, f = (i: number) => i) => [{ id: 'a', label: 'Probe', values: Array.from({ length: n }, (_, i) => f(i)) }];
 
+// Equal category spacing can make a long gap between dated readings look like a single day.
+it('warns when line categories hide unequal date gaps and leaves regular series quiet', () => {
+  const warnings = (categories: unknown[], type = 'line', options = {}) =>
+    (resolveChartRequest({ type, data: { categories, series: series(categories.length) }, options }).inputWarnings ?? [])
+      .filter(warning => warning.code === 'categories-are-dates');
+  const irregular = ['2026-01-01', '2026-01-02', '2026-04-01'];
+  expect(warnings(irregular)).toMatchObject([{
+    severity: 'warn', field: ['data', 'categories'], suggest: expect.stringContaining("options.xAxis to { type: 'time' }"),
+  }]);
+  expect(warnings(irregular.map((label, i) => ({ id: String(i), label })), 'profile')).toHaveLength(1);
+  for (const names of [
+    ['2026-01-01', '2026-01-02', '2026-01-03'],
+    ['2026-01-01', '2026-02-01', '2026-03-01'],
+    ['2026-01-01', '2026-04-01', '2026-07-01'],
+    ['2023-01-01', '2024-01-01', '2025-01-01'],
+    ['2024-01-31', '2024-02-29', '2024-03-31'],
+    ['2026-01-15', '2026-03-15', '2026-05-15'],
+    ['2026-01-01', '2026-01-02', '2026-01-05'],
+    ['Jan', 'Q1', '2026'],
+    ['2026-01-01', '2026-02-29', '2026-04-01'],
+    ['2026-01-02', '2026-01-01', '2026-04-01'],
+  ]) {
+    expect(warnings(names), names.join(', ')).toEqual([]);
+  }
+  expect(warnings(irregular.map(date => ({ id: date, date })))).toEqual([]);
+  expect(warnings(irregular, 'line', { variant: 'bump' })).toEqual([]);
+});
+
 describe('time zone reading', () => {
   // The repeated hour on 25 Oct must keep its order: the second 02:30 is an hour after the first.
   it('reads a repeated wall time in order as the later instant, and refuses one it cannot order', () => {

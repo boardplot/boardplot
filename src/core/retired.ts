@@ -32,6 +32,8 @@ const removed = (types: readonly string[], at: readonly string[], use?: string):
   at.map(path => ({ at: path, types, ...(use ? { use } : {}) }));
 
 const RETIRED_SETTINGS: readonly RetiredSetting[] = [
+  { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
+  { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
   // Each chart form is named by one option, variant.
@@ -210,6 +212,10 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
   }
   if (!isRecord(chart.options)) return { chart: next as C, warnings };
+  // These keys were left out of SVG ids before they became retired settings.
+  for (const key of ['animate', 'debug']) {
+    if (readAt(chart, ['options', key]) !== undefined) next = setAt(next, ['options', key], undefined);
+  }
   const ignore = (field: string[], severity: 'warn' | 'info' = 'warn', on: string = type, does?: string) => {
     next = setAt(next, field, undefined);
     const dotted = field.join('.');
@@ -356,6 +362,7 @@ function ignoreVariantSettings(type: string, chart: unknown, options: Record<str
  */
 export function retireChartSettings<C extends { options?: unknown; data?: unknown }>(
   type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
+  reportRetained = true,
 ): { chart: C; warnings: LintWarning[] } {
   const warnings: LintWarning[] = [];
   let next: unknown = chart;
@@ -369,12 +376,11 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
     const panel = readAt(chart, at);
     const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
     if (panelType === undefined) continue;
-    const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
-    if (retired.chart === panel) continue;
-    next = setAt(next, at, retired.chart);
+    const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical, reportRetained);
+    if (retired.chart !== panel) next = setAt(next, at, retired.chart);
     for (const warning of retired.warnings) {
       warnings.push({ ...warning, field: [...at, ...warning.field!],
-        fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
+        ...(warning.fix && { fix: warning.fix.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) }) });
     }
   }
   for (const entry of RETIRED_SETTINGS) {
@@ -433,6 +439,15 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
       fix: kept.length > 0 ? [{ op: 'test', path, value: content }, { op: 'replace', path, value: kept }] : [{ op: 'remove', path }] });
   }
   const ignored = ignoreChartSettings(type, next as C, canonical);
+  // Keep the option in the request so the SVG id stays the same.
+  const options = ignored.chart.options;
+  if (reportRetained && type === 'waterfall' && isRecord(options) && options.variant === 'horizontal' && options.axisTitles !== undefined) {
+    warnings.push({
+      code: 'option-ignored', severity: 'warn', field: ['options', 'axisTitles'],
+      message: 'options.axisTitles has no effect on a horizontal waterfall.',
+      suggest: "Remove options.axisTitles or set options.variant to 'vertical' to show an axis title.",
+    });
+  }
   return { chart: ignored.chart, warnings: [...warnings, ...ignored.warnings] };
 }
 

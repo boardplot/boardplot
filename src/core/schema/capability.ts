@@ -41,7 +41,7 @@ export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
 
 /** Options ignored with a warning when a chart type does not read them. */
 export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
-  'animate', 'debug', 'sort', 'topN', 'bandFraction', 'secondaryAxis',
+  'sort', 'topN', 'bandFraction', 'secondaryAxis',
   'rowLabels', 'categoryAxis', 'categoryLabels',
 ]);
 
@@ -85,12 +85,6 @@ export const IGNORED_ON: Readonly<Record<string, { types: readonly string[]; doe
 export const OPTION_CAPABILITY = {
   labelPosition: {
     implementedBy: ['bar', 'butterfly', 'column', 'combo', 'histogram', 'likert', 'mekko', 'pareto', 'pvm', 'pyramid', 'variance', 'waterfall'],
-  },
-  animate: {
-    implementedBy: [],
-  },
-  debug: {
-    implementedBy: [],
   },
   rowLabels: {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],

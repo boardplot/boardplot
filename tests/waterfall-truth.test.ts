@@ -622,6 +622,31 @@ describe('waterfall variant option text', () => {
   });
 });
 
+// An explicit horizontal waterfall can omit an expected axis title, and dropping the key would change its SVG IDs.
+it('warns once about an axis title on the horizontal variant and keeps the key in the SVG ID hash', () => {
+  const data = { items: [
+    { id: 'start', label: 'Start', value: 10, type: 'total' },
+    { id: 'price', label: 'Price', value: 5 },
+    { id: 'end', label: 'End', value: 15, type: 'total' },
+  ] };
+  const axisTitles = { primary: 'Revenue, EUR m' };
+  const draw = (variant?: string, withTitle = true) => render({
+    spec: { type: 'waterfall', data, options: { title: 'Revenue grew', variant, ...(withTitle ? { axisTitles } : {}) } }, return: ['svg'],
+  }).body;
+  const ignored = (body: ReturnType<typeof draw>) => (body.warnings as { code: string }[]).filter(warning => warning.code === 'option-ignored');
+  const horizontal = draw('horizontal');
+  expect(horizontal.ok).toBe(true);
+  expect(ignored(horizontal)).toMatchObject([{ severity: 'warn', path: '/options/axisTitles' }]);
+  const svgId = (body: ReturnType<typeof draw>) => /aria-describedby="([^"]+)"/.exec(String(body.svg))?.[1];
+  expect(svgId(horizontal)).toBeDefined();
+  expect(svgId(horizontal)).not.toBe(svgId(draw('horizontal', false)));
+  expect(horizontal.svg).not.toContain(axisTitles.primary);
+  expect(ignored(draw())).toEqual([]);
+  const vertical = draw('vertical');
+  expect(ignored(vertical)).toEqual([]);
+  expect(vertical.svg).toContain(axisTitles.primary);
+});
+
 // An 'auto' break that finds no break cut the whole-axis plot allowance, so the chart drew 100 px shorter than with break false.
 describe('waterfall automatic break with none found', () => {
   it('keeps the height of a whole-axis bridge', () => {

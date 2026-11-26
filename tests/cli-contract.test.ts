@@ -116,6 +116,24 @@ it('skips theme preflight only for resolved no-op overrides', () => {
 });
 
 describe('rows mappings', () => {
+  // A two-column query result was refused even when every row belonged to one series.
+  it('draws a two-column CSV as one named series and points duplicate categories to the source row', () => {
+    const dir = tdir();
+    const file = join(dir, 'rows.csv');
+    const template = { type: 'column', options: { title: 'Monthly revenue' } };
+    const doc = writeDoc(dir, 'spec.json', template);
+    const args = ['render', doc, '--rows', file, '--columns', 'category=month,value=revenue', '--return', 'svg,reading'];
+    writeFileSync(file, 'month,revenue\nJan,10\nFeb,12\n');
+    const drawn = envelope(runCli(args));
+    expect(drawn.ok).toBe(true);
+    expect(drawn.reading?.data).toMatchObject({ rows: 2, ignoredColumns: [] });
+    const { spec } = specFromRows(template, { rows: [{ month: 'Jan', revenue: 10 }, { month: 'Feb', revenue: 12 }], columns: { category: 'month', value: 'revenue' } });
+    expect(spec.data.series).toMatchObject([{ id: 'revenue', label: 'revenue', values: [{ number: 10 }, { number: 12 }] }]);
+    expect(drawn.svg).toBe(render({ spec, return: ['svg'] }).body.svg);
+    writeFileSync(file, 'month,revenue\nJan,10\nJan,12\n');
+    expect(envelope(runCli(args)).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', displayPath: 'rowsFile row 2.month' }]);
+  });
+
   // boardplot/rows must draw what the CLI's rows draw and refuse at the same row, or React and agent charts drift apart.
   it('specFromRows builds the data and the refusal that rows build in boardplot_render', () => {
     const template = { type: 'line', data: { series: [{ id: 'Search', label: 'Search ads' }] } };

@@ -51,7 +51,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | categories[].role | string |  | 'total' sets a summary column apart: gap and divider before it, bold head and values, no ribbons or connectors into it. On stacked100 with all its cells null and total100 (respondent base) on every other column, it prints the base-weighted share Σ total100 × share / Σ total100 (a percent cell is the share as authored, a count cell's share is count / total100), not the mean of the group shares. A series with a null in some group keeps an empty total cell and warns total-not-computed. One of `'data'`, `'total'`. |
 | series | array | yes | Series supplying values for each category, with optional reference series for comparisons. |
 | series[].kind | string |  | Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. One of `'column'`, `'line'`, `'area'`. |
-| series[].axis | string |  | Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. One of `'primary'`, `'secondary'`. |
+| series[].axis | string |  | On line and column, only 'primary' is accepted and it has no effect. For a second axis, use type 'combo', set each series' kind to 'line' or 'column', and set options.secondaryAxis: { acknowledge: true }. One of `'primary'`, `'secondary'`. |
 | series[].valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. The hover card names each value with it ("North: 65.8"). |
@@ -136,7 +136,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | viewDomain | object |  |  | Zoom the visible categories. Means, the average marker and anomaly rules keep every source period. A mean's Ø label names the periods it covers where the plot draws fewer, 'Ø 40.4 (Jan 25–Dec 26)'. Refused with a category sort or topN, which break the period order. |
 | viewDomain.x | array |  |  | Inclusive category ids bounding the visible x axis. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`. This type ignores `animate`, `debug`, `rowLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`. This type ignores `rowLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 

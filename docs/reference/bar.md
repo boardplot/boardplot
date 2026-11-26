@@ -134,7 +134,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 

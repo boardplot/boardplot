@@ -10,6 +10,8 @@ import { getFixtures } from '../src/fixtures';
 import { getChartDefinition } from '../src/core/registry';
 import { requireGeometry } from '../src/core/sizing';
 import { dateTickKeep, formatDate } from '../src/core/dateFormat';
+import { COMPACT_SOURCE_LINES } from '../src/core/frame';
+import { INTERACTIVE_LAYOUT } from '../src/core/footer';
 import { resolveChartRequest } from '../src/core/request';
 import { chartString as layoutString } from '../src/core/strings/createChartComponent';
 import { resolveTable } from '../src/core/charts/table/resolve';
@@ -78,6 +80,27 @@ describe('built-in wording block', () => {
     expect(texts(layout('pie', fixture))).toContain('Source: Brevinth label analytics, FY25');
     expect(texts(layout('pie', fixture, { strings: { source: 'Quelle' } })))
       .toContain('Quelle: Brevinth label analytics, FY25');
+  });
+
+  // A French chart can print a built-in English source prefix, while the author's wording and hidden prefixes should stay quiet.
+  it('reports only the built-in source prefix visible in the scene', () => {
+    const fixture = pieFixture();
+    const warnings = (options: Record<string, unknown>) => layout('pie', fixture, options).warnings.filter(warning => warning.code === 'mixed-language');
+    const french = { locale: { language: 'fr-FR' } };
+    expect(warnings(french)).toMatchObject([{
+      severity: 'warn', message: "Chart text for 'fr-FR' includes built-in English wording (Source:).",
+      suggest: expect.stringContaining('options.strings.source'),
+    }]);
+    for (const source of ['Provenance', '', 'Source']) {
+      expect(warnings({ ...french, strings: { source } })).toEqual([]);
+    }
+    expect(warnings({ ...french, source: 'Sources: internal' })).toEqual([]);
+    const hidden = layout('pie', fixture, { ...french, target: 'dashboard', [INTERACTIVE_LAYOUT]: true, [COMPACT_SOURCE_LINES]: 0 });
+    expect(texts(hidden)).not.toContain('Source:');
+    expect(hidden.warnings.some(warning => warning.code === 'mixed-language')).toBe(false);
+    for (const language of [undefined, 'en-GB', 'de-DE']) {
+      expect(warnings({ locale: { language } })).toEqual([]);
+    }
   });
 });
 

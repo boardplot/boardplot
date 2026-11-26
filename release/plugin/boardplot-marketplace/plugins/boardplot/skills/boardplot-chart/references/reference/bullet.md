@@ -71,7 +71,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | targetColumns | boolean |  | `true` | true: where the rows sit side by side and the plot keeps 45% of the width, a Target column and a Gap-to-target column print beside the rows, each under a head. The name and every number of a row are centred on its bar, and a line under one (labels.position, labels.direction) hangs below it. A row without a target prints the not-applicable glyph (strings.notApplicable, default n/a) in both cells. Where they do not fit, the target prints above its tick and the delta at the row end. false: always the second form. Default true. The percentOfTarget scale has its own columns. |
 | density | string | `'compact'`, `'regular'` | `'regular'` | 'compact' is the 120 x 28 text-free mark: bar, bands and target tick, no labels, axis or key. The percentOfTarget scale needs a key and a value column, so compact refuses it. 'regular' uses labelled stacked rows when side columns take too much plot width. Height depends on row count and text. Default 'regular'. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN` with an `option-ignored` warning.
 
 ## Annotations
 

@@ -41,7 +41,6 @@ function normalizeOptionTerm(term: string): string {
   if (words.join(' ') === 'y axis') words = ['value', 'axis'];
   words = words.map((word) => {
     if (word === 'colors' || word === 'colours' || word === 'color' || word === 'colour') return 'palette';
-    if (word === 'orientation' || word === 'horizontal' || word === 'vertical') return 'transpose';
     if (word === 'stacked' || word === 'stacking') return 'stack';
     return word;
   });
@@ -181,6 +180,14 @@ export function unknownKeySuggest(key: string, nearest: { key: string; near: boo
   return nearest ? `Remove '${key}'; this key is not supported here.` : `Remove '${key}'; this object takes no keys.`;
 }
 
+/** These top-level option names refer to a choice of chart type. */
+export function orientationOptionAdvice(path: readonly (string | number)[]): { message: string; suggest: string } | undefined {
+  const [key] = path;
+  if (path.length !== 1 || typeof key !== 'string' || !/^(orientation|horizontal|vertical)$/i.test(key)) return undefined;
+  const hint = "Use type 'bar' for horizontal bars or type 'column' for vertical columns.";
+  return { message: `unknown option '${key}'. ${hint}`, suggest: `Remove '${key}'. ${hint}` };
+}
+
 /**
  * The fix when the near key takes the option but not its value (showValues:
  * true is no labels value): a plain rename would trade one refusal for another.
@@ -223,6 +230,9 @@ export function wordUnknownKeys(found: readonly UnknownKey[], tree?: OptionKeyTr
     const key = String(path.at(-1));
     // At the top the near miss also reads the words below each option (gridlines -> valueAxis).
     const top = path.length === 1 ? nearestOptionTerm(key, termsOf(node)) : undefined;
+    // A type that switches its own orientation through another option (waterfall: variant) names that option.
+    const orientation = top ? undefined : orientationOptionAdvice(path);
+    if (orientation) return { code: 'unknown-option', ...orientation, path: `options.${path[0]}` };
     const nearest = top ? { key: top, near: true } : closestOptionKey(key, namedKeys(node));
     const dotted = path.join('.');
     const moved = tree === undefined ? undefined : movedKey(dotted, (target) => treeTakes(tree, target));
