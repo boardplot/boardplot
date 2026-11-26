@@ -387,14 +387,11 @@ function eventKeyBand(key: EventKeyInput, theme: Theme, measure: TextMeasurer, l
   };
   if (!hasCompleteTextWidths(measure)) return make();
   // The key wraps at the available width. Its draw function takes the final top and node IDs.
-  const bands = requestMemo<Map<TextMeasurer, FrameBand>>(theme, 'event-key:' + JSON.stringify([key, legend, yields]), () => new Map());
-  let band = bands.get(measure);
-  if (!band) {
+  const signature = JSON.stringify([key, legend, yields, eventFonts(theme), strokeToken(theme, 'mark')]);
+  return requestMemo(measure, 'event-key:' + signature, () => {
     const fresh = make();
-    band = { ...fresh, layout: (x, width) => requestMemo(fresh, `${x}:${width}`, () => fresh.layout(x, width)) };
-    bands.set(measure, band);
-  }
-  return band;
+    return { ...fresh, layout: (x: number, width: number) => requestMemo(fresh, `${x}:${width}`, () => fresh.layout(x, width)) };
+  });
 }
 
 /**

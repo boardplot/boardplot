@@ -565,7 +565,7 @@ export function prepareComboFrame(env: ComboEnv, domain: ComboDomain, paints: Co
 export function eventFrameHeights(input: FrameInput): Map<FrameBand, number> | undefined {
   if (input[COLLECT_IDENTITIES]) return undefined;
   const state = `${layoutStepKey()}:${staticFrame.pinned}:${staticFrame.live}:${input.size.width}:${input.size.height}`;
-  const entries = requestMemo<{ input: FrameInput; notes: unknown; heights: Map<FrameBand, number> }[]>(input.theme, `combo-event-heights:${state}`, () => []);
+  const entries = requestMemo<{ input: FrameInput; notes: unknown; heights: Map<FrameBand, number> }[]>(input.measure, `combo-event-heights:${state}`, () => []);
   const notes = input.footnotes?.map(text => {
     const meta = engineNoteMeta(text);
     return meta && { ...meta };
