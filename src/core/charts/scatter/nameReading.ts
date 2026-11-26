@@ -10,8 +10,43 @@
 
 import type { Point, Rect } from '../../geometry';
 import { sideLeaderEnd } from '../../label/solver';
-import { leaderPath } from '../../svgPath';
-import { inkBox, leaderCrosses, nearestIsOwn, type NameMark } from '../../label/ownership';
+import { leaderPath, straightLeader } from '../../svgPath';
+import { inkBox, leaderCrosses, nearestIsOwn, ownershipLeaderSamples, type NameMark } from '../../label/ownership';
+
+/** A two-decimal SVG control moves by at most .005 on either axis. The sampled
+ * cubic is a convex combination of its controls. A segment between two such
+ * samples moves by less than .01. Borderline circles use the rounded SVG test. */
+function clearLeader(from: Point, to: Point, own: NameMark, marks: readonly NameMark[]): boolean {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const left = Math.min(from.x, to.x) - 0.02, right = Math.max(from.x, to.x) + 0.02;
+  const top = Math.min(from.y, to.y) - 0.02, bottom = Math.max(from.y, to.y) + 0.02;
+  const curved = !straightLeader(dx, dy);
+  const count = curved ? ownershipLeaderSamples.length - 1 : 1;
+  let borderline = false;
+  for (const mark of marks) {
+    const { cx, cy, r } = mark;
+    if (mark.id === own.id || !(r > 0 && cx + r > left && cx - r < right && cy + r > top && cy - r < bottom)) continue;
+    if (Math.max(Math.abs(cx), Math.abs(cy), r) > 1e6) return !leaderCrosses(leaderPath(from, to), own, marks);
+    let x = from.x, y = from.y;
+    const outer = r + 0.02, inner = Math.max(0, r - 0.02);
+    for (let i = 1; i <= count; i++) {
+      const nextX = curved ? from.x + dx * ownershipLeaderSamples[i]!.x : to.x;
+      const nextY = curved ? from.y + dy * ownershipLeaderSamples[i]!.y : to.y;
+      if (cx + outer >= Math.min(x, nextX) && cx - outer <= Math.max(x, nextX)
+        && cy + outer >= Math.min(y, nextY) && cy - outer <= Math.max(y, nextY)) {
+        const vx = nextX - x, vy = nextY - y;
+        const length2 = vx * vx + vy * vy;
+        const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((cx - x) * vx + (cy - y) * vy) / length2));
+        const ex = x + t * vx - cx, ey = y + t * vy - cy;
+        const distance2 = ex * ex + ey * ey;
+        if (distance2 < inner * inner) return false;
+        if (distance2 <= outer * outer) borderline = true;
+      }
+      x = nextX; y = nextY;
+    }
+  }
+  return !borderline || !leaderCrosses(leaderPath(from, to), own, marks);
+}
 
 /**
  * The measurable rule: a name reads as its own point's name when its nearest
@@ -27,6 +62,10 @@ export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMar
   if (from) {
     const end = sideLeaderEnd(rect, from);
     if (end) {
+      if (Math.max(Math.abs(from.x), Math.abs(from.y), Math.abs(end.x), Math.abs(end.y)) < 1e6) {
+        const nearby = !nearer && Math.min(from.y, end.y) > clump.top && Math.max(from.y, end.y) < clump.bottom;
+        return clearLeader(from, end, own, nearby ? nearbyRows(clump) : clump.apart);
+      }
       // The line and its cubic controls lie between its endpoints. Allow for SVG's two-decimal rounding.
       const left = Math.min(from.x, end.x) - 0.01, right = Math.max(from.x, end.x) + 0.01;
       const top = Math.min(from.y, end.y) - 0.01, bottom = Math.max(from.y, end.y) + 0.01;
@@ -42,6 +81,15 @@ export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMar
   // height search through extra layouts (dense-40-thinning).
   const margin = fontSize === undefined || !nearer ? 0 : NEARER_SHARE * fontSize;
   const ink = inkBox(rect, fontSize);
+  if (!nearer && own.r < 1e6 && Math.abs(own.cy) < 1e6) {
+    const dx = Math.max(ink.x - own.cx, 0, own.cx - ink.x - ink.w);
+    const dy = Math.max(ink.y - own.cy, 0, own.cy - ink.y - ink.h);
+    // This upper bound includes every circle that could tie the exact gap.
+    const reach = Math.max(0, dx + dy - own.r);
+    if (ink.y - reach > clump.top && ink.y + ink.h + reach < clump.bottom) {
+      return nearestIsOwn(ink, own, nearbyRows(clump));
+    }
+  }
   return nearestIsOwn(ink, own, widened(clump, own, margin));
 }
 
@@ -56,7 +104,7 @@ export function middleNearerOther(rect: Rect, own: NameMark, marks: readonly Nam
   return !nearestIsOwn({ x: ink.x + ink.w / 2, y: ink.y + ink.h / 2, w: 0, h: 0 }, own, clumpFor(own, marks).apart);
 }
 
-interface Clump { apart: NameMark[]; widened: Map<number, NameMark[]> }
+interface Clump { apart: NameMark[]; nearby?: NameMark[]; top: number; bottom: number; widened: Map<number, NameMark[]> }
 
 /**
  * The marks that stand apart from a point, worked out once per point and mark
@@ -70,10 +118,28 @@ function clumpFor(own: NameMark, marks: readonly NameMark[]): Clump {
   if (!byOwn) clumpMemo.set(marks, byOwn = new WeakMap());
   let clump = byOwn.get(own);
   if (!clump) {
-    clump = { apart: marks.filter((m) => m.id === own.id || Math.hypot(m.cx - own.cx, m.cy - own.cy) >= Math.min(own.r, m.r)), widened: new Map() };
+    // A name checks many seats near its point. Keep a vertical band for those
+    // seats and its full mark list for seats outside the band.
+    const top = own.cy - 64, bottom = own.cy + 64;
+    const apart: NameMark[] = [];
+    for (const mark of marks) {
+      const reach = Math.min(own.r, mark.r);
+      const dx = mark.cx - own.cx, dy = mark.cy - own.cy;
+      if (!(mark.id === own.id || Math.abs(dy) >= reach && Number.isFinite(dx)
+        || Math.abs(dx) >= reach && Number.isFinite(dy) || Math.hypot(dx, dy) >= reach)) continue;
+      apart.push(mark);
+    }
+    clump = { apart, top, bottom, widened: new Map() };
     byOwn.set(own, clump);
   }
   return clump;
+}
+
+function nearbyRows(clump: Clump): NameMark[] {
+  // One pixel covers rounded leader coordinates and distance arithmetic. Larger
+  // coordinates keep the original test in case arithmetic rounds across the band.
+  return clump.nearby ??= clump.apart.filter(mark => Math.abs(mark.cy) >= 1e6 || mark.r >= 1e6
+    || mark.cy + mark.r >= clump.top - 1 && mark.cy - mark.r <= clump.bottom + 1);
 }
 
 /** The marks apart from the own mark, each other mark wider by the margin. */

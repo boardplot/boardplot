@@ -118,7 +118,7 @@ export function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex, with
   if (phase.tickColumns) occupied.tickColumns = phase.tickColumns;
 }
 
-export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'scatter-label-pass' | 'gantt-label-pass'): OccupiedIndex {
+export function createOccupiedIndex(plot: Rect, mode?: 'short-label-pass' | 'scatter-label-pass' | 'gantt-label-pass'): OccupiedIndex {
   // Most scatter-name queries span several columns but only a single line of text.
   // Gantt tasks and their names span the row. Wide cells keep one bar out of many adjacent columns.
   const cellH = mode === 'gantt-label-pass' ? 32 : 16;
@@ -130,6 +130,10 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'sc
   // claim (a map claims its region fills as a thousand strips). Claims off
   // the grid are tested on every query.
   const cells = new Map<number, number[]>();
+  const columns = Math.floor((plot.x + plot.w) / cellW) + 1;
+  const rows = Math.floor((plot.y + plot.h) / cellH) + 1;
+  const canvasCells = mode === 'scatter-label-pass' && columns > 0 && rows > 0 && columns * rows <= 4096
+    ? new Array<number[] | undefined>(columns * rows) : undefined;
   const wide: number[] = [];
   const polygonTests: ReturnType<typeof prepareConvexPolygon>[] = [];
   let indexed = 0;
@@ -142,10 +146,14 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'sc
       else {
         const [x0, x1, y0, y1] = range;
         for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-          const key = x * 65536 + y;
-          const cell = cells.get(key);
-          if (cell === undefined) cells.set(key, [index]);
-          else cell.push(index);
+          if (canvasCells && x >= 0 && x < columns && y >= 0 && y < rows) {
+            (canvasCells[x * rows + y] ??= []).push(index);
+          } else {
+            const key = x * 65536 + y;
+            const cell = cells.get(key);
+            if (cell === undefined) cells.set(key, [index]);
+            else cell.push(index);
+          }
         }
       }
     }
@@ -182,7 +190,8 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'sc
     for (let w = 0; w < wide.length; w++) if (visit(wide[w]!)) return true;
     for (let x = x0; x <= x1; x++) {
       for (let y = y0; y <= y1; y++) {
-        const cell = cells.get(x * 65536 + y);
+        const cell = canvasCells && x >= 0 && x < columns && y >= 0 && y < rows
+          ? canvasCells[x * rows + y] : cells.get(x * 65536 + y);
         if (cell === undefined) continue;
         for (let c = 0; c < cell.length; c++) {
           const i = cell[c]!;

@@ -1135,6 +1135,10 @@ function withPlotFloorWarning<M extends object, DV extends object>(result: Layou
 /** The most an automatic card height grows past its floor so that no label goes to the note. */
 export const NOTE_GROWTH_SHARE = 0.25;
 
+/** Only a rejected note-count midpoint can discard its drawing. The size object belongs to this one trial. */
+export const scatterNoteLimit = new WeakMap<object, number>();
+export const SCATTER_NOTE_LIMIT_EXCEEDED = Symbol();
+
 function grownForNotes<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, first: LayoutResult<M, DV>, compact = false,
   atSize?: SizeLayout<O, M, DV>,
@@ -1159,8 +1163,8 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   }
   const width = first.size.width;
   // The grown height is the chart's natural height, as grownForFurniture records it: `measure` then names the height that draws.
-  const at = (height: number) => {
-    const layout = fitOnce(definition, data, { ...options, size: { width, height } } as O, compact, atSize);
+  const at = (height: number, size = { width, height }) => {
+    const layout = fitOnce(definition, data, { ...options, size } as O, compact, atSize);
     if (!layout.refused && layout.sizing && widthOnly(options?.size)) {
       layout.sizing = { ...layout.sizing, naturalHeight: Math.max(layout.sizing.naturalHeight, layout.size.height) };
     }
@@ -1216,7 +1220,19 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   // one exact height, which a 2 px stop would miss by a pixel.
   while (high - low > 1) {
     const mid = Math.floor((low + high) / 2);
-    const probe = at(mid);
+    const size = { width, height: mid };
+    const dotTrial = definition.type === 'scatter' && !options?.story && (options?.measure ?? defaultMeasurer) === defaultMeasurer;
+    if (dotTrial) scatterNoteLimit.set(size, goal);
+    let probe: LayoutResult<M, DV>;
+    try {
+      probe = at(mid, size);
+    } catch (error) {
+      if (error !== SCATTER_NOTE_LIMIT_EXCEEDED) throw error;
+      low = mid;
+      continue;
+    } finally {
+      if (dotTrial) scatterNoteLimit.delete(size);
+    }
     if (noted(probe) > goal || short(probe)) low = mid;
     else { best = probe; high = mid; }
   }

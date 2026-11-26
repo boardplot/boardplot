@@ -27,13 +27,13 @@ import { structureCount } from '../../structureCounts';
 
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { emptyAnnotatePass, runAnnotatePass } from '../../annotatePass';
-import { hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
+import { HIDDEN_LABEL_LEAD, hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
 import { staticFrame, storyFrameFit } from '../../footer';
 import { ruleFormatter } from '../../numberSets';
 import { currentSmallValues, formatScopeKey, withSmallValues } from '../../formatPrecision';
 import { requestMemo } from '../../layoutPlan';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { sameContent } from '../../sizing';
+import { sameContent, scatterNoteLimit, SCATTER_NOTE_LIMIT_EXCEEDED } from '../../sizing';
 import { layoutStepKey, spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -414,7 +414,7 @@ function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       }
     }
     if (losers.size === 0) break;
-    trial = probeSolveOn(requests, occupied, ctx, size);
+    trial = retrySeparatedNames(requests, occupied, ctx, size, trial, losers);
     all = trial.result.placed.filter((l) => names.has(l.id));
   }
   if (original.size === 0) return start;
@@ -425,6 +425,33 @@ function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     return start;
   }
   return isCachedTextMeasurer(ctx.measure) ? trial : probeSolveOn(requests, occupied, ctx, size);
+}
+
+/** Earlier greedy seats keep their claims when only a later point loses candidates. */
+function retrySeparatedNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx,
+  size: { width: number; height: number }, previous: ProbeSolve, changed: ReadonlySet<Id>): ProbeSolve {
+  const first = previous.result.placed.findIndex(label => changed.has(label.id));
+  if (first <= 0 || ctx.measure !== defaultMeasurer || ctx.labelOffsets || ctx.seriesUniform || ctx.valueRows || ctx.pointOwnership
+    || requests.some(r => r.order !== undefined || r.rowPeak || r.leaderAvoidsLabels || r.printedIn || r.rotate || r.pinnedSlot || ctx.pins[r.id]
+      || !(r.id === `point:${r.owner.pointId}` || r.id.startsWith('quadrant:')))) {
+    return probeSolveOn(requests, occupied, ctx, size);
+  }
+  const prefix = previous.result.placed.slice(0, first);
+  const owners = new Set(prefix.map(label => label.owner));
+  const suffix = requests.filter(request => !owners.has(request.owner));
+  // A result restored from another draw can have cloned owners. Only reuse this pass's claims.
+  if (suffix.length + first !== requests.length) return probeSolveOn(requests, occupied, ctx, size);
+  const index = copyOccupied(occupied, size);
+  for (const claim of previous.index.snapshot().slice(occupied.snapshot().length)) {
+    if (owners.has(claim.owner)) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+  }
+  const result = solveLabels(suffix, index, ctx);
+  return { index, result: {
+    ...result,
+    placed: [...prefix.map(label => ({ ...label })), ...result.placed],
+    decisions: [...previous.result.decisions.slice(0, first), ...result.decisions],
+    warnings: [...previous.result.warnings.filter(warning => warning.owner && owners.has(warning.owner)), ...result.warnings],
+  } };
 }
 
 interface SeatRepairs {
@@ -1102,10 +1129,21 @@ function layoutScatterRun(
       // an unchanged frame reproduces the same placements, including every leader.
       const sameSeats = repairs && !rowAlternative
         && (repairs.improvements.at(-1)?.cost ?? 0) <= seatProbe.left;
+      // Dot repairs only try to recover a single lost name. Two or more lost names
+      // leave the same seats on an unchanged plot when the note is added.
+      const sameDotSeats = !domain.bubbleMode && lostPoints > 1 && env.measure === defaultMeasurer;
       const finishNote = !hideListed && !complete && next.length === lostTexts.length
-        && (run > 0 && leftBefore === 0 || sameSeats) ? {
+        && (run > 0 && leftBefore === 0 || sameSeats || sameDotSeats) ? {
           claims,
           draw: (newFrame: FrameResult, names: readonly string[], note: ReturnType<typeof hiddenNoteWith>, log: LintWarning[]) => {
+            // The original plot and its entire obstacle set survived the note update.
+            // Every lost label is named by this note. A refusal also fails the same midpoint.
+            const limit = sameDotSeats && run === 0 && options.size && typeof options.size === 'object'
+              ? scatterNoteLimit.get(options.size) : undefined;
+            if (limit !== undefined && lost.length > limit
+              && newFrame.frame.notes?.some(text => text.includes(`${HIDDEN_LABEL_LEAD}:`))) {
+              throw SCATTER_NOTE_LIMIT_EXCEEDED;
+            }
             if (sameSeats) seatProbe.left -= Math.min(seatProbe.left, repairs.spent);
             pushAll(log, warnings.slice(afterFrame));
             return finish(newFrame, names, note, log);

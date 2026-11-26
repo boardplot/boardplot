@@ -1177,8 +1177,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // what a label on the page gets where it crosses a line.
     {
       const across = req.candidates.findIndex((cand) =>
-        !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && !crossesLabel(leaderFor(cand)) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
-        !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))));
+        !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
+        !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))) && !crossesLabel(leaderFor(cand)));
       if (across >= 0) {
         if (yieldsToPeak(req.candidates[across]!)) continue;
         const cand = settled(req.candidates[across]!, req.pad ?? pad);
