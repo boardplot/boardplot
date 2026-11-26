@@ -18,7 +18,7 @@ const NOTED_KINDS = ['segment', 'grandTotal', 'total', 'category'];
 export function withBandValueNotes<O extends Pick<BaseOptions, 'target' | 'theme'>, G extends Parameters<typeof markNotedLabels>[0]>(
   data: ChartData,
   options: O,
-  layout: (options: O) => G,
+  layout: (options: O, hiddenNote?: true) => G,
 ): G {
   let geo = layout(options);
   if (panelTypeClass(options) !== undefined) return geo;
@@ -49,7 +49,7 @@ export function withBandValueNotes<O extends Pick<BaseOptions, 'target' | 'theme
     const byData = dataOrder(data, geo.labels);
     named = new Map([...named].sort(([a], [b]) => byData(a, b)));
     const noteOptions = withHiddenLabelNote(options, named, { data, labels: geo.labels, annotations: (options as { annotations?: unknown }).annotations });
-    geo = layout(noteOptions);
+    geo = layout(noteOptions, true);
     markNotedLabels(geo, (noteOptions as unknown as { [NOTED_LABELS]: ReadonlySet<string> })[NOTED_LABELS], noteOptions);
   }
   return geo;

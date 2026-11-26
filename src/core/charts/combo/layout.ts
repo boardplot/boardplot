@@ -49,7 +49,7 @@ import { emitForecastDividers, placeForecastHeaders } from '../line/forecast';
 import { haloOverRules, raiseOverRules } from '../band/labels';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { BAND_PAD, hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
-import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
+import { emptyAnnotatePass, emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { rectsOverlap, type Rect } from '../../geometry';
@@ -148,6 +148,7 @@ function annotateCombo(
   solveCtx: SolveCtx,
   labelRequests?: LabelRequest[],
 ): AnnotatePassResult {
+  if (!labelRequests && !domain.options.annotations?.length && hasCompleteTextWidths(env.measure)) return emptyAnnotatePass();
   const { cats, columns, secondaryActive, secondaryDomain } = domain;
   const secondarySeries = domain.lines.filter(series => series.axis === 'secondary');
   const { band, y, y0, y2, plot } = area;
@@ -396,8 +397,14 @@ export function layoutCombo(
     if (columns.length !== 1) refuseLabelPosition(options, columns.length === 0 ? 'combo without columns' : 'stacked combo',
       columns.length === 0 ? [] : ['center', 'insideEnd', 'insideBase']);
   }
-  const geo = withBandValueNotes(data, withLocaleStrings(options), next => {
-    let cur = next;
+  const base = withLocaleStrings(options);
+  // The hidden-total note reruns the same fixed canvas, first with the original gutter
+  // and then with room for any endpoints that failed there.
+  const trials: ComboNoteTrial[] | undefined = data.categories.length > DENSE_CATEGORY_COUNT && options.mode === 'compact'
+    ? [] : undefined;
+  const geo = withBandValueNotes(data, base, (next, hiddenNote) => {
+    const useTrials = trials && (next === base || hiddenNote);
+    let cur: ComboOptions = useTrials ? { ...next, [BAND_NOTE_TRIAL]: { trials, replay: !!hiddenNote } } as ComboOptions : next;
     let geometry = layoutComboPass(data, cur, gutterOverride);
     for (let step = 0; step < 2; step++) {
       const bandNeed = Math.ceil((geometry as { [BAND_PAD]?: number })[BAND_PAD] ?? 0);
@@ -431,6 +438,16 @@ interface ComboNoteMarks {
     warnings: LintWarning[];
   };
 }
+
+const BAND_NOTE_TRIAL = Symbol('comboBandNoteTrial');
+interface ComboNoteTrial {
+  inside?: Set<Id>;
+  marks: ComboNoteMarks;
+}
+type ComboNoteTrialOptions = {
+  [BAND_NOTE_TRIAL]?: { trials: ComboNoteTrial[]; replay: boolean };
+  [INSIDE_ENDPOINT_IDS]?: Set<Id>;
+};
 
 function sameBox(a: Rect, b: Rect): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -618,13 +635,30 @@ function layoutComboFramePass(
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
   }
-  const keptMarks = noteMarks && sameMarkArea(noteMarks.area, area);
+  const trialOptions = options as ComboNoteTrialOptions;
+  const bandTrial = trialOptions[BAND_NOTE_TRIAL] && !noteMarks && !gutterOverride && !noted && !(UNPRINTED in options) && TOTALS_AXIS in options
+    && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive && !domain.anomaly
+    && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
+    && !area.forecast.length && !domain.cats.some(category => category.partial)
+    ? trialOptions[BAND_NOTE_TRIAL] : undefined;
+  const inside = trialOptions[INSIDE_ENDPOINT_IDS];
+  if (bandTrial?.replay) {
+    const index = bandTrial.trials.findIndex(trial => trial.inside === inside
+      || !!inside && trial.inside?.size === inside.size && [...inside].every(id => trial.inside!.has(id)));
+    // Each saved drawing has one receiver. Its labels and index can be edited by the note.
+    if (index >= 0) {
+      const prior = bandTrial.trials.splice(index, 1)[0]!.marks;
+      if (sameBox(prior.area.frame.plot, area.frame.plot) && prior.seats!.authoredCount === authoredFootnoteCount(domain.options)
+        && sameFrameClaims(prior.seats!.frameClaims, settled.framed.claims)) noteMarks = prior;
+    }
+  }
+  const keptMarks = noteMarks && sameMarkArea(noteMarks.area, area) ? noteMarks : undefined;
   const marks = keptMarks
-    ? { ...noteMarks.geometry,
+    ? { ...keptMarks.geometry,
       // The note retry normalizes fresh series. Paint decisions can use
       // series identity, so retained positions must refer to those series.
-      segments: noteMarks.geometry.segments.map(segment => ({ ...segment, s: domain.columns[segment.si]! })),
-      plans: noteMarks.geometry.plans.map(plan => ({ ...plan, s: domain.lines[plan.li]! })),
+      segments: keptMarks.geometry.segments.map(segment => ({ ...segment, s: domain.columns[segment.si]! })),
+      plans: keptMarks.geometry.plans.map(plan => ({ ...plan, s: domain.lines[plan.li]! })),
     } : layoutComboMarks(env, domain, area, paints);
   // Label and annotation work adds nodes; retain only the original mark phase.
   const geometry = { ...marks, nodes: [...marks.nodes] };
@@ -636,9 +670,9 @@ function layoutComboFramePass(
   commitClaims(occupied, geometry.claims);
   // The note retry has rebuilt its frame. An unchanged plot, category numbering and
   // frame claims give the original marks and labels exactly the same seats.
-  const seats = keptMarks && noteMarks.seats && sameBox(noteMarks.area.frame.plot, area.frame.plot)
-    && noteMarks.seats.authoredCount === authoredFootnoteCount(domain.options)
-    && sameFrameClaims(noteMarks.seats.frameClaims, settled.framed.claims) ? noteMarks.seats : undefined;
+  const seats = keptMarks && keptMarks.seats && sameBox(keptMarks.area.frame.plot, area.frame.plot)
+    && keptMarks.seats.authoredCount === authoredFootnoteCount(domain.options)
+    && sameFrameClaims(keptMarks.seats.frameClaims, settled.framed.claims) ? keptMarks.seats : undefined;
   const labelWarningStart = warnings.length;
   const densityValues = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
   const tryInside = !(options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS]
@@ -706,6 +740,17 @@ function layoutComboFramePass(
     ? { placed: annotatedFirst.labels.filter(label => chartIds.has(label.id)), decisions: annotatedFirst.decisions.filter(decision => chartIds.has(decision.labelId)), warnings: [] }
     : seats?.solved ?? solveLabels(requests, occupied, solveCtx);
   if (seats) occupied = seats.occupied;
+  if (bandTrial && !bandTrial.replay && solved.placed.some(label => label.kind === 'grandTotal' && label.hidden === 'collision')) {
+    // The first drawing still needs its own labels and index for its segment note and final ink.
+    const retained = createOccupiedIndex(area.plot);
+    retained.tickColumns = occupied.tickColumns;
+    for (const c of occupied.snapshot()) retained.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
+    bandTrial.trials.push({ inside, marks: { area, geometry: marks, seats: {
+      frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options), occupied: retained,
+      solved: { placed: solved.placed.map(label => ({ ...label })), warnings: solved.warnings.map(warning => ({ ...warning })), decisions: solved.decisions },
+      warnings: warnings.slice(labelWarningStart),
+    } } });
+  }
   if (annotatedFirst) {
     annotatedFirst.labels = annotatedFirst.labels.filter(label => !chartIds.has(label.id));
     annotatedFirst.decisions = annotatedFirst.decisions.filter(decision => !chartIds.has(decision.labelId));
