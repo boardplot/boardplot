@@ -1492,6 +1492,8 @@ export class ColumnHeightTrial {
 
 export interface ColumnHeightSearchState {
   growthHeight?: number;
+  compactMidpoint?: number;
+  growthPlotNeed?: number;
   /** Sizing measurements when the winning value-axis choice and staircase seats are known. */
   upperTrial?: (height: number) => ColumnHeightTrial | undefined;
   /** True only when neither axis choice can supply the required plot at this height. */
@@ -1673,7 +1675,18 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
       const lowestFit = (low: number, high: number, plotPx: number, best?: LayoutResult<M, DV>) => {
         while (high - low > 2) {
           const mid = Math.floor((low + high) / 2);
-          const between = atFloor(width, mid, plotPx, mid - low <= 2);
+          let between: LayoutResult<M, DV> | undefined;
+          if (columnSearch && width < declared.minWidth) columnSearch.compactMidpoint = mid;
+          try {
+            between = atFloor(width, mid, plotPx, mid - low <= 2);
+          } catch (measurement) {
+            if (!(measurement instanceof ColumnHeightTrial)) throw measurement;
+            const need = Math.max(measurement.minimum, measurement.part,
+              plotHeightNeeded(mid, measurement.plot, plotPx, plotShare, measurement.freed));
+            if (need <= mid) { high = mid; best = undefined; }
+            else low = mid;
+            continue;
+          } finally { if (columnSearch) delete columnSearch.compactMidpoint; }
           if (between && !between.refused && autoHeightNeed(between, target, plotPx, plotShare, freed(between)).need <= mid) {
             best = between;
             high = between.size.height;
@@ -1709,8 +1722,9 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
           }
           let probe: LayoutResult<M, DV>;
           if (trials && columnSearch && !previous && !directRefusal && !compactFallback
-            && width >= Math.max(CARD_MIN_WIDTH, declared.minWidth) && height >= declared.minHeight && options.mode !== 'compact') {
+            && (width >= Math.max(CARD_MIN_WIDTH, declared.minWidth) || width >= CARD_MIN_WIDTH && hasCompleteTextWidths(column.measure ?? defaultMeasurer)) && height >= declared.minHeight && options.mode !== 'compact') {
             columnSearch.growthHeight = height;
+            columnSearch.growthPlotNeed = plotPx;
             try {
               const measured = afterRefusal?.(height);
               afterRefusal = undefined;
@@ -1732,9 +1746,11 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
               }
               // This height might be returned. Evaluate its full semantics normally.
               delete columnSearch.growthHeight;
+              delete columnSearch.growthPlotNeed;
               probe = at(width, height);
             } finally {
               delete columnSearch.growthHeight;
+              delete columnSearch.growthPlotNeed;
             }
           } else probe = at(width, height);
           if (directRefusal) {

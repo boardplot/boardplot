@@ -64,7 +64,7 @@ import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, rightEdgeSeriesLabels, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
-import { stackedStaircaseSeatsFit } from './staircaseSeats';
+import { compactStaircaseNamesFit, stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
 import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo } from './plot';
@@ -1012,6 +1012,43 @@ function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?
   }
 }
 
+/** A compact trial can use the real shown-axis plot before making its scene.
+ * The hidden-axis draw has already chosen the value axis. Generated disclosures
+ * stay outside the frame on this path. A winning height is always drawn normally. */
+function measureCompactTrial(domain: ColumnDomain, area: ColumnArea, occupied: OccupiedIndex,
+  memo: ColumnStaircaseMemo | undefined, input: ReturnType<typeof staircaseInput>): void {
+  const { options, size } = domain;
+  const search = typeof options.size === 'object' ? columnHeightSearch.get(options.size) : undefined;
+  const binary = search?.compactMidpoint === size.height;
+  const shortOpening = search?.growthHeight === size.height && area.showCatRow && area.plot.h < (search?.growthPlotNeed ?? 0);
+  if ((!binary && !shortOpening) || !hasCompleteTextWidths(domain.measure) || !domain.va.show
+    || domain.size.width < 280 || staticFrame.live || staticFrame.pinned || area.frame.deficit
+    || plotChromeFloor.has(area.frame.frame) || domain.annList.length || domain.averageMarker || domain.activeBreak
+    || domain.incompleteCats.size || domain.netLineOn || domain.refSeries.length || domain.pyRef || domain.ribbonsOn
+    || domain.connectorsOn || domain.anomaly || area.tier || area.axisTitle || area.ruleH || domain.variant !== 'stacked'
+    || options.categoryLabels !== 'staircase' || options.seriesLabels !== undefined || options.notes || options.labelOffsets
+    || options.labelPlacements || options.labelPosition || options.shareLabels || options.valueLabels || options.ratioTier || options.events
+    || options.viewDomain || options.window || HOST_CLAIMS in options || domain.density === 'minimal'
+    || domain.cats.some(c => c.partial || c.breakAfter || c.role || c.date || c.footnote !== undefined)
+    || domain.dataSeries.some(s => s.vals.some(v => v.range || v.labelOverride !== undefined))
+    || kindSetting(options, 'segment') !== false || area.frame.frame.notePlacement !== 'frame'
+    || area.frame.frame.noteList?.some(n => n.inFrame && n.kind !== 'source')) return;
+  const frame = area.frame.frame;
+  // The narrow card retains the ordinary compact 80 px plot and frame floors.
+  const minimum = Math.max(frame.minHeight ?? 0, frame.plotMinHeight ?? 0, Math.ceil(size.height + 80 - area.plot.h));
+  if (minimum > size.height || partNeedOf(frame) > size.height || area.band.bandwidth < 3) return;
+  if (area.showCatRow) {
+    if (!staircaseShortOnHeight(options) || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
+  } else {
+    const tops = input && stackPaddingProbe(domain, area, memo)?.();
+    if (!input || !tops) return;
+    const plan = staircaseNameSeats(input, tops.map(top => top - input.above));
+    if ('failed' in plan || plan.deficit > 0.5 || staircaseState(options).pad + plan.deficit > input.cap
+      || !compactStaircaseNamesFit(domain, area, occupied, plan.names)) return;
+  }
+  throw new ColumnHeightTrial(minimum, area.plot.h, freedChromeOf(frame), partNeedOf(frame));
+}
+
 function staircaseInput(domain: ColumnDomain, area: ColumnArea) {
   const { options } = domain;
   return area.stairTop === undefined ? undefined : {
@@ -1322,6 +1359,7 @@ function layoutColumnPass(
     }
     return { retry: retryStair };
   }
+  if (measuring && options.mode === 'compact') measureCompactTrial(domain, area, occupied, staircaseMemo, stairInput);
   const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area), measureSegments, ready);
   // the value-axis title is a label in the head band, solved first.
   const requests: LabelRequest[] = area.axisTitle && domain.va.show

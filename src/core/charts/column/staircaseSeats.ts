@@ -79,3 +79,30 @@ function independentStackSeats(requests: LabelRequest[], occupied: OccupiedIndex
   }
   return true;
 }
+
+/** Check the category-name seats even when totals themselves can disappear.
+ * Each total either misses a name at every possible seat or its conflicting
+ * seat is blocked by a staircase leader at zero padding. */
+export function compactStaircaseNamesFit(domain: ColumnDomain, area: ColumnArea, frameClaims: OccupiedIndex,
+  names: readonly StaircaseName[]): boolean {
+  const totals: LabelRequest[] = [];
+  planColumnLabels(domain, area, { bars: [], planEnds: undefined, netLineEnd: undefined }, totals, []);
+  if (!totals.every(total => total.kind === 'grandTotal')) return false;
+  const canvas = { x: 0, y: 0, w: domain.size.width, h: domain.size.height };
+  const leaders = createOccupiedIndex(canvas);
+  claimStaircase(names, leaders);
+  const marks = [baselineBounds(area.plot, area.y0)];
+  for (const [i, stack] of domain.stacks.entries()) {
+    const x = area.band.position(i), w = area.band.bandwidth;
+    for (const seg of stack.segments) {
+      if (seg && seg.value !== 0) marks.push(stackSegmentRect(x, w, area.y, seg.start, seg.end));
+    }
+    if (netInsideStack(domain, i)) marks.push(netTotalBounds(x, w, area.y(domain.stackTotals[domain.cats[i]!.id]!)));
+  }
+  return names.every(({ rect }, i) => rectContains(canvas, rect) && rect.x - 2 >= area.plot.x
+    && !frameClaims.hitsWhich(rect, 2).length && !leaders.hitsWhich(rect, 2).length
+    && !marks.some(mark => rectsOverlap(rect, mark, 2))
+    && !names.some((other, j) => j < i && rectsOverlap(rect, other.rect, 2))
+    && totals.every(total => total.candidates.every(seat => !rectsOverlap(rect, seat.rect, 2)
+      || leaders.hitsWhich(seat.rect, 0).length > 0)));
+}
