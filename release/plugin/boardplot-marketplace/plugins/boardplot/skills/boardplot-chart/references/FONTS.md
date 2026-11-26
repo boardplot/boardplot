@@ -45,7 +45,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-`boardplot/fonts` links the table parser and the measurer and no chart. The same functions stay exported from `boardplot`, but that root entry loads every chart and geo pack. Use the family recorded in your tables in place of `Host Sans`, and declare the same family and weights in `@font-face`. A direct core layout call takes the same function as `options.measure`. On the server, build the measurer from the same tables; the theme family and the loaded files stay identical on server and client. The theme check returns the warning `family-outside-metric-class` for a leading family outside Geist, Inter, Helvetica, Helvetica Neue, Arial and their metric clones. A direct call cannot see `options.measure`, so pass the families as the third argument: `validateTheme(theme, undefined, measurableFamilies(tables))`.
+`boardplot/fonts` links the table parser and the measurer and no chart. The same functions stay exported from `boardplot`, but that root entry loads every chart and no geo pack. Use the family recorded in your tables in place of `Host Sans`, and declare the same family and weights in `@font-face`. A direct core layout call takes the same function as `options.measure`. On the server, build the measurer from the same tables; the theme family and the loaded files stay identical on server and client. The theme check returns the warning `family-outside-metric-class` for a leading family outside Geist, Inter, Helvetica, Helvetica Neue, Arial and their metric clones. A direct call cannot see `options.measure`, so pass the families as the third argument: `validateTheme(theme, undefined, measurableFamilies(tables))`.
 
 ## CLI and MCP
 
