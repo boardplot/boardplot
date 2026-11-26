@@ -24,6 +24,8 @@ import { chartString } from './strings/eventLane';
 import type { InteractionEvent } from './a11y/types';
 import { formatDate } from './dateFormat';
 import { eventReading } from './eventReading';
+import { hasCompleteTextWidths } from './fontMetrics/injected';
+import { requestMemo } from './layoutPlan';
 import { recordPartNeed } from './footer';
 import { wrapFootnote, type FrameBand, type FrameResult, type LegendItemInput } from './frame';
 import type { Rect, Size } from './geometry';

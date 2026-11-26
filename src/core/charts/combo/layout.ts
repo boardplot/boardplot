@@ -59,6 +59,7 @@ import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { rankKeyShown } from '../../notes';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import { bandSizing } from '../../sizing';
@@ -535,9 +536,9 @@ function failedEndpointGutters(labels: PlacedLabel[], ends: Set<Id>, area: Combo
   return { ids, resize: room.first > 0 || room.last > 0 };
 }
 
-/** An inside-end reserve changes the plot and marks, but keeps the prepared data and scales. */
 const EVENT_TOTAL_NEEDS_AXIS = Symbol('eventTotalNeedsAxis');
 
+/** An inside-end reserve changes the plot and marks, but keeps the prepared data and scales. */
 function layoutComboFramePass(
   data: ChartData,
   options: ComboOptions,
@@ -552,6 +553,22 @@ function layoutComboFramePass(
   const warnings = [...domainWarnings];
   const { size } = env;
   const hasEvents = domain.options.annotations?.some(annotation => annotation.kind === 'event');
+  // With one column, its total has no segment replacement. A total locked into the
+  // density note cannot print without a pin. The axis must return. Only skip its
+  // hidden trial when no category, running-period or scale-clearance retry can come first.
+  const eventAxis = !domain.showPrimaryAxis && options.valueAxis?.show === undefined
+    && hasEvents && domain.options.annotations!.every(a => a.kind === 'event') && !domain.anomaly
+    && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !(COLLECT_IDENTITIES in options)
+    && options.categoryLabels !== 'staircase' && !domain.secondaryActive && !domain.ticksFromLabels
+    && domain.columns.length === 1 && domain.columnsAdd && !toDateOnTotals(env, domain).size;
+  const locked = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
+  if (eventAxis && locked?.size && !rankKeyShown(domain.options) && !(CATEGORY_NOTED in options) && !(FORCE_CATEGORY_RANKS in options)
+    && contentOf(domain, 'grandTotal', ['absolute'])?.join() === 'absolute'
+    && domain.cats.some((c, ci) => {
+      const id = `grandTotal:${c.id}`, cell = domain.columns[0]!.vals[ci]!;
+      return locked.has(id) && !options.labelPlacements?.[id] && cell.v !== null && cell.labelOverride === undefined
+        && domain.totalFmtOf(ci)(domain.stackTotals[c.id]!).length > 0;
+    })) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   // A clean frame stays independent of the plot's measured height floor.
   // Event lanes still settle from scratch because the band changes their key.
   const solve = (key: Parameters<typeof solveComboFrame>[4], out: LintWarning[]) => {
@@ -650,21 +667,6 @@ function layoutComboFramePass(
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
   }
-  // The category note and measured scale clearance above take precedence over an axis retry.
-  // One real column has no segment replacement for its total. An unpinned total
-  // locked into the density note must be hidden, and only the axis-on drawing survives.
-  const eventAxis = !domain.showPrimaryAxis && options.valueAxis?.show === undefined
-    && hasEvents && domain.options.annotations!.every(a => a.kind === 'event') && !domain.anomaly
-    && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !(COLLECT_IDENTITIES in options)
-    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
-    && !domain.secondaryActive && !domain.ticksFromLabels && domain.columns.length === 1 && domain.columnsAdd;
-  const locked = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
-  if (eventAxis && locked?.size && contentOf(domain, 'grandTotal', ['absolute'])?.join() === 'absolute'
-    && domain.cats.some((c, ci) => {
-      const id = `grandTotal:${c.id}`, cell = domain.columns[0]!.vals[ci]!;
-      return locked.has(id) && !options.labelPlacements?.[id] && cell.v !== null && cell.labelOverride === undefined
-        && domain.totalFmtOf(ci)(domain.stackTotals[c.id]!).length > 0;
-    })) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   const trialOptions = options as ComboNoteTrialOptions;
   const bandTrial = trialOptions[BAND_NOTE_TRIAL] && !noteMarks && !gutterOverride && !noted && !(UNPRINTED in options) && TOTALS_AXIS in options
     && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive && !domain.anomaly
