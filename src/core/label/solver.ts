@@ -345,6 +345,8 @@ export interface LabelRequest {
 export type LabelOffset = { x?: number; y?: number };
 
 export interface SolveCtx {
+  /** Each request names one plain fixed cell, with no leader, mark anchor or series owner. */
+  fixedCells?: true;
   /** Split a drawn leader into segments shared by private trials of this chart. */
   splitLeader?: typeof leaderPieces;
   /** Internal: a host chart names the claims of the labels (claims/ids.ts). */
@@ -763,6 +765,15 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       continue;
     }
 
+    // A fixed cell whose sole seat is clear can claim it immediately. Keep the
+    // full cascade for authored moves, occupied cells and tick columns.
+    if (ctx.fixedCells && first && pin === undefined && !ctx.labelOffsets?.[req.id] && !occupied.tickColumns?.length
+      && (!ctx.canvas || rectContains(ctx.canvas, first.rect, 0)) && !occupied.hits(first.rect, pad)) {
+      placed.push(finalize(base, req, first, false, darkInk, lightInk));
+      occupied.claim(first.rect, 'label', req.owner);
+      decisions.push({ labelId: req.id, strategy: 'candidatesOccupied', tried: [first.slot], chose: first.slot, reason: 'first candidate free' });
+      continue;
+    }
     const naturals = markValue ? naturalSeats(req) : undefined;
     const withinMarkBand = (cand: SlotCandidate): boolean => {
       if (!markValue || cand.outsidePlot || (req.kind === 'point' && req.anchor && /^(right|left)(Step[+-]?\d+)?$/.test(cand.slot))) return true;

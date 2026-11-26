@@ -259,7 +259,7 @@ export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOption
       ? { options, oneFrame: true, previous: options.footnotes === undefined ? undefined : saved.find(item => sameContent(item.options, plain)) }
       : undefined;
     const geometry = (trial || probe) && !options.columnOverrides
-      ? layoutMapPass(data, options, undefined, 0, undefined, undefined, trial, false, probe) : selectMapWidth(data, options);
+      ? layoutMapPass(data, options, undefined, 0, undefined, undefined, trial, undefined, probe) : selectMapWidth(data, options);
     if (geometry.debug) {
       finishSelectedMap.get(geometry.debug)?.();
       finishSelectedMap.delete(geometry.debug);
@@ -272,6 +272,13 @@ export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOption
 
 // A secondary listed pass can stop when its key alone excludes every height its caller allows.
 const listedKeyTooTall = Symbol('listed-key-too-tall');
+interface FirstListedMove {
+  inputs: object;
+  bottom: number;
+  obstacles: OccupiedClaim[];
+  ids: Set<string>;
+}
+
 const finishSelectedMap = new WeakMap<object, () => void>();
 
 function selectMapWidth(data: ChoroplethData, options: ChoroplethOptions): Geometry<ChoroplethMarks, ChoroplethDerived> {
@@ -297,7 +304,7 @@ function layoutMapPass(
   passes = new Map<string, Geometry<ChoroplethMarks, ChoroplethDerived>>(),
   omittedOverlays: ReadonlySet<string> = new Set(),
   noteTrial?: MapNoteTrial,
-  checkListedKey = false,
+  checkListedKey?: { taller?: number },
   rootFrameProbe?: FrameFitProbe,
 ): Geometry<ChoroplethMarks, ChoroplethDerived> {
   // A taller listed alternative, a changed table or a map grown by its rows
@@ -635,12 +642,26 @@ function layoutMapPass(
   const sideMapH = Math.min(sideCapH, (sideMapW - 2 * MAP_PAD) * packAspect) + 2 * yPad;
   const sideBlockH = sideForm ? sideBlockFor(sideColumns) : 0;
   const sideBlockY = plot0.y + Math.max(0, (Math.min(plot0.h, sideMapH) - sideBlockH) / 2);
+  const naturalMapH = (width: number, share = MAP_MAX_HEIGHT) => Math.min((width - 2 * MAP_PAD) * packAspect, share * size.width, MAP_MAX_HEIGHT_PX) + 2 * yPad;
   const small = layoutMapKeys({ ...keyInput,
     ...(checkListedKey && !table && options.size !== undefined && !data.overlays?.length
       && (measure === defaultMeasurer || hasCompleteTableWidths(measure)) ? {
-      checkHeight(minPlotH: number) {
+      checkHeight(minPlotH: number, mapPlot: Rect) {
         const maxHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false ? Math.max(size.height, 1400) : size.height;
-        if (size.height - frameResult.plot.h + minPlotH > maxHeight + 1) throw listedKeyTooTall;
+        const keyFloor = size.height - frameResult.plot.h + minPlotH;
+        if (keyFloor > maxHeight + 1) throw listedKeyTooTall;
+        // This list alone rules out the short drawing. If the key floor also
+        // covers the map's largest minimum, the remaining height is exact.
+        if (keyFloor > size.height + 1 && !pinnedHeight && pack.id === 'world' && labelPolicy.mode === 'all'
+          && measure === defaultMeasurer && !(COLLECT_IDENTITIES in options) && !(HOST_CLAIMS in options)
+          && keyFloor >= size.height - mapPlot.h + minMapHeight) {
+          const naturalHeight = Math.ceil(size.height - mapPlot.h + naturalMapH(mapPlot.w) - 1e-6);
+          const height = resolveSizing(chartSizing('choropleth'), size, { minHeight: keyFloor, naturalHeight }).naturalHeight;
+          if (height <= 1400) {
+            checkListedKey.taller = height;
+            throw checkListedKey;
+          }
+        }
       },
     } : {}),
     plot: sideForm ? { x: plot0.x + sideMapW + tableGap, y: sideBlockY, w: sideBlockW, h: sideBlockH } : plot0,
@@ -657,7 +678,6 @@ function layoutMapPass(
   // text around it plus the map at the pack's aspect for the width it gets,
   // never taller than MAP_MAX_HEIGHT of the canvas width or MAP_MAX_HEIGHT_PX, and the table.
   // A map stacked over its table may reach STACKED_MAP_MAX_HEIGHT of the width.
-  const naturalMapH = (width: number, share = MAP_MAX_HEIGHT) => Math.min((width - 2 * MAP_PAD) * packAspect, share * size.width, MAP_MAX_HEIGHT_PX) + 2 * yPad;
   const stackedShare = table && !named ? STACKED_MAP_MAX_HEIGHT : MAP_MAX_HEIGHT;
   let naturalAreaH = !table ? naturalMapH(area.w)
     : sideForm ? Math.max(sideMapH, sideBlockH)
@@ -828,6 +848,35 @@ function layoutMapPass(
     ? new Map(pack.regions.map(region => [region.id, scale.paint(valuesById.get(region.id)!)])) : undefined;
   const { labelLayout, mapFrame, fitted, leaderLanes, outsideFits, drawnLabels } = prepared ?? prepare(mapArea, fills).draw();
   if (drawnLabels) occupied = drawnLabels.occupied;
+  // At two tall card heights the map can occupy exactly the same area above
+  // the footer. Only the first list with every label visible may bypass the
+  // unlisted drawing. The selected list still builds its own complete scene.
+  const moveCache = !pass && !listed && !drawnLabels && !table && !data.overlays?.length
+    && size.width >= 480 && size.height >= naturalHeight && sizing.minHeight <= size.height
+    && typeof options.size === 'object' && options.size.width === size.width && options.size.height === size.height
+    && pack.id === 'world' && labelPolicy.mode === 'all' && !smallIds.size && small.position === 'top'
+    && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && !options.columnOverrides
+    && !options.labelPlacements && !options.labelOffsets && !options.focus && !staticFrame.live && !staticFrame.pinned
+    && !(COLLECT_IDENTITIES in options) && !(HOST_CLAIMS in options) && measure === defaultMeasurer
+    ? requestMemo<FirstListedMove[]>(data, 'world-map-first-list', () => []) : undefined;
+  const moveInputs = moveCache && { options: { ...options, size: size.width }, plot: mapCtx.plot, mapFrame, laneSpan,
+    leaders: [...labelLayout.leaderIds], regionValues };
+  const obstacles = moveCache ? occupied.snapshot() : undefined;
+  if (moveCache && moveInputs && obstacles) {
+    const prior = moveCache.find(entry => size.height >= entry.bottom && sameContent(entry.inputs, moveInputs)
+      && sameContent(entry.obstacles, obstacles.filter(c => c.kind !== 'frame' || c.rect.y <= entry.bottom)));
+    if (prior) {
+      const trial: { taller?: number } = {};
+      try {
+        const winner = layoutMapPass(data, options, prior.ids, 1, new Map(), omittedOverlays, undefined, trial);
+        const nextHeight = Math.ceil(Math.max(winner.sizing?.minHeight ?? 0, winner.sizing?.naturalHeight ?? 0));
+        if (winner.size.height === size.height && nextHeight <= size.height
+          && winner.labels.every(label => !label.hidden)) return winner;
+      } catch (error) {
+        if (error !== listedKeyTooTall && error !== trial) throw error;
+      }
+    }
+  }
   // A map its host did not size takes its natural height.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
   if (grow !== undefined) return layoutMapPass(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays, noteTrial);
@@ -1006,6 +1055,18 @@ function layoutMapPass(
   const lost = solved.placed.filter((label) => movable(label) && label.hidden).map((label) => label.owner.categoryId!);
   const far = solved.placed.filter((label) => movable(label) && !label.hidden && label.leader !== undefined &&
     pathLength(label.leader.d) > Math.max(LISTED_LEADER_FRACTION * mapFrame.w, CALLOUT_MAX_LEADER)).map((label) => label.owner.categoryId!);
+  if (moveCache && moveInputs && obstacles && (lost.length || far.length)) {
+    // A generated callout stays inside the plot and checks fixed obstacles
+    // with 2 px padding. Inline and lane seats use their actual rectangles.
+    // Backed variants check at 4 px. A seat, request or solver can ask for more.
+    // Only frame claims entirely below every such check can move independently.
+    let bottom = mapCtx.plot.y + mapCtx.plot.h + 2;
+    for (const plan of labelPlans) for (const { request } of plan.variants) for (const seat of request.candidates) {
+      bottom = Math.max(bottom, seat.rect.y + seat.rect.h + Math.max(4, seat.pad ?? 0, request.pad ?? 0, mapCtx.labelPad ?? 2));
+    }
+    if (size.height >= bottom) moveCache.push({ inputs: moveInputs, bottom, ids: new Set([...lost, ...far]),
+      obstacles: obstacles.filter(c => c.kind !== 'frame' || c.rect.y <= bottom) });
+  }
   pushAll(warnings, solved.warnings);
   pushAll(warnings, tableDrawn?.warnings ?? []);
   const overlayResult = renderGeoOverlays({ options,
@@ -1105,7 +1166,7 @@ function layoutMapPass(
   };
   const debug = geometry.debug!;
   finishSelectedMap.set(debug, () => {
-    pushAll(nodes, small.nodes);
+    small.appendNodes(nodes);
     pushAll(nodes, tableDrawn?.nodes ?? []);
     for (const node of labelsToNodes(theme, solved.placed, (label) => solved.fontByLabel.get(label.id)!)) {
       if (node.t === 'path' && node.part === 'leader') {
@@ -1134,21 +1195,27 @@ function layoutMapPass(
     const key = `${pass + 1}:${[...ids].sort().join(',')}`;
     if (key === rejectedKey) continue;
     let next = passes.get(key);
+    const trial: { taller?: number } = {};
     if (!next) {
       try {
-        next = layoutMapPass(data, options, ids, pass + 1, passes, omittedOverlays, noteTrial, true);
+        next = layoutMapPass(data, options, ids, pass + 1, passes, omittedOverlays, noteTrial, trial);
       } catch (error) {
-        if (error !== listedKeyTooTall) throw error;
-        rejectedKey = key;
-        continue;
+        if (error === listedKeyTooTall) {
+          rejectedKey = key;
+          continue;
+        }
+        if (error !== trial) throw error;
       }
     }
     // An automatic frame can take the list's measured height when it keeps more names.
-    const height = Math.ceil(Math.max(next.sizing?.minHeight ?? 0, next.sizing?.naturalHeight ?? 0));
-    if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && height > next.size.height && height <= 1400) {
+    const height = trial.taller ?? Math.ceil(Math.max(next?.sizing?.minHeight ?? 0, next?.sizing?.naturalHeight ?? 0));
+    if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && height > (next?.size.height ?? size.height) && height <= 1400) {
       const taller = layoutMapPass(data, { ...options, size: { width: size.width, height } }, ids, pass + 1, new Map(), omittedOverlays, noteTrial);
       if (hidden(taller) < hidden(geometry)) next = taller;
     }
+    // If its taller drawing did not improve the starting map, the short
+    // alternative cannot fit its own key. The original search tries the next list.
+    if (!next) { rejectedKey = key; continue; }
     passes.set(key, next);
     const fits = !next.labels.some((label) => label.hidden && label.slot === 'smallMember') &&
       // A longer list must not widen a side key past the width floor.
@@ -1169,9 +1236,17 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
     let prepared = fits.get(key);
     if (!prepared) {
       const fitted = fitGeoPack(pack, frame);
-      let guard: ReturnType<typeof outsideLabelGuard> | undefined;
-      const outsideFits: ReturnType<typeof outsideLabelGuard> = (id, rect, from, to) =>
-        (guard ??= outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id))))(id, rect, from, to);
+      const createGuard = (): ReturnType<typeof outsideLabelGuard> => {
+        let guard: ReturnType<typeof outsideLabelGuard> | undefined;
+        return (id, rect, from, to) =>
+          (guard ??= outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id))))(id, rect, from, to);
+      };
+      // Repeated frames share the check against the same projected countries and markers.
+      // Each placement pass still checks its current labels and connectors.
+      const outsideFits = measure === defaultMeasurer && !withTable && pack.id === 'world' && solveCtx.canvas
+        && solveCtx.canvas.w >= 480 && rectContains(solveCtx.canvas, solveCtx.plot)
+        ? requestMemo(pack, 'choropleth:outside:' + key + ':' + JSON.stringify([...visibleMarkerIds]), createGuard)
+        : createGuard();
       prepared = { fitted, outsideFits };
       fits.set(key, prepared);
     }
@@ -1377,7 +1452,14 @@ function solveRegionLabels(
     ? { claims: occupied.snapshot(), plot: { ...ctx.plot }, labels: [], calls: [] } : undefined;
   let samePass = calloutPass !== undefined && previous !== undefined && sameCalloutRect(previous.plot, ctx.plot)
     && previous.claims.length === calloutPass.claims.length
-    && previous.claims.every((claim, i) => sameCalloutClaim(claim, calloutPass.claims[i]!));
+    && previous.claims.every((claim, i) => {
+      const next = calloutPass.claims[i]!;
+      if (sameCalloutClaim(claim, next)) return true;
+      // Every seat ends within the plot. Frames affect only the box test at pad 2.
+      const bottom = ctx.plot.y + ctx.plot.h + 2;
+      return claim.kind === 'frame' && next.kind === 'frame' && !claim.part && !next.part
+        && claim.rect.y >= bottom && next.rect.y >= bottom;
+    });
   let removedHatches = false;
   if (!samePass && previous && calloutPass && sameCalloutRect(previous.plot, ctx.plot)
     && !calloutPass.claims.some(claim => claim.kind === 'mark' && claim.part === 'noDataHatch')) {

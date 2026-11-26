@@ -7,6 +7,7 @@ import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import type { LegendGeometry, SceneNode, ShownTexts, TextRole } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { emphasisWeight, strokeToken } from '../../theme';
@@ -81,7 +82,7 @@ interface MapKeysInput {
   /** Measure only: return the blocks' size before anything is drawn or claimed. */
   dryRun?: boolean | 'memberColumn';
   /** A listed pass can reject its frame before it solves or claims any legend cells. */
-  checkHeight?: (minPlotH: number) => void;
+  checkHeight?: (minPlotH: number, mapPlot: Rect) => void;
   midpointLabel: string | undefined;
   /** A line under the ramp saying which end is better, on a diverging scale. */
   caption: string | undefined;
@@ -339,10 +340,11 @@ function mapKeysOnce(input: MapKeysInput) {
   const mapGap = input.compact ? 4 : MAP_GAP;
   const minPlotH = column ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
   if (input.dryRun) return { dry: { w: blocksW, h: blocksH } } as const;
-  input.checkHeight?.(minPlotH);
   const mapPlot: Rect = column
     ? { ...plot, x: position === 'left' ? plot.x + blocksW + MAP_GAP : plot.x, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
     : { ...plot, y: position === 'top' ? plot.y + blocksH + mapGap : plot.y, h: Math.max(10, plot.h - blocksH - mapGap) };
+
+  input.checkHeight?.(minPlotH, mapPlot);
 
   // ---- key block: marks, then its texts as fixed-cell label requests ----
   const texts: KeyText[] = [];
@@ -436,16 +438,21 @@ function mapKeysOnce(input: MapKeysInput) {
     const shows = !state && member.listed && member.value !== null ? { value } : undefined;
     add(`small-member-value:${member.id}`, value, left + columnW - columnGap - width(value, memberFont), ry, 'point', member.id, shows);
   });
-  const solved = solveLabels(requests, occupied, input.solveCtx);
-  const fontById = new Map(requests.map((request) => [request.id, request.font]));
-  pushAll(nodes, labelsToNodes(theme, solved.placed, (label) => fontById.get(label.id) ?? font));
+  const cellContext = members.length && hasCompleteTextWidths(input.measure)
+    ? { ...input.solveCtx, fixedCells: true as const } : input.solveCtx;
+  const solved = solveLabels(requests, occupied, cellContext);
   const keyRect: Rect = { x: keyX, y: keyY, w: keyW, h: keyH };
   occupied.claim(keyRect, 'legend', {}, 'legend');
   if (members.length) occupied.claim({ x: smallX, y: smallY, w: smallW, h: smallH }, 'reserved', {}, 'smallMembers');
 
   const blocks: Rect = { x: keyX, y: keyY, w: blocksW, h: blocksH };
   return {
-    ...solved, nodes, mapPlot, blocks, position, minPlotH,
+    ...solved, mapPlot, blocks, position, minPlotH,
+    appendNodes(scene: SceneNode[]) {
+      pushAll(scene, nodes);
+      const fonts = new Map(requests.map(request => [request.id, request.font]));
+      pushAll(scene, labelsToNodes(theme, solved.placed, label => fonts.get(label.id) ?? font));
+    },
     legend: { rect: keyRect, items } as LegendGeometry,
   };
 }
