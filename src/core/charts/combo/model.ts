@@ -131,6 +131,8 @@ export interface ComboDomain {
   posTop: number[];
   negBot: number[];
   anyByCat: boolean[];
+  /** The only populated column, or the single non-zero column when the other parts are zero. */
+  totalColumns: (NormSer | undefined)[];
   dLo: number;
   dHi: number;
   pticks: number[];

@@ -31,7 +31,7 @@ import { isDateNumericTickSequence, MONTH_START } from '../../label/tickRow';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialKeyForced, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate, toDateFits } from '../../partialPeriod';
 import { bandScale, linearScale } from '../../scale';
 import { scenarioFillPattern } from '../../scenarioPairs';
-import { wrapText, type FontSpec } from '../../text';
+import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { defaultAnnotationId } from '../../types/annotations';
 import {
   canvasMargin,
@@ -906,7 +906,8 @@ export function comboPlotArea(
       secondary: secondaryFont(theme), periods: periodRow,
       padding: 4,
       measure,
-      plotHeight: frame.plot.h,
+      // A complete calendar row is always upright. Only rotated names use plot height.
+      plotHeight: measure === defaultMeasurer && row.calendar?.length === row.labels.length && row.calendar.every(Boolean) ? undefined : frame.plot.h,
       // A name the rotated row cuts takes the next note number after the author's.
       // A cut name takes a note mark only where its note prints.
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).

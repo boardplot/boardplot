@@ -221,7 +221,7 @@ export function localeStrings(language?: string): typeof DE {
 }
 
 /** Set once the locale table is merged in; holds the caller's own words. */
-const LOCALE_STRINGS = Symbol('localeStrings');
+export const LOCALE_STRINGS = Symbol('localeStrings');
 
 type Authored = { [LOCALE_STRINGS]?: Record<string, string> };
 

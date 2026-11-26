@@ -46,7 +46,7 @@ export function bandKeyFirst(measureBody: MeasureBody) {
       staticFrame.countable = counted;
       zeroLifts.count = lifts;
     }
-    return (key: Geometry<object, object>) => key.mode === 'full' && !!key.legend?.items.some(item => unnamed.has(item.id))
+    return (key: Geometry<object, object>) => key.mode === (options.mode === 'compact' ? 'compact' : 'full') && !!key.legend?.items.some(item => unnamed.has(item.id))
       && (!staticFrame.pinned || staticFrame.countable || options.notes?.maxListed === 0);
   };
 }

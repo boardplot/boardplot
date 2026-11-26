@@ -120,11 +120,13 @@ export interface ChartCore<
   layout: LayoutFn<D, O, M, DV>;
   /** Prepares private chart data once for all size and note trials in this request. */
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
+  /** Height-search inputs shared by every possible label outcome of a discarded opening. */
+  openingPlot?(data: D, options: O, size: { width: number; height: number }): { plot: number; freed: number; part: number } | undefined;
   /** Returns the slope reference plot height when the chart can measure it without drawing. */
   referencePlotHeight?(data: D, options?: O): number | undefined;
   /** The full one-row key when every automatic candidate can only omit its entries. */
   coveringKey?(data: D, options: O, baseline: Geometry<M, DV>): Pick<Geometry, 'scene' | 'legend'> | undefined;
-  /** True when every label in the note still needs it at any taller full-mode layout of this width. */
+  /** True when every label in the note still needs it at any taller layout with this width and mode. */
   notesBoundByWidth?(data: D, options: O, geometry: Geometry<M, DV>, noted: Geometry<M, DV>['labels']): boolean;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
   finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;

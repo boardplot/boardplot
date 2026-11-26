@@ -124,7 +124,7 @@ function belowMinimum(policy: ChartSizing, size: Size, options: { belowMinimum?:
 }
 
 /** A plot under this height is a strip, not a chart: the compact height ladder then drops the subtitle. */
-const MIN_COMPACT_PLOT = 80;
+export const MIN_COMPACT_PLOT = 80;
 /**
  * Types that also hold their plot at MIN_COMPACT_PLOT in compact mode, by refusing with the
  * measured height. A line with a title, a time axis and end labels keeps 21px of plot at
@@ -207,7 +207,7 @@ export function plotFloorRows(options: unknown): number {
  * minimum is already below the compact floor keeps its own; the compact floor
  * lowers a bound, it never raises one.
  */
-function requestFloor(policy: ChartSizing): { width: number; height: number } {
+export function requestFloor(policy: ChartSizing): { width: number; height: number } {
   const compact = policy.compactFloor;
   return compact
     ? { width: Math.min(compact.width, policy.minWidth), height: Math.min(compact.height, policy.minHeight) }
@@ -898,12 +898,19 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
 /** Copy fields the registry changes; retain immutable chart and theme payloads. */
 function copyLayout<M extends object, DV extends object>(result: LayoutResult<M, DV>): LayoutResult<M, DV> {
   if (result.refused) return { ...result, sizing: { ...result.sizing }, warnings: [...result.warnings] };
+  const copy = copyFitDrawing(result);
+  copy.a11y.desc = singleStops(copy.a11y.desc);
+  return copy;
+}
+
+/** A second private fit owns the fields the registry edits. */
+export function copyFitDrawing<M extends object, DV extends object>(result: Geometry<M, DV>): Geometry<M, DV> {
   return {
     ...result,
     sizing: result.sizing ? { ...result.sizing } : undefined,
     warnings: [...result.warnings],
     frame: copyFrame(result.frame),
-    a11y: { ...result.a11y, desc: singleStops(result.a11y.desc) },
+    a11y: { ...result.a11y },
     labels: result.labels.map(label => ({ ...label })),
     scene: result.scene.map(node => ({ ...node })),
   };
@@ -1134,10 +1141,18 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   if (constraints.fixed.height || panelTypeClass(options) !== undefined || !owes(first)) return first;
   // Every taller full frame must still name these values. Neither an empty
   // note nor a lower count is reachable on the growth ladder.
-  if (!first.refused && options && definition.notesBoundByWidth && !compact && options.mode !== 'compact'
-    && !atHardMinimum(options) && (!staticFrame.pinned || staticFrame.countable)
-    && fitsSize(first.size, declaredSizing(definition, options))
-    && definition.notesBoundByWidth(data, options, first, first.labels.filter(notedForSize))) return first;
+  if (!first.refused && options && definition.notesBoundByWidth
+    && !atHardMinimum(options) && (!staticFrame.pinned || staticFrame.countable)) {
+    const declared = declaredSizing(definition, options);
+    // A combo narrower than its full width stays compact at every taller height.
+    // Test its segment text with the same tight theme and footnote settings as fitSize.
+    const compactByWidth = definition.type === 'combo' && first.mode === 'compact'
+      && belowMinimum(declared, { width: first.size.width, height: Infinity }, options, definition.type);
+    const noteOptions = compactByWidth
+      ? compactOptions(definition.type, options, requestFloor(declared), first.size.width)
+      : !compact && options.mode !== 'compact' && fitsSize(first.size, declared) ? options : undefined;
+    if (noteOptions && definition.notesBoundByWidth(data, noteOptions, first, first.labels.filter(notedForSize))) return first;
+  }
   const width = first.size.width;
   // The grown height is the chart's natural height, as grownForFurniture records it: `measure` then names the height that draws.
   const at = (height: number) => {
@@ -1699,13 +1714,24 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
         // Grow the canvas until the plot keeps its floor. A chart whose plot does not take
         // the added height (variance tiers are rows) keeps the smaller canvas.
         let previous: { height: number; plot: number; part: number; result?: LayoutResult<M, DV> } | undefined;
+        if (definition.openingPlot && !compactFallback && fitsSize({ width, height }, declared)
+          && options.mode !== 'compact' && !forcedCompact(options)) {
+          const opening = definition.openingPlot(data, withoutCallState(options)!, { width, height });
+          if (opening) {
+            const need = Math.max(opening.part, plotHeightNeeded(height, opening.plot, plotPx, plotShare, opening.freed));
+            if (need > height) {
+              previous = { height, plot: opening.plot, part: opening.part };
+              height = need;
+            }
+          }
+        }
         let directRefusal: { height: number; pass: number } | undefined;
         let triedDirectRefusal = false;
         let afterRefusal: ColumnHeightTrial['afterRefusal'];
         // A frame part that scales with the plot (a scatter size key draws its
         // rings at plot scale) moves the floor height with each pass, so the
         // passes close in on it over more steps than four.
-        for (let pass = 0; pass < 8; pass++) {
+        for (let pass = previous ? 1 : 0; pass < 8; pass++) {
           // After a measured growth step, a plain stack can establish the upper plot
           // without laying it out. Use it only when the ordinary search would bisect.
           if (previous && !previous.result && columnSearch?.upperTrial && columnSearch.rejectMidpoint) {

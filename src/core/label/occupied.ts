@@ -28,6 +28,8 @@ export interface OccupiedIndex {
    * `test` must not query this index again (a nested query restarts the visit stamps).
    */
   some?(rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean;
+  /** Transfer claims in insertion order. The receiving index owns its copies. */
+  copyTo?(target: OccupiedIndex, withPolygons?: boolean): void;
   snapshot(keep?: (claim: OccupiedClaim) => boolean): OccupiedClaim[];
   /**
    * Takes back a claim that `hitsWhich` returned, for a layout that seats a
@@ -194,6 +196,14 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'sc
       const found: number[] = [];
       visitNear(rect, pad, (i) => { if (!skip?.(rects[i]!) && hit(i, rect, pad)) found.push(i); return false; });
       return found.sort((a, b) => a - b).map((i) => rects[i]!);
+    },
+    copyTo(target, withPolygons = true) {
+      const count = rects.length;
+      for (let i = 0; i < count; i++) {
+        if (released.size && released.has(i)) continue;
+        const c = rects[i]!;
+        target.claim(c.rect, c.kind, c.owner, c.part, withPolygons ? c.polygon : undefined);
+      }
     },
     snapshot(keep) {
       const copy = (entry: OccupiedClaim): OccupiedClaim => ({ ...entry, rect: { ...entry.rect } });

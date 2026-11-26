@@ -626,14 +626,18 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   };
   const onLeader = (rect: Rect, padding: number): boolean => leaderRuns.some(([a, b]) => segmentHitsRect(a, b, rect, padding));
   for (const queued of order) {
-    // A leader runs only through empty page: one that would touch another owner's mark (a line point, a plan tick) is not added.
-    const runClear = (from: Point, to: number): boolean => occupied.hitsWhich({ x: from.x - 0.5, y: Math.min(from.y, to) + 0.5, w: 1, h: Math.max(0, Math.abs(to - from.y) - 1) }, 0)
-      .every((o) => o.kind !== 'mark' || isOwnMark(o.owner, queued.owner, queued.kind, o.part));
-    const req = withLiftLeaders(queued, ownedPoint(queued), runClear);
+    const pin = pinOf(queued);
+    const peakNeighbours = rowPeaks?.admitted.get(queued.id);
+    // A hidden label keeps its slot names and first rectangle. Adding a leader
+    // changes neither, so only labels eligible to seat need the obstacle test.
+    const pinOverDensity = queued.redundant === true && queued.suppressedAs === 'density' && !queued.owed && pin !== undefined;
+    const redundant = queued.redundant && !pinOverDensity && !peakNeighbours;
+    const req = redundant || queued.candidates.length === 0 ? queued : withLiftLeaders(queued, ownedPoint(queued), (from, to) =>
+      !anyHit(occupied, { x: from.x - 0.5, y: Math.min(from.y, to) + 0.5, w: 1, h: Math.max(0, Math.abs(to - from.y) - 1) }, 0,
+        o => o.kind === 'mark' && !isOwnMark(o.owner, queued.owner, queued.kind, o.part)));
     const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
     const markValue = isMarkValue(req);
-    const peakNeighbours = rowPeaks?.admitted.get(req.id);
     const peakAhead = yieldingTo?.get(req.id);
     const claimIds = requestClaims(req, ctx);
     const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
@@ -646,35 +650,42 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       slots,
       pinned: false,
       priority: req.priority,
-      ...(claimIds?.length ? { claimIds, claimText: req.claimText } : {}),
-      ...(req.noteText ? { noteText: req.noteText } : {}),
-      ...(req.printsFor ? { printsFor: req.printsFor } : {}),
-      ...(req.shows ? { shows: req.shows } : {}),
-      ...(req.owed ? { owed: true as const } : {}),
-      ...(req.swatch ? { swatch: req.swatch } : {}),
-      ...(req.title ? { title: req.title } : {}),
-      ...(req.fontStep ? { font: req.fontStep } : {}),
-      ...capHeightOf(req, ctx.measure),
-      ...(req.role ? { role: req.role } : {}),
-      ...(req.align ? { align: req.align } : {}),
-      ...(req.runs ? { runs: req.runs } : {}),
-      ...(req.emphasis ? { emphasis: true as const } : {}),
-      ...(req.headLines ? { headLines: req.headLines, headWeight: req.headWeight, ...(req.headInk ? { headInk: req.headInk } : {}), ...(req.bodyInk ? { bodyInk: req.bodyInk } : {}), ...(req.bodyFont ? { bodyFont: req.bodyFont } : {}) } : {}),
     };
+    if (claimIds?.length) { base.claimIds = claimIds; base.claimText = req.claimText; }
+    if (req.noteText) base.noteText = req.noteText;
+    if (req.printsFor) base.printsFor = req.printsFor;
+    if (req.shows) base.shows = req.shows;
+    if (req.owed) base.owed = true;
+    if (req.swatch) base.swatch = req.swatch;
+    if (req.title) base.title = req.title;
+    if (req.fontStep) base.font = req.fontStep;
+    const capHeight = ctx.measure.capHeight?.(req.fontStep ?? req.font);
+    if (capHeight !== undefined) base.capHeight = capHeight;
+    if (req.role) base.role = req.role;
+    if (req.align) base.align = req.align;
+    if (req.runs) base.runs = req.runs;
+    if (req.emphasis) base.emphasis = true;
+    if (req.headLines) {
+      base.headLines = req.headLines;
+      base.headWeight = req.headWeight;
+      if (req.headInk) base.headInk = req.headInk;
+      if (req.bodyInk) base.bodyInk = req.bodyInk;
+      if (req.bodyFont) base.bodyFont = req.bodyFont;
+    }
 
     const hide = (hidden: NonNullable<PlacedLabel['hidden']>, why: string) => {
       const quiet = hidden === 'collision' && req.quietWhenCrowded === true;
       const reason = quiet ? 'density' : hidden;
       const decisionReason = quiet ? 'density=smart: no free seat' : why;
-      placed.push({
-        ...base,
+      const label: PlacedLabel = Object.assign(base, {
         rect: first ? first.rect : { x: 0, y: 0, w: 0, h: 0 },
         slot: first ? first.slot : 'none',
-        ink: { token: 'ink' },
+        ink: { token: 'ink' as const },
         hidden: reason,
-        ...(markValue && reason === 'collision' ? { owed: true as const } : {}),
       });
-      onHidden?.(placed[placed.length - 1]!);
+      if (markValue && reason === 'collision') label.owed = true;
+      placed.push(label);
+      onHidden?.(label);
       decisions.push({
         labelId: req.id,
         strategy: 'candidatesOccupied',
@@ -720,14 +731,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       continue;
     }
 
-    const pin = pinOf(req);
-    // A value the chart dropped for room still takes a pin that is free:
-    // the author named the seat. A true redundancy or an authored 'no' stays.
-    // An owed value was hidden by a setting or a sliver and is named in the note (labels.restSeries: false): a pin does not override it.
-    const pinOverDensity = req.redundant === true && req.suppressedAs === 'density' && !req.owed && pin !== undefined;
-
-    // Redundancy gate (chart decided).
-    if (req.redundant && !pinOverDensity && !peakNeighbours) {
+    if (redundant) {
       const why = req.suppressedAs ?? 'redundant';
       hide(why, why === 'density' ? 'density gate' : 'redundancy gate');
       continue;
@@ -1723,12 +1727,6 @@ function verticalLeader(rect: Rect, from: { x: number; y: number }): PlacedLabel
 /** The leader from an anchor: from the side, or from above or below when the anchor lies under the label. */
 function anchorLeader(rect: Rect, anchor: { x: number; y: number }): PlacedLabel['leader'] {
   return leaderFor({ slot: 'anchor', rect, penalty: 0, leaderFrom: anchor, leaderVertical: true });
-}
-
-/** The drawn face's cap height, when the measurer knows the face (fontMetrics tables). */
-function capHeightOf(req: LabelRequest, measure: TextMeasurer): { capHeight?: number } {
-  const capHeight = measure.capHeight?.(req.fontStep ?? req.font);
-  return capHeight === undefined ? {} : { capHeight };
 }
 
 function finalize(
