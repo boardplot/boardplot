@@ -70,7 +70,16 @@ function somePathPiece(d: string, steps: number, hit: (a: Point, b: Point) => bo
 /** Whether a name box with no leader is nearer its own mark than any other mark. */
 export function nearestIsOwn(rect: Rect, own: NameMark, marks: readonly NameMark[]): boolean {
   const mine = circleGap(rect, own);
-  return marks.every((m) => m.id === own.id || circleGap(rect, m) > mine);
+  for (const mark of marks) {
+    if (mark.id === own.id) continue;
+    // The distance along either axis is a lower bound for the distance to the box.
+    const dx = Math.max(rect.x - mark.cx, 0, mark.cx - rect.x - rect.w);
+    if (dx - mark.r > mine) continue;
+    const dy = Math.max(rect.y - mark.cy, 0, mark.cy - rect.y - rect.h);
+    if (dy - mark.r > mine) continue;
+    if (!(Math.max(0, Math.hypot(dx, dy) - mark.r) > mine)) return false;
+  }
+  return true;
 }
 
 /** Whether a leader path crosses another point's mark or one of the given text boxes. */

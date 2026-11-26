@@ -8,7 +8,9 @@
  * ../../label/ownership.ts.
  */
 
-import type { Rect } from '../../geometry';
+import type { Point, Rect } from '../../geometry';
+import { sideLeaderEnd } from '../../label/solver';
+import { leaderPath } from '../../svgPath';
 import { inkBox, leaderCrosses, nearestIsOwn, type NameMark } from '../../label/ownership';
 
 /**
@@ -16,13 +18,23 @@ import { inkBox, leaderCrosses, nearestIsOwn, type NameMark } from '../../label/
  * mark is its own, or when a leader joins them that crosses no other mark
  * and no text.
  */
-export function nameReadsAsOwn(rect: Rect, leader: string | undefined, own: NameMark, marks: readonly NameMark[], texts: readonly Rect[] = [], fontSize?: number, nearer = true): boolean {
+export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMark, marks: readonly NameMark[], fontSize?: number, nearer = true): boolean {
   // A mark whose centre lies inside the own mark, and the own centre inside it,
   // draws as one clump with it: no seat is nearer one of them and no leader
   // leaves the clump without crossing the other, so the rule reads the clump
   // as one mark (four coincident points keep their four names).
   const clump = clumpFor(own, marks);
-  if (leader !== undefined) return !leaderCrosses(leader, own, clump.apart, texts);
+  if (from) {
+    const end = sideLeaderEnd(rect, from);
+    if (end) {
+      // The line and its cubic controls lie between its endpoints. Allow for SVG's two-decimal rounding.
+      const left = Math.min(from.x, end.x) - 0.01, right = Math.max(from.x, end.x) + 0.01;
+      const top = Math.min(from.y, end.y) - 0.01, bottom = Math.max(from.y, end.y) + 0.01;
+      if (Math.max(-left, right, -top, bottom) < 2 ** 40 && !clump.apart.some(mark => mark.id !== own.id && mark.r > 0
+        && mark.cx + mark.r > left && mark.cx - mark.r < right && mark.cy + mark.r > top && mark.cy - mark.r < bottom)) return true;
+      return !leaderCrosses(leaderPath(from, end), own, clump.apart);
+    }
+  }
   // Nearer by a hair is a tie to the eye: a name half way between two bubbles
   // reads as either one's. With `nearer`, its own mark is nearer by a quarter
   // of the type size. Dot charts leave it out: their small dots keep their

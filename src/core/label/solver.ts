@@ -586,6 +586,23 @@ function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req:
   return { ranked, admitted };
 }
 
+/** A scatter name's candidates already start with the lowest penalty. Within a tier,
+ * the solver tries uncrowded seats first. Stop checking the gap when a seat is chosen. */
+function* scatterSeatOrder(candidates: readonly SlotCandidate[], crowds: (seat: SlotCandidate) => boolean): Generator<number> {
+  const crowded: number[] = [];
+  let i = 0;
+  while (i < candidates.length) {
+    const penalty = candidates[i]!.penalty;
+    do {
+      const index = i++;
+      if (crowds(candidates[index]!)) crowded.push(index);
+      else yield index;
+    } while (i < candidates.length && candidates[i]!.penalty === penalty);
+    yield* crowded;
+    crowded.length = 0;
+  }
+}
+
 function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, onHidden?: (label: PlacedLabel) => void): SolveResult {
   const placed: PlacedLabel[] = [];
   const decisions: PlaceDecision[] = [];
@@ -1050,12 +1067,19 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     };
     const crowds = (cand: SlotCandidate) => req.labelGap !== undefined &&
       occupied.some(cand.rect, req.labelGap, (o) => o.kind === 'label' && !sameOwner(o.owner, req.owner));
-    const indices = req.candidates.map((_, i) => i);
-    // Crowding reorders seats within a penalty, never across one.
-    const crowded = indices.map((i) => crowds(req.candidates[i]!));
-    const order = req.labelGap === undefined
-      ? indices
-      : [...indices].sort((a, b) => req.candidates[a]!.penalty - req.candidates[b]!.penalty || Number(crowded[a]) - Number(crowded[b]) || a - b);
+    const sortedScatter = req.owner.pointId !== undefined && req.labelGap !== undefined
+      && req.candidates.every((candidate, i, seats) => !i || candidate.penalty >= seats[i - 1]!.penalty);
+    let order: Iterable<number>;
+    if (sortedScatter) {
+      order = scatterSeatOrder(req.candidates, crowds);
+    } else {
+      const indices = req.candidates.map((_, i) => i);
+      if (req.labelGap !== undefined) {
+        const crowded = req.candidates.map(crowds);
+        indices.sort((a, b) => req.candidates[a]!.penalty - req.candidates[b]!.penalty || Number(crowded[a]) - Number(crowded[b]) || a - b);
+      }
+      order = indices;
+    }
     // With an anchor, a free seat nearer another owner's mark waits; the
     // first such seat takes a leader from the anchor if no clear seat is free.
     // A seat too near its anchor to draw a leader is kept as the last resort,
@@ -1687,20 +1711,28 @@ function leaderAt(cand: SlotCandidate, lineHeight: number): { d: string; curved:
   const from = cand.leaderFrom;
   if (!from) return undefined;
   if (cand.leaderTo) return { d: leaderPath(from, cand.leaderTo, Infinity), curved: false };
+  const toEdge = sideLeaderEnd(cand.rect, from, lineHeight);
+  if (toEdge === null) return cand.leaderVertical ? verticalLeader(cand.rect, from) : undefined;
+  if (!toEdge) return undefined;
+  const d = leaderPath(from, toEdge);
+  return { d, curved: d.includes('C') };
+}
+
+/** A side leader's end, null if it points back across its anchor, undefined if too short. */
+export function sideLeaderEnd(rect: Rect, from: Point, lineHeight = rect.h): Point | null | undefined {
   const minimum = LEADER_MIN_DRAWN_RATIO * lineHeight;
-  const approachesFromLeft = from.x <= cand.rect.x;
-  const toEdge = leaderTerminus(cand.rect, from, lineHeight);
+  const approachesFromLeft = from.x <= rect.x;
+  const toEdge = leaderTerminus(rect, from, lineHeight);
 
   const dx = toEdge.x - from.x;
   const dy = toEdge.y - from.y;
   // The gutter can overshoot the anchor entirely on a short run; Math.hypot
   // catches that as well as the plain stub, because an inverted leader points
   // away from its own label.
-  if (approachesFromLeft ? dx <= 0 : dx >= 0) return cand.leaderVertical ? verticalLeader(cand.rect, from) : undefined;
+  if (approachesFromLeft ? dx <= 0 : dx >= 0) return null;
   if (Math.hypot(dx, dy) < minimum) return undefined;
 
-  const d = leaderPath(from, toEdge);
-  return { d, curved: d.includes('C') };
+  return toEdge;
 }
 
 /** The leader a seat drawn from `from` takes, as the solver draws it (a seat handed to another label keeps one rule). */

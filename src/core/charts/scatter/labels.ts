@@ -12,7 +12,7 @@ import type { Rect } from '../../geometry';
 import { rectContains, rectsOverlap } from '../../geometry';
 import { ruleFormatter } from '../../numberSets';
 import { wrapText } from '../../text';
-import { labelCtx, leaderPieces, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
+import { labelCtx, leaderPieces, PRIORITY, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
 import type { Id } from '../../types/cell';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
@@ -570,14 +570,18 @@ function pointLabelRequests(
       const built = buildSeats(text, insideFill, fine, font, block)
         // A name takes only seats where it reads as this point's
         // name (nameReading.ts); with none left, the note names the point.
-        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode));
+        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom, ownMark, marks, font.size, bubbleMode));
       // A bubble name over, under or slanted off its bubble with its middle
       // nearer a neighbour stands between the two: such a seat comes after
       // every other seat, so the name takes it only where it would be hidden.
       const between = (c: SlotCandidate) => name && bubbleMode && !c.leaderFrom && !/^(left|right)/.test(c.slot) && middleNearerOther(c.rect, ownMark, marks, font.size);
-      const ordered = name && bubbleMode
-        ? [...built.filter((c) => !between(c)), ...built.filter(between).map((c) => ({ ...c, penalty: BETWEEN_TIER }))]
-        : built;
+      const ordered: SlotCandidate[] = [];
+      const ambiguous: SlotCandidate[] = [];
+      for (const candidate of built) {
+        if (between(candidate)) ambiguous.push({ ...candidate, penalty: BETWEEN_TIER });
+        else ordered.push(candidate);
+      }
+      for (const candidate of ambiguous) ordered.push(candidate);
       seatMemo.set(key, ordered);
       return [...ordered];
     };
@@ -631,7 +635,7 @@ function pointLabelRequests(
       };
       // A slid copy never lands on its own marker: the solver lets a label touch its own mark, and dark text across a bubble is unreadable.
       const own = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
-      let kept = candidates.flatMap((c) => [c, ...slid(c).filter((s) => rectContains(area.inner, s.rect) && !rectsOverlap(s.rect, own))]);
+      let kept = !rules.x.length && !rules.y.length ? candidates : candidates.flatMap((c) => [c, ...slid(c).filter((s) => rectContains(area.inner, s.rect) && !rectsOverlap(s.rect, own))]);
       if (q.derived) {
         // A name must not sit in a box its unit is not in. On a 2x2 the box IS
         // the finding, so a label that drifted across a divider reclassifies
@@ -665,8 +669,12 @@ function pointLabelRequests(
       // A label-only point's seat on the point comes before every other seat.
       const shift = onPoint.length;
       const tier = (c: SlotCandidate) => c.slot === 'onPoint' ? 0 : shift + (c.overRules ? (c.leaderFrom ? 5 : 2) : (c.leaderFrom ? 3 : 0) + (across(c.rect) ? 1 : 0));
-      return [0, 1, 2, 3, 4, 5, 6].flatMap((t) => all.filter((c) => tier(c) === t))
-        .map((candidate) => ({ ...candidate, penalty: tier(candidate) }));
+      const tiers: SlotCandidate[][] = [[], [], [], [], [], [], []];
+      for (const candidate of all) {
+        const penalty = tier(candidate);
+        tiers[penalty]!.push({ ...candidate, penalty });
+      }
+      return tiers.flat();
     };
     // A point's name and value stay together: a value that fits
     // inside its bubble sits there, beside the name's seat; any other value

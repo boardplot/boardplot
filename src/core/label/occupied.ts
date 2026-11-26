@@ -54,14 +54,37 @@ export type OccupiedView = Pick<OccupiedIndex, 'hits' | 'hitsWhich' | 'snapshot'
 interface PolygonSource {
   points: readonly Point[];
   test?: ReturnType<typeof prepareConvexPolygon>;
+  disc?: { x: number; y: number; inner: number; outer: number };
 }
 
 const polygonSources = new WeakMap<readonly Point[], PolygonSource>();
 
 /** A layout-owned outline, before claim() makes the independently editable copies for each index. */
-export function sharePolygonProjection(points: readonly Point[]): readonly Point[] {
-  polygonSources.set(points, { points: points.map(p => ({ ...p })) });
+export function sharePolygonProjection(points: readonly Point[], disc?: PolygonSource['disc']): readonly Point[] {
+  polygonSources.set(points, { points: points.map(p => ({ ...p })), disc });
   return points;
+}
+
+function sharedPolygonTest(source: PolygonSource): ReturnType<typeof prepareConvexPolygon> {
+  if (!source.disc) return prepareConvexPolygon(source.points);
+  const { x, y, inner, outer } = source.disc;
+  // Roundoff in the generated vertices and projected endpoints must go through the original test.
+  const margin = 64 * Number.EPSILON * Math.max(1, Math.abs(x), Math.abs(y), outer);
+  if (!(inner > margin && outer < 2 ** 40 && Math.abs(x) < 2 ** 40 && Math.abs(y) < 2 ** 40)) return prepareConvexPolygon(source.points);
+  const inside = (inner - margin) ** 2, outside = (outer + margin) ** 2;
+  let exact: ReturnType<typeof prepareConvexPolygon> | undefined;
+  return (rect, pad) => {
+    const left = rect.x - pad, top = rect.y - pad;
+    const right = rect.x + rect.w + pad, bottom = rect.y + rect.h + pad;
+    if (left <= right && top <= bottom && Math.max(-left, right, -top, bottom) < 2 ** 40) {
+      const dx = Math.max(0, left - x, x - right);
+      const dy = Math.max(0, top - y, y - bottom);
+      const distance = dx * dx + dy * dy;
+      if (distance < inside) return true;
+      if (distance > outside) return false;
+    }
+    return (exact ??= prepareConvexPolygon(source.points))(rect, pad);
+  };
 }
 
 function polygonTest(points: readonly Point[]): ReturnType<typeof prepareConvexPolygon> {
@@ -69,7 +92,7 @@ function polygonTest(points: readonly Point[]): ReturnType<typeof prepareConvexP
   // A snapshot exposes its index's polygon. A copy edited before its first query needs its own projection.
   if (source && source.points.length === points.length
     && points.every((p, i) => p.x === source.points[i]!.x && p.y === source.points[i]!.y)) {
-    return source.test ??= prepareConvexPolygon(source.points);
+    return source.test ??= sharedPolygonTest(source);
   }
   return prepareConvexPolygon(points);
 }
@@ -96,10 +119,10 @@ export function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex, with
 }
 
 export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'scatter-label-pass' | 'gantt-label-pass'): OccupiedIndex {
-  // Scatter names and their leaders often span several cells of the ordinary chart index.
+  // Most scatter-name queries span several columns but only a single line of text.
   // Gantt tasks and their names span the row. Wide cells keep one bar out of many adjacent columns.
-  const cellH = mode === 'scatter-label-pass' || mode === 'gantt-label-pass' ? 32 : 16;
-  const cellW = mode === 'gantt-label-pass' ? 128 : cellH;
+  const cellH = mode === 'gantt-label-pass' ? 32 : 16;
+  const cellW = mode === 'scatter-label-pass' ? 96 : mode === 'gantt-label-pass' ? 128 : cellH;
   const rects: OccupiedClaim[] = [];
   const scratchRange: [number, number, number, number] = [0, 0, 0, 0];
   const released = new Set<number>();

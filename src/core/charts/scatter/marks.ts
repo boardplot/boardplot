@@ -531,7 +531,7 @@ function bubbleOutline(cx: number, cy: number, reach: number) {
       x: cx + radius * Math.cos(k * Math.PI / 16),
       y: cy + radius * Math.sin(k * Math.PI / 16),
     }));
-    return sharePolygonProjection(points);
+    return sharePolygonProjection(points, { x: cx, y: cy, inner: reach, outer: radius });
   });
 }
 
