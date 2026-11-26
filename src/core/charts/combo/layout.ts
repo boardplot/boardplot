@@ -58,6 +58,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import { bandSizing } from '../../sizing';
@@ -535,6 +536,8 @@ function failedEndpointGutters(labels: PlacedLabel[], ends: Set<Id>, area: Combo
 }
 
 /** An inside-end reserve changes the plot and marks, but keeps the prepared data and scales. */
+const EVENT_TOTAL_NEEDS_AXIS = Symbol('eventTotalNeedsAxis');
+
 function layoutComboFramePass(
   data: ChartData,
   options: ComboOptions,
@@ -647,6 +650,21 @@ function layoutComboFramePass(
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
   }
+  // The category note and measured scale clearance above take precedence over an axis retry.
+  // One real column has no segment replacement for its total. An unpinned total
+  // locked into the density note must be hidden, and only the axis-on drawing survives.
+  const eventAxis = !domain.showPrimaryAxis && options.valueAxis?.show === undefined
+    && hasEvents && domain.options.annotations!.every(a => a.kind === 'event') && !domain.anomaly
+    && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !(COLLECT_IDENTITIES in options)
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && !domain.secondaryActive && !domain.ticksFromLabels && domain.columns.length === 1 && domain.columnsAdd;
+  const locked = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
+  if (eventAxis && locked?.size && contentOf(domain, 'grandTotal', ['absolute'])?.join() === 'absolute'
+    && domain.cats.some((c, ci) => {
+      const id = `grandTotal:${c.id}`, cell = domain.columns[0]!.vals[ci]!;
+      return locked.has(id) && !options.labelPlacements?.[id] && cell.v !== null && cell.labelOverride === undefined
+        && domain.totalFmtOf(ci)(domain.stackTotals[c.id]!).length > 0;
+    })) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   const trialOptions = options as ComboNoteTrialOptions;
   const bandTrial = trialOptions[BAND_NOTE_TRIAL] && !noteMarks && !gutterOverride && !noted && !(UNPRINTED in options) && TOTALS_AXIS in options
     && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive && !domain.anomaly
@@ -748,9 +766,17 @@ function layoutComboFramePass(
   const joint = (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const annotatedFirst = joint ? annotateCombo(env, domain, area, geometry, occupied, solveCtx, requests) : undefined;
   const chartIds = new Set(requests.map(request => request.id));
-  const solved: SolveResult = annotatedFirst
-    ? { placed: annotatedFirst.labels.filter(label => chartIds.has(label.id)), decisions: annotatedFirst.decisions.filter(decision => chartIds.has(decision.labelId)), warnings: [] }
-    : seats?.solved ?? solveLabels(requests, occupied, solveCtx);
+  let solved: SolveResult;
+  try {
+    solved = annotatedFirst
+      ? { placed: annotatedFirst.labels.filter(label => chartIds.has(label.id)), decisions: annotatedFirst.decisions.filter(decision => chartIds.has(decision.labelId)), warnings: [] }
+      : seats?.solved ?? solveLabels(requests, occupied, solveCtx, eventAxis ? label => {
+        if (label.kind === 'grandTotal' && label.hidden !== 'redundant') throw EVENT_TOTAL_NEEDS_AXIS;
+      } : undefined);
+  } catch (error) {
+    if (error !== EVENT_TOTAL_NEEDS_AXIS) throw error;
+    return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
+  }
   if (seats) occupied = seats.occupied;
   if (bandTrial && !bandTrial.replay && solved.placed.some(label => label.kind === 'grandTotal' && label.hidden === 'collision')) {
     // The first drawing still needs its own labels and index for its segment note and final ink.
