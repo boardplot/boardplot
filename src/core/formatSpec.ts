@@ -991,7 +991,8 @@ function numericBody(s: string): { index: number; text: string } | null {
   return body;
 }
 
-const PRINTF_CODE = /^%(?:\d+\$)?[-+#0 ']*(?:\d+|\*(?:\d+\$)?)?(?:\.(?:\d+|\*(?:\d+\$)?))?(?:hh|ll|[hlLjzt])?[diouxXfFeEgGaAcsp]$/;
+// A width never starts with 0 (that is a flag), so the flags and the width do not overlap and long digit runs stay linear.
+const PRINTF_CODE = /^%(?:[1-9]\d*\$)?[-+#0 ']*(?:[1-9]\d*|\*(?:[1-9]\d*\$)?)?(?:\.(?:\d+|\*(?:[1-9]\d*\$)?))?(?:hh|ll|[hlLjzt])?[diouxXfFeEgGaAcsp]$/;
 const D3_CODE = /^(?:(.?[<>=^]))?[-+ (]?([$#])?(0)?(\d+)?(,)?(\.\d+)?(~)?([bcdefgnoprsxX%])$/;
 const FORMAT_CODE_EXAMPLES = new Map([['$,.0f', '$1,234'], [',.0f', '1,234'], ['.1%', '1.2%'], ['%d', '1234'], ['%.2f', '1.23']]);
 
