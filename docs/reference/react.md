@@ -10,8 +10,10 @@ Boardplot ships one spec-driven component, `BoardplotChart`, and one component p
 
 `BoardplotChart` from `boardplot/react/spec` takes the spec `boardplot_render` validates: a bare chart `{ name, type, data, options, annotations, theme }` or an envelope with one chart. An invalid spec or setting renders `SpecErrorCard`, which lists each error with its path, expected and received values, suggestion, JSON Patch `fix` and reference link.
 
+Use `satisfies BoardplotSpec` to check the chart type, data and options of a TypeScript literal. The `spec` prop has type `unknown`, so an imported JSON file or a value of type `unknown` can go straight to `BoardplotChart` for runtime validation.
+
 ```tsx
-import { BoardplotChart } from 'boardplot/react/spec';
+import { BoardplotChart, type BoardplotSpec } from 'boardplot/react/spec';
 
 const spec = {
   name: 'revenue-mix',
@@ -19,7 +21,7 @@ const spec = {
   data: { categories: ['2021', '2022', '2023', '2024', '2025'], series: [{ id: 'subscriptions', label: 'Subscriptions', values: [62, 74, 88, 103, 121] }, { id: 'services', label: 'Services', values: [38, 41, 43, 44, 46] }] },
   annotations: [{ kind: 'cagr' }],
   options: { variant: 'stacked', title: 'Subscriptions carry the growth', subtitle: { measure: 'Revenue by line' }, unit: '$m' },
-};
+} satisfies BoardplotSpec;
 
 export function RevenueMix() {
   return <BoardplotChart spec={spec} size="container" fit="fill" fallbackSize={{ width: 960, height: 540 }} />;
@@ -585,7 +587,9 @@ A static output (SVG, PNG, the CLI and `export`) draws one step without buttons:
 
 ## Export
 
-`boardplot/react/export` writes files from the canonical geometry, not from the live DOM. `useExport()` returns `svg()`, `png(scale)`, `csv()`, `copyImage()` and `copyData()`; the same functions exist standalone as `exportSvg`, `exportPng`, `exportCsv`, `copyImage` and `copyData`. Each resolves to `{ ok: true, artifact: { format, bytes, text, mediaType, filename }, document, receipt }` or `{ ok: false, code, message }`. The entry links no chart engine: each call loads the engine and schemas of the type it exports.
+`boardplot/react/export` writes files from the canonical geometry, not from the live DOM. `useExport()` returns `svg()`, `png(scale = 2)`, `csv()`, `copyImage()` and `copyData()`; the same functions exist standalone as `exportSvg`, `exportPng`, `exportCsv`, `copyImage` and `copyData`. Each resolves to `{ ok: true, artifact: { format, bytes, text, mediaType, filename }, document, receipt }` or `{ ok: false, code, message }`. The entry links no chart engine: each call loads the engine and schemas of the type it exports.
+
+Call `downloadSvg()`, `downloadPng(scale = 2)` or `downloadCsv()` on the handle to export and request a browser download. Each returns the export result so you can display a failure. Without a browser document the download returns `code: 'unsupported'`. Use `downloadArtifact(result)` to download a result you already exported, for example from a toolbar outside React.
 
 Pass the handle to the chart as `exporter`. Every chart component takes it, `BoardplotChart` and `TableChart` too, and the export then lays out what that chart drew, at its size on screen: a container chart at its measured width, and at its height where the host gives it one; a table or cohort that scrolls sideways at the width it scrolls at; a table at the height its rows need, with the rows, column groups and inline lines the reader sees, in its authored row order, since a column sort stays on screen; a `withStory` chart at the step the reader moved to. While the chart shows a refusal card or the busy placeholder, it hands the handle nothing. `csv()` and `copyData()` hold every record of the chart, folded rows and hidden columns included, as the CLI's records do: a fold hides rows from the drawing, not from the data. Give each chart its own handle; a handle that two charts hold answers `code: 'invalid'`.
 
@@ -594,7 +598,7 @@ import { useExport } from 'boardplot/react/export';
 import { ColumnChart } from 'boardplot/react/column';
 
 const data = {
-  categories: ['2021', '2022', '2023', '2024', '2025'].map((year) => ({ id: year, label: year })),
+  categories: ['2021', '2022', '2023', '2024', '2025'],
   series: [
     { id: 'subscriptions', label: 'Subscriptions', values: [62, 74, 88, 103, 121] },
     { id: 'services', label: 'Services', values: [38, 41, 43, 44, 46] },
@@ -603,16 +607,9 @@ const data = {
 
 export function RevenueMixCard() {
   const exporter = useExport();
-  const download = async () => {
-    const result = await exporter.png(2);
-    if (!result.ok) return;
-    const url = URL.createObjectURL(new Blob([result.artifact.bytes], { type: result.artifact.mediaType }));
-    Object.assign(document.createElement('a'), { href: url, download: result.artifact.filename }).click();
-    URL.revokeObjectURL(url);
-  };
   return <>
     <ColumnChart data={data} variant="stacked" annotations={[{ kind: 'cagr' }]} title="Subscriptions carry the growth" unit="$m" size="container" fit="content" fallbackSize={{ width: 800, height: 450 }} exporter={exporter} />
-    <button onClick={download}>Download PNG</button>
+    <button onClick={() => exporter.downloadPng()}>Download PNG</button>
   </>;
 }
 ```
@@ -632,7 +629,7 @@ A complete download in TypeScript without the `exporter` link. The standalone ex
 import { useRef, useState } from 'react';
 import { BoardplotChart } from 'boardplot/react/spec';
 import { BoardplotTheme, useBoardplotTheme } from 'boardplot/react/theme';
-import { exportPng, exportSvg, type ExportResult } from 'boardplot/react/export';
+import { downloadArtifact, exportPng, exportSvg } from 'boardplot/react/export';
 
 const spec = {
   type: 'column',
@@ -643,18 +640,6 @@ const spec = {
   options: { title: 'Revenue grew every quarter', unit: '$k' },
 };
 
-function save(result: ExportResult): string {
-  if (!result.ok) return `${result.code}: ${result.message}`;
-  const { bytes, mediaType, filename } = result.artifact;
-  const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mediaType }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return `${filename}, ${bytes.byteLength} bytes`;
-}
-
 function RevenueCard() {
   const card = useRef<HTMLDivElement>(null);
   const context = useBoardplotTheme();
@@ -664,7 +649,8 @@ function RevenueCard() {
     // The width the reader sees; a width alone grows to the content height.
     const width = Math.round(card.current?.getBoundingClientRect().width ?? 720);
     const input = { spec: { ...spec, options: { ...spec.options, size: { width } } }, context };
-    setStatus(save(format === 'svg' ? await exportSvg(input) : await exportPng(input, 2)));
+    const result = downloadArtifact(format === 'svg' ? await exportSvg(input) : await exportPng(input, 2));
+    setStatus(result.ok ? result.artifact.filename : result.message);
   }
 
   return (

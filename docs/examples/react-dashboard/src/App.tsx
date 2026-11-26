@@ -77,7 +77,7 @@ function Card({ label, exportable = true, children }: { label: string; exportabl
     if (!result.ok) return;
     const url = URL.createObjectURL(new Blob([result.artifact.bytes], { type: result.artifact.mediaType }));
     Object.assign(document.createElement('a'), { href: url, download: result.artifact.filename }).click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
     <section className="card">

@@ -30,6 +30,7 @@ import { resolveThemeRequest } from '../src/react/themeRequest';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { utf8Bytes } from '../src/react/export/hash';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
+import { ColumnChart } from '../src/react/charts/column';
 import '../src/core/geo/packs/de-states';
 
 // jsdom has no SubtleCrypto. Node 18 also requires byte buffers from its own realm.
@@ -74,6 +75,25 @@ function artifactHash(result: ExportOk): string {
 }
 
 describe('react export', () => {
+  // Keeps the labels and values tied to the same categories in a typed column and at the command line.
+  it('draws string categories and keyed values like the CLI', () => {
+    const data = {
+      categories: ['North', 'South'],
+      series: [{ id: 'sales', values: [{ categoryId: 'South', value: 95 }, { categoryId: 'North', value: 120 }] }],
+    };
+    const options = { size: { width: 800, height: 450 }, valueLabels: 'all' } as const;
+    const cli = render({ spec: { type: 'column', data, options }, return: ['svg'] });
+    expect(cli.body.ok).toBe(true);
+    const svg = new DOMParser().parseFromString(cli.body.svg as string, 'image/svg+xml');
+    const host = document.createElement('div');
+    host.innerHTML = renderToStaticMarkup(<ColumnChart data={data} {...options} />);
+
+    const text = (root: ParentNode) => Array.from(root.querySelectorAll('text[data-bp-role]'), node => node.textContent);
+    expect(text(svg)).toEqual(expect.arrayContaining(['North', 'South', '120', '95']));
+    expect(text(host)).toEqual(text(svg));
+    expect(host.querySelector('svg desc')?.textContent).toBe(svg.querySelector('desc')?.textContent);
+  });
+
   // Prevents authored CSV text from running as a spreadsheet formula while numbers and CSV punctuation keep their meaning.
   it('protects spreadsheet formula prefixes and preserves numeric cells and CSV quoting', async () => {
     const labels = [

@@ -1,5 +1,6 @@
 export * from './cell';
 export * from './data';
+export type { DataInput } from './dataInput';
 export * from './diagram';
 export * from './annotations';
 export * from './options';

@@ -6,6 +6,7 @@ import { claimsForChart, type ClaimRecordV1 } from '../core/claims/browser';
 import { interactionRecords } from '../core/a11y/records';
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ChartRequest, RequestInputOptions } from '../core/request';
+import type { DataInput } from '../core/types/dataInput';
 import type { Geometry, LintWarning, RefusedLayout } from '../core/types/scene';
 import { registeredType } from './chartEntry';
 import { useResolvedChartLayout } from './useResolvedChartLayout';
@@ -31,8 +32,8 @@ export type ChartLayoutResult = {
   records: [];
 };
 
-export function useChartLayout<D, O extends object>(request: ChartRequest<D, O & RequestInputOptions>): ChartLayoutResult;
-export function useChartLayout<D, O extends object>(type: string, data: D, options?: O & RequestInputOptions): ChartLayoutResult;
+export function useChartLayout<D, O extends object>(request: ChartRequest<DataInput<D>, O & RequestInputOptions>): ChartLayoutResult;
+export function useChartLayout<D, O extends object>(type: string, data: DataInput<D>, options?: O & RequestInputOptions): ChartLayoutResult;
 export function useChartLayout(typeOrRequest: string | ChartRequest, data?: unknown, options?: RequestInputOptions): ChartLayoutResult {
   for (const core of chartCores) registeredType(core);
   const input = typeof typeOrRequest === 'string' ? { type: typeOrRequest, data, options } : typeOrRequest;
