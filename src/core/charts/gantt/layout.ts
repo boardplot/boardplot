@@ -496,6 +496,9 @@ function layoutGanttPass(data: GanttData, options: GanttOptions, prepared: Gantt
     // reference must not mark its hidden labels as already disclosed here.
     const wider = { ...Object.fromEntries(Object.entries(host)) as GanttOptions, size: { width: size.width < 400 ? 400 : 480 },
       footnotes: internal.footnotesOff ? false as const : internal.authoredFootnotes ?? host.footnotes };
+    // A hidden-label retry records an empty list where the author supplied no footnotes.
+    // The wider Gantt reads both forms as zero authored notes. Keep custom measurement order.
+    if (Array.isArray(wider.footnotes) && wider.footnotes.length === 0 && env.measure === defaultMeasurer) wider.footnotes = undefined;
     delete (wider as TargetSizeOptions)[TARGET_SIZE];
     delete (wider as GanttOptions & { [FORCE_COMPACT]?: boolean })[FORCE_COMPACT];
     delete (wider as GanttOptions & InternalFootnoteOptions).authoredFootnotes;
