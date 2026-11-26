@@ -539,7 +539,7 @@ const ITEM_GAP = 14;
  * legend token's value only.
  */
 /** The smallest plot band the frame hands a chart. */
-const MIN_PLOT_H = 10;
+export const MIN_PLOT_H = 10;
 
 
 export { wrapFootnote } from './footer';

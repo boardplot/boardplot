@@ -2,7 +2,7 @@ import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/line';
 import { withLocaleStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
-import { isCachedTextMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { structureCount } from '../../structureCounts';
 import { seriesTextPaint, emphasisWeight, dashToken, secondaryFont, strokeToken } from '../../theme';
 /**
@@ -55,6 +55,7 @@ import { bandHatch, fillShadingKinds, fillShadings, forecastBoundaryX, regroundO
 import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
+import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from '../../grid/lineKeyTrial';
 import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, bumpNamesMuted, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
@@ -1010,9 +1011,21 @@ export function layoutLine(
   data: LineChartData,
   authoredOptions: import('../../types/options').LineOptions = {},
 ): Geometry<LineMarks, LineDerived> {
+  const check = (authoredOptions as LineOptions & { [GRID_LINE_KEY_TRIAL]?: GridLineKeyTrial })[GRID_LINE_KEY_TRIAL];
+  if (!check) return drawLine(data, authoredOptions);
+  const key: { geometry?: Geometry<LineMarks, LineDerived> } = {};
+  const geometry = drawLine(data, authoredOptions, key);
+  check.calls++;
+  if (key.geometry !== geometry) check.same = false;
+  return geometry;
+}
+
+function drawLine(data: LineChartData, authoredOptions: import('../../types/options').LineOptions,
+  gridKey?: { geometry?: Geometry<LineMarks, LineDerived> },
+): Geometry<LineMarks, LineDerived> {
   // The continuous-axis domain resolves numeric x anchors before the annotation pass reads category ids.
   let options = withLocaleStrings(authoredOptions as LineOptions);
-  let geometry = layoutLinePass(data, options);
+  let geometry = layoutLinePass(data, options, gridKey);
   // A gap bracket stands right of the labels at the line ends: a pass that
   // found its column short of them is laid out once more with that much margin.
   const widenForBracket = () => {
@@ -1086,13 +1099,6 @@ export function layoutLine(
   return ticks < 3 && hidden ? layoutLinePass(data, { ...options, valueAxis: { ...options.valueAxis, show: true } }) : geometry;
 }
 
-/**
- * On a narrow canvas a plain line whose
- * end names do not fit names its lines where they are drawn, not in a key
- * row; the key row stays the fallback when an inline name finds no seat.
- */
-const INLINE_FALLBACK_MAX_WIDTH = 480;
-
 function inlineFallbackApplies(options: LineOptions, domain: LineDomain, env: LineEnv): boolean {
   const legend = typeof options.legend === 'object' ? options.legend.position : options.legend;
   return domain.variant === 'line' && !env.isBump && !domain.fan
@@ -1103,9 +1109,14 @@ function inlineFallbackApplies(options: LineOptions, domain: LineDomain, env: Li
 }
 
 /** The end names did not fit: name the lines inline where that applies, else in the key. */
-function endNameFallback(data: LineChartData, options: LineOptions, domain: LineDomain, env: LineEnv): Geometry<LineMarks, LineDerived> {
+function endNameFallback(data: LineChartData, options: LineOptions, domain: LineDomain, env: LineEnv,
+  gridKey?: { geometry?: Geometry<LineMarks, LineDerived> }, economy?: EndpointLabelStrategy,
+): Geometry<LineMarks, LineDerived> {
   if (inlineFallbackApplies(options, domain, env)) {
-    return layoutLinePass(data, { ...options, seriesLabels: 'inline', [INLINE_FALLBACK]: true } as LineOptions);
+    const geometry = layoutLinePass(data, { ...options, seriesLabels: 'inline', [INLINE_FALLBACK]: true } as LineOptions);
+    // Forcing the grid key takes the same inline path. If inline fails, the line selects its own key.
+    if (gridKey && economy && domain.labelModes.series === 'end') gridKey.geometry = geometry;
+    return geometry;
   }
   return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
 }
@@ -1122,6 +1133,7 @@ const DIFF_FIRST = Symbol('diffFirst');
 function layoutLinePass(
   data: LineChartData,
   options: LineOptions = {},
+  gridKey?: { geometry?: Geometry<LineMarks, LineDerived> },
 ): Geometry<LineMarks, LineDerived> {
   const warnings: LintWarning[] = [];
   const legendNone = (typeof options.legend === 'object' ? options.legend.position : options.legend) === 'none';
@@ -1160,7 +1172,7 @@ function layoutLinePass(
     return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: 'range' } as LineOptions);
   }
   let reserves = lineReserves(env, domain, paints, text, warnings);
-  if (reserves.endpoint.endpointLegendFallback && inlineFallbackApplies(options, domain, env)) return endNameFallback(data, options, domain, env);
+  if (reserves.endpoint.endpointLegendFallback && inlineFallbackApplies(options, domain, env)) return endNameFallback(data, options, domain, env, gridKey, reserves.endpoint.endpointLabelEconomy?.strategy);
   const { size, theme, measure } = env;
   let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'short-label-pass');
   // The event lane sizes itself and the key with the frame and plot passes.
@@ -1208,11 +1220,18 @@ function layoutLinePass(
   commitClaims(occupied, framed.claims);
   const area = settled.area;
   const scene = layoutLineMarks(env, domain, area, paints, text, reserves, warnings);
+  // Every inline name must fit entirely inside the plot. When even one line of type is
+  // taller, the fallback cannot name a drawn series and the key will carry the names.
+  if (usesInlineFallback(options) && reserves.endpoint.inlineNamesEnabled && measure === defaultMeasurer
+    && !options.labelPlacements && !options.labelOffsets && area.plot.h + 1e-8 < text.labelH
+    && scene.marks.series.some(mark => mark.points.length > 0 && domain.drawnSeries.some(series => series.id === mark.seriesId))) {
+    return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
+  }
   const anomalyMarks = domain.anomaly ? lineAnomalyMarks(theme, domain, domain.anomaly, area, text, scene, measure) : undefined;
   commitClaims(occupied, scene.claims);
   let plan = planLineLabels(env, domain, area, paints, text, reserves, scene, warnings);
   if (plan.endpointWiden) return layoutLinePass(data, { ...options, [END_LABEL_WIDE]: true } as LineOptions);
-  if (plan.endpointFallback && !usesEndLabelKey(options)) return endNameFallback(data, options, domain, env);
+  if (plan.endpointFallback && !usesEndLabelKey(options)) return endNameFallback(data, options, domain, env, gridKey, reserves.endpoint.endpointLabelEconomy?.strategy);
   if (anomalyMarks) seatFlaggedValues(plan.labelRequests, domain.anomaly!.seriesId, anomalyMarks);
   if (pointLabelsFollowShape(env, domain) && reserves.annList.some(ann => ann.kind === 'band' && ann.style === 'corridor')) {
     const input = { plot: area.forecastPlot, yScale: area.y, theme, resolveCategoryBand: lineCategoryBandResolver(domain, area) };
@@ -1271,7 +1290,7 @@ function layoutLinePass(
   let solved = solve(plan.labelRequests);
   if (!env.isBump && (!domain.isArea || domain.x?.range) && !domain.fan && !usesEndLabelKey(options) && reserves.endpoint.endLabels.some(end =>
     solved.placed.some(label => label.id === end.id && label.hidden === 'collision'))) {
-    return endNameFallback(data, options, domain, env);
+    return endNameFallback(data, options, domain, env, gridKey, reserves.endpoint.endpointLabelEconomy?.strategy);
   }
   // An inline name with no seat, chosen by the engine or by the author: the key row names the lines after all.
   // The key pass draws no inline names, so none is left hidden. A visible legend already names every line: it stays as set.

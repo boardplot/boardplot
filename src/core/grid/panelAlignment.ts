@@ -1,3 +1,4 @@
+import { MIN_PLOT_H } from '../frame';
 import { PLOT_FLOOR_RECT } from '../sizing';
 import { canvasMargin, resolveTheme } from '../theme';
 import type { Rect } from '../geometry';
@@ -20,6 +21,7 @@ interface GridPanelLayout {
   margin: { top?: number; right?: number; bottom?: number; left?: number };
   relayout?: (margin: GridPanelLayout['margin']) => Geometry;
   anchored?: PanelAnchoring;
+  columnPlotFloor?: boolean;
 }
 
 /** The margin that moves a child's plot left edge by `dl` and its right edge in by `dr`. */
@@ -300,6 +302,12 @@ export function alignValuePanels<C extends GridPanelLayout>(children: C[], theme
       const above = keep ? keep.above(child) : 0;
       const bottom = child.margin.bottom ?? canvasMargin(theme, child.slot.w).bottom;
       child.margin = { ...child.margin, bottom: bottom + cut * (1 - above), ...(keep ? { top: keep.top(child) + cut * above } : {}) };
+      // The column frame and its plot both clamp at ten pixels. With no room beyond
+      // that floor, every remaining pass will take the same cut from this panel.
+      if (!keep && off.length === 1 && child.columnPlotFloor && MIN_PLOT_H - height > 0.01 && child.margin.top !== undefined
+        && child.slot.h - child.margin.bottom! - child.margin.top <= MIN_PLOT_H) {
+        for (; pass < 2; pass++) child.margin.bottom! += MIN_PLOT_H - height;
+      }
       if (!before.has(child)) before.set(child, floorsOf(child.geometry));
       child.geometry = child.relayout!(child.margin);
     }
