@@ -1,14 +1,14 @@
 {
   "entries": {
-    "react/column": 347525,
-    "react/export": 450797,
+    "react/column": 347534,
+    "react/export": 450786,
     "react/grid": 312860,
-    "react/prepare": 471243,
+    "react/prepare": 471233,
     "react/spec initial": 249391,
     "react/spec validation": 96040,
-    "react/theme + react/column": 350805,
+    "react/theme + react/column": 350808,
     "rows": 12426,
-    "theme": 19569
+    "theme": 19570
   },
   "esbuild": "0.28.2",
   "firstChart": {
