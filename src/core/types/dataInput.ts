@@ -6,9 +6,9 @@ type SeriesInput<S extends ChartData['series'][number]> = S extends unknown
   : never;
 
 /** Authored category data accepts category ids and values keyed by category id. */
-export type DataInput<D> = D extends ChartData
+export type DataInput<D> = D | (D extends ChartData
   ? Omit<D, 'categories' | 'series'> & {
     categories: (D['categories'][number] | string)[];
     series: SeriesInput<D['series'][number]>[];
   }
-  : D;
+  : never);

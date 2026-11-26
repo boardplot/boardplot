@@ -35,3 +35,8 @@ export function SpecInputs({ externalSpec }: { externalSpec: unknown }) {
     <BoardplotChart spec={imported.spec} />
   </>;
 }
+
+// A wrapper that is generic over its data type and forwards it to the layout hook keeps compiling.
+export function GenericLayout<D extends RangeChartData>({ data }: { data: D }) {
+  return useChartLayout<D, ColumnOptions>('column', data);
+}
