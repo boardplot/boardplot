@@ -1185,6 +1185,17 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   // note (column.stacked100 at 480 px). Below the wide class it may also grow by up to a quarter.
   const steps = classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH || ladder.length > 0 ? ladder
     : [Math.ceil(first.size.height * (1 + NOTE_GROWTH_SHARE))];
+  // A narrow stack's single taller candidate can lose on its note count alone.
+  if (options && !first.refused && steps.length === 1 && definition.notesAtTallerHeight && width <= CARD_CLASS_WIDTH
+    && hasCompleteTextWidths(options.measure ?? defaultMeasurer)) {
+    const size = { width, height: steps[0]! };
+    const clean = withoutCallState(options)!;
+    const fixed = { ...clean, size } as O;
+    const declared = declaredSizing(definition, fixed);
+    const { tight } = sizeGate(definition, data, fixed, compact, declared, size);
+    const actual = tight || fixed.mode === 'compact' ? compactOptions(definition.type, fixed, tight ? requestFloor(declared) : undefined, width) : fixed;
+    if (definition.notesAtTallerHeight(data, clean, actual, first.labels.filter(notedForSize))) return first;
+  }
   let below = first.size.height;
   let top: LayoutResult<M, DV> | undefined;
   for (const height of steps) {
@@ -1763,7 +1774,9 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
             const need = Math.max(opening.part, plotHeightNeeded(height, opening.plot, plotPx, plotShare, opening.freed));
             if (need > height) {
               previous = { height, plot: opening.plot, part: opening.part };
-              height = need;
+              const chrome = opening.certifiedChrome;
+              const bound = chrome === undefined ? need : Math.ceil(Math.max(chrome + plotPx, chrome / (1 - plotShare)) - 1e-6);
+              height = bound > height ? bound : need;
             }
           }
         }

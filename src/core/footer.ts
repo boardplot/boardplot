@@ -1,6 +1,6 @@
 /** Shared footer text wrapping and the static output layout. */
 import { BOLD_OPEN, BOLD_CLOSE } from './inlineBold';
-import { hasAuthoredTypeSize, wrapText, type FontSpec, type TextMeasurer } from './text';
+import { defaultMeasurer, hasAuthoredTypeSize, wrapText, type FontSpec, type TextMeasurer } from './text';
 import type { FrameGeometry } from './types/scene';
 import type { FrameInput } from './frame';
 import { DEFAULT_TARGET, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
@@ -111,12 +111,18 @@ export function retainFrameState(frame: FrameGeometry, copy: FrameGeometry): Fra
  * rather than end in `…`.
  */
 export function wrapFootnote(text: string, font: FontSpec, width: number, measure: TextMeasurer): string[] {
+  // Keep the original words in the wrap key so repeated footers can skip splitting them too.
+  if (measure === defaultMeasurer) return wrapText(text, font, width, Infinity, measure, false, footnoteWords).lines;
+  return wrapText(footnoteWords(text, font, width, measure), font, width, Infinity, measure).lines;
+}
+
+function footnoteWords(text: string, font: FontSpec, width: number, measure: TextMeasurer): string {
   // A listed entry stays together when it fits. An overwide entry first
   // releases its word spaces; only an overwide word breaks at characters.
   const words = text.split(' ').flatMap((word) => measure(word, font).width <= width ? [word] : word.split('\u00a0'));
   const pieces = words.flatMap((word) =>
     measure(word, font).width <= width ? [word] : breakWord(Array.from(word), font, width, measure));
-  return wrapText(pieces.join(' '), font, width, Infinity, measure).lines;
+  return pieces.join(' ');
 }
 
 /**

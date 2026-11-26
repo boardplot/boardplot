@@ -413,7 +413,8 @@ function joinPieces(words: readonly string[], glued: readonly boolean[] | undefi
 }
 
 interface WrappedLines { lines: string[]; truncated: boolean }
-interface RecentWrap { font: FontSpec; width: number; maxLines: number; breakAfter: boolean; result: WrappedLines }
+type PrepareWrap = (text: string, font: FontSpec, width: number, measure: TextMeasurer) => string;
+interface RecentWrap { prepare?: PrepareWrap; font: FontSpec; width: number; maxLines: number; breakAfter: boolean; result: WrappedLines }
 
 let wrappedTexts: WeakMap<TextMeasurer, Map<string, RecentWrap[]>> | undefined;
 /** The row planner supplies its cache scope when a chart imports it. */
@@ -435,21 +436,22 @@ export function wrapText(
   measure: TextMeasurer = measureText,
   /** Names: a line may also break after `_`, `-`, `/` or `.` (NAME_BREAK). */
   breakAfter = false,
+  prepare?: PrepareWrap,
 ): { lines: string[]; truncated: boolean } {
   if (!wrappedTexts || !(measure === measureText || isCachedTextMeasurer(measure))) {
-    return wrapLines(text, font, maxWidth, maxLines, measure, breakAfter);
+    return wrapLines(prepare ? prepare(text, font, maxWidth, measure) : text, font, maxWidth, maxLines, measure, breakAfter);
   }
   let labels = wrappedTexts.get(measure);
   if (!labels) wrappedTexts.set(measure, labels = new Map());
   let entries = labels.get(text);
-  const previous = entries?.find(e => e.width === maxWidth && e.maxLines === maxLines && e.breakAfter === breakAfter && samePlan(e.font, font));
+  const previous = entries?.find(e => e.width === maxWidth && e.maxLines === maxLines && e.breakAfter === breakAfter && e.prepare === prepare && samePlan(e.font, font));
   let result = previous?.result;
   if (!result) {
-    result = wrapLines(text, font, maxWidth, maxLines, measure, breakAfter);
+    result = wrapLines(prepare ? prepare(text, font, maxWidth, measure) : text, font, maxWidth, maxLines, measure, breakAfter);
     if (!entries) labels.set(text, entries = []);
     // Labels alternate between their slot width and the wider fallback.
     if (entries.length === 2) entries.pop();
-    entries.unshift({ font: { ...font }, width: maxWidth, maxLines, breakAfter, result });
+    entries.unshift({ font: { ...font }, width: maxWidth, maxLines, breakAfter, prepare, result });
   }
   return { lines: [...result.lines], truncated: result.truncated };
 }

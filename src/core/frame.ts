@@ -51,7 +51,7 @@ import type {
 import type { Theme, ThemeRef } from './types/theme';
 import { VALUE_SELECTION } from './types/sizing';
 import type { OccupiedClaim } from './label/occupied';
-import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
+import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, retainFrameState, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
 import { chartString as wordingString } from './strings';
 import { TEXT_ASCENT } from './svg/renderSvg';
 import { maxOf, pushAll } from './arrays';
@@ -2121,6 +2121,48 @@ export interface FrameWidthMeasurements {
   topKey?: { nodes: SceneNode[]; legend: LegendGeometry; warnings: LintWarning[]; band: number; seq: number };
 }
 
+function textForFrame(input: FrameInput, footW: number, footFont: FontSpec): FrameText {
+  return frameText({
+    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
+    footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
+    footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
+    numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
+    width: input.size.width, footWidth: footW, footFont, boldWeight: emphasisWeight(input.theme), measure: input.measure,
+    policy: { pinned: staticFrame.pinned, live: staticFrame.live },
+  });
+}
+
+/** Replace notes listed outside a static source-only footer. Check the actual source
+ * lines and tooltip: these are the footer's only scene nodes and occupied row. */
+export function sourceOnlyListNotes(old: FrameResult, footnotes: string[]) {
+  const frame = old.frame;
+  const input = footerPlans.get(frame);
+  if (!input || staticFrame.live || staticFrame.pinned || input.credit || input.footerInset
+    || input[CUT_LABEL_NOTES]?.length || frame.warnings?.length || frame.footnoteNodeIds?.length || !frame.notes?.length || !frame.footerRect) return;
+  const source = old.nodes.find(node => node.id === frame.sourceNodeId);
+  if (source?.t !== 'text') return;
+  const plan = { ...input, footnotes };
+  const text = textForFrame(plan, frame.footerRect.w, source.font);
+  if (!text.sourceBlock || text.printed.length || text.warnings.length || text.placement !== frame.notePlacement
+    || text.sourceOff || text.countable || !text.unprinted.length) return;
+  const fitted = text.sourceLines(text.sourceBlock);
+  if (source.lines.length !== fitted.lines.length || source.lines.some((line, i) => line !== fitted.lines[i])
+    || source.title !== (fitted.title ? plainText(fitted.title) : undefined)) return;
+  const mark = () => {
+    for (const { text: note, meta } of text.marked) engineNote(note, meta.kind, meta.short, meta.values, meta.list ?? null);
+  };
+  return { mark, replace: () => {
+    const copy = retainFrameState(frame, { ...frame, notes: text.unprinted, noteList: text.noteList });
+    footerPlans.set(copy, plan);
+    const chrome = frameChrome.get(frame);
+    const floor = plotChromeFloor.get(frame);
+    if (chrome !== undefined) frameChrome.set(copy, chrome);
+    if (floor !== undefined) plotChromeFloor.set(copy, floor);
+    if (settledAutoHeight.has(frame)) settledAutoHeight.add(copy);
+    return copy;
+  } };
+}
+
 export function solveFrame(input: FrameInput, occupied: FrameClaims, measurements?: FrameWidthMeasurements): FrameResult {
   if (input[CUT_LABEL_NOTES]?.length) input = { ...input, footnotes: [...(input.footnotes ?? []), ...input[CUT_LABEL_NOTES]!] };
   const destination = occupied;
@@ -2172,14 +2214,7 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims, measurement
   const sourceOnly = measurements !== undefined && !input.footnotes?.length && !input.credit;
   let source = sourceOnly ? measurements.source : undefined;
   if (source && (source.pinned !== staticFrame.pinned || source.live !== staticFrame.live)) source = undefined;
-  const text = source?.text ?? frameText({
-    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
-    footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
-    footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
-    numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
-    width: size.width, footWidth: footW, footFont, boldWeight: emphasisWeight(theme), measure,
-    policy: { pinned: staticFrame.pinned, live: staticFrame.live },
-  });
+  const text = source?.text ?? textForFrame(input, footW, footFont);
 
   if (sourceOnly && !source) {
     source = { pinned: staticFrame.pinned, live: staticFrame.live, text,

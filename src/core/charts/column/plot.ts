@@ -40,7 +40,7 @@ import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, RUNNING_PERIOD_LEGEND_ID, toDateFont } from '../../partialPeriod';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale';
-import type { FontSpec } from '../../text';
+import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, secondaryFont } from '../../theme';
 import type { Annotation } from '../../types/annotations';
 import { percentLevels } from '../../annotatePass';
@@ -335,6 +335,11 @@ function columnFrameFurniture(domain: ColumnDomain, paints: ColumnLegendPaints, 
   return { margin, legend, narrowGutters };
 }
 
+export interface ColumnNoteRows {
+  furniture?: ColumnStaircaseMemo['furniture'];
+  rows: FrameWidthMeasurements;
+}
+
 interface ColumnHeightFrame {
   transferable?: boolean;
   stacks: ColumnDomain['stacks'];
@@ -354,6 +359,7 @@ export function solveColumnFrame(
   warnings: LintWarning[],
   eventKey?: FrameBand,
   memo?: ColumnStaircaseMemo,
+  noteRows?: ColumnNoteRows,
 ): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size, measure } = domain;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -382,10 +388,11 @@ export function solveColumnFrame(
       entries!.splice(entries!.indexOf(measured), 1);
     } else measured = undefined;
   }
-  const furniture = measured?.furniture ?? (!eventKey && memo?.furniture);
+  const furniture = measured?.furniture ?? (!eventKey && (memo?.furniture ?? noteRows?.furniture));
   const { margin, legend, narrowGutters } = furniture || columnFrameFurniture(domain, paints, warnings, eventKey);
   if (furniture) pushAll(warnings, furniture.warnings);
   else if (!eventKey && memo && !reuse) memo.furniture = { margin, legend, narrowGutters, warnings: warnings.slice(before) };
+  if (noteRows && !eventKey && !noteRows.furniture) noteRows.furniture = { margin, legend, narrowGutters, warnings: warnings.slice(before) };
   if (privateTrial && search && content && !measured) {
     measured = { stacks: domain.stacks, width: size.width, axis: !!domain.va.show, options: content,
       furniture: { margin, legend, narrowGutters, warnings: warnings.slice(before) }, rows: {} };
@@ -399,12 +406,7 @@ export function solveColumnFrame(
       ...frameTextOptions(shareUnitOptions('column', options)),
       footnotes: [
         ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnValues(domain)), ...authoredNotes(options),
-        // Above 8 values the note counts them against all drawn values.
-        ...noteLine(options.strings!.valuesNotOnColumns!, (options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE] ?? [], options,
-          domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
-        ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
-        ...partialTotalsNote(domain, options),
-        ...domain.shareNotes,
+        ...columnValueNotes(domain),
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),
@@ -412,7 +414,7 @@ export function solveColumnFrame(
       measure,
     },
     claims,
-    measured?.rows,
+    measured?.rows ?? noteRows?.rows,
   );
   if (reuse) {
     memo.plotHeightAt = measured?.rows.plotHeightAt;
@@ -421,6 +423,19 @@ export function solveColumnFrame(
     return { frame: { ...frame, frame: copyFrame(frame.frame) }, claims };
   }
   return { frame, claims };
+}
+
+/** Compose the value notes with the options of this drawing, in footer order. */
+export function columnValueNotes(domain: ColumnDomain): string[] {
+  const { options } = domain;
+  return [
+    // Above 8 values the note counts them against all drawn values.
+    ...noteLine(options.strings!.valuesNotOnColumns!, (options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE] ?? [], options,
+      domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
+    ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
+    ...partialTotalsNote(domain, options),
+    ...domain.shareNotes,
+  ];
 }
 
 /** A total that misses a part adds the known parts; the note names the parts it lacks. */
@@ -736,7 +751,9 @@ function columnBand(
       secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
       padding: 4,
       measure,
-      plotHeight: frame.plot.h,
+      // Calendar ticks stay horizontal at every height. The same width can use the same row plan.
+      plotHeight: domain.incompleteCats.size && measure === defaultMeasurer && row.calendar?.length === row.labels.length
+        && row.calendar.every(Boolean) ? undefined : frame.plot.h,
       reference: { x: frame.plot.x, width: frame.plot.w },
       // A cut name takes a note mark only where its note prints.
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
