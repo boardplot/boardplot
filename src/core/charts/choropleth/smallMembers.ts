@@ -80,6 +80,8 @@ interface MapKeysInput {
   keyWidth?: number;
   /** Measure only: return the blocks' size before anything is drawn or claimed. */
   dryRun?: boolean | 'memberColumn';
+  /** A listed pass can reject its frame before it solves or claims any legend cells. */
+  checkHeight?: (minPlotH: number) => void;
   midpointLabel: string | undefined;
   /** A line under the ramp saying which end is better, on a diverging scale. */
   caption: string | undefined;
@@ -337,6 +339,7 @@ function mapKeysOnce(input: MapKeysInput) {
   const mapGap = input.compact ? 4 : MAP_GAP;
   const minPlotH = column ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
   if (input.dryRun) return { dry: { w: blocksW, h: blocksH } } as const;
+  input.checkHeight?.(minPlotH);
   const mapPlot: Rect = column
     ? { ...plot, x: position === 'left' ? plot.x + blocksW + MAP_GAP : plot.x, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
     : { ...plot, y: position === 'top' ? plot.y + blocksH + mapGap : plot.y, h: Math.max(10, plot.h - blocksH - mapGap) };

@@ -88,7 +88,7 @@ function preparedCloser(outline: ReturnType<typeof prepareRun>, distance: (rect:
 
 /** Exact outline distance, prepared once for fixed map rings. */
 export function prepareOutlineDistance(rings: readonly (readonly Point[])[]) {
-  const outlines = rings.map(ring => prepareRun(ring, 16));
+  const outlines = rings.map(ring => prepareRun(ring, 4));
   const distance = preparedDistance(outlines);
   const bounded = outlines.every(outline => outline.chunks !== null);
   return (rect: Rect, ownDistance?: number, vertexDistance?: number): number => {
