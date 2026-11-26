@@ -468,6 +468,21 @@ function typeSizesBlock() {
     table(['Target', 'Unit', ...head], floors), TYPE_END].join('\n');
 }
 
+function bundleSizesBlock() {
+  const { esbuild, gzipLevel, entries, firstChart } = JSON.parse(readFileSync(resolve(ROOT, 'scripts/package-sizes.json'), 'utf8'));
+  const kB = (bytes) => `${Math.round(bytes / 1000)} kB`;
+  return [
+    '<!-- BEGIN GENERATED BUNDLE SIZES -->',
+    `With esbuild ${esbuild}, code splitting, minification and React external, a column's first load through \`boardplot/react/spec\` is about ${kB(firstChart.column)} gzip. ` +
+      `The initial entry is about ${kB(entries['react/spec initial'])}. Validation adds about ${kB(entries['react/spec validation'])} and holds zod. The column schema and engine then load. ` +
+      'The validation chunk is shared across chart types. ' +
+      `Importing \`ColumnChart\` from \`boardplot/react/column\` starts at about ${kB(entries['react/column'])} gzip and links no zod. ` +
+      'These sizes assume code splitting, the default in the production builds of Vite, webpack and Next.js. A bundle without splitting inlines the chunks a chart loads on demand and is larger. ' +
+      `These are package measurements with gzip level ${gzipLevel}. The host build can produce different chunk sizes.`,
+    '<!-- END GENERATED BUNDLE SIZES -->',
+  ].join('\n');
+}
+
 const PLUGIN_ROOT = 'release/plugin/boardplot-marketplace/plugins/boardplot';
 const SKILL_REFERENCES = `${PLUGIN_ROOT}/skills/boardplot-chart/references`;
 
@@ -511,7 +526,8 @@ export function generatedFiles() {
   pages.set('docs/reference/react.md', reactPage());
   pages.set('docs/reference/fixtures.md', fixturesPage(types));
   pages.set('docs/reference/warnings.md', warningsPage(extractWarningCodes()));
-  const manual = spliced('docs/manual.md', TYPE_BEGIN, TYPE_END, typeSizesBlock());
+  const manualWithTypeSizes = spliced('docs/manual.md', TYPE_BEGIN, TYPE_END, typeSizesBlock());
+  const manual = spliced('docs/manual.md', '<!-- BEGIN GENERATED BUNDLE SIZES -->', '<!-- END GENERATED BUNDLE SIZES -->', bundleSizesBlock(), manualWithTypeSizes);
   // Update the root README and the release template when present.
   const readmes = ['README.md', 'release/public/README.md'].filter((file) => existsSync(resolve(ROOT, file)));
   const counts = countsText(listed);

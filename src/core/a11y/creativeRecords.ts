@@ -1,7 +1,7 @@
 import { chartString } from '../strings/a11y-creativeRecords';
 import { chartString as creativeString } from '../strings/creative';
-import { tablePlan } from '../charts/creative/layout';
 import type { CreativeDerived, CreativeMarks } from '../charts/creative/layout';
+import { tablePlan } from '../charts/creative/tablePlan';
 import type { CreativeData, CreativeOptions } from '../charts/creative/types';
 import { derivedPercent, makeRecord, numericValue, textValue, type RecordContext } from './recordsShared';
 import type { InteractionRecord, InteractionValue } from './types';

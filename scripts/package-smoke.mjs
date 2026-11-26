@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { createRequire } from 'node:module';
-import { buildSync } from 'esbuild';
+import { buildSync, version as esbuildVersion } from 'esbuild';
 import {
   cpSync,
   existsSync,
@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const PACKAGE_SIZES = join(ROOT, 'scripts/package-sizes.json');
+const GZIP_LEVEL = 9;
+const SIZE_GROWTH_LIMIT = 2;
 
 function fail(message) {
   throw new Error(`package-smoke: ${message}`);
@@ -49,9 +52,14 @@ function run(command, args, options = {}) {
 export function parseArguments(argv) {
   let artifacts;
   let reactFrom;
+  let writeSizes = false;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
+    if (flag === '--write-sizes') {
+      writeSizes = true;
+      continue;
+    }
     if ((flag === '--artifacts' || flag === '--react-from') && value) {
       if (flag === '--artifacts') artifacts = resolve(value);
       else reactFrom = resolve(value);
@@ -59,10 +67,10 @@ export function parseArguments(argv) {
       continue;
     }
     fail(
-      'usage: node scripts/package-smoke.mjs [--artifacts <empty-directory>] [--react-from <node_modules>]',
+      'usage: node scripts/package-smoke.mjs [--artifacts <empty-directory>] [--react-from <node_modules>] [--write-sizes]',
     );
   }
-  return { artifacts, reactFrom };
+  return { artifacts, reactFrom, writeSizes };
 }
 
 export function reactPeerDirectories(reactFrom) {
@@ -134,7 +142,47 @@ function assertCallingEntriesHaveSideEffects(packageRoot, packageManifest) {
 
 /** gzip -9 bytes of one byte stream. */
 function gzipBytes(contents) {
-  return gzipSync(contents, { level: 9 }).byteLength;
+  return gzipSync(contents, { level: GZIP_LEVEL }).byteLength;
+}
+
+function reportPackageSizes(sizes, writeSizes) {
+  const stored = existsSync(PACKAGE_SIZES) ? JSON.parse(readFileSync(PACKAGE_SIZES, 'utf8')) : {};
+  const rows = [['entry', 'stored bytes', 'new bytes', 'difference']];
+  const failures = [];
+  const groups = [['entries', ''], ['firstChart', 'react/spec first chart ']];
+  for (const [group, prefix] of groups) {
+    const previous = stored[group] ?? {};
+    const current = sizes[group];
+    const names = [...new Set([...Object.keys(previous), ...Object.keys(current)])].sort();
+    for (const name of names) {
+      const entry = `${prefix}${name}`;
+      const before = previous[name];
+      const after = current[name];
+      const change = before !== undefined && after !== undefined ? 100 * (after - before) / before : undefined;
+      const difference = change === undefined ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+      rows.push([entry, String(before ?? 'missing'), String(after ?? 'missing'), difference]);
+      if (writeSizes) continue;
+      if (before === undefined) {
+        failures.push(`${entry} has no stored measurement (stored missing, now ${after} bytes).`);
+      } else if (after === undefined) {
+        failures.push(`${entry} was not measured (stored ${before} bytes, now missing).`);
+      } else if (after * 100 > before * (100 + SIZE_GROWTH_LIMIT)) {
+        failures.push(`${entry} grew by ${change.toFixed(2)} %: stored ${before} bytes, now ${after} bytes (limit ${SIZE_GROWTH_LIMIT} %).`);
+      }
+    }
+  }
+  const esbuildChanged = stored.esbuild && stored.esbuild !== sizes.esbuild;
+  const version = esbuildChanged
+    ? `esbuild ${sizes.esbuild} (stored with esbuild ${stored.esbuild})`
+    : `esbuild ${sizes.esbuild}`;
+  console.log(`Package sizes (gzip -${sizes.gzipLevel}, ${version})`);
+  const entryWidth = Math.max(...rows.map(([entry]) => entry.length));
+  console.log(rows.map(([entry, before, after, difference]) =>
+    `${entry.padEnd(entryWidth)}  ${before.padStart(12)}  ${after.padStart(9)}  ${difference.padStart(10)}`,
+  ).join('\n'));
+  if (failures.length === 0) return [];
+  if (esbuildChanged) failures.push(`Stored esbuild ${stored.esbuild}, now ${sizes.esbuild}.`);
+  return [`${failures.join('\n')}\nIf the changes are intended, run npm run smoke:package -- --write-sizes && npm run docs:build, then commit scripts/package-sizes.json and the manual.`];
 }
 
 /**
@@ -208,8 +256,6 @@ function checkReactBundles(packageRoot, manifest) {
  * being linked there. The initial load of `react/spec` may link none.
  */
 const SPEC_INITIAL_CHART_MODULES = new Set([
-  'src/core/charts/creative/fatigue.ts',
-  'src/core/charts/creative/layout.ts',
   'src/core/charts/grid/normalize.ts',
   'src/core/charts/line/nearZero.ts',
   'src/core/charts/sparkline/layout.ts',
@@ -222,7 +268,7 @@ const SPEC_INITIAL_CHART_MODULES = new Set([
  * through `react/spec`, gzip -9: the entry's initial load, the shared
  * validation chunk, that type's schema chunk, that type's engine chunk and
  * imports started at mount, each counted once.
- * The sizes are printed; no limit applies.
+ * The sizes are checked against scripts/package-sizes.json.
  */
 
 /** The engine chunks that may carry map geometry: the two map types. A grid fetches a map panel's core. */
@@ -369,12 +415,28 @@ function checkSpecChunks(types) {
     console.log(`shared validation chunk: ${modulesOf(validation).size} modules, no chart type, no map geometry`);
   }
 
-  const lines = [`First chart through react/spec, gzip -9 bytes (initial ${bytes(initial)} + shared validation ${bytes(validation)} + schema + engine + mount imports):`];
+  // A page without a creative chart must not download the creative layout when hover loads.
+  const hoverChunks = new Set(['src/react/hover/engine.tsx', 'src/react/hover/dataTable.tsx']
+    .flatMap((entry) => [...reach(chunkFor(entry))]));
+  const hoverCreativeModules = [...modulesOf(hoverChunks)].filter((module) =>
+    module.startsWith('src/core/charts/creative/') && module !== 'src/core/charts/creative/tablePlan.ts');
+  if (hoverCreativeModules.length > 0) {
+    failures.push(`hover and data table chunks link creative modules: ${hoverCreativeModules.sort().join(', ')}`);
+  } else {
+    console.log('hover and data table chunks: no creative layout');
+  }
+
+  const initialBytes = bytes(initial);
+  const validationBytes = bytes(validation);
+  const entries = { 'react/spec initial': initialBytes, 'react/spec validation': validationBytes };
+  const firstChart = {};
+  const lines = [`First chart through react/spec, gzip -9 bytes (initial ${initialBytes} + shared validation ${validationBytes} + schema + engine + mount imports):`];
   for (const type of types) {
     const schema = without(reach(chunkFor(`src/core/charts/${type}/schema.ts`)), initial, validation);
     const engine = without(reach(chunkFor(`src/react/charts/${type}.ts`)), initial, validation);
     const mount = without(new Set(mounted.get(type).flatMap(key => [...reach(key)])), initial, validation, schema, engine);
     const total = bytes(new Set([...initial, ...validation, ...schema, ...engine, ...mount]));
+    firstChart[type] = total;
     lines.push(`  ${type}: ${bytes(schema)} schema + ${bytes(without(engine, schema))} engine; first chart ${total}`);
     const engineInSchema = [...modulesOf(schema)].filter((module) =>
       new RegExp(`^src/core/charts/${type}/(layout|marks|domain|core)\\.ts$`).test(module));
@@ -387,7 +449,7 @@ function checkSpecChunks(types) {
     }
   }
   console.log(lines.join('\n'));
-  return failures;
+  return { entries, firstChart, failures };
 }
 
 /**
@@ -479,7 +541,8 @@ function checkTypeEntryChunks(types) {
  */
 function checkThemeEntry(packageRoot) {
   const failures = [];
-  console.log(`theme entry initial-load gzip -9 bytes: ${measureReactEntry(join(packageRoot, 'dist/theme.js')).initial}`);
+  const theme = measureReactEntry(join(packageRoot, 'dist/theme.js')).initial;
+  console.log(`theme entry initial-load gzip -9 bytes: ${theme}`);
   const entry = join(ROOT, 'src/theme.ts');
   const build = buildSync({
     absWorkingDir: ROOT, entryPoints: [entry], bundle: true, format: 'esm', splitting: true,
@@ -498,7 +561,7 @@ function checkThemeEntry(packageRoot) {
   } else {
     console.log(`theme entry: ${linked.size} modules, no chart engine, no map geometry, no React, no zod`);
   }
-  return failures;
+  return { entries: { theme }, failures };
 }
 
 /**
@@ -554,7 +617,7 @@ function checkReactThemeEntry(installRoot, packageRoot) {
   // The rows transform loads when a chart gets rows: a page without rows does not pay for it.
   const rowsModules = [...linked].filter((module) => module === 'src/core/rows.ts' || module === 'src/react/rowsModule.ts');
   if (rowsModules.length) failures.push(`boardplot/react/column links the rows transform before a chart gets rows: ${rowsModules.join(', ')}`);
-  return failures;
+  return { entries: { 'react/theme + react/column': pair, 'react/column': column }, failures };
 }
 
 /**
@@ -562,17 +625,20 @@ function checkReactThemeEntry(installRoot, packageRoot) {
  * call names. Each used to register every core when it loaded (0.8 to 1.1 MB
  * gzip). Their initial load links no chart core and no core list, beyond
  * grid's own core. It reads the source entries, whose chunks still carry
- * module names. The sizes are printed; no limit applies.
+ * module names. The sizes are checked against scripts/package-sizes.json.
  */
 function checkLightEntries(packageRoot) {
   const failures = [];
-  const entries = [
+  const entries = {};
+  const sources = [
     ['react/export', 'src/react/export/index.ts', []],
     ['react/prepare', 'src/react/prepare.ts', []],
     ['react/grid', 'src/react/charts/grid.ts', ['src/core/charts/grid/core.ts']],
   ];
-  for (const [name, source, allowed] of entries) {
-    console.log(`${name} initial-load gzip -9 bytes: ${measureReactEntry(join(packageRoot, `dist/${name}.js`)).initial}`);
+  for (const [name, source, allowed] of sources) {
+    const size = measureReactEntry(join(packageRoot, `dist/${name}.js`)).initial;
+    entries[name] = size;
+    console.log(`${name} initial-load gzip -9 bytes: ${size}`);
     const entry = join(ROOT, source);
     const build = buildSync({
       absWorkingDir: ROOT, entryPoints: [entry], bundle: true, format: 'esm', splitting: true,
@@ -589,7 +655,7 @@ function checkLightEntries(packageRoot) {
     if (cores.length > 0) failures.push(`boardplot/${name} links ${cores.length} chart core module(s) before its first call: ${cores.sort().join(', ')}`);
     else console.log(`${name}: ${linked.size} modules, no chart core beyond its own`);
   }
-  return failures;
+  return { entries, failures };
 }
 
 /**
@@ -642,7 +708,8 @@ function checkRowsEntry(installRoot, packageRoot) {
     `lib: { entry: ${JSON.stringify(consumer)}, formats: ['es'], fileName: () => 'rows.mjs' } } });\n`);
   run(process.execPath, [viteBuild], { cwd: installRoot });
   if (run(process.execPath, [join(installRoot, 'rows-vite/rows.mjs')], { cwd: installRoot }) !== direct) fail('the Vite browser build of boardplot/rows returned other data than Node');
-  console.log(`rows entry initial-load gzip -9 bytes: ${measureReactEntry(join(packageRoot, 'dist/rows.js')).initial} ` +
+  const rows = measureReactEntry(join(packageRoot, 'dist/rows.js')).initial;
+  console.log(`rows entry initial-load gzip -9 bytes: ${rows} ` +
     `(react/spec: ${measureReactEntry(join(packageRoot, 'dist/react/spec.js')).initial}); Vite browser build and Node agree`);
   const entry = join(ROOT, 'src/rows.ts');
   const build = buildSync({
@@ -654,9 +721,10 @@ function checkRowsEntry(installRoot, packageRoot) {
   for (const key of loaded) for (const module of Object.keys(outputs[key].inputs)) linked.add(module);
   const heavy = [...linked].filter((module) => /^src\/core\/charts\//.test(module) || module.startsWith('src/react/') ||
     module.endsWith('.generated.ts') || /(^|\/)node_modules\//.test(module));
-  if (heavy.length > 0) return [`boardplot/rows links ${heavy.length} module(s) of a chart engine, the map geometry, React or zod: ${heavy.sort().join(', ')}`];
-  console.log(`rows entry: ${linked.size} modules, no chart engine, no map geometry, no React, no zod`);
-  return [];
+  const failures = [];
+  if (heavy.length > 0) failures.push(`boardplot/rows links ${heavy.length} module(s) of a chart engine, the map geometry, React or zod: ${heavy.sort().join(', ')}`);
+  else console.log(`rows entry: ${linked.size} modules, no chart engine, no map geometry, no React, no zod`);
+  return { entries: { rows }, failures };
 }
 
 /**
@@ -1082,15 +1150,28 @@ try {
   assertRequire(installRoot);
   assertConsumerTypes(installRoot);
   checkReactBundles(installedPackageRoot, installedManifest);
+  const types = listReactTypes(installedManifest).sort();
+  const specChunks = checkSpecChunks(types);
+  const measured = [
+    specChunks,
+    checkThemeEntry(installedPackageRoot),
+    checkReactThemeEntry(installRoot, installedPackageRoot),
+    checkLightEntries(installedPackageRoot),
+    checkRowsEntry(installRoot, installedPackageRoot),
+  ];
+  const sizes = {
+    entries: Object.fromEntries(measured.flatMap(({ entries }) => Object.entries(entries))
+      .sort(([left], [right]) => left.localeCompare(right))),
+    esbuild: esbuildVersion,
+    firstChart: specChunks.firstChart,
+    gzipLevel: GZIP_LEVEL,
+  };
   const sizeFailures = [
-    ...checkSpecChunks(listReactTypes(installedManifest).sort()),
-    ...checkTypeEntryChunks(listReactTypes(installedManifest).sort()),
-    ...checkThemeEntry(installedPackageRoot),
-    ...checkReactThemeEntry(installRoot, installedPackageRoot),
-    ...checkLightEntries(installedPackageRoot),
+    ...measured.flatMap(({ failures }) => failures),
+    ...checkTypeEntryChunks(types),
     ...checkFontsEntry(),
-    ...checkRowsEntry(installRoot, installedPackageRoot),
     ...checkViteDeferredChunks(installRoot),
+    ...reportPackageSizes(sizes, args.writeSizes),
   ];
 
   const documentPath = join(scratch, 'waterfall.json');
@@ -1217,6 +1298,10 @@ try {
   }
 
   if (sizeFailures.length > 0) fail(`every other check passed; the React bundle checks failed: ${sizeFailures.join('; ')}`);
+  if (args.writeSizes) {
+    writeFileSync(PACKAGE_SIZES, `${JSON.stringify(sizes, null, 2)}\n`);
+    console.log('Wrote scripts/package-sizes.json');
+  }
   console.log(
     `PASS package smoke: ${exportTargetCount} export targets, boardplot and boardplot-mcp, ` +
       `core/validate/fixtures/React ${reactVersion} SSR, consumer types, MCP, and plugin bundle from ${basename(tarball)}`,
