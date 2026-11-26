@@ -250,6 +250,9 @@ describe('unknown option keys are refused on every type', () => {
         expect(finding).not.toHaveProperty('fix');
       }
     }
+    // A waterfall turns on its own variant option, which the refusal still names with its patch.
+    const waterfall = cliErrors({ type: 'waterfall', data: getFixtures('waterfall')[0]!.data, options: { horizontal: true } }).errors;
+    expect(waterfall).toContainEqual(expect.objectContaining({ code: 'unknown-option', fix: expect.any(Array), suggest: expect.stringContaining('variant') }));
   });
   // A patch that renames a nested key onto a boolean option but keeps the string 'yes' leaves the chart refused.
   it('patches a nested typo only when the renamed key takes the authored value', () => {

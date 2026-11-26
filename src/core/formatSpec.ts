@@ -883,7 +883,9 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
       }
       return translated.example;
     }
-    if (!checked.has(example) && owner.kind !== 'date' && (owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) {
+    // A time axis format is a date pattern, and the creative format is a free name ('9:16 Video'): neither is a number example.
+    const numberExample = owner.kind !== 'date' && owner.type !== 'time' && !(field[0] === 'data' && field[1] === 'facts');
+    if (!checked.has(example) && numberExample && (owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) {
       checked.add(example);
       const warning = formatNotExampleWarning(example);
       if (warning) warnings.push({ ...warning, field });
@@ -1001,6 +1003,8 @@ function isFormatCode(text: string): boolean {
   const d3 = D3_CODE.exec(text);
   if (!d3) return false;
   const [, alignment, symbol, zero, width, comma, precision, trim, type] = d3;
+  // '<0.1%' is the number 0.1 after a sign word, not a zero-padded code.
+  if (zero && !width && !comma && !trim && precision) return false;
   // A width or zero pad alone can also be part of an example, such as 0.0%.
   return Boolean(alignment || comma || trim || (symbol === '#' && /[boxX]/.test(type!)) || (precision && !width && !zero));
 }

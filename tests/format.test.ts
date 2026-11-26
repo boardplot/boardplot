@@ -51,11 +51,12 @@ describe('ordinary number examples', () => {
   // A format code or a second literal number can print misleading text while the chart succeeds.
   it('warns once per format code or two-number example and preserves printed text', () => {
     const examples = ['$,.0f', ',.0f', '.1%', '%d', '%.2f', '2h 14m'];
-    const ordinary = ['#1', '0.0%', '%', '$M', '@@@', '1.2E+06', 'CO2 1.2', 'EUR1bn (2020 USD)', '1kg / 100m²', '1 kg per 100 m²', '$1M in 2020 prices', '#,##0'];
+    const ordinary = ['#1', '0.0%', '%', '$M', '@@@', '1.2E+06', 'CO2 1.2', 'EUR1bn (2020 USD)', '1kg / 100m²', '1 kg per 100 m²', '$1M in 2020 prices', '#,##0', '<0.1%'];
     const result = readFormatExamples({
       series: [...examples, ...ordinary].map(format => ({ format })),
       columns: [{ kind: 'date', format: '30 Sep 2026' }],
-    }, { format: '$,.0f' });
+      facts: { format: '9:16 Video' },
+    }, { format: '$,.0f', xAxis: { type: 'time', format: '30 Sep 2026' } });
     const warnings = result.warnings.filter(warning => warning.code === 'format-not-example');
     expect(warnings).toHaveLength(examples.length);
     for (const [i, replacement] of ['$1,234', '1,234', '1.2%', '1234', '1.23', '1,234 s'].entries()) {

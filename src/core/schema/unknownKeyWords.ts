@@ -227,11 +227,12 @@ function treeTakes(tree: OptionKeyTree, path: readonly string[]): boolean {
 /** The refusal for each unknown key, worded as the CLI words it. It carries no patch: the per-type entries hold no value schema to prove the renamed key takes the authored value. */
 export function wordUnknownKeys(found: readonly UnknownKey[], tree?: OptionKeyTree): RefusalFinding[] {
   return found.map(({ path, node }) => {
-    const orientation = orientationOptionAdvice(path);
-    if (orientation) return { code: 'unknown-option', ...orientation, path: `options.${path[0]}` };
     const key = String(path.at(-1));
     // At the top the near miss also reads the words below each option (gridlines -> valueAxis).
     const top = path.length === 1 ? nearestOptionTerm(key, termsOf(node)) : undefined;
+    // A type that switches its own orientation through another option (waterfall: variant) names that option.
+    const orientation = top ? undefined : orientationOptionAdvice(path);
+    if (orientation) return { code: 'unknown-option', ...orientation, path: `options.${path[0]}` };
     const nearest = top ? { key: top, near: true } : closestOptionKey(key, namedKeys(node));
     const dotted = path.join('.');
     const moved = tree === undefined ? undefined : movedKey(dotted, (target) => treeTakes(tree, target));

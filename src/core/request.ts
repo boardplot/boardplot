@@ -1125,7 +1125,8 @@ function requestInputWarnings(type: string, data: unknown, options: RequestOptio
     const definition = getChart(panel.type);
     // Resolve defaults while the alias is still known, as the child layout does.
     return requestInputWarnings(definition?.type ?? panel.type, panel.data, { ...definition?.defaults, ...panel.options })
-      .map(({ fix: _fix, ...warning }) => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
+      // The field path names the chart's own data, not a panel inside the grid.
+      .map(({ fix: _fix, field: _field, ...warning }) => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
   });
 }
 

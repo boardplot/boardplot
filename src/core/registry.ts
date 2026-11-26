@@ -869,7 +869,10 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             && !geo.warnings.some(warning => warning.code === 'mixed-language' && warning.message === message)) {
             geo.warnings = [...geo.warnings, {
               code: 'mixed-language', severity: 'warn', field: ['options', 'source'], message,
-              suggest: 'Set options.strings.source to the word to print.',
+              // diagram and creative take no options.strings, so the source text carries its own word there.
+              suggest: def.type === 'diagram' || def.type === 'creative'
+                ? "Start options.source with the word to print, written in the chart's language."
+                : 'Set options.strings.source to the word to print.',
             }];
           }
         }
