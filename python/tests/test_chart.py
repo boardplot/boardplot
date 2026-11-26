@@ -248,3 +248,19 @@ def test_tool_name_rewrite_keeps_quoted_input():
     with pytest.raises(bp.SpecError) as caught:
         bp.chart(ROWS, "boardplot_list", category="region", value="revenue")
     assert "'boardplot_list'" in caught.value.message and caught.value.suggest.startswith("Call bp.list_charts()")
+
+
+# bp.chart() raised a KeyError for histogram, box, sankey and table rows.
+@pytest.mark.parametrize(("type_name", "rows", "roles", "template"), [
+    ("histogram", [{"v": n} for n in (1, 2, 2, 3, 3, 3, 4, 4, 5, 8)], {"value": "v"}, None),
+    ("box", [{"g": g, "v": v} for g, vs in (("A", (1, 2, 3, 4, 9)), ("B", (2, 3, 4, 5, 6))) for v in vs],
+     {"category": "g", "value": "v"}, None),
+    ("sankey", [{"a": "Visit", "b": "Cart", "n": 60}, {"a": "Visit", "b": "Exit", "n": 40}, {"a": "Cart", "b": "Buy", "n": 30}],
+     {"source": "a", "target": "b", "value": "n"}, None),
+    ("table", [{"region": "North", "revenue": 42.0}, {"region": "South", "revenue": 35.5}], {"label": "region"},
+     {"data": {"columns": [{"id": "region", "kind": "rowLabel", "label": "Region"},
+                           {"id": "revenue", "kind": "value", "label": "Revenue"}]}}),
+])
+def test_rows_of_every_rows_shape_draw(type_name, rows, roles, template):
+    drawn = bp.chart(rows, type_name, template=template, **roles)
+    assert drawn.svg and drawn.svg.startswith("<svg")
