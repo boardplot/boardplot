@@ -10,7 +10,7 @@ import type { Theme } from '../../types/theme';
 
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
-import { authoredDateTicks, dayCategories } from '../../calendarLabels';
+import { authoredDateTicks, dayCategories, type CalendarInfo } from '../../calendarLabels';
 import { requestMemo } from '../../layoutPlan';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
@@ -574,9 +574,27 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain) {
  */
 function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves: LineReserves, frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
   type Room = LineReserves['categoryEndRoom'];
-  const on = (room: Room, sink: LintWarning[]): ReturnType<typeof categoryNameRow> & { xTicks?: XTickPlan } => domain.x
-    ? continuousRow(env, domain, domain.x, text, room, frame, valueAxisReserve, sink)
-    : categoryNameRow(env, domain, text, room, frame, valueAxisReserve, sink);
+  const { cats, options } = domain;
+  const calendar = env.measure === defaultMeasurer && domain.variant === 'line' && !env.isBump &&
+    !domain.x && !domain.population && !options.trend && !options.viewDomain && options.window?.decimate === 'none' &&
+    options.window.last === undefined && requestMemo(cats, 'line-plain-calendar', () => cats.length > 0 &&
+      cats.every(c => (c as typeof c & { calendar?: CalendarInfo }).calendar && c.footnote === undefined && !c.partial));
+  const on = (room: Room, sink: LintWarning[]): ReturnType<typeof categoryNameRow> & { xTicks?: XTickPlan } => {
+    if (domain.x) return continuousRow(env, domain, domain.x, text, room, frame, valueAxisReserve, sink);
+    if (!calendar) return categoryNameRow(env, domain, text, room, frame, valueAxisReserve, sink);
+    // These dates and their original spacing belong to the same normalized category
+    // array. Height cannot change a calendar row's one-line fit or tick stride.
+    const scale = textScaleOf(options);
+    const key = JSON.stringify(['line-calendar-position', frame.plot.x, frame.plot.w, valueAxisReserve, room,
+      categoryInsetOf(options), options.categoryAxis, options.locale, options.target, scale, text.tickFont,
+      secondaryFont(env.theme), stepDownFont(env.theme, text.tickFont, 'axis', options.target, scale)]);
+    const cached = requestMemo(cats, key, () => {
+      const notes: LintWarning[] = [];
+      return { row: categoryNameRow(env, domain, text, room, frame, valueAxisReserve, notes, true), notes };
+    });
+    for (const note of cached.notes) sink.push({ ...note });
+    return cached.row;
+  };
   const centred = reserves.centredEndRoom;
   if (!centred) return { ...on(reserves.categoryEndRoom, warnings), endRoom: reserves.categoryEndRoom, sideEndRoom: false };
   // The open-side room of shape point values takes only room the row can spare: the
@@ -616,7 +634,7 @@ function lineDateTicks(cats: LineDomain['cats'], options: LineDomain['options'],
   return saved.ticks;
 }
 
-function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
+function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[], cachedAtWidth = false) {
   const { theme, measure } = env;
   const { options, cats, population } = domain;
   const n = cats.length;
@@ -661,12 +679,12 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
     ...(!crossesBetween && !domain.isArea ? { edgeAnchored: true } : {}),
   });
   const planRow = (input: CategoryRowInput) => {
-    const plan = planCategoryRow(input);
+    const plan = planCategoryRow(input, !cachedAtWidth);
     if (plan.maxLines <= 2 || plan.rotation !== 0) return plan;
     // A name that needs three lines steps down to the 9 px
     // floor on two instead, where every name then fits whole.
     const floor = stepDownFont(theme, text.tickFont, 'axis', options.target, textScaleOf(options)) ?? text.tickFont;
-    const stepped = planCategoryRow({ ...input, fonts: [floor] });
+    const stepped = planCategoryRow({ ...input, fonts: [floor] }, !cachedAtWidth);
     return stepped.maxLines <= 2 && stepped.step !== 'stride' && !stepped.infos.some((info) => info.truncated) ? stepped : plan;
   };
   // Keep the day plan when four weeks or less can separate its labels.
@@ -674,11 +692,14 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
   const limit = 28;
   let catPlan = !dateTicks && needsMonthTicks(input, limit) ? undefined : planRow(input);
   if (!dateTicks && (!catPlan || catPlan.stride > limit)) {
-    const dated = dayCategories(cats);
+    // The full-resolution line retains its ordered categories through height trials.
+    const dated = measure === defaultMeasurer && options.window?.decimate === 'none'
+      ? requestMemo(cats, 'line-month-categories', () => dayCategories(cats))
+      : dayCategories(cats);
     if (dated) {
       warnings.length = warningsBefore;
       const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
-      return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
+      return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings, cachedAtWidth);
     }
   }
   catPlan ??= planRow(input);
@@ -1032,6 +1053,6 @@ export function linePlotArea(
     ...(domain.x && xTicks ? { xTicks, xOfValue: (value: number) => span.x + (value - domain.x!.lo) / (domain.x!.hi - domain.x!.lo) * span.w } : {}),
     // A continuous axis has no pitch: the mean spacing of its readings stands in where a step is read.
     step: domain.x ? span.w / Math.max(1, n - 1) : categoryStep(span.w, domain.population ? n : grid?.span ?? n, crossesBetween),
-    categoryOrder: new Map(cats.map((category, index) => [category.id, index] as const)),
+    categoryOrder: requestMemo(cats, 'line-category-order', () => new Map(cats.map((category, index) => [category.id, index] as const))),
   };
 }

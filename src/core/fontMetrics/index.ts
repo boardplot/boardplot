@@ -147,6 +147,9 @@ export function nearestWeight(faces: readonly Face[], weight: number): Face {
 // without bound. A chart uses a handful of stacks and weights.
 const RESOLVE_CACHE_LIMIT = 256;
 const resolveCache = new Map<string, Face | undefined>();
+let lastStack: string | undefined;
+let lastWeight = NaN;
+let lastFace: Face | undefined;
 
 /**
  * The face a font spec is measured with: the first family of `stack` that has
@@ -154,19 +157,23 @@ const resolveCache = new Map<string, Face | undefined>();
  * tabled, in which case the caller keeps its own estimate.
  */
 export function resolveFace(stack: string | undefined, weight: number): Face | undefined {
+  if (weight === lastWeight && stack === lastStack) return lastFace;
   const key = `${stack ?? ''}|${weight}`;
-  const cached = resolveCache.get(key);
-  if (cached !== undefined || resolveCache.has(key)) return cached;
-  let face: Face | undefined;
-  for (const family of familiesOf(stack ?? DEFAULT_FAMILY)) {
-    const faces = FACES_BY_FAMILY.get(family);
-    if (faces) {
-      face = nearestWeight(faces, weight);
-      break;
+  let face = resolveCache.get(key);
+  if (face === undefined && !resolveCache.has(key)) {
+    for (const family of familiesOf(stack ?? DEFAULT_FAMILY)) {
+      const faces = FACES_BY_FAMILY.get(family);
+      if (faces) {
+        face = nearestWeight(faces, weight);
+        break;
+      }
     }
+    if (resolveCache.size >= RESOLVE_CACHE_LIMIT) resolveCache.delete(resolveCache.keys().next().value!);
+    resolveCache.set(key, face);
   }
-  if (resolveCache.size >= RESOLVE_CACHE_LIMIT) resolveCache.delete(resolveCache.keys().next().value!);
-  resolveCache.set(key, face);
+  lastStack = stack;
+  lastWeight = weight;
+  lastFace = face;
   return face;
 }
 

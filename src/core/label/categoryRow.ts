@@ -831,8 +831,8 @@ function rotatedDimensions(cap: number, centers: readonly number[], plotWidth: n
   return { height: widest * SIN45 + lineH * SIN45, inset: Math.min(Math.ceil(overhang), Math.max(0, Math.floor(plotWidth - MIN_PLOT_WIDTH))) };
 }
 
-export function planCategoryRow(input: CategoryRowInput): CategoryRowPlan {
-  if (!rowPlans) { const cascade = planCategoryRowCascade(input); return spreadUpright(input, cascade) ?? cascade; }
+export function planCategoryRow(input: CategoryRowInput, cache = true): CategoryRowPlan {
+  if (!rowPlans || !cache) { const cascade = planCategoryRowCascade(input); return spreadUpright(input, cascade) ?? cascade; }
   let plans = rowPlans.get(input.measure);
   if (!plans) rowPlans.set(input.measure, plans = new Map());
   const key = JSON.stringify({ ...input, measure: undefined });
@@ -1090,7 +1090,16 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     const key = maxLines <= 1 ? `1:${preserveBreaks}` : `${maxLines}:${pad}`;
     const cached = rows.get(key);
     if (cached) return cached;
+    const dateWidths = dateNumeric && bundled && !preserveBreaks ? new Map<string, number>() : undefined;
+    const lineH = font.size * (font.lineHeight ?? 1.2);
     const infos = labels.map((label, i) => {
+      // A one-line date without a reference mark has the same dimensions at
+      // every occurrence. Keep its own lines array for callers of the plan.
+      if (dateWidths && !suffixAt(i)) {
+        let w = dateWidths.get(label);
+        if (w === undefined) dateWidths.set(label, w = Math.max(measure(label, font).width, 1));
+        return { lines: [label], w, h: lineH, truncated: false };
+      }
       const reserve = suffixAt(i) ? measure(suffixAt(i), font).width : 0;
       if (dateNumeric || maxLines <= 1) {
         // An ordered horizontal row measures each authored line before thinning.

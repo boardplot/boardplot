@@ -33,6 +33,7 @@ export function forecastBoundaries(series: NormSer[], cats: Category[], annotati
     return start > 0 && item.vals.slice(0, start).some((v) => v.v !== null) &&
       item.vals.slice(start).some((v) => v.v !== null) ? [{ start, lastActual: lastActualIndex(item, start, stacked) }] : [];
   });
+  if (turning.length === 0) return [];
   const transitions = turning.filter((item, index) => turning.findIndex(other => other.start === item.start && other.lastActual === item.lastActual) === index)
     .sort((a, b) => a.start + a.lastActual - b.start - b.lastActual || a.start - b.start);
   const usedIds = new Set(cats.map(category => category.id));

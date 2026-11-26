@@ -23,7 +23,8 @@ export function lineSeriesAdjacentWarnings(input: {
   capture?: AdjacentWarningCapture;
 }): LintWarning[] {
   const byId = new Map(input.nodes.map((node) => [node.id, node]));
-  const categoryIndexes = new Map(input.cats.map((category, index) => [category.id, index]));
+  const categoryIndexes = input.isArea || input.isStacked
+    ? new Map(input.cats.map((category, index) => [category.id, index])) : undefined;
   const samples: (SeriesColorSample & AdjacentSeriesPaintSample)[] = [];
   for (const mark of input.marks.series) {
     const index = input.drawnSeries.findIndex((series) => series.id === mark.seriesId);
@@ -38,8 +39,19 @@ export function lineSeriesAdjacentWarnings(input: {
     const series = input.drawnSeries[index]!;
     const forecastStart = series.scenario === 'FC' ? 0 : series.vals.findIndex((value) => value.scenario === 'FC');
     const highlighted = input.highlights.has(mark.seriesId) || ('token' in paint && (paint.token === 'highlight' || paint.token === 'focus'));
+    // A single line has no neighbouring series. Keep its public recolouring
+    // samples in the same order without comparing the line against itself.
+    if (input.marks.series.length === 1 && !input.isArea && !input.isStacked) {
+      if (input.capture && mark.points.length) input.capture.rules.push({
+        kind: 'series-adjacent-similar', stacked: false, before: input.capture.before,
+        samples: mark.points.map(point => ({
+          seriesId: mark.seriesId, categoryId: point.categoryId, highlighted, paint, from: point.y, to: point.y,
+        })),
+      });
+      return [];
+    }
     for (const point of mark.points) {
-      const categoryIndex = categoryIndexes.get(point.categoryId)!;
+      const categoryIndex = categoryIndexes?.get(point.categoryId)!;
       if (filled && !input.paintedAreaCats.get(mark.seriesId)?.has(categoryIndex)) continue;
       const hatched = filled && forecastStart >= 0 && categoryIndex >= forecastStart;
       samples.push({

@@ -1564,6 +1564,8 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
   /** The running categories whose values print the to-date words under them (lineToDateIds). */
   toDate?: ToDateWords;
 }): void {
+  const selected = pointLabelSelection(input);
+  if (!selected.length) return;
   const lost = { sliver: [] as string[], thinned: [] as string[] };
   const strokesOf = new Map(input.drawnSeries.map((series) => {
     const row = input.pv[input.rowOf.get(series)!]!;
@@ -1572,7 +1574,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     const stroke = { runs, queries: undefined as PolylineQueries[] | undefined };
     return [series.id, stroke] as const;
   }));
-  for (const { series, dataIdx, row, content, only, lastActual } of pointLabelSelection(input)) {
+  for (const { series, dataIdx, row, content, only, lastActual } of selected) {
     const shapeSide = input.shapeSides ? new Map<number, string>() : undefined;
     if (shapeSide) {
       const runs = drawnRuns(row, series.interpolateGaps);
@@ -1638,6 +1640,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
 
 export function placeCategoryLabels(input: {
   show: boolean;
+  heightReference?: boolean;
   plan: CategoryRowPlan;
   cats: Category[];
   xOf: (categoryIndex: number) => number;
@@ -1647,7 +1650,13 @@ export function placeCategoryLabels(input: {
   if (!input.show) return false;
   const rotated = input.plan.rotation !== 0;
   const bottom = input.plot.y + input.plot.h;
+  let sawHidden = false;
   input.cats.forEach((category, ci) => {
+    // The centred-room retry checks whether anything was hidden. One hidden category preserves that test.
+    if (input.heightReference && !input.plan.keep[ci]) {
+      if (sawHidden) return;
+      sawHidden = true;
+    }
     const info = input.plan.infos[ci]!;
     input.labelRequests.push({
       id: `category:${category.id}`,

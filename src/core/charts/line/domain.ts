@@ -9,6 +9,7 @@ import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning 
 import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
+import { requestMemo } from '../../layoutPlan';
 import { formatAuthoredPercent, formatShare, shareText } from '../../format';
 import { formatStatWithSpec, ruleStatistics, seriesRasterFormatter, statisticFormatter, type RuleStatistics } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
@@ -211,6 +212,7 @@ function calendarStarts(cats: Category[], limit: number): string[] | undefined {
 
 /** Series targets, then chart targets; a target naming an unknown series or category is refused out loud. */
 function collectTargets(seriesNorm: NormSer[], cats: Category[], options: LineOptions, warnings: LintWarning[]): NormTarget[] {
+  if (!options.targets?.length && seriesNorm.every(series => series.targets.length === 0)) return [];
   const categoryIds = new Set(cats.map((category) => category.id));
   const seriesIds = new Set(seriesNorm.map((series) => series.id));
   const targets: NormTarget[] = [];
@@ -747,7 +749,13 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     options = { ...options, valueAxis: { ...options.valueAxis, includeZero: themeZero } };
   }
   const { isBump } = env;
-  const { cats, seriesNorm } = normalizeLineData(data);
+  // A viewport rewrites the category and series arrays. A full-resolution line
+  // keeps those arrays intact through every height and endpoint-label trial.
+  const fullSource = data && env.measure === defaultMeasurer && !isBump && !options.xAxis && !options.viewDomain
+    && options.window?.decimate === 'none' && options.window.last === undefined;
+  const { cats, seriesNorm } = fullSource
+    ? requestMemo(data, 'line-full-source', () => normalizeLineData(data))
+    : normalizeLineData(data);
   validateLineLog(options, seriesNorm);
   // A continuous x axis: refusals, the range and every x anchor, before the presets read them.
   const xModel = lineXModel(options, cats);
@@ -955,7 +963,8 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // A zoom or sampled window keeps its own source spacing.
   const shown = population ? population.categories.slice(population.indexes[0], population.indexes[population.indexes.length - 1]! + 1) : cats;
   const timeline = xModel ? valueTimeline(xModel, xRange!, population, cats)
-    : (options.trend ? trendTimeline(cats, shown) : undefined) ?? (population ? undefined : categoryTimeline(cats));
+    : (options.trend ? trendTimeline(cats, shown) : undefined) ?? (population ? undefined
+      : fullSource ? requestMemo(cats, 'line-category-timeline', () => categoryTimeline(cats)) : categoryTimeline(cats));
   if ((options.trend || xModel) && population && timeline) Object.assign(population, timeline);
 
   const { cumTop, cumBot, endpoints, lastIdxOf } = stackAndEndpoints(cats, dataSeries, drawnSeries, pv, rowOf, isStacked);
