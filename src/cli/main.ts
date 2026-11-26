@@ -51,14 +51,14 @@ function jsonColumns(map: string): Record<string, string> {
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) || Object.values(parsed).some((column) => typeof column !== 'string')) {
     throw new InputError('invalid-argument', `--columns takes a JSON object of role and column names, not '${map}'`, {
-      suggest: 'Pass --columns \'{"category":"month","series":"segment","value":"revenue"}\', or category=month,series=segment,value=revenue.',
+      suggest: 'Pass --columns \'{"category":"month","value":"revenue"}\', or category=month,value=revenue.',
     });
   }
   return parsed as Record<string, string>;
 }
 
 /**
- * `--rows file --columns category=month,series=segment,value=revenue`: the
+ * `--rows file --columns category=month,value=revenue`: the
  * rows file resolves against the working directory, as the spec file does.
  */
 function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, string> } {
@@ -68,7 +68,7 @@ function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, s
     const [role, column, ...rest] = pair.split('=').map((part) => part.trim());
     if (!role || !column || rest.length) {
       throw new InputError('invalid-argument', `--columns takes role=column pairs separated by commas, not '${pair}'`, {
-        suggest: 'Pass --columns category=month,series=segment,value=revenue.',
+        suggest: 'Pass --columns category=month,value=revenue. Add series=segment when a column holds separate series IDs.',
       });
     }
     return [role, column];

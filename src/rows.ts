@@ -11,8 +11,9 @@ import type { NamedColumnStateEntry } from './core/schema/namedColumns';
 export { InputError } from './core/inputError';
 
 /**
- * Which source column holds each role. Category charts name category, series
- * and value; choropleth and tilemap name category and value; waterfall names
+ * Which source column holds each role. Category charts name category and value.
+ * Without series, the value column names one series. Choropleth and tilemap
+ * name category and value. Waterfall names
  * label and value; scatter names x and y; sankey names source, target and value. A table may name label and id; its
  * spec's data.columns declares the columns, each input column reading the
  * source field named like its id. Histogram names value; box names category

@@ -32,6 +32,7 @@ import type { GridMarks } from './grid/layoutGrid';
 import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
+import { parseISODate, utcDate } from './isoDate';
 import { retireChartSettings } from './retired';
 import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
 import { tableFitThemeTokens, themeGeometryTokens } from './themeGeometry';
@@ -1083,8 +1084,43 @@ function inputPanels(data: unknown): { id: string; type: string; data: unknown; 
   return Array.isArray(normalized?.panels) ? normalized.panels : [];
 }
 
+/** Category bands give equal space to readings even when the dates are an unequal distance apart. */
+function categoryDateWarnings(data: unknown, options: RequestOptions & { xAxis?: unknown; variant?: unknown }): LintWarning[] {
+  if (options.xAxis !== undefined || options.variant === 'bump' || !isRecord(data) || data.x !== undefined
+    || !Array.isArray(data.categories) || data.categories.length < 3) return [];
+  const dates: Date[] = [];
+  for (const category of data.categories) {
+    if (isRecord(category) && category.date !== undefined) return [];
+    const name = isRecord(category) ? category.label ?? category.id : category;
+    const date = typeof name === 'string' && name.length === 10 ? parseISODate(name) : null;
+    if (!date) return [];
+    dates.push(date);
+  }
+  const dayGaps = dates.slice(1).map((date, index) => (+date - +dates[index]!) / 86_400_000);
+  if (dayGaps.some(gap => gap <= 0) || dayGaps.every(gap => gap === dayGaps[0])) return [];
+  const weekdays = dates.every(date => date.getUTCDay() >= 1 && date.getUTCDay() <= 5);
+  if (weekdays && dayGaps.every(gap => gap <= 5)) return [];
+
+  const sameDay = dates.every(date => date.getUTCDate() === dates[0]!.getUTCDate());
+  const monthEnds = dates.every(date => utcDate(date.getUTCFullYear(), date.getUTCMonth() + 1, 0).getUTCDate() === date.getUTCDate());
+  if (sameDay || monthEnds) {
+    const months = dates.map(date => 12 * date.getUTCFullYear() + date.getUTCMonth());
+    const gap = months[1]! - months[0]!;
+    if (gap > 0 && months.slice(1).every((month, index) => month - months[index]! === gap)) return [];
+  }
+  return [{
+    code: 'categories-are-dates', severity: 'warn', field: ['data', 'categories'],
+    message: 'The category names are dates with unequal gaps.',
+    suggest: "Move the dates to data.x, give each series its values in that order, and set options.xAxis to { type: 'time' }. Remove options.categoryAxis if present.",
+  }];
+}
+
 function requestInputWarnings(type: string, data: unknown, options: RequestOptions, annotationsPath = ''): LintWarning[] {
-  if (type !== 'grid') return [...percentScaleWarnings(data, options, type), ...fractionLineWarnings(data, options.annotations, annotationsPath)];
+  if (type !== 'grid') return [
+    ...percentScaleWarnings(data, options, type),
+    ...fractionLineWarnings(data, options.annotations, annotationsPath),
+    ...(type === 'line' ? categoryDateWarnings(data, options) : []),
+  ];
   return inputPanels(data).flatMap(panel => {
     const definition = getChart(panel.type);
     // Resolve defaults while the alias is still known, as the child layout does.

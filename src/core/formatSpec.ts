@@ -846,7 +846,7 @@ export function withAuthoredUnits<O extends object>(options: O): O {
 export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string>; authored: Set<string>; unitFormats: UnitFormat[] } {
   const warnings: LintWarning[] = [];
   const unitFormats: UnitFormat[] = [];
-  const warned = new Set<string>();
+  const checked = new Set<string>();
   const written = new Set<string>();
   // The examples the author wrote; a generated one (AUTOMATIC_FORMAT) is the engine's.
   const wrote = new Set<string>();
@@ -875,13 +875,18 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
   const rewrite = (example: string, owner: Record<string, unknown>, field: (string | number)[]): string => {
     const translated = spreadsheetExample(example);
     if (translated) {
-      if (!warned.has(example)) {
-        warned.add(example);
+      if (!checked.has(example)) {
+        checked.add(example);
         warnings.push({ code: 'format-spreadsheet-code', severity: 'warn',
           message: `format '${example}' is a spreadsheet number code, so the chart prints it as the example '${translated.example}'${translated.notes.length ? `; ${translated.notes.join('; ')}` : ''}`,
           suggest: `write the example '${translated.example}' instead`, field });
       }
       return translated.example;
+    }
+    if (!checked.has(example) && owner.kind !== 'date' && (owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) {
+      checked.add(example);
+      const warning = formatNotExampleWarning(example);
+      if (warning) warnings.push({ ...warning, field });
     }
     const standIn = unitOnlyExample(example);
     if (!standIn) return example;
@@ -984,6 +989,54 @@ function numericBody(s: string): { index: number; text: string } | null {
     if (!note) return { index: run.index, text: run[0] };
   }
   return body;
+}
+
+const PRINTF_CODE = /^%(?:\d+\$)?[-+#0 ']*(?:\d+|\*(?:\d+\$)?)?(?:\.(?:\d+|\*(?:\d+\$)?))?(?:hh|ll|[hlLjzt])?[diouxXfFeEgGaAcsp]$/;
+const D3_CODE = /^(?:(.?[<>=^]))?[-+ (]?([$#])?(0)?(\d+)?(,)?(\.\d+)?(~)?([bcdefgnoprsxX%])$/;
+const FORMAT_CODE_EXAMPLES = new Map([['$,.0f', '$1,234'], [',.0f', '1,234'], ['.1%', '1.2%'], ['%d', '1234'], ['%.2f', '1.23']]);
+
+function isFormatCode(text: string): boolean {
+  if (PRINTF_CODE.test(text)) return true;
+  const d3 = D3_CODE.exec(text);
+  if (!d3) return false;
+  const [, alignment, symbol, zero, width, comma, precision, trim, type] = d3;
+  // A width or zero pad alone can also be part of an example, such as 0.0%.
+  return Boolean(alignment || comma || trim || (symbol === '#' && /[boxX]/.test(type!)) || (precision && !width && !zero));
+}
+
+function affixHasNumber(affix: string): boolean {
+  const text = affix.replace(/\([^()]*\)/g, ' ').split(/\/|\bper\b/i, 1)[0]!.replace(/\bin \d{4} prices\b/gi, ' ');
+  const runs = new RegExp(NUMBER_RUN.source, 'gu');
+  for (let run = runs.exec(text); run; run = runs.exec(text)) {
+    if (!/[\p{L}\p{N}^]$/u.test(text.slice(0, run.index))) return true;
+  }
+  return false;
+}
+
+/** Warn about a numeric example without rewriting the author's format. */
+export function formatNotExampleWarning(example: string): LintWarning | undefined {
+  const text = example.trim();
+  if (isFormatCode(text)) {
+    const alternative = FORMAT_CODE_EXAMPLES.get(text);
+    return {
+      code: 'format-not-example', severity: 'warn',
+      message: `Format '${example}' uses a format code. Boardplot needs an example number.`,
+      suggest: alternative ? `Write '${alternative}' instead.` : 'Write a number as it should print.',
+    };
+  }
+  const body = numericBody(text);
+  if (body) {
+    const prefix = text.slice(0, body.index);
+    const suffix = text.slice(body.index + body.text.trimEnd().length).replace(/^[Ee][+-]?\d+/, '');
+    if (affixHasNumber(prefix) || affixHasNumber(suffix)) {
+      return {
+        code: 'format-not-example', severity: 'warn',
+        message: `Format '${example}' contains two numbers. Boardplot replaces one number per example.`,
+        suggest: "Use one unit and one number, such as '1,234 s' for values in seconds.",
+      };
+    }
+  }
+  return undefined;
 }
 
 function analyzeBody(body: string, spec: NumberFormatSpec): void {

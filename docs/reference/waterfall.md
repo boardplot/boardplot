@@ -116,7 +116,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | columnOverrides | object |  |  | Horizontal bridge only: width in px of the name band (label) and the value band (value). With variant 'vertical' it is refused. Left out, the variant is chosen without it, and a bridge that draws vertical warns option-ignored. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `rounding`. This type ignores `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

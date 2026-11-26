@@ -100,7 +100,6 @@ export function assertPreparedRequest(header: PreparedHeader, request: ResolvedC
 }
 
 export function prepareChartRender(request: ResolvedChartRequest, layout: LayoutResult): PreparedChart {
-  if (request.options.debug) throw new Error('Prepared charts do not support debug output.');
   const requestKey = requestRenderKey(request);
   if (layout.type !== drawnRequest(request, layout).type) throw new Error('Prepared chart layout type does not match the request.');
   const result = layout.refused ? {

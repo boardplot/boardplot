@@ -105,7 +105,7 @@ const rowArguments = {
   rowsFile: absolutePath('Read records directly from a local file of at most 10 MB: .json holds an array of objects, .csv/.tsv/.txt has a header row. Use rowsFile or rows, never both, with one chart and no document wrapper. Requires columns except for tables. Keep data.pack for maps and data.columns for tables. Allowed folders: client roots, server working directory, temp folder, or BOARDPLOT_ROWS_ROOTS. Semicolon-separated files are detected and accept decimal-comma values.').optional(),
   columns: z.strictObject({
     category: z.string().optional().describe('Source column containing category, map region or box group IDs.'),
-    series: z.string().optional().describe('Source column containing series IDs.'),
+    series: z.string().optional().describe('Source column containing series IDs. Omit it to use one series named after the value column.'),
     value: z.string().optional().describe('Source column containing numeric values.'),
     categoryLabel: z.string().optional().describe('Source column containing display names for categories or box groups.'),
     seriesLabel: z.string().optional().describe('Source column containing display names for series.'),
@@ -125,7 +125,7 @@ const rowArguments = {
     id: z.string().optional().describe('Source column containing table row IDs. Default: row-1, row-2, ... .'),
     valueKind: z.enum(['number', 'percent', 'fraction']).default('number')
       .describe('Conversion for value or scatter x/y, never size: number, percent (50 means 50%), or fraction (0.5 means 50%). Table, histogram, box and Sankey require number.'),
-  }).optional().describe('Map roles to source field names, for example {"category":"region","series":"product","value":"revenue"}. Required roles: category charts category/series/value, maps category/value, waterfall label/value, scatter x/y, Sankey source/target/value, histogram value, box category/value. Table roles are optional: data.columns declares each value, text, status or date column, which reads the source field matching its id. Waterfall items and scatter points get IDs row-1, row-2, ... . Missing or non-numeric histogram and box observations are refused.'),
+  }).optional().describe('Map roles to source field names, for example {"category":"region","value":"revenue"}. Required roles are category and value for category charts and maps, label and value for waterfalls, x and y for scatter, source, target and value for Sankey, value for histograms, and category and value for box plots. Table roles are optional: data.columns declares each value, text, status or date column, which reads the source field matching its id. Waterfall items and scatter points get IDs row-1, row-2, ... . Missing or non-numeric histogram and box observations are refused.'),
 };
 
 /** What the reading, and measure, report about the rows a chart was drawn from. */

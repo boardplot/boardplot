@@ -132,11 +132,14 @@ describe('a removed option keeps an old spec drawing', () => {
     const mount = (extra: object) => act(() => root.render(createElement(BarTableChart as never, {
       data, ...extra, size: { width: 960, height: 540 }, deferLayout: false, onWarnings: (warnings: Warning[]) => seen.push(warnings) })));
     const ignored = () => seen.at(-1)!.filter((warning) => warning.code === 'option-ignored').map((warning) => warning.field?.join('.'));
+    const retired = () => seen.at(-1)!.filter((warning) => warning.code === 'option-deprecated').map((warning) => warning.field?.join('.'));
     mount({});
-    mount({ highlight: 'missing', animate: true });
-    expect(ignored()).toEqual(['options.highlight', 'options.animate']);
+    mount({ highlight: 'missing', animate: true, debug: true });
+    expect(ignored()).toEqual(['options.highlight']);
+    expect(retired()).toEqual(['options.animate', 'options.debug']);
     mount({});
     expect(ignored()).toEqual([]);
+    expect(retired()).toEqual([]);
     act(() => root.unmount());
   });
 

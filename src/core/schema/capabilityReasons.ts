@@ -9,10 +9,6 @@ import { valueAxisRefusal, type OPTION_CAPABILITY, type VALUE_AXIS_CAPABILITY, t
 export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, string>> = {
   labelPosition:
     "this type has no supported bar value labels to position. Set labelPosition on a supported bar chart, or on a grid panel through that panel's options",
-  animate:
-    "no chart type implements 'animate' — this library emits static, deterministic SVG; use 'interactive: true' for data-bp-* hover/focus semantics, or animate the emitted SVG downstream",
-  debug:
-    "no chart type implements 'debug'; drop the key. The CLI refuses '--debug' as not supported in v1",
   rowLabels:
     "only the horizontal row-label families read rowLabels (bar, bullet, box, dot, likert). A vertical category axis prints its labels under the bands, where they already share one baseline and there is nothing to align",
   categoryAxis:
@@ -166,8 +162,6 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
     '*': "orientation is the chart type: type 'bar' draws horizontal bars and type 'column' vertical ones",
     waterfall: 'a waterfall turns with options.variant',
   },
-  animate: { '*': 'the SVG is static; options.interactive adds hover and focus semantics' },
-  debug: { '*': 'no chart type reads it, and the CLI has no debug flag' },
   ribbons: { bar: "bar rows are items, not a sequence, and ribbons draw a rank flow from period to period; type 'column' with variant 'stacked' draws them" },
   rowLabels: { '*': "aligned row labels belong to horizontal rows such as type 'bar'; this type prints its category labels on one baseline already" },
   categoryLabels: { '*': "type 'column', 'combo' or 'pareto' over columns sorted by height takes categoryLabels 'staircase'", bar: 'a horizontal bar prints each name beside its row already' },

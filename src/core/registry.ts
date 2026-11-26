@@ -9,7 +9,7 @@ import { defaultMeasurer } from './text';
 import { prepareFractionAnnotations } from './normalize/fraction';
 import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
-import { withChartDefaultStrings, withLocaleStrings } from './strings';
+import { englishSourceFallback, withChartDefaultStrings, withLocaleStrings } from './strings';
 import { withNumberMarks } from './numberMarks';
 import type { Annotation, AnnotationKind } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
@@ -39,6 +39,7 @@ import { isOwnMark } from './label/solver';
 import { reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
 import { staticFrame } from './footer';
+import { sourceLine } from './notes';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
@@ -857,6 +858,21 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (!geo.refused) {
         finishCutLabelNotes(geo);
         reportLabelOmissions(geo, options, data);
+        const sourceId = geo.frame?.sourceNodeId;
+        const source = options?.source;
+        const fallback = sourceId && source ? englishSourceFallback(options) : undefined;
+        if (fallback && source && sourceLine(source, fallback.word) !== source) {
+          const { word, language } = fallback;
+          const node = geo.scene.find(item => item.id === sourceId);
+          const message = `Chart text for '${language}' includes built-in English wording (${word}:).`;
+          if (node?.t === 'text' && node.lines[0]?.startsWith(`${word}:`)
+            && !geo.warnings.some(warning => warning.code === 'mixed-language' && warning.message === message)) {
+            geo.warnings = [...geo.warnings, {
+              code: 'mixed-language', severity: 'warn', field: ['options', 'source'], message,
+              suggest: 'Set options.strings.source to the word to print.',
+            }];
+          }
+        }
       }
       if (!(options as { [FULL_LAYOUT_PROBE]?: boolean })[FULL_LAYOUT_PROBE]
         && !(options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]) {
@@ -1165,15 +1181,17 @@ export interface UnsupportedUse {
 /**
  * Chart forms Boardplot does not draw under their own name. `use` names the
  * type and options that draw the same thing; `null` means Boardplot does not
- * draw the form at all. A registered type never appears here; tests/
+ * draw the form at all. `alternative` names a different form that can show
+ * the same data. A registered type never appears here; tests/
  * registry-consistency.test.ts enforces it, because `boardplot list --json`
  * emits `charts` and `unsupported` in one payload.
  */
-export const unsupported: readonly { name: string; use: UnsupportedUse | null }[] = [
-  { name: 'radar', use: null },
-  { name: 'spider', use: null },
-  { name: 'gauge', use: null },
-  { name: 'control-chart', use: null },
+export const unsupported: readonly { name: string; use: UnsupportedUse | null; alternative?: { type: string; hint: string } }[] = [
+  { name: 'radar', use: null, alternative: { type: 'dot', hint: 'to compare measures on a common scale' } },
+  { name: 'spider', use: null, alternative: { type: 'dot', hint: 'to compare measures on a common scale' } },
+  { name: 'gauge', use: null, alternative: { type: 'bullet', hint: 'to show a value against its target' } },
+  { name: 'control-chart', use: null, alternative: { type: 'line', hint: 'with options.referenceBands for the supplied control limits' } },
+  { name: 'area', use: { type: 'line', options: { variant: 'area' } } },
   { name: 'tornado', use: { type: 'bar', options: { variant: 'tornado' } } },
   { name: 'ribbon', use: { type: 'column', options: { variant: 'stacked', ribbons: true } } },
   { name: 'alluvial', use: { type: 'column', options: { variant: 'stacked', ribbons: true } } },

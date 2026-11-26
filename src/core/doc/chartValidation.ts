@@ -11,7 +11,7 @@ import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
 import { literalColor } from '../colorLiteral';
-import { WORDING_KEYS, closestKey, dataKeyAlternative, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, dataKeyAlternative, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, orientationOptionAdvice, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
 import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
 import { parseJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
@@ -22,6 +22,7 @@ import { pushAll } from '../arrays';
 import { timeAnnotationAnchors } from '../timeAxis';
 import { retireChartSettings } from '../retired';
 import { normalizeOptionShapes } from '../normalize/optionShapes';
+import { formatNotExampleWarning } from '../formatSpec';
 
 type Definition = NonNullable<ReturnType<typeof getChartSchemas>>;
 
@@ -34,6 +35,7 @@ export function unsupportedSuggestion(name: string): string | undefined {
   const entry = unsupported.find((candidate) => candidate.name === name);
   if (!entry) return undefined;
   const article = /^[aeiou]/.test(name) ? 'an' : 'a';
+  if (entry.alternative) return `Boardplot does not draw ${article} ${name}. Use type '${entry.alternative.type}' ${entry.alternative.hint}.`;
   if (!entry.use) return `Boardplot does not draw ${article} ${name}; call boardplot_list for the types it draws.`;
   const parts = Object.keys(entry.use.options).map((key) =>
     key === 'variant' ? `variant ${String(entry.use!.options.variant)}` : `options.${key}`);
@@ -70,8 +72,17 @@ export function validateChartInput(
   try {
     return parseChartInput(doc, chart, envelope, dataOwnership);
   } finally {
+    let checkedFormats: Set<string> | undefined;
     for (let index = errorsBefore; index < envelope.errors.length; index++) {
-      envelope.errors[index] = completeChartDiagnostic(doc, chart, envelope.errors[index]!);
+      const error = completeChartDiagnostic(doc, chart, envelope.errors[index]!);
+      envelope.errors[index] = error;
+      // A refused format never reaches the request's format diagnostics.
+      const example = error.code === 'invalid-format' ? error.received?.value : undefined;
+      if (typeof example === 'string' && !checkedFormats?.has(example)) {
+        (checkedFormats ??= new Set()).add(example);
+        const warning = formatNotExampleWarning(example);
+        if (warning) envelope.warnings.push({ ...warning, path: error.path, displayPath: error.displayPath, received: error.received, docs: error.docs });
+      }
     }
     for (let index = warningsBefore; index < envelope.warnings.length; index++) {
       envelope.warnings[index] = completeChartDiagnostic(doc, chart, envelope.warnings[index]!);
@@ -113,9 +124,17 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   const shaped = normalizeOptionShapes(def.type, chart, canonicalChartType);
   chart = shaped.chart;
   pushAll(envelope.warnings, shaped.warnings);
-  const retired = retireChartSettings(def.type, chart, canonicalChartType);
+  // The request reports ignored settings that must stay in the options.
+  const retired = retireChartSettings(def.type, chart, canonicalChartType, false);
   chart = retired.chart;
   pushAll(envelope.warnings, retired.warnings);
+  if (def.type === 'pie' && (chart.type === 'donut' || chart.type === 'doughnut') && chart.options?.doughnut === undefined) {
+    envelope.warnings.push({
+      code: 'doughnut-option-missing', severity: 'warn', field: ['options', 'doughnut'],
+      message: `The '${chart.type}' alias draws a solid pie when options.doughnut is missing.`,
+      suggest: 'Set options.doughnut to 0.55 to draw a hole.',
+    });
+  }
   // Options are validated against the chart's schema; unknown keys are refused
   const optParse = parseWithInputConversions(
     def.optionsSchema as z.ZodType,
@@ -600,6 +619,13 @@ function sweepStrippedOptionKeys(
     const key = String(keyPath.at(-1));
     const parent = keyPath.slice(0, -1);
     const field = [...source.segments, ...keyPath];
+    const orientation = orientationOptionAdvice(keyPath);
+    if (orientation) {
+      envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
+        code: 'unknown-option', ...orientation, displayPath: `${pathBase}.${key}`,
+      }, field));
+      continue;
+    }
     // A data key written among the options (valueKind) is named where the data takes it.
     const dataPlace = parent.length === 0 ? dataKeyPlace(type, key) : undefined;
     if (dataPlace) {
@@ -790,6 +816,8 @@ function unknownKeyText(
   if (issue.code !== 'unrecognized_keys') return undefined;
   const path = issue.path as (string | number)[];
   const key = String(path.at(-1));
+  const orientation = optionsType === undefined ? undefined : orientationOptionAdvice(path);
+  if (orientation) return orientation;
   if (optionsSchema && path.length === 1 && expectedObjectKeys(optionsSchema, []).includes(key)) {
     return {
       message: `'${key}' is a chart option, not data — move it to options.${key}`,

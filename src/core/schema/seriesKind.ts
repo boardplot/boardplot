@@ -4,10 +4,13 @@ import * as z from 'zod';
 
 const KINDS = ['column', 'line', 'area'] as const;
 const AXES = ['primary', 'secondary'] as const;
+const SECOND_AXIS_GUIDANCE = "For a second axis, use type 'combo', set each series' kind to 'line' or 'column', and set options.secondaryAxis: { acknowledge: true }.";
 
 /** Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. */
 export const seriesKindField = z.enum(KINDS).optional().describe('Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused.');
-export const seriesAxisField = z.enum(AXES).optional().describe('Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused.');
+export const seriesAxisField = z.enum(AXES).optional().describe(
+  `On line and column, only 'primary' is accepted and it has no effect. ${SECOND_AXIS_GUIDANCE}`,
+);
 
 /** Refuses a `kind` that is not the chart's own and `axis: 'secondary'`. Pattern of `addProjectedDashIssues`. */
 export function addSeriesKindIssues(
@@ -31,7 +34,7 @@ export function addSeriesKindIssues(
       ctx.addIssue({
         code: 'custom',
         path: [...basePath, index, 'axis'],
-        message: `series '${entry.id}': axis 'secondary' needs a second axis. Remove axis or use type combo for a second axis.`,
+        message: `series '${entry.id}': axis 'secondary' needs a second axis. Remove axis to keep one scale. ${SECOND_AXIS_GUIDANCE}`,
       });
     }
   });
