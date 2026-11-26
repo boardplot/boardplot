@@ -1541,6 +1541,7 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
     const trials = columnSearch && column.categoryLabels === 'staircase' && column.variant === 'stacked' && !column.valueAxis?.percent && !column.annotations?.length
       && panelTypeClass(options) === undefined && isCachedTextMeasurer(column.measure ?? defaultMeasurer)
       ? new Map<number, LayoutResult<M, DV>>() : undefined;
+    const trialKeys: PreparedMemoKeys | undefined = trials && hasCompleteTextWidths(column.measure ?? defaultMeasurer) ? {} : undefined;
     const at = (width: number, height: number, midpointFloor?: number, draw = false) => {
       const size = { width, height };
       const fixed = { ...options, size } as O;
@@ -1553,7 +1554,9 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
       try {
         if (draw || !trials) return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
         measureColumnHeight.add(size);
-        const result = fitSize(definition, data, fixed, compactFallback);
+        // Two plot shares can ask for the same measured frame. A measurement has no public scene.
+        const result = trialKeys ? fitSizeMemo(definition, data, fixed, compactFallback, trialKeys, true)
+          : fitSize(definition, data, fixed, compactFallback);
         trials.set(height, result);
         return result;
       } finally {
@@ -1989,12 +1992,13 @@ function memoCopy<M extends object, DV extends object>(result: LayoutResult<M, D
   const copy = { ...result, warnings: [...result.warnings], ...(result.sizing ? { sizing: { ...result.sizing } } : {}) } as LayoutResult<M, DV>;
   const floor = plotChromeFloor.get(result);
   if (floor !== undefined) plotChromeFloor.set(copy, floor);
+  if (measuredColumnHeights.has(result)) measuredColumnHeights.add(copy);
   return copy;
 }
 
 /** fitSize through the request memo: the same chart, data object, options and mode give the same layout. */
 function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends object>(
-  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, keys?: PreparedMemoKeys,
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, keys?: PreparedMemoKeys, measuringColumn = false,
 ): LayoutResult<M, DV> {
   const memo = layoutMemo;
   // A grid panel is small and a grid lays out many: its key costs about as much as its layout.
@@ -2029,7 +2033,7 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
     memoKeyData = undefined;
   }
   // A capped type class (withTypeClassCap) lays out the same options in smaller type, a margin step (withMarginStepBelow) with other margins.
-  const key = `${memoId(definition)}|${memoId(data)}|${compactFallback}|${definition.type === 'gantt' && card ? memoId(card) : ''}|${layoutStepKey()}|${optionsKey}`;
+  const key = `${measuringColumn ? 'measure:column|' : ''}${memoId(definition)}|${memoId(data)}|${compactFallback}|${definition.type === 'gantt' && card ? memoId(card) : ''}|${layoutStepKey()}|${optionsKey}`;
   // Until a layout reads the share, it runs the same for every share; so either none of the
   // layouts under this key read it (result) or all do (byShare). The long key is hashed once.
   const entry = memo.get(key) ?? {};
