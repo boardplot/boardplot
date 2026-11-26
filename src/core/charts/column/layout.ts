@@ -1321,13 +1321,13 @@ function layoutColumnPass(
   const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
     && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
     && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
-    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && (options.categoryLabels !== 'staircase' || area.showCatRow) && !domain.cats.some(c => c.partial)
     && !options.labelPlacements && !options.labelOffsets;
   // At the smallest font one wide value hides the entire segment row. When
   // every stack has multiple parts and no authored value label, no total can
   // inherit a segment and no digit seat survives. Test the totals immediately.
   const needAxis = () => {
-    if (reusablePreparation) fallback();
+    if (axisProbe && reusablePreparation) fallback();
     throw AXIS_FALLBACK;
   };
   const testTotals = probeStack ? () => {
