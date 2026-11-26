@@ -706,8 +706,10 @@ def chart(
         # A table column takes its cells from the source column of its id, so those columns are read too.
         template_data = (template or {}).get("data") if isinstance(template, Mapping) else None
         table_columns = template_data.get("columns") if isinstance(template_data, Mapping) else None
-        for table_column in table_columns if isinstance(table_columns, list) else []:
-            column = table_column.get("id") if isinstance(table_column, Mapping) else None
+        for table_column in table_columns if isinstance(table_columns, (list, tuple)) else []:
+            if not isinstance(table_column, Mapping):
+                continue  # the engine refuses a malformed column with its path
+            column = table_column.get("id")
             if table_column.get("kind") in ("value", "text", "status", "date") and isinstance(column, str) and column not in mapped:
                 mapped.append(column)
     rows = to_rows(data, mapped)
