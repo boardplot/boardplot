@@ -16,8 +16,8 @@ import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER
 import { isVarianceTier } from './grid/varianceTiers';
 import { isRefused } from './schema/refusals';
 import { AUTO_LEGEND } from './legendPolicy';
-import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
-import { rankKeyShown, withEngineNotes } from './notes';
+import { copyFrame, LIVE_NOTE_SHOW, liveFooterExtra, partNeedOf, staticFrame } from './footer';
+import { rankKeyShown, shownNoteKinds, withEngineNotes } from './notes';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
 import { defaultMeasurer, isCachedTextMeasurer, type TextMeasurer, withWrappedTexts } from './text';
 import { maxOf } from './arrays';
@@ -808,6 +808,10 @@ export function fitLayout<D, O extends ChartOptions, M extends object, DV extend
 
 export type FitLayout<O extends ChartOptions, M extends object, DV extends object> =
   ((options?: O) => LayoutResult<M, DV>) & { finish(): void };
+
+// A height-only refusal retains the size object of the raw Gantt that measured its row floor.
+// Tag that object only after a full chart has drawn with just its source in the default footer.
+const fullGanttReportSizes = new WeakSet<Size>();
 
 // Note passes in one registry call share the same fixed-frame minimum.
 const mekkoHeightFloors = new WeakMap<object, Map<string, ResolvedSizing>>();
@@ -1606,8 +1610,29 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
     // change at its own height (a squashed probe wraps or moves a block), so
     // the chart is laid out again until it is drawn at the natural
     // height it reports there.
+    let fullGanttTrials = true;
     if (declared.fit === 'content' || definition.type === 'grid') {
-      let settled = contentHeight();
+      // In a full report Gantt the default footer lists generated disclosures outside the plot.
+      // The registry's note pass can draw the chosen height directly. The winner still measures
+      // the actual note and owns every public frame field, label, warning and sizing decision.
+      const ganttScope = definition.type === 'gantt' && data && typeof data === 'object'
+        ? (options as O & { [CARD_HEIGHT_MEMO]?: CardHeightMemo })[CARD_HEIGHT_MEMO] : undefined;
+      const noteBase = ganttScope?.active && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
+        && !(ACCEPTANCE_PROBE in options) && !nested && !compactFallback && !forcedCompact(options)
+        && options.mode !== 'compact' && options.target === 'report' && !options.notes && !shownNoteKinds(options)
+        && !staticFrame.pinned && !(LIVE_NOTE_SHOW in options) && (options.measure ?? defaultMeasurer) === defaultMeasurer
+        && options.strings?.hiddenLabels === HIDDEN_LABEL_LEAD
+        ? beforeUnprintedLabelNote(withoutCallState(options)!) : undefined;
+      const ganttTrials = noteBase && ganttScope ? requestMemo<{ options: object; selected: number }[]>(data as object,
+        `gantt-note-height:${memoId(definition)}:${memoId(ganttScope)}:${height}:${sourceLimitState(options)}`, () => []) : undefined;
+      const selected = options.footnotes === undefined ? undefined : ganttTrials?.find(trial => sameContent(trial.options, noteBase))?.selected;
+      let settled = selected !== undefined ? at(width, selected) : contentHeight();
+      if (selected !== undefined && (settled.refused || settled.mode !== 'full' || settled.sizing?.naturalHeight !== selected))
+        settled = contentHeight();
+      if (ganttTrials && noteBase && options.footnotes === undefined && fullGanttTrials && !settled.refused
+        && fullGanttReportSizes.has(settled.size)
+        && settled.mode === 'full' && settled.size.height === settled.sizing?.naturalHeight)
+        ganttTrials.push({ options: noteBase, selected: settled.size.height });
       // A grid of fill panels keeps the plot floor checked by the layout scorecard: its
       // canvas grows until the plot holds it, while the plot takes the added height.
       if (definition.type === 'grid' && !nested) {
@@ -1634,6 +1659,7 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
       let refusedProbe = false;
       for (let pass = 0; pass < (definition.type === 'grid' ? 6 : 4); pass++) {
         const probe = at(width, height);
+        if (definition.type === 'gantt' && !fullGanttReportSizes.has(probe.size)) fullGanttTrials = false;
         if (definition.type === 'table' && (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === TABLE_WIDTH_TEST
           && probe.refused && probe.size.width + SIZE_TOLERANCE < probe.sizing.minWidth) return probe;
         const natural = probe.sizing?.naturalHeight;
@@ -2249,6 +2275,8 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
     if (!geometry.refused) geometry.sizing = { ...geometry.sizing, naturalHeight } as ResolvedSizing;
   }
   if (geometry.refused) return geometry;
+  if (definition.type === 'gantt' && mode === 'full' && options?.target === 'report' && options.footnotes === undefined
+    && !geometry.frame.noteList?.some(note => note.kind !== 'source')) fullGanttReportSizes.add(geometry.size);
   // A React footer's button row takes the plot under its floor before the chart refuses (liveFooterExtra).
   const footerExtra = liveFooterExtra.get(geometry.frame) ?? 0;
   const floorWithFooter = frameHeightFloor(geometry.sizing?.minHeight, geometry.frame,

@@ -7,7 +7,7 @@ import { chartString } from '../../strings/gantt';
  */
 
 import { spread1DResult } from '../../collide';
-import { frameTextOptions, hiddenNoteWith, normalizeLegendOption, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, numberedFootnotesWith } from '../../frame';
+import { frameTextOptions, hiddenNoteWith, normalizeLegendOption, solveFrame, type FrameInput, type FrameResult, type FrameWidthMeasurements, type LegendItemInput, numberedFootnotesWith } from '../../frame';
 import { SWATCH_RESERVE } from '../../label/emit';
 import { separationStroke } from '../../markVisibility';
 import { fitText } from '../../label/fitText';
@@ -23,7 +23,7 @@ import { GANTT_ROW_PITCH, MAX_COLS, ganttItemPrintsName } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
 import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
-import { maxOf, minOf } from '../../arrays';
+import { maxOf, minOf, pushAll } from '../../arrays';
 import { sideKeyOff } from '../../sizing';
 import { alignedX, columnPlan, type AuthoredWidths, type GanttColumnSettings } from './columns';
 
@@ -260,6 +260,10 @@ function sharedLabelsNeedLine(domain: GanttDomain, plot: { x: number; w: number 
   });
 }
 
+export interface GanttFrameMeasurements extends FrameWidthMeasurements {
+  colorKey?: { legend: FrameInput['legend']; warnings: LintWarning[] };
+}
+
 /**
  * The frame (title, subtitle, source, footnotes and the colour key measured
  * FIRST; it claims into an index of its own), then the vertical band: marker
@@ -276,6 +280,7 @@ export function ganttFrame(
   listedKey: string[] = [],
   /** The milestone key prints as a numbered disclosure (notes.show lists 'disclosure'). */
   keyDisclosed = false,
+  measurements?: GanttFrameMeasurements,
 ): { frame: FrameResult; claims: OccupiedIndex; band: GanttBand } {
   const { size, theme, options, measure, fonts } = env;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -283,6 +288,11 @@ export function ganttFrame(
   // from its item metadata so every dropped task or milestone stays named.
   const hidden = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: options.notes?.maxListed ?? 'all' } }, []);
   const numbered = numberedFootnotesWith(options, [...domain.eventFootnotes, ...milestoneKey]);
+  // Rows, item paints and authored legend options stay fixed during this height search.
+  const keyWarnings: LintWarning[] = [];
+  const key = measurements?.colorKey ?? { legend: colorKey(env, domain, paints, keyWarnings), warnings: keyWarnings };
+  if (measurements) measurements.colorKey = key;
+  pushAll(warnings, key.warnings);
   const frame = solveFrame(
     {
       size,
@@ -294,12 +304,12 @@ export function ganttFrame(
       numberedFootnotes: numbered,
       numberedDisclosures: keyDisclosed ? milestoneKey.map((_, i) => numbered.length - milestoneKey.length + i + 1) : [],
       pointedNotes: [...frameTextOptions(options).pointedNotes ?? [], ...domain.eventFootnotes, ...milestoneKey],
-      legend: colorKey(env, domain, paints, warnings),
+      legend: key.legend,
       ...(sideKeyOff(options) ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },
-    claims,
+    claims, measurements,
   );
   const plot0 = frame.plot;
   const headerRowH = measure('Q1 2026', fonts.headerMajor).height + 6;

@@ -59,10 +59,10 @@ import { dayNum } from './calendar';
 import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
-import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
+import { flagRowItems, fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
 import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
 import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
-import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
+import { ganttBody, ganttFrame, type GanttFrameMeasurements, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Per-chart options, declared through optionsSchema. */
@@ -168,6 +168,8 @@ const spills = (label: PlacedLabel, bar: Rect): boolean => label.slot === 'insid
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */
 /** The draws in the stacked form: layoutAuthoredColumns reads which form the spec without its settings takes. */
 const stackedForms = new WeakSet<Geometry<GanttMarks, GanttDerived>>();
+// Internal trials compare labels, widths and warnings. Only the selected trial exports a scene.
+const trialScenes = new WeakMap<Geometry<GanttMarks, GanttDerived>, () => SceneNode[]>();
 
 function assembleGanttGeometry(input: {
   env: GanttEnv;
@@ -211,14 +213,14 @@ function assembleGanttGeometry(input: {
   }).map(label => label.id));
   if (unsafe.size) {
     const owners = new Set(solved.placed.filter(label => unsafe.has(label.id)).map(label => label.owner.segmentId));
-    const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+    const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'gantt-label-pass');
     for (const claim of input.occupied.snapshot()) {
       if (claim.kind === 'label' && owners.has(claim.owner.segmentId)) continue;
       occupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
     }
     const kept = solved.placed.filter(label => !label.hidden && !unsafe.has(label.id));
     const leaders = kept.flatMap(label => label.leader ? leaderPieces(label.leader.d, 64) : []);
-    const requests = planGanttLabels(env, domain, band, body, input.geometry, ganttPaints(env, domain.rows), new Map(), input.flagRows, kept.map(label => label.rect), true)
+    const requests = planGanttLabels(env, domain, band, body, input.geometry, ganttPaints(env, domain.rows), new Map(), input.flagRows, kept.map(label => label.rect), true, env.measure === defaultMeasurer ? unsafe : undefined)
       .filter(request => unsafe.has(request.id)).map(request => ({ ...request,
         candidates: request.candidates.filter(candidate => !leaders.some(([a, b]) => segmentHitsRect(a, b, candidate.rect, 2))),
       }));
@@ -248,6 +250,7 @@ function assembleGanttGeometry(input: {
   const { colWs } = body.columns;
   const laneLabelW = milestones.laneLabelW;
   // The elapsed band is a wash with no label: it prints no text. Neither does a today line or event whose label a switch turned off.
+  const drawScene = () => [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed, spans), ...labelNodes(env, domain, solved.placed)];
   const assembled: Geometry<GanttMarks, GanttDerived> = withUnprintedClaims<Geometry<GanttMarks, GanttDerived>>({
     type: 'gantt',
     size,
@@ -260,7 +263,7 @@ function assembleGanttGeometry(input: {
       minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? body.metaGap : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
     plot: body.plot,
-    scene: [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed, spans), ...labelNodes(env, domain, solved.placed)],
+    scene: env.measure === defaultMeasurer ? [] : drawScene(),
     labels: solved.placed,
     axes: [
       {
@@ -291,6 +294,7 @@ function assembleGanttGeometry(input: {
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
   }, [...input.geometry.elapsed, ...input.annotated.placed.filter((annotation) => !annotation.labelId)].map((annotation) => `annotation:${annotation.id}`));
+  if (env.measure === defaultMeasurer) trialScenes.set(assembled, drawScene);
   if (band.stacked) stackedForms.add(assembled);
   return assembled;
 }
@@ -329,9 +333,10 @@ function gridAroundLabels(nodes: readonly SceneNode[], placed: SolveResult['plac
 const fullCardOptions = new WeakMap<GanttData, GanttOptions>();
 
 /** Rows that retry with stacked milestone flags; in open height, the lane height each needs, and whether unused flag height is already trimmed. */
-interface FlagPass { rows: ReadonlySet<string>; pitch?: ReadonlyMap<string, number>; trimmed?: boolean }
+interface FlagPass { rows: ReadonlySet<string>; pitch?: ReadonlyMap<string, number>; trimmed?: boolean; comparison?: boolean }
 
 interface GanttPreparation {
+  frameMeasurements?: GanttFrameMeasurements;
   env: GanttEnv;
   domain: GanttDomain;
   warnings: LintWarning[];
@@ -394,10 +399,10 @@ function layoutGanttPass(data: GanttData, options: GanttOptions, prepared: Gantt
       message: `Milestones use a numbered key where labels or leaders have no clear seat: ${keyEntries.map(entry => entry.text).join('; ')}` });
   }
   const { size } = env;
-  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'gantt-label-pass');
   const paints = ganttPaints(env, domain.rows);
   // A fixed height keeps the table form when the stacked rows would not fit it.
-  const { frame, claims, band } = ganttFrame(env, domain, paints, warnings, milestoneKey, heightOpen, listedKey, !notesOff);
+  const { frame, claims, band } = ganttFrame(env, domain, paints, warnings, milestoneKey, heightOpen, listedKey, !notesOff, keyed.size ? undefined : prepared?.frameMeasurements);
   commitClaims(occupied, claims);
   const grow = rowDrivenHeight({
     options: autoHeight ? { ...options, size: undefined } : options,
@@ -415,14 +420,41 @@ function layoutGanttPass(data: GanttData, options: GanttOptions, prepared: Gantt
   if (badgeLevelCount > ((options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1)) {
     return layoutGanttPass(data, { ...options, [BADGE_LEVELS]: badgeLevelCount } as GanttOptions, prepared, keyed, autoHeight, flags);
   }
-  const geometry = layoutGanttMarks(env, domain, band, body, paints, warnings);
-  commitClaims(occupied, geometry.claims);
   // Open height: plan the flag levels on the drawn timeline, then lay the chart out with those row heights.
   if (heightOpen && flags.rows.size && !flags.pitch) {
-    const pitch = new Map(geometry.rows.filter(place => flags.rows.has(place.row.id))
+    // Preserve the drawing's callback order when the caller measures text.
+    const rows = env.measure === defaultMeasurer
+      ? domain.rows.filter(row => flags.rows.has(row.id)).map(row => ({ row, items: flagRowItems(env, band, body, row) }))
+      : layoutGanttMarks(env, domain, band, body, paints, warnings).rows.filter(place => flags.rows.has(place.row.id));
+    const pitch = new Map(rows
       .map(place => [place.row.id, flagRowPitch(planRowFlags(domain, body, place))] as const).filter(([, pitch]) => pitch > 0));
-    return layoutGanttPass(data, options, prepared, keyed, autoHeight, { rows: flags.rows, pitch });
+    const draw = () => layoutGanttPass(data, options, prepared, keyed, autoHeight, { rows: flags.rows, pitch });
+    // Settling a flag alternative first grows its ordinary rows. Different starting
+    // heights can arrive at the same frame and flag plan. This geometry is private
+    // to the comparison; the caller returns its original draw if the flags win.
+    if (!flags.comparison || env.measure !== defaultMeasurer || options.mode === 'compact'
+      || (options as { [FORCE_COMPACT]?: boolean })[FORCE_COMPACT] || size.width >= 480) return draw();
+    const scope = (options as { [CARD_HEIGHT_MEMO]?: object })[CARD_HEIGHT_MEMO];
+    if (!scope) return draw();
+    const key = JSON.stringify(['settled-gantt-flags', [...flags.rows],
+      staticFrame.pinned, staticFrame.live, staticFrame.countable, layoutStepKey(),
+      currentSmallValues(), formatScopeKey(options)]);
+    type Trial = { data: GanttData; options: GanttOptions; geometry: ReturnType<typeof draw>;
+      full?: GanttOptions; countable: boolean };
+    const trials = requestMemo(scope, key, () => [] as Trial[]);
+    const known = trials.find(trial => trial.data === data && sameContent(trial.options, options));
+    if (known) {
+      if (known.full) fullCardOptions.set(data, known.full);
+      else fullCardOptions.delete(data);
+      staticFrame.countable = known.countable;
+      return known.geometry;
+    }
+    const result = draw();
+    trials.push({ data, options, geometry: result, full: fullCardOptions.get(data), countable: staticFrame.countable });
+    return result;
   }
+  const geometry = layoutGanttMarks(env, domain, band, body, paints, warnings);
+  commitClaims(occupied, geometry.claims);
   const requests = planGanttLabels(env, domain, band, body, geometry, paints, keyNumbers, flags.rows)
     .filter(request => !(notesOff && request.kind === 'item' && keyed.has(request.owner.segmentId ?? '')));
   const annotated = layoutGanttAnnotations(env, domain, band, body, geometry.headNames);
@@ -574,13 +606,23 @@ function layoutAuthoredColumns(data: GanttData, options: GanttOptions): Geometry
 
 export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   const geo = columnPlan(options) === undefined && resolveGanttColumns(options).layoutAuthored ? layoutAuthoredColumns(data, options) : layoutGanttLabelled(data, options);
-  return sideKeyGivesWay(options, geo, (keyAbove) => layoutGantt(data, keyAbove));
+  const chosen = sideKeyGivesWay(options, geo, (keyAbove) => layoutGantt(data, keyAbove));
+  const scene = trialScenes.get(chosen);
+  if (scene) {
+    chosen.scene = scene();
+    trialScenes.delete(chosen);
+  }
+  return chosen;
 }
 
 /** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
 function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   // A custom measurer can change between calls. Keep its full callback sequence.
-  const prepared = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? prepareHeightProbe(data, options) : undefined;
+  const measure = options.measure ?? defaultMeasurer;
+  const plan = isCachedTextMeasurer(measure) ? prepareHeightProbe(data, options) : undefined;
+  // A labelled layout varies height, row pitch and lanes at one fixed width.
+  // The footer and plot still run at every height, including numbered milestone keys.
+  const prepared = plan && measure === defaultMeasurer ? { ...plan, frameMeasurements: {} } : plan;
   const first = layoutGanttPass(data, options, prepared);
   if (options.labels === false || options.labels?.item === false) return first;
   // This open-height probe reads only width acceptance, not the repaired labels or height.
@@ -637,7 +679,7 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
   const retry = layoutGanttPass(data, options, prepared, new Set(), autoHeight, { rows: flagRows });
   if (!openHeight) return keeps(first, retry) ? retry : first;
   before ??= settle(first, { rows: new Set() });
-  const after = settle(retry, { rows: flagRows });
+  const after = settle(retry, { rows: flagRows, comparison: true });
   // In open height the flags must show more full milestone labels: a retry
   // that only moves labels could still report a taller natural height.
   return full(after) > full(before) && keeps(before, after) ? retry : first;
