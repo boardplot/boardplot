@@ -9,7 +9,7 @@ import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout 
 import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
-import { COMPACT_SOURCE_LINES, beforeUnprintedLabelNote, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
+import { COMPACT_SOURCE_LINES, beforeUnprintedLabelNote, packedComboNoteItems, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
 import { withSourceLineCheck } from './frameText';
 import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER_TOLERANCE } from './aspect';
@@ -2109,7 +2109,10 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
   memoKeyData = data;
   let optionsKey: string;
   try {
-    optionsKey = memoKey(keyed, 0, keys?.parts);
+    const note = definition.type === 'combo' && options && (options.measure ?? defaultMeasurer) === defaultMeasurer
+      ? packedComboNoteItems(options) : undefined;
+    const parts = note ? new Map<PropertyKey, MemoKeyPart>([[note.key, note]]) : keys?.parts;
+    optionsKey = memoKey(keyed, 0, parts);
   } catch (error) {
     if (error !== MEMO_KEY_TOO_LONG) throw error;
     return fitSize(definition, data, options, compactFallback);

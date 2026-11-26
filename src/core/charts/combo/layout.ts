@@ -79,7 +79,7 @@ import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMa
 import { comboPaints, contentOf, comboPlotArea, drawComboFrame, eventFrameHeights, prepareComboFrame, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { collectFrameClaims, solveFrame, hiddenNoteBodyOptions, LEGEND_HEIGHT, type LegendBudget, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
+import { collectFrameClaims, solveFrame, hiddenNoteBodyOptions, NOTED_LABELS, LEGEND_HEIGHT, type LegendBudget, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -389,7 +389,7 @@ interface Unprinted { named: Map<string, [number, string]>; runs: number }
 
 /** A hidden value can go straight into the notes list when it takes no space.
  * Run the real frame again so note fitting, numbering and export use the same plan. */
-function refreshListNotes(owner: Pick<Geometry, 'frame'>, previous: string[], notes: string[], segmentLead?: string): boolean {
+export function refreshListNotes(owner: Pick<Geometry, 'frame'>, previous: string[], notes: string[], segmentLead?: string): boolean {
   const input = footerPlans.get(owner.frame);
   if (!input || staticFrame.live || staticFrame.pinned || input.footnotesOff || input.notes || input.pointedNotes
     || input.numberedFootnotes?.length || input[COLLECT_IDENTITIES] || !hasCompleteTextWidths(input.measure)) return false;
@@ -423,9 +423,12 @@ interface DensitySelectionProof {
   solves: number;
   eligible: boolean;
   peaks: Id[];
+  prefix?: Id[];
+  points?: { requests: LabelRequest[]; context: SolveCtx };
 }
 type DensityOptions = ComboOptions & { [DENSITY_SELECTION_PROOF]?: DensitySelectionProof; [DENSITY_VALUES]?: ReadonlySet<Id> };
 interface DensityBody {
+  pointNote: boolean;
   options: object;
   geo: Geometry<ComboMarks, ComboDerived>;
   proof: DensitySelectionProof;
@@ -434,11 +437,29 @@ function densityBodyOptions(options: ComboOptions): object {
   const { [DENSITY_VALUES]: _ids, [LEGEND_HEIGHT]: legend, ...body } = hiddenNoteBodyOptions(options as Parameters<typeof hiddenNoteBodyOptions>[0]) as DensityOptions & { [LEGEND_HEIGHT]?: LegendBudget };
   return { ...body, ...(legend ? { [LEGEND_HEIGHT]: { ...legend, names: [...legend.names] } } : {}) };
 }
-function reuseDensityBody(body: DensityBody, options: ComboOptions, locked: ReadonlySet<Id>): Geometry<ComboMarks, ComboDerived> | undefined {
-  if (!sameContent(body.options, densityBodyOptions(options)) || body.proof.peaks.some(id => !locked.has(id))) return;
-  const geo = body.geo;
-  const hidden = geo.labels.filter(label => label.kind === 'grandTotal' && label.hidden === 'density');
-  if (hidden.length !== locked.size || !hidden.every(label => locked.has(label.id))) return;
+function reuseDensityBody(body: DensityBody, options: ComboOptions, locked: ReadonlySet<Id> | undefined): Geometry<ComboMarks, ComboDerived> | undefined {
+  if (!sameContent(body.options, densityBodyOptions(options))) return;
+  // The ordinary point note and the later density note use separate mutable
+  // label, frame and warning fields. Keep the original for the later lock.
+  const geo = locked ? body.geo : copyFitDrawing(body.geo);
+  if (!('sizing' in body.geo)) delete geo.sizing;
+  let points: LabelRequest[] | undefined;
+  if (locked) {
+    if (body.proof.peaks.some(id => !locked.has(id)) || body.proof.prefix?.some(id => locked.has(id))) return;
+    const hidden = geo.labels.filter(label => label.kind === 'grandTotal' && label.hidden === 'density'
+      || label.kind === 'point' && label.hidden === 'collision');
+    if (hidden.length !== locked.size || !hidden.every(label => locked.has(label.id))) return;
+    if (body.pointNote) {
+      points = body.proof.points?.requests.filter(r => locked.has(r.id));
+      if (!points?.length || points.length !== hidden.filter(l => l.kind === 'point').length
+        || points.some(r => r.pinnedSlot !== undefined || r.printedIn || r.rowPeak)) return;
+    }
+  } else {
+    // The registry names collided points in a disclosure before it locks any
+    // values. Adding this list does not suppress a point or change its seat.
+    const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
+    if (!body.pointNote || !noted?.size || [...noted].some(id => !id.startsWith('point:'))) return;
+  }
   const notes = authoredNotes(options);
   if (notes.length !== 1) return;
   // Earlier axis and gutter choices used these frames too. Run their actual
@@ -457,7 +478,24 @@ function reuseDensityBody(body: DensityBody, options: ComboOptions, locked: Read
   if (!refreshListNotes(geo, [], notes, options.strings?.valuesNotBesideMarks)) return;
   // A quietly crowded total never claimed a seat. Locking it changes only why
   // the solver hid it. Each row peak also failed, so no neighbour yielded to it.
-  for (const decision of geo.debug.decisions) if (locked.has(decision.labelId)) decision.reason = 'density gate';
+  if (locked) {
+    if (points) {
+      // An explicit density lock precedes ownership and collision checks. Ask
+      // the solver for the original candidates' slots, first rectangle and owed
+      // flag. Replacing hidden values cannot move the labels that claimed seats.
+      const context = body.proof.points!.context;
+      const receipts = solveLabels(points.map(request => ({ ...request, redundant: true, suppressedAs: 'density' })),
+        createOccupiedIndex(context.plot), { ...context, pointOwnership: undefined });
+      const byId = new Map(receipts.placed.map(label => [label.id, label]));
+      geo.labels = geo.labels.map(label => byId.get(label.id) ?? label);
+      const warnings = geo.warnings.filter(w => w.code !== 'label-hidden' || !byId.has(String(w.detail?.labelId)));
+      const removed = geo.warnings.length - warnings.length;
+      geo.warnings = warnings;
+      // Combo captures its adjacent-series rules after all solver warnings.
+      if (geo.paintWarningRules) geo.paintWarningRules = geo.paintWarningRules.map(rule => ({ ...rule, before: rule.before - removed }));
+    }
+    geo.debug = { ...geo.debug, decisions: geo.debug.decisions.map(d => locked.has(d.labelId) ? { ...d, reason: 'density gate' } : d) };
+  }
   return geo;
 }
 
@@ -478,9 +516,9 @@ export function layoutCombo(
     && options.categoryLabels !== 'staircase' && !(HOST_CLAIMS in options) && !(COLLECT_IDENTITIES in options)
     && Array.isArray(data?.categories) && data.categories.length > DENSE_CATEGORY_COUNT && data.categories.every(c => c && !c.partial);
   const saved = canReuse ? requestMemo<{ body?: DensityBody }>(data, `combo-density:${layoutStepKey()}:${staticFrame.countable}:${JSON.stringify(options.size)}`, () => ({})) : undefined;
-  if (locked && saved?.body) {
+  if ((locked || NOTED_LABELS in options) && saved?.body) {
     const prior = saved.body;
-    delete saved.body;
+    if (locked) delete saved.body;
     const result = reuseDensityBody(prior, options, locked);
     if (result) return result;
   }
@@ -510,14 +548,16 @@ export function layoutCombo(
   // The final footer pass counts density omissions after sizing. Its note
   // must not send the chart through a different value-label selection.
   Object.assign(geo, { [DEFER_DENSITY_NOTES]: true });
-  if (saved && proof?.eligible && proof.solves === 1 && !geo.labels.some(label => label.hidden === 'collision' || label.printedIn)) {
+  if (saved && proof?.eligible && proof.solves === 1 && !geo.labels.some(label => label.printedIn)) {
+    const collisions = geo.labels.filter(label => label.hidden === 'collision');
+    const pointNote = collisions.length > 0 && collisions.every(label => label.kind === 'point');
     const hidden = new Set(geo.labels.filter(label => label.kind === 'grandTotal' && label.hidden === 'density').map(label => label.id));
-    if (hidden.size && geo.debug.decisions.every(d => !hidden.has(d.labelId) || d.chose === 'hidden' && d.tried.length === 0
+    if ((pointNote || collisions.length === 0 && hidden.size) && geo.debug.decisions.every(d => !hidden.has(d.labelId) || d.chose === 'hidden' && d.tried.length === 0
       && (d.reason === 'density gate' || d.reason === 'density=smart: no free seat'))) {
       // Only one of the two private drawings is returned. Give the registry its usual editable fields.
       // The density lock replaces decisions, so the two drawings can share them.
       const copy = copyFitDrawing(geo);
-      saved.body = { options: densityBodyOptions(options), geo: copy, proof };
+      saved.body = { pointNote, options: densityBodyOptions(options), geo: copy, proof };
     }
   }
   return geo;
@@ -859,7 +899,10 @@ function layoutComboFramePass(
     // when each such move stays after the endpoints.
     if (domain.options.mode === 'compact' && planned.some(request => request.rowPeak &&
       prefix.some(earlier => earlier.id === request.id || request.rowPeak!.neighbours.includes(earlier.id)))) return false;
-    if (proof && prefix.some(req => req.kind !== 'point')) proof.eligible = false;
+    if (proof) {
+      if (prefix.some(req => req.kind !== 'point')) proof.eligible = false;
+      (proof.prefix ??= []).push(...prefix.map(req => req.id));
+    }
     const probe = createOccupiedIndex(area.plot);
     commitClaims(probe, occupied);
     trialContext = comboLabelContext(options, env, domain, area, geometry);
@@ -897,6 +940,7 @@ function layoutComboFramePass(
     for (const request of requests) if (request.rowPeak) proof.peaks.push(request.id);
   }
   const solveCtx = trialContext ?? comboLabelContext(options, env, domain, area, geometry);
+  if (proof?.eligible && !seats) proof.points = { requests: requests.filter(req => req.kind === 'point'), context: solveCtx };
   // Reference lines and endpoints take their seats before column values.
   const joint = (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const annotatedFirst = joint ? annotateCombo(env, domain, area, geometry, occupied, solveCtx, requests) : undefined;

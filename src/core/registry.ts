@@ -379,7 +379,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (geo.refused || nested) return { geo, noteRefused: false };
       lastGeometry = geo;
       const first = geo;
-      const noted = new Map<string, string>();
+      let noted = new Map<string, string>();
       let owed = owedHiddenLabels(geo, data, pins, options?.annotations, minimal);
       let previousOwed: string | undefined;
       for (let run = 0; owed.size > 0; run++) {
@@ -427,10 +427,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           return { geo: hiddenLabelCollision(def.title, geo, owed, [...owed.keys()].every(id => noted.has(id))), noteRefused: true };
         }
         // Rounds find labels in the order they lose their seat; the note lists them in data order.
-        const byData = dataOrder(data, geo.labels);
-        const merged = [...noted, ...owed].sort(([a], [b]) => byData(a, b));
-        noted.clear();
-        for (const [id, item] of merged) noted.set(id, item);
+        if (noted.size === 0) noted = owed; // owedHiddenLabels already returned this drawing's data order.
+        else {
+          const byData = dataOrder(data, geo.labels);
+          noted = new Map([...noted, ...owed].sort(([a], [b]) => byData(a, b)));
+        }
         const noteOptions: O = withHiddenLabelNote((runOptions ?? {}) as O, noted, { data, labels: geo.labels, annotations: options?.annotations });
         let next: LayoutResult<M, DV>;
         // Gantt's full-card context changes during raw layout. Keep
