@@ -32,8 +32,9 @@ import type { RenderTarget } from '../types/options';
 import type { Theme } from '../types/theme';
 import { secondaryFont } from '../theme';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
-import { defaultMeasurer, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
+import { defaultMeasurer, layoutText, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
 import { hasCompleteTableWidths } from '../fontMetrics/injected';
+import { categoryCutLint } from './categoryWarnings';
 import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
@@ -42,9 +43,6 @@ import { isDateNumericTickSequence, startsWithMonth, PROSE_TICK_MAX_LINES, tickL
 import { disclosureNote } from '../notes';
 import { spread1DResult } from '../collide';
 import { maxOf, minOf } from '../arrays';
-
-/** Findings of a name row that cannot print its names whole: the cue to turn a bridge horizontal. */
-export const CROWDED_NAMES: ReadonlySet<string> = new Set(['category-labels-rotated', 'category-labels-truncated', 'category-stride']);
 
 /** Internal adapter override: ranked categories are not a line-family timeline. */
 export const CATEGORY_ROW_FROM_END = Symbol('categoryRowFromEnd');
@@ -646,14 +644,7 @@ export function categoryRowTop(y: (value: number) => number, lowestEnd: number, 
   return Math.max(y(Math.min(0, lowestEnd)), hangingEnd === undefined || !(hangingEnd < 0) ? -Infinity : y(hangingEnd) + room);
 }
 
-/**
- * A row of full month names that does not fit as authored prints
- * the language's short names ("Jan", "Feb") before it wraps or thins, and
- * keeps the full name as the label's title.
- */
-// A layout plans the same row many times over its frame passes; the plan is a pure function of the input.
-// The plans live for one render only: withLayoutMemo (sizing.ts) opens them at the outermost render and drops
-// them at its end. Outside a render nothing is kept.
+// Sizing passes in one layout can reuse a row plan for the same input and measurer.
 let rowPlans: Map<TextMeasurer, Map<string, CategoryRowPlan>> | undefined;
 // A wide row can still be too narrow for an upright name at every font. Its
 // rotated text then depends on the length cap, while the anchors use this pass's centres.
@@ -778,13 +769,12 @@ function rotationWarning(n: number, step: number): LintWarning {
   };
 }
 
-/** Run one top-level render with an empty row-plan cache; nested renders share it. */
-export function withCategoryRowPlans<T>(run: () => T): T {
-  if (rowPlans) return run();
+// The outer text scope opens the maps once. Nested layouts share them.
+layoutText.withCategoryRows = run => {
   rowPlans = new Map();
   rotatedRows = new Map();
   try { return run(); } finally { rowPlans = undefined; rotatedRows = undefined; }
-}
+};
 /** The number of cached row plans (0 outside a render). */
 export const cachedCategoryRowPlans = (): number => [...rowPlans?.values() ?? []].reduce((sum, plans) => sum + plans.size, 0);
 function rotatedShapeKey(input: CategoryRowInput): string {
@@ -1616,18 +1606,6 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
       },
     ],
   });
-}
-
-/** The names a rotated row cut, and where the reader finds them whole. */
-export function categoryCutLint(names: readonly string[], noted: boolean, where = 'on the rotated axis'): LintWarning {
-  return {
-    code: 'category-labels-truncated',
-    severity: noted ? 'info' : 'warn',
-    message: `${names.length === 1 ? 'one category label is' : `${names.length} category labels are`} cut ${where}: ${names.map((name) => `'${name}'`).join(', ')}` +
-      (noted ? '; the full name is in the notes list' : '; the full name is in the SVG title only'),
-    suggest: 'shorten the name, widen the canvas, or use a bar chart to keep names upright',
-    detail: { cut: [...names] },
-  };
 }
 
 /**

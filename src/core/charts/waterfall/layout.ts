@@ -56,7 +56,8 @@ import { requestMemo } from '../../layoutPlan';
 import { copyFrame } from '../../footer';
 import { authoredNotes, collectFrameClaims, type FrameResult, type FrameWidthMeasurements, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
-import { CROWDED_NAMES, type CategoryRowPlan, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
+import { CROWDED_NAMES } from '../../label/categoryWarnings';
+import { type CategoryRowPlan, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
 import {
   canvasMargin,
   layoutStepKey,

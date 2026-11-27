@@ -35,11 +35,11 @@ vi.mock('../src/core/charts/scatter/layout', async original => {
 });
 
 const barLayoutCalls = vi.hoisted(() => ({ count: 0 }));
-vi.mock('../src/core/charts/bar/layout', async original => {
-  const module = await original<typeof import('../src/core/charts/bar/layout')>();
-  return { ...module, layoutBar: (...args: Parameters<typeof module.layoutBar>) => {
+vi.mock('../src/core/charts/bar/rows', async original => {
+  const module = await original<typeof import('../src/core/charts/bar/rows')>();
+  return { ...module, layoutBarRows: (...args: Parameters<typeof module.layoutBarRows>) => {
     barLayoutCalls.count++;
-    return module.layoutBar(...args);
+    return module.layoutBarRows(...args);
   } };
 });
 

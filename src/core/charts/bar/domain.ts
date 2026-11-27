@@ -7,7 +7,8 @@ import { percentCellsOnly, percentLevels } from '../../annotatePass';
  * the averages and the net line, the annotation split, and the value extent.
  */
 
-import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
+import { restDetailsWarning } from '../topN';
+import type { applyBarTopN } from './rowOptions';
 import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineNeedsSharedPass } from '../../annotateFields';
@@ -176,6 +177,7 @@ function orderBarCategories(
   normSeries: NormSeries[],
   dataSeries: NormSeries[],
   warnings: LintWarning[],
+  topN?: typeof applyBarTopN,
 ): NormCat[] {
   let cats: NormCat[] = rawCats.map((c) => ({
     id: c.id,
@@ -199,31 +201,7 @@ function orderBarCategories(
     cats = idx.map((i) => cats[i]!);
     for (const s of normSeries) s.cells = idx.map((i) => s.cells[i]!);
   }
-  if (options.topN) {
-    const t = options.topN;
-    const { kept: keptOrder, dropped } = topNCut(cats.map((_, i) => Math.abs(totalOf(i))), Math.max(1, t.n), t.threshold);
-    if (dropped.length > 0) {
-      if (t.rest ?? true) {
-        if (normSeries.some((series) => dropped.some((i) => series.cells[i]!.range))) {
-          warnings.push({
-            code: 'range-topn-omitted',
-            severity: 'warn',
-            message: 'topN Others aggregates values but not ranges; dropped-item ranges were omitted',
-            suggest: 'set topN.rest to false or pre-aggregate a defensible range upstream',
-          });
-        }
-        for (const s of normSeries) {
-          const isPct = dropped.every(i => s.cells[i]!.v === null || s.cells[i]!.isPct);
-          s.cells = [...keptOrder.map((i) => s.cells[i]!), { v: restSum(dropped.map((i) => s.cells[i]!.v)), ...(isPct ? { isPct: true } : {}), meta: null }];
-        }
-        cats = [...keptOrder.map((i) => cats[i]!), { id: OTHERS_ID, label: restLabel(t, options.strings, dropped.map((i) => cats[i]!.label ?? cats[i]!.id)) }];
-      } else {
-        for (const s of normSeries) s.cells = keptOrder.map((i) => s.cells[i]!);
-        cats = keptOrder.map((i) => cats[i]!);
-      }
-    }
-  }
-  return cats;
+  return options.topN && topN ? topN(options.topN, options.strings, cats, normSeries, totalOf, warnings) : cats;
 }
 
 type BarBasis = Pick<BarDomain, 'totals' | 'nmRows' | 'naRows' | 'incompleteRows' | 'shares' | 'plotVal' | 'plotRange' | 'stacks' | 'rowEnds'>;
@@ -483,11 +461,11 @@ function barValueExtent(
 
 type PreparedBar = { domain: BarDomain; paints: ReturnType<typeof barPaints> };
 
-export function prepareBar(data: ChartData, options: BarInput, warnings: LintWarning[], reuseData: boolean): PreparedBar {
+export function prepareBar(data: ChartData, options: BarInput, warnings: LintWarning[], reuseData: boolean, topN?: typeof applyBarTopN): PreparedBar {
   const size = resolveSize(options.size);
   const widthClass = panelTypeClass(options) ?? typeWidthClass(size.width);
   const build = (out: LintWarning[]) => {
-    const domain = resolveBarDomain(data, options, size, widthClass, out);
+    const domain = resolveBarDomain(data, options, size, widthClass, out, topN);
     return { domain, paints: barPaints(domain, out) };
   };
   if (!reuseData || options.variant !== 'stacked' || !isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return build(warnings);
@@ -509,7 +487,7 @@ export function prepareBar(data: ChartData, options: BarInput, warnings: LintWar
 }
 
 function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDomain['size'],
-  widthClass: ReturnType<typeof typeWidthClass>, warnings: LintWarning[]): BarDomain {
+  widthClass: ReturnType<typeof typeWidthClass>, warnings: LintWarning[], topN?: typeof applyBarTopN): BarDomain {
   const theme = themeForWidth(resolveTheme(options.theme), widthClass);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const variant = (options.variant ?? 'grouped') as BarDomain['variant'];
@@ -580,7 +558,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     const cell = s.cells[ci]!;
     return cell.v !== null && scenarioFillPattern(normalizeScenario(cell.meta?.scenario, `series[${s.id}].values[${ci}].scenario`) ?? s.scenario) === undefined;
   }));
-  const cats = orderBarCategories(options, rawCats, normSeries, dataSeries, warnings);
+  const cats = orderBarCategories(options, rawCats, normSeries, dataSeries, warnings, topN);
   const lostDetails = cats.some((c) => c.id === OTHERS_ID) ? restDetailsWarning(data, new Set(cats.map((c) => c.id))) : undefined;
   if (lostDetails) warnings.push(lostDetails);
   const uniformScenario = new Map<Id, Scenario>();

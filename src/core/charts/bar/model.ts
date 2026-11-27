@@ -276,19 +276,15 @@ export interface BarArea {
  *
  * `minBar` is the thickness a bar needs to hold its segment labels. A
  * thinner theme bar grows to it and the row grows by the same amount, so the
- * gap to the next row stays; under an authored `bandFraction` the row grows
- * until that share of it is `minBar`.
+ * gap to the next row stays.
  */
 export function fixedBarRow(
   theme: Theme,
   labelHeights: readonly number[],
   minBar = 0,
-  bandFraction?: number,
 ): { step: number; fraction: number } | undefined {
   const row = theme.space.barRow;
   if (!row) return undefined;
-  // Whole pixels, so the bar's share of the step does not round under minBar.
-  if (bandFraction !== undefined) return { step: Math.max(row.pitch, Math.ceil(minBar / bandFraction), maxOf(labelHeights)), fraction: bandFraction };
   const thickness = Math.max(row.thickness, minBar);
   const step = Math.max(row.pitch + thickness - row.thickness, maxOf(labelHeights));
   return { step, fraction: Math.min(1, thickness / step) };

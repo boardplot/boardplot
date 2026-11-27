@@ -1,4 +1,3 @@
-import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 /**
  * Standard bar phase 3, label planning: the phase 2 geometry in, label
  * requests for the solver out. Row by row: the value labels (points or
@@ -6,7 +5,7 @@ import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
  */
 
 import { chosenValueIndices } from '../band/valueSelection';
-import { rowLabelX, unionRect, type Rect } from '../../geometry';
+import { unionRect, type rowLabelX, type Rect } from '../../geometry';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET } from '../../target';
@@ -117,7 +116,7 @@ function stepsBelow(domain: BarDomain, font: FontSpec): FontSpec[] {
  * the record texts a label prints for another owner: a one-part stack's
  * total prints its part's value.
  */
-export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarArea, scene: BarMarkGeometry, warnings: LintWarning[], stated?: Map<Id, Omit<ShownMark, 'drawn'>>): LabelRequest[] {
+export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarArea, scene: BarMarkGeometry, warnings: LintWarning[], stated?: Map<Id, Omit<ShownMark, 'drawn'>>, alignRow?: typeof rowLabelX): LabelRequest[] {
   const { options, measure, highlights, cats, dataSeries, variant, totals, plotRange } = domain;
   const { labelFont, strongFont, tickFont, pointFont, compact, band } = area;
   const requests: LabelRequest[] = [];
@@ -353,7 +352,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         candidates,
       });
     }
-    // category label (left band, right-aligned toward the rows)
+    // Category labels start at the left edge unless the caller asks for another alignment.
     if (labelOn(options, 'category')) {
       const cl = area.catLines[ci]!;
       requests.push({
@@ -368,9 +367,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
           {
             slot: 'left',
             rect: {
-              // Row labels share ONE left edge by default; 'right' restores the
-              // block-against-the-plot behaviour (see rowLabelX).
-              x: rowLabelX(area.frame.plot.x, area.catBandW, cl.w, options.rowLabels?.align ?? 'left'),
+              x: alignRow?.(area.frame.plot.x, area.catBandW, cl.w, options.rowLabels?.align ?? 'left') ?? area.frame.plot.x,
               y: rowCenter - cl.h / 2,
               w: cl.w,
               h: cl.h,
@@ -393,30 +390,6 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
   }, options.labelDensity ?? 'smart', options.labelPlacements, {
     categories: cats.length, pitch: band.step / (variant === 'grouped' ? dataSeries.length : 1), orientation: 'horizontal', measure,
   });
-  if (hasLabelPosition(options)) for (let i = 0; i < requests.length; i++) {
-    const request = requests[i]!;
-    if (!/^(point|segment|grandTotal):/.test(request.id)) continue;
-    const ci = cats.findIndex(cat => cat.id === request.owner.categoryId);
-    const cat = cats[ci];
-    const first = request.candidates[0];
-    if (!cat || !first) continue;
-    const bars = scene.bars[ci]!;
-    const drawn = bars.filter(bar => bar.v !== 0);
-    const total = request.id.startsWith('grandTotal:');
-    const bar = total
-      ? variant === 'stacked' && !(TOTAL_COLUMN in options) && drawn.length === 1 ? drawn[0] : undefined
-      : bars.find(bar => bar.s.id === request.owner.seriesId);
-    if (!bar) continue;
-    const twin = halves?.pos === bar.s.id ? bars.find(other => other.s.id === halves.neg)?.rect : undefined;
-    const rect = twin ? unionRect(twin, bar.rect) : bar.rect;
-    const cell = bar.s.cells[ci]!;
-    const { paint, pattern } = paints.cell(bar.s, cat, cell.meta, cell.v);
-    requests[i] = positionBarLabel(request, options, {
-      rect, size: { width: first.rect.w, height: first.rect.h }, orientation: 'horizontal', endPositive: bar.v >= 0, zero: bar.v === 0,
-      edgeGap: LABEL_GAP, outsideGap: LABEL_GAP, fallback: total || variant === 'grouped' ? undefined : 'stack', muted: request.bodyInk !== undefined,
-      insideFill: paints.css(paint, pattern), insidePaint: paint, insidePattern: pattern,
-    });
-  }
   return requests;
 }
 

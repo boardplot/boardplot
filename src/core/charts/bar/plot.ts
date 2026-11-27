@@ -15,7 +15,7 @@ import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { gutterBudget, stepDownFont } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
-import { categoryCutLint } from '../../label/categoryRow';
+import { categoryCutLint } from '../../label/categoryWarnings';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate } from '../../partialPeriod';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
@@ -33,7 +33,7 @@ import { breakAxisScale, referenceMarkerKey, stepFitsAxisBreak } from '../band/t
 import { compactValueLabelFont, compactValueTextSize, groupedValueLabelPolicy, INSIDE_MIN_H } from '../band/labels';
 import { partialNamedOnValues, textFor } from './domain';
 import { labelOn } from '../labelOn';
-import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import type { BarRowFeatures } from './rows';
 import { bandSteps, EXACT_DOMAIN, NO_NAME_COLUMN, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAT_BAND_GAP, CAT_MAX_LINES, CUT_NOTES, fixedBarRow, LABEL_GAP, LEFT_ROOM, NAME_TRACK, RIGHT_ROOM, TOTAL_TRACK, type BarArea, type BarDomain } from './model';
 import type { BarLegendPaints } from './paints';
 import { signPaint } from '../band/sign';
@@ -294,19 +294,19 @@ function barAxisBreak(domain: BarDomain, dLo: number, dHi: number, warnings: Lin
  * axis), the value scale with headroom so outside-end labels live inside the
  * plot, the row band, and the value-label policy.
  */
-export function barPlotArea(domain: BarDomain, frame: FrameResult, warnings: LintWarning[]): BarArea {
+export function barPlotArea(domain: BarDomain, frame: FrameResult, warnings: LintWarning[], features: BarRowFeatures): BarArea {
   // The value-axis title takes the tick row where it fits there, and its own
   // row only when it does not. The row changes the plot's height, not its x.
   const shared: LintWarning[] = [];
-  const area = barPlotAreaWith(domain, frame, shared, false);
+  const area = barPlotAreaWith(domain, frame, shared, false, features);
   if (area) {
     pushAll(warnings, shared);
     return area;
   }
-  return barPlotAreaWith(domain, frame, warnings, true)!;
+  return barPlotAreaWith(domain, frame, warnings, true, features)!;
 }
 
-function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWarning[], titleRow: boolean): BarArea | undefined {
+function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWarning[], titleRow: boolean, features: BarRowFeatures): BarArea | undefined {
   const { options, theme, size, measure, variant, cats, dataSeries } = domain;
   // The value extent. A tolerance band the axis would cut widens it below (axisOf).
   let { lo, hi } = domain;
@@ -341,11 +341,8 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const catMaxLines = Math.max(1, Math.min(CAT_MAX_LINES, Math.floor((stepEst - 4) / lineH)));
   const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
   const nameColumn = !noNameColumn && labelOn(options, 'category');
-  columnOverrideWarnings('bar', options.columnOverrides, nameColumn ? ['label'] : [], [], warnings);
-  const authoredName = options.columnOverrides?.label?.width;
-  // An authored width sets the column; the plot gives way first, down to its floor.
-  const nameTrack = (options as { [NAME_TRACK]?: number })[NAME_TRACK] ?? (authoredName === undefined || !nameColumn ? undefined
-    : authoredTrackWidth('label', authoredName, 24, plot0.w - CAT_BAND_GAP - trackPlotFloor(plot0.w), warnings));
+  const nameTrack = options.columnOverrides !== undefined && features.nameTrack
+    ? features.nameTrack(options, nameColumn, plot0.w, warnings) : (options as { [NAME_TRACK]?: number })[NAME_TRACK];
   const capW = nameTrack ?? Math.max(24, plot0.w * 0.28);
   const authored = authoredFootnoteCount(options);
   // A 100% bar that misses a part says so on its name where the note naming it does not print: its shares are of the known parts.
@@ -399,7 +396,9 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     : 0;
   const segmentBar = segmentFloor > 0 ? Math.max(segmentFloor, labelFont.size + 8) : segmentFloor;
   // An authored row (space.barRow) keeps the line box as its floor, as before.
-  const fixedRow = fixedBarRow(theme, catLines.map((label) => label.h), segmentFloor, options.bandFraction);
+  const heights = catLines.map((label) => label.h);
+  const fixedRow = theme.space.barRow && options.bandFraction !== undefined && features.fixedRow
+    ? features.fixedRow(theme.space.barRow.pitch, heights, segmentFloor, options.bandFraction) : fixedBarRow(theme, heights, segmentFloor);
   const fixedRowsH = fixedRow ? fixedRow.step * bandSteps(cats.length, gapAfter) : undefined;
   const inset = cagrInset(domain) && domain.passAnns.some((a) => a.kind === 'cagr');
   const nameGap = noNameColumn ? 0 : CAT_BAND_GAP;
