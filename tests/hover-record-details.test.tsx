@@ -177,7 +177,7 @@ describe('onSeriesClick', () => {
   });
 
   it('adds no interaction attributes without the prop', async () => {
-    const host = await mount({});
+    const host = await mount({ hover: false });
     expect(host.querySelector('[role="button"], [tabindex], [style*="cursor"]')).toBeNull();
   });
 });

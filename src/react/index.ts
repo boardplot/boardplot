@@ -43,6 +43,8 @@ export type { TableChartProps, TableHandle, TableRowLabelLead, TableRowSelectDet
 
 // Shared numeric value scales across typed charts and BoardplotChart.
 export * from './scale-group';
+export { HoverGroup } from './HoverGroup';
+export type { HoverGroupProps } from './HoverGroup';
 
 export {
   BarChart,

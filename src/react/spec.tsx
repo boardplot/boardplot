@@ -55,8 +55,10 @@ export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps,
    * Empty data stays on `onEmpty`, a layout refusal on `onRefused`.
    */
   onSpecError?: (errors: readonly DocumentFinding[]) => void;
-  /** Label card and series highlight on pointer hover. Off by default. */
+  /** Label card and series highlight on pointer hover. On by default for SVG charts; `false` draws the static chart. A table keeps it off. */
   hover?: HoverOption;
+  /** Called with the records the hover card covers on each change of them, and with an empty list when nothing is hovered any more. SVG charts only. */
+  onHoverChange?: (records: InteractionRecord[]) => void;
   /** Called with the series id when the reader clicks a series' line or area, its name label or its legend entry. SVG charts only. */
   onSeriesClick?: (seriesId: Id) => void;
   /** Called with the record the reader clicks, the one the hover card names, or presses Enter or Space on; a click on a mark then fires no `onSeriesClick`. SVG charts only. */
@@ -419,7 +421,7 @@ function SpecStates(props: BoardplotChartProps): ReactElement {
   return <DataTableContext.Provider value={dataTable.module}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} drawn={firstFrame !== undefined} /></DataTableContext.Provider>;
 }
 
-function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, drawn, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[]; drawn: boolean }): ReactElement {
+function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, drawn, onHoverChange, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[]; drawn: boolean }): ReactElement {
   const { type, data, options = {} } = parsed.request;
   const { ready, failure } = useChartEngine(type);
   const engineFailure = useMemo(() => (failure === undefined ? undefined : chunkFailure(`'${type}' chart engine`, failure)), [type, failure]);
@@ -458,5 +460,5 @@ function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, targe
   // The first frame drew the prepared chart at the frame `prepareChart` used. The same frame as `fallbackSize` lets a
   // container chart attach to it at once, where it would otherwise wait for its first width on the busy placeholder.
   const frameSize = drawn && common.size === 'container' && chart.fallbackSize === undefined ? { fallbackSize: resolveSize(undefined, frame.options.target) } : undefined;
-  return <Chart {...common} {...chart} {...frameSize} onWarnings={reportWarnings} data={data} annotations={annotations} prepared={prepared} />;
+  return <Chart {...common} {...chart} {...frameSize} onHoverChange={onHoverChange} onWarnings={reportWarnings} data={data} annotations={annotations} prepared={prepared} />;
 }

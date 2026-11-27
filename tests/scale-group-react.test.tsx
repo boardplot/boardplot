@@ -78,9 +78,9 @@ it('keeps each card pinned when the declaration is reordered', () => {
   // Equal dimensions, one domain: the same bytes, apart from React's own
   // instance identity, which the group must not touch.
   const geometry = (figure: string) => figure
-    .replace(/^<\/div>/, '')
+    .replace(/^(<\/div>)+/, '')
     .replace(/data-bp-instance="[^"]*"/g, 'data-bp-instance="~"')
-    .replace(/_R_\d+_/g, '~');
+    .replace(/_R_\w+_/g, '~');
   expect(geometry(reordered[0]!)).toEqual(geometry(forward[1]!));
 });
 

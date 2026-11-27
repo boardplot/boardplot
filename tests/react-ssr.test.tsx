@@ -5,6 +5,9 @@ import { getFixtures } from '../src/fixtures';
 import { ColumnChart } from '../src/react/charts/column';
 import { TableChart } from '../src/react/charts/table';
 import { DimSwitchChart } from '../src/react/charts/dimswitch';
+import { LineChart } from '../src/react/charts/line';
+import { prepareChart } from '../src/react/prepare';
+import './helpers/link-core';
 
 vi.mock('react', async importOriginal => {
   const react = await importOriginal<typeof import('react')>();
@@ -92,4 +95,19 @@ it('renders per-type host props, numeric sizes and SVG backgrounds', () => {
   expect(dimswitchMarkup).toContain('<div class="dim-host">');
   expect(dimswitchMarkup).toContain('bp-table-grid');
   expect(dimswitchMarkup).toBe(renderToStaticMarkup(<DimSwitchChart data={dimswitch.data as never} {...dimswitch.options} size={{ width: 800 }} className="dim-host" />));
+});
+
+// The first HTML of a default chart would hold a tab stop per event marker before any script runs, and no print rules for its footer.
+it('writes the static SVG and the footer print rules for a chart with events and hover', async () => {
+  const fixture = getFixtures('line').find(candidate => candidate.id === 'weekly-events-lane')!;
+  const prepared = await prepareChart({ type: 'line', data: fixture.data, annotations: fixture.annotations as never, options: fixture.options as never });
+  const html = (hover?: false) => renderToStaticMarkup(<LineChart data={fixture.data} annotations={fixture.annotations as never} {...fixture.options as object} prepared={prepared} hover={hover} />);
+  const svg = (markup: string) => /<svg[\s\S]*<\/svg>/.exec(markup)![0].replace(/_R_\w+_/g, '_ID_');
+  const first = html(), plain = html(false);
+  expect(svg(first)).toBe(svg(plain));
+  expect(first).toContain('<div data-bp-hover="" style="position:relative">');
+  expect(first).not.toContain('tabindex');
+  expect(first).not.toContain('touch-action');
+  expect(plain).toContain('@media print');
+  expect(first).toContain('@media print');
 });

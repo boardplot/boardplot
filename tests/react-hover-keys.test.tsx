@@ -97,7 +97,7 @@ describe('keyboard access to chart records', () => {
 
   // A static chart must stay out of the tab order.
   it('adds no tab stop to a chart with hover off', async () => {
-    await render(<ColumnChart {...columnProps} />);
+    await render(<ColumnChart {...columnProps} hover={false} />);
     expect(host.querySelector('[data-bp-keys]')).toBeNull();
   });
 
@@ -424,4 +424,28 @@ describe('keyboard access to table records', () => {
     expect(document.activeElement).toBe(stop);
     expect(document.querySelector('[data-bp-custom-card]')).toBeNull();
   });
+});
+
+// A reader who tabs to a chart and presses an arrow before the hover code has arrived would lose the key, and the page would scroll.
+it('keeps a key pressed before the hover code has loaded', async () => {
+  const data = { categories: ['Q1', 'Q2', 'Q3'], series: [{ id: 'north', label: 'North', values: [3, 5, 4] }] };
+  root = createRoot(host);
+  await act(async () => { root!.render(<ColumnChart data={data} size={size} />); });
+  // One turn: the focus and the key reach the chart before React renders again, so before the hover code is used.
+  const key = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+  act(() => { keyStop().focus(); keyStop().dispatchEvent(key); });
+  expect(key.defaultPrevented).toBe(true);
+  await act(async () => { await loadHoverEngine(); });
+  expect(option()).toContain('Q2');
+  // An event marker takes the first Tab of a chart with events: its held focus opens its card beside the marker.
+  act(() => root!.unmount());
+  root = createRoot(host);
+  const events = getFixtures('line').find(candidate => candidate.id === 'weekly-events-lane')!;
+  await act(async () => { root!.render(<LineChart data={events.data} annotations={events.annotations as never} {...events.options as object} />); });
+  act(() => host.querySelector<SVGElement>('svg [tabindex="0"]')!.focus());
+  await act(async () => { await loadHoverEngine(); });
+  const opened = document.querySelector<HTMLElement>('[data-bp-chart-card]')!;
+  expect(opened).not.toBeNull();
+  // Only a card that follows a pointer carries `will-change`. A focus has no pointer.
+  expect(opened.style.willChange).toBe('');
 });

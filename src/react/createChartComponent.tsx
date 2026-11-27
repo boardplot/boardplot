@@ -32,6 +32,7 @@ import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type EmptyProps, ty
 import { useDeferrableChartLayout } from './useResolvedChartLayout';
 import { rebindable } from './linkedBinding';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
+import { usePrinting } from './printLayout';
 import { useStableValue } from './useStableValue';
 import { SIZE_TOLERANCE } from '../core/sizing';
 import { containerFit, containerHostlessHeight } from './containerLayout';
@@ -100,8 +101,15 @@ type ChartHostProps = PerTypeSizeOptions & RefusalProps & EmptyProps & {
   onGeometry?: (geometry: Geometry) => void;
   /** Prepared server result for attachment without layout. */
   prepared?: PreparedChart;
-  /** Label card and series highlight on pointer hover. Off by default. */
+  /** Label card and series highlight on pointer hover. On by default; `false` draws the static chart. */
   hover?: HoverOption;
+  /**
+   * Called with the records the hover card covers, the pointed record first, on each change of
+   * them: a pointer, a tap or the keyboard reached other records, the chart drew the same marks
+   * again with new data, or nothing is hovered any more (an empty list). A pointer move over the
+   * same records does not call it.
+   */
+  onHoverChange?: (records: InteractionRecord[]) => void;
   /** Called with the series id when the reader clicks a series' line or area, its name label or its legend entry. */
   onSeriesClick?: (seriesId: Id) => void;
   /**
@@ -196,7 +204,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[], useZoom: ZoomHook = noZoom): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
-    const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
+    const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover = true, onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, zoom, styleNonce, idPrefix,
       background, storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
     const ownRows = OWN_ROWS_OPTIONS.has(type);
@@ -221,8 +229,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // A capped note ends "and 236 more". Only a chart with a hover card can say "tap or hover shows each value":
     // SVG, PNG and PDF output have no hover, so the hint is chosen here and never by the layout.
     // A prepared chart keeps the layout it was prepared with: its request key covers the strings.
+    // The wording of the chart or of its provider wins over the hint. A print has no hover either.
+    const provider = useContext(BoardplotThemeContext);
+    const providerStrings = provider?.strings as Record<string, unknown> | undefined;
+    // A chart with a fixed size prints too: the page's print state, not the container's.
+    const printing = usePrinting();
     const hoverCard = hoverFlags(hover);
-    const hinted = hoverCard !== undefined && hoverCard.card !== false && prepared === undefined;
+    const hinted = hoverCard !== undefined && hoverCard.card !== false && prepared === undefined && !printing && providerStrings?.moreListed === undefined;
     const noteOptions = useMemo(() => {
       const strings = (layoutOptions as { strings?: Record<string, unknown> }).strings;
       return hinted && strings?.moreListed === undefined ? { ...layoutOptions, strings: { ...strings, moreListed: chartString(layoutOptions, 'hoverMoreListed') } } : layoutOptions;
@@ -231,8 +244,6 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // too, with the CLI's code, path and patch; the
     // layout does not run on it. The props above are React's and never reach it.
     // A BoardplotTheme provider's retired string keys refuse as a chart prop does.
-    const provider = useContext(BoardplotThemeContext);
-    const providerStrings = provider?.strings as Record<string, unknown> | undefined;
     const optionsRefused = optionRefusals(stableOptions as Record<string, unknown>, type, checkKeys, providerStrings);
     const refusedOptions = mapped.refusals.length ? [...optionsRefused, ...mapped.refusals] : optionsRefused;
     // Rows without data yet (the chunk loads, failed or refused them): no request is resolved, since a type's
@@ -251,7 +262,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const detached = useRef<PreparedChart | undefined>(undefined);
     if (zoomed.derived && prepared) detached.current = prepared;
     const attached = zoomed.derived || detached.current === prepared ? undefined : prepared;
-    const defer = deferLayout && attached === undefined && !measured.printing;
+    const defer = deferLayout && attached === undefined && !printing;
     // A metric stack's focus look draws the category the pointer or the keyboard rests on as its focus (HoverSurface).
     const [stackFocus, setStackFocus] = useState<string>();
     const focused = useMemo(() => withStackFocus(zoomed.options, stackFocus), [zoomed.options, stackFocus]);
@@ -386,7 +397,14 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // The export lays out what is on screen: no snapshot while a refusal, the busy box or an older drawing shows.
     const [storyStep, setStoryStep] = useState<string>();
     const shown = !settling && refusals.length === 0 && !resolved.deferred && !resolved.pending && geometry && !geometry.refused ? geometry : undefined;
-    useChartExport(exporter, shown && resolved.request, zoomed.data, shown?.size, container || scrolls, pinned, storyStep);
+    // A picture has no hover: its capped note ends as the static chart's does.
+    const pictured = useMemo(() => {
+      const drawn = resolved.request;
+      if (!drawn || noteOptions === layoutOptions) return drawn;
+      const { strings: { moreListed: _hint, ...strings } = {}, ...options } = drawn.options;
+      return { ...drawn, options: Object.keys(strings).length ? { ...options, strings } : options } as typeof drawn;
+    }, [resolved.request, noteOptions, layoutOptions]);
+    useChartExport(exporter, shown && pictured, zoomed.data, shown?.size, container || scrolls, pinned, storyStep);
 
     // The wrapper the container size is measured on; a filling chart's first
     // child is the probe that reads the host's height (useContainerSize).
@@ -416,11 +434,11 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     }
     const request = resolved.request;
     // One style element per chart: with a hover surface, the footer's print rule rides in its style.
-    const surface = Boolean(hoverFlags(hover) || table || onRecordClick || renderHoverContent);
+    const surface = Boolean(hoverFlags(hover) || table || onRecordClick || renderHoverContent || (hover && onHoverChange));
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} onHoverChange={onHoverChange} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
         : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} />;
     };
     const drawn = geometry;

@@ -14,6 +14,9 @@ import { LineChart } from '../src/react/charts/line';
 import { SlopeChart } from '../src/react/charts/slope';
 import { prepareChart } from '../src/react/prepare';
 import { BoardplotChart } from '../src/react/spec';
+import { BarChart } from '../src/react/charts/bar';
+import { HoverGroup } from '../src/react/HoverGroup';
+import type { InteractionRecord } from '../src/core/a11y/types';
 import { mount, mountedMarkup } from './helpers/spec-chunks';
 import { loadHoverEngine } from '../src/react/useHover';
 import { followSeat } from '../src/react/hover/labelCard';
@@ -261,9 +264,9 @@ describe('hover card and highlight on a column fixture', () => {
     expect(drawn('interaction-card')).toBe(false);
   });
 
-  it('draws the static chart without the prop and the same SVG before any pointer input', async () => {
-    const plain = renderToString(<ColumnChart {...props} />);
-    const hovered = renderToString(<ColumnChart {...props} hover />);
+  it('draws the static chart with hover off and the same SVG before any pointer input', async () => {
+    const plain = renderToString(<ColumnChart {...props} hover={false} />);
+    const hovered = renderToString(<ColumnChart {...props} />);
     expect(plain).not.toContain('data-bp-hover');
     expect(hovered).toContain('data-bp-hover');
     // Only the React instance id differs between two renders.
@@ -439,10 +442,9 @@ describe('style nonce for the hover surface', () => {
     for (const tag of styles) expect(tag).toContain('nonce="abc"');
     // Without the prop the same render carries no nonce attribute at all.
     expect(styleTags(await mountedMarkup(<BoardplotChart spec={spec} hover />))).toEqual(['<style>']);
-    // A per-type component renders this surface too; without the statically
-    // provided engine it draws no style on the server, so no tag can lack one.
+    // A per-type component renders this surface too: its server style holds the footer's print rules, with the nonce.
     const bare = renderToStaticMarkup(<ColumnChart data={column.data as never} {...column.options as object} size={size} hover styleNonce="abc" />);
-    expect(styleTags(bare)).toEqual([]);
+    for (const tag of styleTags(bare)) expect(tag).toContain('nonce="abc"');
   });
 
   it('puts the nonce on every style BoardplotChart renders for a table spec', async () => {
@@ -479,5 +481,111 @@ describe("the card of a category answers for the whole category", () => {
     expect(text.indexOf("Revenue")).toBeLessThan(text.indexOf("Units sold"));
     // Every mark of the category is outlined.
     expect(host.querySelectorAll("[data-part=\"interaction-outline\"]").length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('hover callback, linked charts and touch', () => {
+  const box = { width: 640, height: 360 };
+  const regions = (north: number[]) => ({ categories: ['Q1', 'Q2', 'Q3'], series: [{ id: 'north', label: 'North', values: north }, { id: 'south', label: 'South', values: [2, 3, 3] }] });
+  const mark = (scope: Element, id: string) => scope.querySelector(`[data-id="mark:${id}"]`)!;
+  const outlined = (scope: Element) => [...new Set(Array.from(scope.querySelectorAll('[data-part="interaction-outline"]'), node => JSON.parse(node.getAttribute('data-bp-owner')!).categoryId))].join();
+  const cards = () => Array.from(document.querySelectorAll<HTMLElement>('[data-bp-chart-card]')).filter(node => node.style.opacity !== '0')
+    .map(node => Array.from(node.querySelectorAll('[data-part="interaction-label"]'), label => label.textContent).join(' | ')).sort();
+  /** React reads a pointer leave from the native pointerout. */
+  const leave = (target: Element) => {
+    const event = new Event('pointerout', { bubbles: true });
+    Object.assign(event, { pointerType: 'mouse', clientX: 0, clientY: 0, relatedTarget: document.body });
+    act(() => target.dispatchEvent(event));
+  };
+  /** A finger on `target` at client (x, y), as a browser reports it. */
+  const touch = (target: Element, kind: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointerout', at: readonly [number, number], pointerId = 7, isPrimary = true) => {
+    const event = new Event(kind, { bubbles: true });
+    Object.assign(event, { pointerType: 'touch', pointerId, isPrimary, clientX: at[0], clientY: at[1], relatedTarget: kind === 'pointerout' ? document.body : null });
+    target.dispatchEvent(event);
+  };
+  const point = (id: string) => host.querySelector(`[data-id="marker:${id}"]`)!;
+  const at = (node: Element) => [Number(node.getAttribute('cx')), Number(node.getAttribute('cy'))] as const;
+  const quarters = { categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ id: 'north', label: 'North', values: [3, 5, 4, 6] }, { id: 'south', label: 'South', values: [2, 3, 3, 4] }] };
+
+  // A page that shows the hovered values in its own panel would stay silent with card and highlight off, or keep old values after a data refresh under a resting pointer.
+  it('tells a listening page each change of the hovered records, also with card and highlight off', async () => {
+    const calls: InteractionRecord[][] = [];
+    const chart = (north: number[], hover: boolean | object = { card: false, highlight: false }) =>
+      <ColumnChart data={regions(north)} size={box} hover={hover as never} onHoverChange={records => calls.push(records)} />;
+    await render(chart([3, 5, 4]));
+    pointer(mark(host, 'north:Q2'), 'pointermove');
+    expect(calls.map(records => records.map(record => record.value?.raw))).toEqual([[5, 3]]);
+    pointer(mark(host, 'north:Q2'), 'pointermove');
+    expect(calls).toHaveLength(1);
+    expect(host.querySelector('[data-part="interaction-outline"]')).toBeNull();
+    await render(chart([3, 9, 4]));
+    expect(calls.map(records => records[0]?.value?.raw)).toEqual([5, 9]);
+    await render(chart([3, 9, 4], false));
+    expect(calls.map(records => records.length)).toEqual([2, 2, 0]);
+  });
+
+  // The late clear of the chart the reader left would erase the hover of the chart they are on.
+  it('keeps the hover of the chart the reader entered when the chart they left clears late', async () => {
+    vi.useFakeTimers();
+    try {
+      const ranked = (values: number[]) => ({ categories: ['A', 'B', 'C', 'D'], series: [{ id: 'v', label: 'Value', values }] });
+      await render(<HoverGroup>
+        <div id="one"><ColumnChart data={regions([3, 5, 4])} size={box} /></div>
+        <div id="two"><ColumnChart data={regions([6, 7, 8])} size={box} /></div>
+        <div id="three"><BarChart data={ranked([9, 8, 2, 1])} topN={{ n: 2 }} size={box} /></div>
+        <div id="four"><BarChart data={ranked([1, 2, 8, 9])} topN={{ n: 2 }} size={box} /></div>
+      </HoverGroup>);
+      const [one, two, three, four] = ['#one', '#two', '#three', '#four'].map(id => host.querySelector(id)!);
+      pointer(mark(one, 'north:Q2'), 'pointermove');
+      // Each other chart shows its own number beside the same category.
+      expect(outlined(two)).toBe('Q2');
+      expect(cards()).toEqual(['Q2 | North: | 5 | South: | 3', 'Q2 | North: | 7']);
+      // The reader moves to the same category of the second chart. The first chart closes 100 ms later.
+      leave(one.querySelector('[data-bp-hover]')!);
+      pointer(mark(two, 'north:Q2'), 'pointermove');
+      act(() => { vi.advanceTimersByTime(150); });
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(cards()).toEqual(['Q2 | North: | 5', 'Q2 | North: | 7 | South: | 3']);
+      expect(outlined(one)).toBe('Q2');
+      // The Others bar of one ranked chart holds other categories than the Others bar of the next: it is never linked.
+      leave(two.querySelector('[data-bp-hover]')!);
+      act(() => { vi.advanceTimersByTime(750); });
+      expect(outlined(one) + outlined(two)).toBe('');
+      const others = three.querySelector('[data-id*="others"]')!;
+      pointer(others, 'pointermove');
+      expect(outlined(three)).not.toBe('');
+      expect(outlined(four)).toBe('');
+      leave(three.querySelector('[data-bp-hover]')!);
+      act(() => { vi.advanceTimersByTime(750); });
+      expect(outlined(three)).toBe('');
+      expect(cards()).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  // A pinch on a line chart would move the card to the point under the second finger.
+  it('ignores a second finger while a finger slides along a line', async () => {
+    await render(<LineChart data={quarters} size={box} />);
+    const wrapper = host.querySelector<HTMLElement>('[data-bp-hover]')!;
+    expect(wrapper.style.touchAction).toBe('pan-y pinch-zoom');
+    act(() => touch(point('north:Q1'), 'pointerdown', at(point('north:Q1'))));
+    act(() => touch(point('north:Q1'), 'pointermove', at(point('north:Q2'))));
+    expect(cards()[0]).toMatch(/^Q2 /);
+    act(() => touch(point('north:Q4'), 'pointerdown', at(point('north:Q4')), 8, false));
+    act(() => { touch(point('north:Q4'), 'pointermove', at(point('north:Q4')), 8, false); touch(point('north:Q1'), 'pointermove', at(point('north:Q3'))); });
+    expect(cards()[0]).toMatch(/^Q2 /);
+    // The scrub's touch rule rides only with the hover: a drill-down chart keeps the page's own gestures.
+    await render(<LineChart data={quarters} size={box} hover={false} onRecordClick={() => {}} />);
+    expect(host.querySelector<HTMLElement>('svg')!.closest<HTMLElement>('[data-bp-hover]')?.style.touchAction ?? '').toBe('');
+  });
+
+  // A tap that lifts before the hover code is used stayed tracked as the sliding finger, and the next tap counted as a second finger.
+  it('keeps the next tap on a line after a tap that lifted before the hover code was used', async () => {
+    act(() => { root = createRoot(host); root.render(<LineChart data={quarters} size={box} />); });
+    const first = point('north:Q2'), second = point('north:Q4');
+    act(() => { touch(first, 'pointerdown', at(first)); touch(first, 'pointerup', at(first)); touch(host.querySelector('[data-bp-hover]')!, 'pointerout', at(first)); });
+    await act(async () => { await loadHoverEngine(); });
+    expect(cards()[0]).toMatch(/^Q2 /);
+    act(() => touch(second, 'pointerdown', at(second)));
+    expect(cards()[0]).toMatch(/^Q4 /);
   });
 });
