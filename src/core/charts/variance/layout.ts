@@ -38,7 +38,7 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
-import { percentLevels, runAnnotatePass } from '../../annotatePass';
+import { emptyAnnotatePass, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { formatAutomaticPercent, PERCENTAGE_POINTS } from '../../format';
 import { defaultSetSpec, engineFormatterFromExample, engineNumberSpec, exampleSpec, formatterFromExample, formatWithSpec, joinedChangeSpec, parseFormatExample, percentChangeSpec, roundedNumber, signedFormatterFromExample, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
@@ -75,6 +75,8 @@ import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planVal
 import { PLOT_FLOOR_RECT } from '../../sizing';
 import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, plotHeightAfter, authoredFootnoteCount, withAuthoredFootnotes, type LegendItemInput } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
+import { requestMemo } from '../../layoutPlan';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import {
   labelsOffKeepsNames,
   canvasMargin,
@@ -107,7 +109,7 @@ import type {
   SceneNode,
   ShownTexts,
 } from '../../types/scene';
-import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
+import { isSingleVarianceTier, isVarianceTier, varianceTierChromeFloor } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { withUnit } from '../../unitJoin';
@@ -185,28 +187,7 @@ function changeShows(text: string, slot: 'cmp0.delta' | 'cmp0.percent', override
 /** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
 const LIFT_ROW = Symbol('liftRow');
 
-export function layoutVariance(
-  data: ChartData,
-  options: VarianceOptions = {} as VarianceOptions,
-): Geometry<VarianceMarks, VarianceDerived> {
-  const variant = options.variant ?? 'absolute';
-  if (variant !== 'absolute') refuseLabelPosition(options, `variance ${variant}`,
-    variant === 'integrated' ? ['center', 'insideEnd', 'insideBase'] : []);
-  const warnings: LintWarning[] = [];
-  breakUnsupported('variance', options, warnings);
-  const theme = resolveSemanticPaletteTheme(
-    chartTheme(options),
-    options.palette,
-    warnings,
-  );
-  const size = resolveSize(options.size);
-  const measure = options.measure ?? defaultMeasurer;
-  const highlights = new Set(resolveHighlight(options.highlight));
-  // A warm red or orange accent on a signed variance reads as a loss.
-  const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'variance', before: warnings.length }] : [];
-  if (paintWarningRules.length) warnings.push(...highlightPaintWarnings(theme, 'variance'));
-  const density = options.labelDensity ?? 'smart';
-
+function prepareVarianceValues(data: ChartData, options: VarianceOptions, warnings: LintWarning[], shareTexts: boolean) {
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
     throw new NormalizeError('empty-data', 'categories', 'variance requires at least one category', undefined, undefined, ['data', 'categories']);
@@ -341,11 +322,6 @@ export function layoutVariance(
   }
 
   // ---- derive: AC, REF, ΔABS, Δ% (library-computed, never trusted) ----
-  const refScenario = refSeries.scenario;
-  // A scenario word in the key or a note is the code alone
-  // (AC, PY, PL, FC). A reference series without a scenario keeps its label.
-  const refWord = refScenario ?? refSeries.label;
-  const tierName = `Δ${refWord}${mode === 'relative' ? '%' : ''}`;
   const direction: Direction = ofSeries
     ? ofSeries.direction
     : dataSeries.every((s) => s.direction === 'lowerIsBetter')
@@ -353,7 +329,6 @@ export function layoutVariance(
       : 'higherIsBetter';
 
   const nmCats = new Set<Id>();
-  const integratedExtreme: Id[] = [];
   const acArr: (number | null)[] = [];
   const refArr: (number | null)[] = [];
   const dAbsArr: (number | null)[] = [];
@@ -391,23 +366,6 @@ export function layoutVariance(
       dPctArr[ci] = cleanFloat((100 * dAbsArr[ci]!) / Math.abs(ref));
     }
   });
-  const derived: VarianceDerived = {
-    ac: emptyIdRecord(),
-    ref: emptyIdRecord(),
-    deltaAbs: emptyIdRecord(),
-    deltaPct: emptyIdRecord(),
-    tierName,
-  };
-  cats.forEach((c, ci) => {
-    derived.ac[c.id] = acArr[ci] === null ? null : cleanFloat(acArr[ci]!);
-    derived.ref[c.id] = refArr[ci] === null ? null : cleanFloat(refArr[ci]!);
-    derived.deltaAbs[c.id] = dAbsArr[ci]!;
-    derived.deltaPct[c.id] = dPctArr[ci]!;
-  });
-
-  /** Plotted Δ per category: Δ% in relative mode, ΔABS otherwise. */
-  const deltaOf = (ci: number): number | null => (mode === 'relative' ? dPctArr[ci]! : dAbsArr[ci]!);
-
   // A cell or series format belongs to the measured side only when it is
   // one series. A sum of several series uses the chart format.
   const measuredSeries = ofSeries ?? (dataSeries.length === 1 ? dataSeries[0] : undefined);
@@ -432,7 +390,10 @@ export function layoutVariance(
   const levelSpec = defaultSetSpec([...acArr, ...refArr], options.locale?.language, options.unit, percentData ? { kind: 'percent' } : {});
   const deltaSpec = joinedChangeSpec(levelSpec, dAbsArr)!;
   const pctChangeSpec = percentChangeSpec(dPctArr, options.locale?.language, '%');
-  const pctSigned = (p: number, ci = 0): string => formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec);
+  const percentText: string[] | undefined = shareTexts ? [] : undefined;
+  const pctSigned = (p: number, ci = 0): string => percentText && Object.is(p, dPctArr[ci])
+    ? percentText[ci] ??= formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec)
+    : formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec);
   const absoluteFormat = (ci: number): string | undefined => {
     const example = formats[ci];
     return mode === 'relative' && example && specUnitKind(parseFormatExample(example)) === 'percent' ? undefined : example;
@@ -446,7 +407,7 @@ export function layoutVariance(
   const deltaFmt = (v: number, signed = false): string => formatWithSpec(v, signed ? deltaSpec : { ...deltaSpec, signed: false });
   const chartPlain = options.format ? formatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
   const chartSigned = options.format ? signedFormatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
-  const absolute = (v: number, ci: number, signed = false): string => {
+  const formatAbsolute = (v: number, ci: number, signed: boolean): string => {
     const example = absoluteFormat(ci);
     if (percentDifferences || integratedPercent) {
       const suffix = percentDifferences || signed ? PERCENTAGE_POINTS : '%';
@@ -458,6 +419,83 @@ export function layoutVariance(
     if (example === options.format) return (signed ? chartSigned : chartPlain)!(v);
     return (signed ? signedFormatterFromExample : formatterFromExample)(example, options.locale?.language, options.unit)(v);
   };
+
+  // A value may be printed in a mark, its claim and the accessible description
+  // at every height. The format and underlying number are fixed for this row.
+  const actualText: string[] | undefined = shareTexts ? [] : undefined;
+  const deltaText: string[] | undefined = shareTexts ? [] : undefined;
+  const absolute = (v: number, ci: number, signed = false): string => {
+    const texts = signed ? deltaText : actualText;
+    return texts && Object.is(v, (signed ? dAbsArr : acArr)[ci])
+      ? texts[ci] ??= formatAbsolute(v, ci, signed) : formatAbsolute(v, ci, signed);
+  };
+  return {
+    cats, dataSeries, running, refSeries, ofSeries, direction, nmCats, acArr, refArr, dAbsArr, dPctArr,
+    measuredSeries, percentDifferences, integratedPercent, formats, percentSpecs, levelSpec, deltaSpec, pctChangeSpec,
+    pctSigned, absoluteFormat, printed, fmt, absolute
+  };
+}
+
+export function layoutVariance(
+  data: ChartData,
+  options: VarianceOptions = {} as VarianceOptions,
+): Geometry<VarianceMarks, VarianceDerived> {
+  const variant = options.variant ?? 'absolute';
+  if (variant !== 'absolute') refuseLabelPosition(options, `variance ${variant}`,
+    variant === 'integrated' ? ['center', 'insideEnd', 'insideBase'] : []);
+  const warnings: LintWarning[] = [];
+  breakUnsupported('variance', options, warnings);
+  const theme = resolveSemanticPaletteTheme(
+    chartTheme(options),
+    options.palette,
+    warnings,
+  );
+  const size = resolveSize(options.size);
+  const measure = options.measure ?? defaultMeasurer;
+  const highlights = new Set(resolveHighlight(options.highlight));
+  // A warm red or orange accent on a signed variance reads as a loss.
+  const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'variance', before: warnings.length }] : [];
+  if (paintWarningRules.length) warnings.push(...highlightPaintWarnings(theme, 'variance'));
+  const density = options.labelDensity ?? 'smart';
+
+  // Absolute and relative tiers use the same actuals, reference and deltas at
+  // every trial height. Sorting or cutting categories owns its input order.
+  const mode = options.variant ?? 'absolute';
+  const shared = panelTypeClass(options) !== undefined && measure === defaultMeasurer && !options.sort && !options.topN
+    && data && typeof data === 'object'
+    ? requestMemo<{ values?: ReturnType<typeof prepareVarianceValues> }>(data,
+      'variance-tier-values:' + JSON.stringify([mode, options.variance?.vs, options.variance?.of,
+        options.format, options.locale?.language, options.unit, currentSmallValues(), formatScopeKey(options)]), () => ({})) : undefined;
+  const before = warnings.length;
+  const values = shared?.values ?? prepareVarianceValues(data, options, warnings, shared !== undefined);
+  if (shared && !shared.values && before === warnings.length) shared.values = values;
+  const {
+    cats, dataSeries, running, refSeries, ofSeries, direction, nmCats, acArr, refArr, dAbsArr, dPctArr,
+    measuredSeries, percentDifferences, integratedPercent, formats, percentSpecs, levelSpec, deltaSpec, pctChangeSpec,
+    pctSigned, absoluteFormat, printed, fmt, absolute
+  } = values;
+  const integratedExtreme: Id[] = [];
+  const refScenario = refSeries.scenario;
+  // A scenario word in the key or a note is the code alone
+  // (AC, PY, PL, FC). A reference series without a scenario keeps its label.
+  const refWord = refScenario ?? refSeries.label;
+  const tierName = `Δ${refWord}${mode === 'relative' ? '%' : ''}`;
+  const derived: VarianceDerived = {
+    ac: emptyIdRecord(),
+    ref: emptyIdRecord(),
+    deltaAbs: emptyIdRecord(),
+    deltaPct: emptyIdRecord(),
+    tierName,
+  };
+  cats.forEach((c, ci) => {
+    derived.ac[c.id] = acArr[ci] === null ? null : cleanFloat(acArr[ci]!);
+    derived.ref[c.id] = refArr[ci] === null ? null : cleanFloat(refArr[ci]!);
+    derived.deltaAbs[c.id] = dAbsArr[ci]!;
+    derived.deltaPct[c.id] = dPctArr[ci]!;
+  });
+
+  /** Plotted Δ per category: Δ% in relative mode, ΔABS otherwise. */
+  const deltaOf = (ci: number): number | null => (mode === 'relative' ? dPctArr[ci]! : dAbsArr[ci]!);
 
   // ---- tones & paints (semantic; colorblindSafe swaps to alternates) ----
   const cbSafe = options.colorblindSafe === true;
@@ -804,6 +842,13 @@ export function layoutVariance(
     w: frameResult.plot.w,
     h: plotHeightAfter(frameResult, size.height, frameResult.plot.h - catBandH - topPad - bottomPad),
   };
+
+  // Within one grid's balancing pass the width, type class and bottom margin
+  // stay fixed. A taller plot over 10 px keeps the original value rows.
+  // Caption offsets, extra label rows and the categorical axis can only add room.
+  if (mode !== 'integrated' && isVarianceTier(options) && measure === defaultMeasurer) {
+    varianceTierChromeFloor.set(plot, margin.bottom + 16 + 2 * labelH);
+  }
 
   // ---- value axis (optional; reserve measured above, shrinks plot) ----
   const nodes: SceneNode[] = [...frameResult.nodes];
@@ -1495,7 +1540,7 @@ export function layoutVariance(
   // An absolute chart plots differences of percent levels: those are points, not percent.
   const valueLinePercentLevels = (!percentDifferences && options.unit === '%') || mode === 'relative'
     || integratedPercent;
-  const annResult = runAnnotatePass({
+  const annResult = !options.annotations?.length && measure === defaultMeasurer ? emptyAnnotatePass() : runAnnotatePass({
     annotations: options.annotations ?? [],
     resolve: resolveAnchor,
     defaultSpan:
