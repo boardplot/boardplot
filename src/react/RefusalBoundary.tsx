@@ -52,10 +52,15 @@ class Boundary extends Component<
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
   /** Raised when a hydrated card hands over: the chart mounts afresh after it. */
   mount = 0;
+  /** The engine fault the host last heard of. */
+  told?: string;
 
-  /** The host hears of an engine fault (`chart-failed`) as of a refusal. */
+  /**
+   * The host hears of an engine fault (`chart-failed`) as of a refusal, once: new props draw the chart again, and the
+   * same fault again stays quiet, so a host that stores the refusal in state does not loop.
+   */
   override componentDidCatch(error: unknown) {
-    (error as { tell?: (boundary: BoundaryProps) => void }).tell?.(this.props);
+    (error as { tell?: (boundary: Boundary) => void }).tell?.(this);
   }
 
   static getDerivedStateFromError(error: unknown) {
@@ -97,12 +102,18 @@ export function useCard<P>(draw: (props: P) => ReactElement, props: P, type: str
   try {
     return draw(props);
   } catch (error) {
+    // A plain Error is a throw the API documents (a prepared result that does not match, an idPrefix that breaks an id):
+    // it goes on up to the host.
+    if ((error as Error)?.constructor === Error) throw error;
     // A render that threw is dropped in the browser. This one mounts (a server pass or hydration), so it may call
     // hooks past the ones the chart called before it threw.
     const refused: NormalizeError = error instanceof NormalizeError ? error
       : Object.assign(new NormalizeError('chart-failed', '', `The ${type} chart could not be drawn.`), {
         cause: error,
-        tell: ({ watch, size = { width: 0, height: 0 } }: BoundaryProps) => (watch as { onRefused?: (result: RefusedLayout) => void }).onRefused?.(layoutRefusal(type, type, size, refused)),
+        tell(boundary: Boundary) {
+          const { watch, size = { width: 0, height: 0 } } = boundary.props;
+          if (boundary.told !== (boundary.told = String(error))) (watch as { onRefused?: (result: RefusedLayout) => void }).onRefused?.(layoutRefusal(type, type, size, refused));
+        },
       });
     if (!server) throw refused;
     const boundary = useContext(BoundaryContext);

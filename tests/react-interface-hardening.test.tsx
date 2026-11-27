@@ -155,16 +155,22 @@ describe('React adapter boundary', () => {
   });
 
   // A per-type entry checks no option values: a value the engine cannot use threw and unmounted the host's React root.
+  // A host that stores the refusal in state must not loop, and a throw the API documents still reaches the host.
   it('draws the failure card and reports it as a refusal when the engine throws', () => {
     const onRefused = vi.fn();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fixture = getFixtures('table')[0]!;
-    const props = { data: fixture.data, variant: 'line', onRefused } as never;
+    const props = { data: fixture.data, variant: 'line' } as never;
     expect(renderToStaticMarkup(createElement(TableChart, props))).toContain('chart-failed');
-    act(() => { root.render(createElement(TableChart, props)); });
+    function Host() {
+      const [, set] = useState<object>();
+      return createElement(TableChart, { ...(props as object), onRefused: (result: object) => { onRefused(result); set(result); } } as never);
+    }
+    act(() => { root.render(createElement(Host)); });
     expect(container.innerHTML).toContain('The table chart could not be drawn');
     expect(onRefused).toHaveBeenCalledTimes(1);
     expect(onRefused.mock.calls[0]![0].warnings[0].code).toBe('chart-failed');
+    expect(() => renderToStaticMarkup(createElement(ColumnChart, { data: DATA, idPrefix: 'bad id!' }))).toThrow(/idPrefix/);
     // A bar table given column-chart data took the same path in the chart components.
     expect(renderToStaticMarkup(createElement(BarTableChart, { data: DATA } as never))).toContain('chart-failed');
   });
