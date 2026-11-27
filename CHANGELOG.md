@@ -2,6 +2,12 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## Unreleased
+
+### Fixed
+
+- A spec with a `target` that does not exist shows its error card in `BoardplotChart`. Before, the card itself crashed while it sized its source line, and React unmounted the chart.
+
 ## 0.67.0
 
 ### Changed

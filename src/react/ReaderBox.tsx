@@ -8,6 +8,7 @@ import type { Theme, ThemeRef } from '../core/types/theme';
 import { localeStrings, stringFields } from '../core/strings';
 import { sourceLine } from '../core/notes';
 import { footerType } from '../core/footer';
+import { TARGET_TYPE_TABLES } from '../core/target';
 import { checkThemeShape } from '../core/themeShape';
 import { linkThemeShapeRules } from '../core/themeShapeRules';
 import { DEFAULT_LOAD_FAILED_TEXT, placeholderStyle, BoardplotThemeContext } from './themeContext';
@@ -32,7 +33,8 @@ export default function ReaderBox({ theme: ref, options: authored = {}, size: ex
   const minimum = findings[0]?.expected?.minimum as Record<string, number> | undefined;
   const legacy = full && kind === 'refused' && settings?.strings?.refusalMessage?.includes('{')
     ? stringFields(settings?.strings?.refusalMessage, minimum ?? {}, language) : undefined;
-  const target = options.target ?? settings?.target;
+  // A target that does not exist is a finding of this card; the card takes the provider's or the default.
+  const target = [options.target, settings?.target].find((value) => Object.hasOwn(TARGET_TYPE_TABLES, value!));
   const size = explicitSize ?? resolveSize(options.size, target);
   const warned = useRef(false);
   useEffect(() => {

@@ -64,6 +64,13 @@ it('points into the bare spec the caller sent, not into a wrapping envelope', as
     .toContain('/options/labelDensity');
 });
 
+// A target that does not exist crashed the card that reports it: the card sized its source line for that target.
+it('draws the card for an unknown target', async () => {
+  const data = { categories: ['Week 1'], series: [{ id: 'orders', values: [24] }] };
+  root = await mount(<BoardplotChart spec={{ type: 'column', data, options: { source: 'Company data', target: 'not-a-value' } }} />, host);
+  expect(host.querySelector('[data-bp-error-path="/options/target"]') === null).toBe(false);
+});
+
 // A text-only console capture printed the findings array as [Object].
 it('logs a readable line naming the code and path before the findings', async () => {
   const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
