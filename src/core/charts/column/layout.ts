@@ -1023,9 +1023,9 @@ function measureCompactTrial(domain: ColumnDomain, area: ColumnArea, occupied: O
   const shortOpening = search?.growthHeight === size.height && area.showCatRow && area.plot.h < (search?.growthPlotNeed ?? 0);
   if ((!binary && !shortOpening) || !hasCompleteTextWidths(domain.measure) || !domain.va.show
     || domain.size.width < 280 || staticFrame.live || staticFrame.pinned || area.frame.deficit
-    || plotChromeFloor.has(area.frame.frame) || domain.annList.length || domain.averageMarker || domain.activeBreak
+    || plotChromeFloor.has(area.frame.frame) || domain.averageMarker || domain.activeBreak
     || domain.incompleteCats.size || domain.netLineOn || domain.refSeries.length || domain.pyRef || domain.ribbonsOn
-    || domain.connectorsOn || domain.anomaly || area.tier || area.axisTitle || area.ruleH || domain.variant !== 'stacked'
+    || domain.connectorsOn || domain.anomaly || area.axisTitle || area.ruleH || domain.variant !== 'stacked'
     || options.categoryLabels !== 'staircase' || options.seriesLabels !== undefined || options.notes || options.labelOffsets
     || options.labelPlacements || options.labelPosition || options.shareLabels || options.valueLabels || options.ratioTier || options.events
     || options.viewDomain || options.window || HOST_CLAIMS in options || domain.density === 'minimal'
