@@ -737,7 +737,7 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   let dates = true;
   const stableMetrics = isCachedTextMeasurer(s.measure);
   let plan: LanePlan | undefined;
-  let framed = first;
+  let framed!: typeof first;
   let frameWarnings: LintWarning[];
   let dateArea: A | undefined;
   let dateAreaWarnings: LintWarning[] = [];
