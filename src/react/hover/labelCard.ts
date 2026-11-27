@@ -1,6 +1,6 @@
 import { chartString } from '../../core/strings/hover';
 import { joinSentences } from '../../core/strings';
-import { parseFormatExample, roundedNumber, unitMagnitude } from '../../core/formatSpec';
+import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber, unitMagnitude, type NumberFormatSpec } from '../../core/formatSpec';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
 import type { SlotCandidate } from '../../core/label/solver';
@@ -13,7 +13,7 @@ import { eventHeading, eventReading } from '../../core/eventReading';
 import type { Geometry, OccupiedRect, Paint, PlaceDecision, SceneNode, TextRole } from '../../core/types/scene';
 import type { Theme } from '../../core/types/theme';
 import type { InteractionComparison, InteractionRecord, InteractionValue } from '../../core/a11y/types';
-import { decimalPrecision, deltaValueText, derivedValueText as derivedText, displayedValueText, formattedValueText, signedPercentText } from '../../core/a11y/valueText';
+import { decimalPrecision, deltaValueText, displayedValueText, formattedValueText, shownValueText, signedPercentText } from '../../core/a11y/valueText';
 import { maxOf, pushAll } from '../../core/arrays';
 
 /**
@@ -26,7 +26,7 @@ import { maxOf, pushAll } from '../../core/arrays';
 
 export interface LabelCardRow {
   /** 'more' is the card's own row counting what the frame's height left out. */
-  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'rank' | 'annotation' | 'more';
+  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'more';
   text: string;
   /** Separate drawn cells. `text` keeps the complete accessible reading. */
   label?: string;
@@ -36,6 +36,8 @@ export interface LabelCardRow {
   swatch?: Paint;
   /** Original source facts, never rounded display numbers. Withheld values are removed. */
   values?: InteractionValue[];
+  /** A stack part's share of its category, drawn as a column after the value. */
+  share?: string;
   /** Prose may wrap; names use one line. */
   lines?: number;
 }
@@ -57,7 +59,7 @@ export function cardSurface(theme: Theme): { fill: string; radius: number; flat:
   return { fill: dark ? mixColors(theme.color.background, theme.color.ink, 0.94) : theme.color.background,
     radius: flat ? radius : 6, flat };
 }
-interface LabelCardContent {
+export interface LabelCardContent {
   rows: LabelCardRow[];
   accessibleText: string;
   /** The widest the card may be, in px, when its words need a measure of their own (an event's detail). */
@@ -65,13 +67,19 @@ interface LabelCardContent {
 }
 
 /** How the card words the record's facts. The facts themselves are the record's. */
-interface LabelCardOptions {
+export interface LabelCardOptions {
   /**
    * The chart draws every category as 100 %. The share is then the segment's
    * own percentage and the base is the axis, so the card prints no base. The
    * record keeps the category total in the data's unit either way.
    */
   hundredPercent?: boolean;
+  /** The card's title: the hovered category's period (`cardTitle`). Absent: the record's own heading. */
+  title?: string;
+  /** The value's name where the record names none (`metricName`). */
+  name?: string;
+  /** The key's order of the series a card with several records lists: the records' order in the chart. */
+  order?: ReadonlyMap<InteractionRecord, number>;
 }
 
 /** The options that say a chart draws its categories as 100 %. */
@@ -183,14 +191,15 @@ function safeValue(value: InteractionValue, locale?: string): InteractionValue {
  * percent as the chart draws them (their shown texts), else the change through
  * the value's format, the percent as a change set of one value. A comparison that
  * cannot be made (another axis, no reference value) has no row; the
- * record keeps it with its reason.
+ * record keeps it with its reason. `reference` is the name the card gives the
+ * reference elsewhere, so a reference without a label reads one way throughout.
  */
-function comparisonRow(comparison: InteractionComparison, locale?: string): LabelCardRow | undefined {
+function comparisonRow(comparison: InteractionComparison, locale?: string, reference?: string): LabelCardRow | undefined {
   const values = [comparison.current, comparison.reference, comparison.delta, comparison.percent];
   const withheld = values.some(value => value.state === 'suppressed');
   if (!withheld && comparison.delta.state === 'unavailable') return undefined;
   const precision = Math.max(decimalPrecision(comparison.current.raw), decimalPrecision(comparison.reference.raw));
-  const name = comparison.labelKind === 'reference' ? comparison.label : comparison.scenario ?? comparison.label;
+  const name = comparison.labelKind === 'reference' ? comparison.label : reference ?? comparison.scenario ?? comparison.label;
   const label = comparison.labelKind === 'complete' ? `${comparison.label}:` : chartString({ locale }, 'comparisonLabel', { label: name });
   const value = withheld ? chartString({ locale: { language: locale } }, 'valueWithheld')
     : `${deltaValueText(comparison.delta, precision, locale)} (${signedPercentText(comparison.percent, locale)})`;
@@ -198,10 +207,70 @@ function comparisonRow(comparison: InteractionComparison, locale?: string): Labe
   values: withheld ? [] : values.map(value => safeValue(value, locale)) };
 }
 
-/** A share as the chart prints it: its shown text, else a derived share at the exhibit's precision, else two decimals. */
-function shareText(percent: InteractionValue, locale?: string): string {
-  return percent.displayed || percent.derived === 'percent' || percent.format
-    ? displayedValueText(percent, locale) : derivedText(percent, 2, false, locale, true);
+/** What the card prints for a value that is not there: a dash, never the engine's reason. */
+const NO_VALUE = '–';
+
+/** A value as the card prints it: its shown text or format, a dash where there is no observation. */
+function cardValueText(value: InteractionValue, locale?: string): string {
+  return value.state === 'missing' || value.state === 'unavailable' ? NO_VALUE : displayedValueText(value, locale);
+}
+
+/** A printed number with no nonzero digit, in Latin, Arabic-Indic or Persian digits. */
+const NONZERO_DIGIT = /[1-9١-٩۱-۹]/u;
+
+/**
+ * A number through one card format: the format's text, or its bound ("<$1k",
+ * "<0.1%") where the format prints a nonzero value as zero.
+ */
+function specText(raw: number, spec: NumberFormatSpec): string {
+  const text = formatWithSpec(raw, spec);
+  if (raw === 0 || NONZERO_DIGIT.test(text)) return text;
+  const step = 10 ** -spec.decimals * MAGNITUDE_DIVISOR[spec.magnitude];
+  return `${raw > 0 ? '<' : '>'}${formatWithSpec(Math.sign(raw) * step, spec)}`;
+}
+
+/** The share column's format where no share is drawn: one decimal, as the chart prints a share. */
+const SHARE_EXAMPLE = '12.3%';
+
+/**
+ * One number format for every row of a card: the drawn text of its largest
+ * value in that unit, as the chart's labels print the set. A value with a
+ * format of its own prints through it. So a sliver beside "$5k" reads "<$1k"
+ * and not "$0.43", and the total prints as the parts do.
+ */
+function cardFormat(values: readonly InteractionValue[], locale?: string): (value: InteractionValue) => string {
+  const plain = (value: InteractionValue) => value.state === 'value' && typeof value.raw === 'number' && !value.format && value.derived !== 'percent';
+  const specs = new Map<string, NumberFormatSpec | null>();
+  const specFor = (unit: string | undefined): NumberFormatSpec | null => {
+    const key = unit ?? '';
+    let spec = specs.get(key);
+    if (spec === undefined) {
+      let largest: { raw: number; text: string } | undefined;
+      for (const value of values) {
+        const text = plain(value) && (value.unit ?? '') === key ? shownValueText(value) : undefined;
+        if (text !== undefined && (!largest || Math.abs(value.raw as number) > Math.abs(largest.raw))) largest = { raw: value.raw as number, text };
+      }
+      spec = largest ? { ...exampleSpec(largest.text, locale, unit), rollMagnitude: false } : null;
+      // A format that does not print its own example back (a unit that holds the scale, "$m") is no card format.
+      if (spec && specText(largest!.raw, spec) !== largest!.text) spec = null;
+      specs.set(key, spec);
+    }
+    return spec;
+  };
+  return value => {
+    const spec = plain(value) ? specFor(value.unit) : null;
+    return spec ? specText(value.raw as number, spec) : cardValueText(value, locale);
+  };
+}
+
+/** The shares of a card in one format: a drawn share's, else the shares' format, else one decimal. */
+function shareFormat(percents: readonly InteractionValue[], locale?: string): (percent: InteractionValue) => string {
+  const drawn = percents.find(percent => percent.displayed && shownValueText(percent) !== undefined);
+  const example = drawn ? drawn.displayed!.trim() : percents.find(percent => percent.format)?.format ?? SHARE_EXAMPLE;
+  const spec = { ...exampleSpec(example, locale, '%'), rollMagnitude: false as const };
+  return percent => percent.state === 'value' && typeof percent.raw === 'number'
+    ? drawn?.displayed && percent.displayed ? displayedValueText(percent, locale) : specText(percent.raw, spec)
+    : cardValueText(percent, locale);
 }
 
 /** A heading that names the category says its date already, unless the heading is a bare id that is not the date. */
@@ -212,7 +281,7 @@ function headingNamesDate(record: InteractionRecord, date: InteractionValue): bo
 
 function fieldRow(field: InteractionRecord['fields'][number], locale?: string): LabelCardRow {
   const label = `${field.label}:`;
-  const value = displayedValueText(field.value, locale);
+  const value = cardValueText(field.value, locale);
   return { kind: 'field', label, value, text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
 }
 
@@ -237,24 +306,39 @@ const SCALE_FIRST = /^(?:M|(?:k|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|mil
 /** The value row's name and number, and the heading above it. */
 interface ValueName { heading: string; name?: string; value: string }
 
+/** Names that say the same: a row whose name is the card's title prints the number alone. */
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+}
+
 /**
- * Name the number: the record's statistic ("Median"), else a unit phrase,
- * printed once in front ("Cases per month: 800"), else the metric's own name
- * (the series, a panel's title, a sparkline's label) with the category alone
- * as the heading ("Jan 26", "North: 65.8"). A spec that names nothing prints
- * the bare number. The number keeps its format; only a phrase that moves in
- * front leaves its end.
+ * Name the number: the record's statistic ("Median"), else the metric's own
+ * name (the series, a panel's title, a sparkline's label) with the category
+ * alone as the heading ("Jan 26", "North: 65.8"), else a unit phrase,
+ * printed once in front ("Cases per month: 800"), else the chart's metric
+ * (`name`). A spec that names nothing prints the bare number, and so does a
+ * name that repeats the heading. The number keeps its format; only a phrase
+ * that moves in front leaves its end.
  */
-function valueName(record: InteractionRecord, locale?: string): ValueName {
-  const value = displayedValueText(record.value, locale);
-  if (record.valueLabel) return { heading: record.label, name: record.valueLabel, value };
+function valueName(record: InteractionRecord, locale?: string, options?: LabelCardOptions): ValueName {
+  const value = cardValueText(record.value, locale);
+  const named = (heading: string, name?: string, number = value): ValueName =>
+    name !== undefined && !sameName(name, heading) ? { heading, name, value: number } : { heading, value: number };
+  if (record.valueLabel) return named(options?.title ?? record.label, record.valueLabel);
+  if (record.seriesLabel) {
+    // A unit phrase the series name already says ("Visits" in visits) leaves the number: "Visits: 122k".
+    const unit = record.value.unit?.trim();
+    const number = unit && unitPhrase(unit) && value.endsWith(unit) && record.seriesLabel.toLocaleLowerCase().includes(unit.toLocaleLowerCase())
+      ? value.slice(0, -unit.length).replace(/[\s\u00a0\u202f]+$/u, '') : '';
+    return named(options?.title ?? record.categoryLabel ?? record.label, record.seriesLabel, number || value);
+  }
+  const heading = options?.title ?? record.label;
   const unit = record.value.unit?.trim();
   if (unit && unitPhrase(unit) && value.endsWith(unit)) {
-    const number = value.slice(0, -unit.length).replace(/[\s\u00a0\u202f]+$/u, '');
-    if (number) return { heading: record.label, name: unit.replace(/^\p{L}/u, letter => letter.toUpperCase()), value: number };
+    const number = value.slice(0, -unit.length).replace(/[\s  ]+$/u, '');
+    if (number) return named(heading, unit.replace(/^\p{L}/u, letter => letter.toUpperCase()), number);
   }
-  if (record.seriesLabel) return { heading: record.categoryLabel ?? record.label, name: record.seriesLabel, value };
-  return { heading: record.label, value };
+  return named(heading, options?.name);
 }
 
 /**
@@ -264,11 +348,27 @@ function valueName(record: InteractionRecord, locale?: string): ValueName {
  */
 function unnamedText(row: LabelCardRow, record: InteractionRecord, locale?: string): string {
   if (row.kind !== 'value' || record.event || record.cardFields) return row.text;
-  return `${record.valueLabel ? `${record.valueLabel}: ` : ''}${displayedValueText(record.value, locale)}`;
+  return `${record.valueLabel ? `${record.valueLabel}: ` : ''}${cardValueText(record.value, locale)}`;
 }
 
 function cardContent(rows: LabelCardRow[]): LabelCardContent {
   return { rows, accessibleText: joinSentences(rows.map(row => row.text)) };
+}
+
+/** Two numbers of one record that say the same. */
+function sameNumber(a: InteractionValue, b: InteractionValue): boolean {
+  return a.state === 'value' && b.state === 'value' && typeof a.raw === 'number' && a.raw === b.raw;
+}
+
+/**
+ * A record that names no series and no statistic whose number a field or a
+ * comparison repeats (a variance's Actual, its change): the card prints the
+ * named row and no headline.
+ */
+function repeatedHeadline(record: InteractionRecord): boolean {
+  if (record.seriesLabel || record.valueLabel) return false;
+  return record.fields.some(field => field.key === 'current' && sameNumber(field.value, record.value))
+    || record.comparisons.some(comparison => sameNumber(comparison.delta, record.value) || sameNumber(comparison.percent, record.value));
 }
 
 /**
@@ -276,36 +376,43 @@ function cardContent(rows: LabelCardRow[]): LabelCardContent {
  * strings. The value row, the field rows, the change and the share print the
  * text the chart draws for each (their shown texts, `displayedValueText`), so
  * a card beside a bar labelled "$213k" says "$213k" and not "212.8"; `values`
- * keeps the source number.
+ * keeps the source number. No number stands twice: a field the engine derived
+ * that repeats the value (a funnel's stage total), and a headline that a named
+ * field repeats, leave the card; a fact the record cannot give (a first
+ * stage's conversion) has no row, and a value not observed prints a dash.
  */
-export function labelCardContent(record: InteractionRecord, locale?: string, options?: LabelCardOptions): LabelCardContent {
+export function labelCardContent(record: InteractionRecord, locale?: string, options?: LabelCardOptions, share = true): LabelCardContent {
   if (record.event) return eventCardContent(record.event);
   // Only the facts the mark does not print: no title or value that repeats it.
   if (record.cardFields) {
     return cardContent(record.fields.filter(field => record.cardFields!.includes(field.key)).map(field => fieldRow(field, locale)));
   }
-  const named = valueName(record, locale);
-  const rows: LabelCardRow[] = [
-    { kind: 'title', text: named.heading },
-    { kind: 'value', text: `${named.name ? `${named.name}: ` : ''}${named.value}`,
-      label: named.name ? `${named.name}:` : '', value: named.value, pointed: true,
-      values: [safeValue(record.value, locale)] },
-  ];
+  const named = valueName(record, locale, options);
+  const headline = record.value.state === 'suppressed' || !repeatedHeadline(record);
+  const rows: LabelCardRow[] = [{ kind: 'title', text: named.heading }];
+  if (headline) rows.push({ kind: 'value', text: `${named.name ? `${named.name}: ` : ''}${named.value}`,
+    label: named.name ? `${named.name}:` : '', value: named.value, pointed: true,
+    values: [safeValue(record.value, locale)] });
   if (record.value.state !== 'suppressed') {
     const members = new Set(record.members?.map(member => member.pointId).filter(id => id !== undefined));
     // A heading that names the category says its date already. Only
     // a bare id the author gave no label (and that is not the date) keeps it.
     for (const field of record.fields) {
-      if (field.key === 'date' && headingNamesDate(record, field.value)) continue;
+      if (field.key === 'date' && (options?.title !== undefined || headingNamesDate(record, field.value))) continue;
+      if (field.value.state === 'unavailable' || (field.value.derived && sameNumber(field.value, record.value))) continue;
       // Aggregate cards show the mark's statistics. Individual observations stay
       // in the typed record for data tables and custom host content.
       // A field prints the text the chart draws for it (its shown text), else
       // through its format when it declares one, else at its own precision
       // with the unit joined as the marks join it ("10.9%", "186.825 EUR k").
-      if (!members.has(field.key)) rows.push(fieldRow(field, locale));
+      if (members.has(field.key)) continue;
+      const row = fieldRow(field, locale);
+      // Without a headline, the current value is the pointed row.
+      rows.push(!headline && field.key === 'current' ? { ...row, kind: 'value', pointed: true } : row);
     }
-    pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale) ?? []));
-    if (record.share) {
+    const reference = record.fields.find(field => field.key === 'reference')?.label;
+    pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale, reference) ?? []));
+    if (record.share && share) {
       const base = record.share.denominator;
       const values = [record.share.numerator, base, record.share.percent];
       const withheld = values.some(value => value.state === 'suppressed');
@@ -317,7 +424,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       const label = chartString(wording, 'shareLabel');
       // The base is a total the record holds for the share; no label states it, so it prints through its format.
       const value = withheld ? chartString(wording, 'valueWithheld')
-        : `${shareText(record.share.percent, locale)}${whole ? '' : chartString(wording, 'ofValueClause', { v1: formattedValueText(base, locale) })}`;
+        : `${shareFormat([record.share.percent], locale)(record.share.percent)}${whole ? '' : chartString(wording, 'ofValueClause', { v1: formattedValueText(base, locale) })}`;
       rows.push({ kind: 'share', label, value, text: `${label} ${value}`,
       values: withheld ? [] : values.map(value => safeValue(value, locale)) });
     }
@@ -371,39 +478,65 @@ function seriesSwatch(record: InteractionRecord, scene: readonly SceneNode[]): P
   return path?.t === 'path' ? path.stroke : undefined;
 }
 
+/** The parts of a stack: records whose share of a category total the card can print. */
+function stackPart(record: InteractionRecord): boolean {
+  return record.share !== undefined && record.share.percent.state === 'value' && record.value.state !== 'suppressed';
+}
+
 /**
- * One card for several records at one mark, such as the shared end label of
- * series that all end on the same printed value: the category heading, then
- * each series with its own value and context. Every member is listed.
+ * One card for several records at one category or one mark, such as the
+ * series of a week or the shared end label of series that all end on one
+ * printed value: the category heading, then each series in the order of the
+ * key, the pointed one in bold. The parts of a stack come first, each with
+ * its share in a column of its own, then one Total row, then the other
+ * series (a combo's lines). A share of one part alone (100 %) is not
+ * printed. Every row prints its number in one format.
+ * Every member is listed. `cache` keeps the content per set of records.
  */
 export function sharedLabelCardContent(records: readonly InteractionRecord[], locale?: string, options?: LabelCardOptions,
-  scene: readonly SceneNode[] = [], cache?: Map<InteractionRecord, LabelCardRow[]>): LabelCardContent {
+  scene: readonly SceneNode[] = [], cache?: Map<string, LabelCardContent>): LabelCardContent {
+  const key = cache && records.map(record => record.id).join('\u0000');
+  const cached = key === undefined ? undefined : cache!.get(key);
+  if (cached) return cached;
   const rows: LabelCardRow[] = [];
-  if (records.length) {
-    const first = records[0]!;
+  const pointed = records[0];
+  if (pointed) {
     // The records share one category, so they share its date: it joins the
     // heading once instead of repeating under every series.
-    const date = first.fields.find(field => field.key === 'date' && !headingNamesDate(first, field.value));
-    const heading = first.categoryLabel ?? first.target.owner.categoryId ?? first.label;
+    const date = options?.title === undefined && pointed.fields.find(field => field.key === 'date' && !headingNamesDate(pointed, field.value));
+    const heading = options?.title ?? pointed.categoryLabel ?? pointed.target.owner.categoryId ?? pointed.label;
     rows.push({ kind: 'title', text: date ? `${heading}, ${displayedValueText(date.value, locale)}` : heading });
   }
-  records.forEach((record, index) => {
-    let member = cache?.get(record);
-    if (!member) {
-      const name = record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
-      const content = labelCardContent({ ...record, fields: record.fields.filter(field => field.key !== 'date' || headingNamesDate(record, field.value)) },
-        locale, options).rows.slice(1);
-      const value = content[0] && unnamedText(content[0], record, locale);
-      member = value ? [{ ...content[0]!, label: `${name}:`, value, text: `${name}: ${value}`,
-        series: true, swatch: seriesSwatch(record, scene) }, ...content.slice(1)] : [];
-      cache?.set(record, member);
-    }
-    if (member.length) {
-      rows.push({ ...member[0]!, pointed: index === 0 });
-      pushAll(rows, member.slice(1));
+  const order = options?.order;
+  const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
+  const parts = sorted.filter(stackPart);
+  const stacked = parts.length > 1;
+  const listed = stacked ? [...parts, ...sorted.filter(record => !parts.includes(record))] : sorted;
+  const base = stacked ? parts[0]!.share!.denominator : undefined;
+  const format = cardFormat([...records.map(record => record.value), ...base ? [base] : []], locale);
+  const share = shareFormat(parts.map(record => record.share!.percent), locale);
+  const whole = !base || options?.hundredPercent === true || (base.state === 'value' && base.raw === 100 && base.unit === '%');
+  listed.forEach((record, index) => {
+    const name = record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
+    const content = labelCardContent({ ...record, fields: record.fields.filter(field => field.key !== 'date' || headingNamesDate(record, field.value)) },
+      locale, { hundredPercent: options?.hundredPercent }, false).rows.slice(1);
+    const at = content.findIndex(row => row.kind === 'value');
+    if (at < 0) return;
+    const number = format(record.value);
+    const value = `${record.valueLabel ? `${record.valueLabel}: ` : ''}${number}`;
+    const part = stacked && parts.includes(record) ? share(record.share!.percent) : undefined;
+    rows.push({ ...content[at]!, label: `${name}:`, value, text: `${name}: ${value}${part ? `, ${part}` : ''}`,
+      series: true, swatch: seriesSwatch(record, scene), pointed: record === pointed, ...part ? { share: part } : {} });
+    pushAll(rows, content.filter((_, row) => row !== at));
+    if (stacked && !whole && index === parts.length - 1 && base) {
+      const label = chartString({ locale: { language: locale } }, 'totalLabel');
+      const total = format(base);
+      rows.push({ kind: 'total', label: `${label}:`, value: total, text: `${label}: ${total}`, values: [safeValue(base, locale)] });
     }
   });
-  return cardContent(rows);
+  const content = cardContent(rows);
+  if (key !== undefined) cache!.set(key, content);
+  return content;
 }
 
 /**
@@ -756,6 +889,15 @@ function clampInto(frame: Rect, rect: Rect): Rect {
 interface MeasuredRow {
   lines: string[]; width: number; height: number; title?: string;
   valueLines?: string[]; gap: number;
+  /** The width of the card's share column, the same on every row; 0 without one. */
+  shareWidth: number;
+  /** A hairline above the row: the Total row under the parts of a stack. */
+  rule?: true;
+}
+
+/** The share column's width: its widest share. */
+function shareColumn(rows: readonly LabelCardRow[], theme: Theme, measure: TextMeasurer): number {
+  return Math.max(0, maxOf(rows.map(row => row.share === undefined ? 0 : measure(row.share, { ...rowFont(row, theme), tabular: true }).width)));
 }
 
 /**
@@ -783,6 +925,9 @@ export function cardValueLines(text: string, font: FontSpec, width: number, meas
  * population, not "Accou…"). No digit is removed either way.
  */
 function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: number, measure: TextMeasurer): MeasuredRow[] {
+  const shares = shareColumn(rows, theme, measure);
+  const shareWidth = shares ? shares + CARD_SPACE.column : 0;
+  maxWidth = Math.max(1, maxWidth - shareWidth);
   const labelReserve = Math.max(0, maxOf(rows.map(row => !row.label ? 0
     : measure(row.label, rowFont(row, theme)).width + CARD_SPACE.column + (row.series ? 14 : 0))));
   const valueWidth = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(rows.map(row => row.value === undefined ? 0
@@ -790,7 +935,7 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
   return rows.map((row, index) => {
     const font = rowFont(row, theme);
     const paired = row.value !== undefined;
-    const swatch = row.series ? 14 : 0;
+    const swatch = row.series || row.kind === 'total' ? 14 : 0;
     const label = paired ? row.label ?? '' : row.text;
     const room = paired ? Math.max(0, maxWidth - valueWidth - (label ? CARD_SPACE.column : 0) - swatch) : maxWidth;
     // The title is the record's name: in full, on as many lines as it needs.
@@ -798,10 +943,10 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
       : fitText(label, font, room, row.lines ?? (row.kind === 'annotation' ? 2 : 1), measure);
     const lines = fitted.lines.length ? fitted.lines : [''];
     const valueLines = paired ? cardValueLines(row.value!, font, Math.max(1, valueWidth), measure) : undefined;
-    const gap = index > 0 && (rows[index - 1]?.kind === 'title' || row.kind === 'more'
+    const gap = index > 0 && (rows[index - 1]?.kind === 'title' || row.kind === 'more' || row.kind === 'total'
       || (row.series && !rows[index - 1]?.series) || (row.kind === 'annotation' && rows[index - 1]?.kind !== 'annotation')) ? CARD_SPACE.group : 0;
-    return { lines, title: fitted.title, valueLines, gap,
-      width: Math.max(...lines.map(line => measure(line, font).width)) + swatch + (paired ? valueWidth + (label ? CARD_SPACE.column : 0) : 0),
+    return { lines, title: fitted.title, valueLines, gap, shareWidth: shares, ...row.kind === 'total' ? { rule: true as const } : {},
+      width: Math.max(...lines.map(line => measure(line, font).width)) + swatch + (paired ? valueWidth + (label ? CARD_SPACE.column : 0) : 0) + shareWidth,
       height: Math.max(lines.length, valueLines?.length ?? 0) * lineBox(font) };
   });
 }
@@ -813,10 +958,11 @@ const WIDE_CARD_WIDTH = 320;
 
 /** The card's widest measure: `CARD_WIDTH`, wider up to `WIDE_CARD_WIDTH` for a name and value that need it on one line. */
 function cardWidth(rows: readonly LabelCardRow[], theme: Theme, measure: TextMeasurer): number {
-  const paired = Math.max(0, maxOf(rows.map(row => {
+  const shares = shareColumn(rows, theme, measure);
+  const paired = (shares ? shares + CARD_SPACE.column : 0) + Math.max(0, maxOf(rows.map(row => {
     if (row.value === undefined) return 0;
     const font = rowFont(row, theme);
-    return (row.label ? measure(row.label, font).width + CARD_SPACE.column : 0) + (row.series ? 14 : 0)
+    return (row.label ? measure(row.label, font).width + CARD_SPACE.column : 0) + (row.series || row.kind === 'total' ? 14 : 0)
       + measure(row.value, { ...font, tabular: true }).width;
   })));
   return Math.min(WIDE_CARD_WIDTH, Math.max(CARD_WIDTH, paired + 2 * CARD_SPACE.x));
@@ -859,6 +1005,7 @@ function rowsWithinHeight(
   // Apply both limits to the source rows, so a summary never counts as data.
   let series = 0;
   const cut = rows.findIndex(row => row.series && ++series > 8);
+  // The Total row closes the parts it sums: a card that cuts them leaves it out.
   const maximum = cut < 0 ? rows.length : cut;
   const limited = cut < 0 ? [...rows] : [...rows.slice(0, maximum), moreRow(rows.length - maximum, locale)];
   const measured = measureRows(limited, theme, maxWidth, measure);
@@ -900,15 +1047,22 @@ function cardScene(input: LabelCardInput, rows: LabelCardRow[], rect: Rect, meas
     const size = measured[index]!;
     const font = rowFont(row, theme);
     y += size.gap;
+    if (size.rule) scene.push({ t: 'line', id: `${prefix}:${index}:rule`, owner: record.target.owner, part: 'interaction-rule',
+      x1: CARD_SPACE.x, y1: y - size.gap / 2, x2: rect.w - CARD_SPACE.x, y2: y - size.gap / 2, tx: rect.x, ty: rect.y,
+      stroke: { css: theme.color.grid }, width: strokeToken(theme, 'hair') });
     if (row.swatch) scene.push({ t: 'rect', id: `${prefix}:${index}:swatch`, owner: record.target.owner, part: 'interaction-swatch',
       rect: { x: CARD_SPACE.x, y: y + (lineBox(font) - 8) / 2, w: 8, h: 8 }, tx: rect.x, ty: rect.y, radius: 2, fill: row.swatch });
     if (size.lines.some(Boolean)) scene.push({ t: 'text', id: `${prefix}:${index}`, owner: record.target.owner, part: 'interaction-label',
-      role: rowRole(row), x: CARD_SPACE.x + (row.series ? 14 : 0), y, tx: rect.x, ty: rect.y,
+      role: rowRole(row), x: CARD_SPACE.x + (row.series || row.kind === 'total' ? 14 : 0), y, tx: rect.x, ty: rect.y,
       lines: size.lines, align: 'start', font, title: size.title,
-      ink: { css: row.kind === 'title' || row.series || (row.kind === 'value' && row.value === undefined) ? theme.color.ink : theme.color.inkMuted } });
+      ink: { css: row.kind === 'title' || row.series || row.kind === 'total' || (row.kind === 'value' && row.value === undefined) ? theme.color.ink : theme.color.inkMuted } });
+    const shareColumn = size.shareWidth ? size.shareWidth + CARD_SPACE.column : 0;
     if (size.valueLines) scene.push({ t: 'text', id: `${prefix}:${index}:value`, owner: record.target.owner, part: 'interaction-label',
-      role: composedTextRole(row.value!), x: rect.w - CARD_SPACE.x, y, tx: rect.x, ty: rect.y, lines: size.valueLines,
-      align: 'end', font, ink: { css: row.kind === 'value' ? theme.color.ink : theme.color.inkMuted } });
+      role: composedTextRole(row.value!), x: rect.w - CARD_SPACE.x - shareColumn, y, tx: rect.x, ty: rect.y, lines: size.valueLines,
+      align: 'end', font, ink: { css: row.kind === 'value' || row.kind === 'total' ? theme.color.ink : theme.color.inkMuted } });
+    if (row.share !== undefined) scene.push({ t: 'text', id: `${prefix}:${index}:share`, owner: record.target.owner, part: 'interaction-label',
+      role: composedTextRole(row.share), x: rect.w - CARD_SPACE.x, y, tx: rect.x, ty: rect.y, lines: [row.share],
+      align: 'end', font: { ...font, tabular: true }, ink: { css: theme.color.inkMuted } });
     y += size.height;
   });
   return scene;

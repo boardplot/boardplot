@@ -9,8 +9,8 @@ import type { ResolvedChartRequest } from '../../core/request';
 import { withChartFormats } from '../../core/formatSpec';
 import { minOf } from '../../core/arrays';
 import type { RenderGeometry } from '../prepared';
-import { bandTypes, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
-import { hundredPercentComposition, labelCardContent, sharedLabelCardContent, type CompositionOptions } from './labelCard';
+import { bandTypes, cardOptions, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
+import { labelCardContent, sharedLabelCardContent } from './labelCard';
 
 /** Matrix charts read row by row: a row is a series, its cells run along the categories. */
 const MATRIX_TYPES: ReadonlySet<string> = new Set(['heatmap', 'cohort', 'status']);
@@ -202,9 +202,7 @@ export function keyboardSelection(model: HoverModel, request: ResolvedChartReque
  */
 export function keyboardReading(model: HoverModel, request: ResolvedChartRequest, record: InteractionRecord): string {
   const active = keyboardTargets(model, request, record);
-  const panel = record.target.panel === undefined ? undefined : model.placement?.panels?.find(entry => entry.panel === record.target.panel);
-  const options = { hundredPercent: hundredPercentComposition(panel?.type ?? request.type,
-    panel ? panel.composition : request.options as CompositionOptions) };
+  const options = cardOptions(model, request, record);
   const locale = request.locale?.language;
   return withChartFormats(request.options, () => active.length > 1
     ? sharedLabelCardContent(active, locale, options).accessibleText

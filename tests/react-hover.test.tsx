@@ -384,6 +384,10 @@ describe('onRecordClick', () => {
   });
 });
 
+/** The caption the card sets in bold: the pointed record's name. */
+const pointedCaption = () => Array.from(document.querySelectorAll<HTMLElement>('[data-bp-chart-card] [data-bp-role="caption"]'))
+  .find(node => node.style.fontWeight === '600' || node.getAttribute('font-weight') === '600')?.textContent;
+
 describe('near-zero value key', () => {
   // Replacing a shared end label with a value key must keep every member's hover, click and keyboard target.
   it('the near-zero value key addresses every member series', async () => {
@@ -395,8 +399,8 @@ describe('near-zero value key', () => {
       expect(label).toBeDefined();
       pointer(label, 'pointermove');
       expect(card()).toContain(member);
-      // The member's caption is first, so a key never silently opens the first series' card.
-      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(`${member}:`);
+      // The member's caption is the pointed one, so a key never silently opens the first series' card.
+      expect(pointedCaption()).toBe(`${member}:`);
       const markers = Array.from(host.querySelectorAll(`[data-id^="marker:${id}:"]`));
       expect(markers.length).toBeGreaterThan(0);
       expect(markers.every(node => node.getAttribute('opacity') === '0.25')).toBe(false);
@@ -404,7 +408,7 @@ describe('near-zero value key', () => {
       expect(label.getAttribute('tabindex')).toBe('0');
       pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
       act(() => label.dispatchEvent(new FocusEvent('focusin', { bubbles: true })));
-      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(`${member}:`);
+      expect(pointedCaption()).toBe(`${member}:`);
       act(() => label.dispatchEvent(new MouseEvent('click', { bubbles: true })));
       act(() => label.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
       expect(onSeriesClick.mock.calls.slice(-2)).toEqual([[id], [id]]);

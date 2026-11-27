@@ -5,10 +5,10 @@ import '../../src/core/charts/index';
 // Every type gets a preview, the choropleth and tilemap included, so every geo pack loads.
 import '../../src/core/geo/packs';
 import { interactionRecords } from '../../src/core/a11y/records';
-import { describedWithCard, hundredPercentComposition, layoutLabelCard, layoutLabelCardContent, sharedLabelCardContent, type CompositionOptions } from '../../src/react/hover/labelCard';
+import { describedWithCard, layoutLabelCard, layoutLabelCardContent, sharedLabelCardContent } from '../../src/react/hover/labelCard';
 import { overlayInputs, panelOverlayTheme } from '../../src/react/hover/placement';
 import { highlightScene, recordBounds } from '../../src/react/hover/highlight';
-import { bandTypes, categorySiblings } from '../../src/react/hover/engine';
+import { bandTypes, cardOptions, categorySiblings } from '../../src/react/hover/engine';
 import { targetId } from '../../src/core/a11y/recordsShared';
 import { listCharts, type Fixture } from '../../src/core/registry';
 import { layoutResolvedRequest, resolveChartRequest } from '../../src/core/request';
@@ -73,19 +73,19 @@ function preview(type: string, family: string, fixture: Fixture<any, any>): Hove
   // The preview shows what a pointer on the demo mark shows: on a banded
   // chart the whole category, the pointed series first.
   const active = [record, ...categorySiblings(records, record, bandTypes[panel?.type ?? type] !== undefined)];
-  const cardOptions = { hundredPercent: hundredPercentComposition(panel?.type ?? type,
-    panel ? panel.composition : request.options as CompositionOptions) };
+  // The card words its rows as the hover engine does: its period title and the key's order.
+  const card = cardOptions({ records, placement }, request, record);
   const input = { record, plot: panel?.plot ?? geometry.plot, canvas: frame,
-    occupied: geometry.debug.occupied, target: bounds, theme, card: cardOptions };
+    occupied: geometry.debug.occupied, target: bounds, theme, card };
   // The card formats values under the chart's formats, as the hover engine does.
-  const card = withChartFormats(request.options, () => active.length > 1
-    ? layoutLabelCardContent(input, sharedLabelCardContent(active, undefined, cardOptions))
+  const layout = withChartFormats(request.options, () => active.length > 1
+    ? layoutLabelCardContent(input, sharedLabelCardContent(active, undefined, card, geometry.scene))
     : layoutLabelCard(input));
   const previewGeometry = { ...geometry,
-    a11y: { ...geometry.a11y, desc: describedWithCard(geometry.a11y.desc, card.accessibleText) },
-    scene: [...highlightScene(geometry.scene, records, active, theme), ...card.scene] };
-  return { type, family, fixture: fixture.id, placement: card.placement, target: bounds ?? null,
-    frame, card: card.rect, svg: renderSvg(previewGeometry, request.theme) };
+    a11y: { ...geometry.a11y, desc: describedWithCard(geometry.a11y.desc, layout.accessibleText) },
+    scene: [...highlightScene(geometry.scene, records, active, theme), ...layout.scene] };
+  return { type, family, fixture: fixture.id, placement: layout.placement, target: bounds ?? null,
+    frame, card: layout.rect, svg: renderSvg(previewGeometry, request.theme) };
 }
 
 const output = process.argv[2];
