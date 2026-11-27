@@ -143,7 +143,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `categories-are-dates` | warn |  | core/request.ts |
 | `category-font-stepped` | info |  | core/label/categoryRow.ts |
 | `category-labels-rotated` | info |  | core/label/categoryRow.ts |
-| `category-labels-truncated` | info, warn |  | core/label/categoryRow.ts |
+| `category-labels-truncated` | info, warn |  | core/label/categoryRow.ts, core/label/categoryWarnings.ts |
 | `category-stride` | info, warn |  | core/label/categoryRow.ts |
 | `cell-column-unknown` | warn | yes | table |
 | `cell-label-unsupported` | warn |  | scatter |
