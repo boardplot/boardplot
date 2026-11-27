@@ -204,7 +204,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[], useZoom: ZoomHook = noZoom): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
-    return useCard(draw, props);
+    return useCard(draw, props, type);
   }
   function draw(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover = true, onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, zoom, styleNonce, idPrefix,
