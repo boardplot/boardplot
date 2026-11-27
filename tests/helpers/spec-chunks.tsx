@@ -1,10 +1,11 @@
 /**
  * BoardplotChart links spec validation and each chart type's engine on demand,
- * and its server pass draws the busy placeholder whatever this process has
- * already loaded — that is what keeps one server's output the same before and
- * after warm-up, and what the pass that hydrates it matches. A test that
- * wants the drawn chart therefore mounts it in a browser and waits for the
- * chunks, the way a browser does.
+ * and its server pass draws the busy placeholder (or a prepared chart) whatever
+ * this process has already loaded — that is what keeps one server's output the
+ * same before and after warm-up, and what the pass that hydrates it matches. A
+ * card draws its first frame until its own chunk has loaded. A test that wants
+ * the drawn chart or the full card therefore mounts it in a browser and waits
+ * for the chunks, the way a browser does.
  */
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -14,6 +15,13 @@ export async function settle(host: HTMLElement, timeout = 20_000): Promise<void>
   const deadline = Date.now() + timeout;
   while (host.querySelector('[data-bp-loading]') && Date.now() < deadline) {
     await act(async () => { await new Promise((done) => { setTimeout(done, 10); }); });
+  }
+  if (host.querySelector('[data-bp-refused], [data-bp-empty], [data-bp-spec-error]')) {
+    // The card, then the details it shows in full diagnostics mode.
+    for (const chunk of [() => import('../../src/react/ReaderBox'), () => import('../../src/react/DiagnosticDetails')]) {
+      await chunk();
+      await act(async () => { await new Promise((done) => { setTimeout(done, 0); }); });
+    }
   }
 }
 

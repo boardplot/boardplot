@@ -17,6 +17,7 @@
 
 import type { ComponentType } from 'react';
 import type { TableChartProps } from './TableChart';
+import type { DimSwitchChartProps } from './DimSwitchChart';
 
 export interface SpecValidator {
   beginSpecParse: typeof import('./specValidation').beginSpecParse;
@@ -26,6 +27,7 @@ export interface SpecValidator {
 
 let validator: SpecValidator | undefined;
 let tableChart: ComponentType<TableChartProps> | undefined;
+let dimSwitchChart: ComponentType<DimSwitchChartProps> | undefined;
 const waiting = new Set<() => void>();
 
 /**
@@ -64,4 +66,16 @@ export function publishTableChart(published: ComponentType<TableChartProps>): vo
 /** The table renderer this graph already has, or undefined while its chunk loads. */
 export function loadedTableChart(): ComponentType<TableChartProps> | undefined {
   return tableChart;
+}
+
+/** Called by `BoardplotChart` when the dimswitch chunk has loaded. The first copy wins. */
+export function publishDimSwitchChart(published: ComponentType<DimSwitchChartProps>): void {
+  if (dimSwitchChart) return;
+  dimSwitchChart = published;
+  notify();
+}
+
+/** The dimension-switch table this graph already has, or undefined while its chunk loads. */
+export function loadedDimSwitchChart(): ComponentType<DimSwitchChartProps> | undefined {
+  return dimSwitchChart;
 }

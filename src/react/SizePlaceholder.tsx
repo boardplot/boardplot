@@ -1,4 +1,4 @@
-import { lazy, Suspense, useContext, useRef, useEffect, type ReactElement, type ReactNode } from 'react';
+import { lazy, Suspense, useContext, useRef, useEffect, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { chartString } from '../core/strings/ui';
 import { resolveSize } from '../core/normalize/shared';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
@@ -10,11 +10,12 @@ import type { RefusalFinding } from '../core/schema/refusals';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import { EMPTY_DATA } from '../core/emptyData';
-import { placeholderStyle, BoardplotThemeContext } from './themeContext';
+import { readerStrings } from '../core/readerStrings';
+import { placeholderStyle, BoardplotThemeContext, type BoardplotStrings } from './themeContext';
 
 const Reader = lazy(() => import('./ReaderBox').catch(() => ({
   // A missing card chunk must not take down the dashboard or lose the reserved frame.
-  default: (props: Parameters<typeof ReaderBox>[0]) => <LoadingPlaceholder {...props} failed />,
+  default: (props: ReaderProps) => <LoadingPlaceholder {...props} failed />,
 })));
 
 export interface RefusalProps {
@@ -31,12 +32,37 @@ export interface PlaceholderFrame {
   fixedSize?: boolean;
 }
 
-/** Keep the slot stable while the reader card loads; SSR uses the same safe frame. */
-export function ReaderBox(props: PlaceholderFrame & RefusalProps & {
+type ReaderProps = PlaceholderFrame & RefusalProps & {
   result?: RefusedLayout;
   theme?: Theme | ThemeRef; kind: 'refused' | 'empty' | 'spec-error'; findings?: readonly DocumentFinding[]; children?: ReactNode; spec?: boolean;
-}): ReactElement {
-  return <Suspense fallback={<LoadingPlaceholder {...props} />}><Reader {...props} /></Suspense>;
+};
+
+const noStore = () => () => {};
+const mounted = () => true;
+const unmounted = () => false;
+
+/**
+ * The card's status line and its content: the host's `renderRefused` for a refusal, else the children or the hint.
+ * The card and its first frame read them here, so both say the same.
+ */
+export function readerText({ kind, result, renderRefused, children }: Pick<ReaderProps, 'kind' | 'result' | 'renderRefused' | 'children'>, language: string | undefined, host: BoardplotStrings | undefined) {
+  const defaults = readerStrings(language);
+  const strings = { ...defaults, ...host } as typeof defaults & Record<string, string>;
+  const wording = kind === 'refused' ? 'refusal' : kind === 'spec-error' ? 'failure' : kind;
+  const heading = kind === 'refused' && strings.refusalMessage.includes('{') ? defaults.refusalMessage : strings[`${wording}Message`]!;
+  const content = kind === 'refused' && result && renderRefused ? renderRefused(result) : children;
+  return { strings, heading, hint: strings[`${wording}Hint`]!, content };
+}
+
+/**
+ * The server pass and the pass that hydrates it draw the card's first frame: its status line, the host's content and
+ * its diagnostics, with no lazy load, so the server HTML holds the card's message and hydration meets the same markup.
+ * After mount the full card loads and takes its place.
+ */
+export function ReaderBox(props: ReaderProps): ReactElement {
+  const shown = useSyncExternalStore(noStore, mounted, unmounted);
+  const first = <LoadingPlaceholder {...props} />;
+  return <Suspense fallback={first}>{shown ? <Reader {...props} /> : first}</Suspense>;
 }
 
 export function SizePlaceholder(props: RefusalProps & EmptyProps & PlaceholderFrame & { result: RefusedLayout; theme: Theme }): ReactElement {
@@ -50,19 +76,25 @@ export function LayoutRefusal(props: PlaceholderFrame & { refusals: readonly Ref
   return <ReaderBox {...props} kind="spec-error" findings={props.refusals} />;
 }
 
-/** Busy state does not report a refusal. A failed chunk uses the reader failure state. */
-export function LoadingPlaceholder({ failure, failed, kind, findings, children, ...frame }: PlaceholderFrame & { theme?: ThemeRef | Theme; failure?: string; failed?: boolean; kind?: string; findings?: readonly DocumentFinding[]; children?: ReactNode }): ReactElement {
+/** Busy state does not report a refusal. A failed chunk uses the reader failure state. With a `kind` it is the reader card's first frame. */
+export function LoadingPlaceholder({ failure, failed, kind, findings, children, result, renderRefused, ...frame }: PlaceholderFrame & RefusalProps & { theme?: ThemeRef | Theme; failure?: string; failed?: boolean; kind?: ReaderProps['kind']; findings?: readonly DocumentFinding[]; children?: ReactNode; result?: RefusedLayout }): ReactElement {
   const settings = useContext(BoardplotThemeContext);
   const options = normalizeOptionShapes('', { options: frame.options }).chart.options as Pick<BaseOptions, 'title' | 'source' | 'size' | 'locale' | 'target'> | undefined;
-  const wording = { locale: options?.locale ?? settings?.locale, strings: settings?.strings };
+  const locale = options?.locale ?? settings?.locale;
+  const wording = { locale, strings: settings?.strings };
   if (failure !== undefined) return <ReaderBox {...frame} kind="spec-error" findings={[{ code: 'chunk-load-failed', message: failure }]} />;
   const target = options?.target ?? settings?.target;
   const size = frame.size ?? resolveSize(options?.size, target);
+  const reader = kind && !failed ? readerText({ kind, result, renderRefused, children }, typeof locale === 'string' ? locale : locale?.language, settings?.strings) : undefined;
+  const busy = failed ? 'load-failed' : reader ? 'card' : 'loading';
   return <div role="status" dir={settings?.direction ?? 'ltr'} {...{
-    [`data-bp-${failed ? 'load-failed' : 'loading'}`]: '',
+    [`data-bp-${busy}`]: reader ? undefined : '',
     [`data-bp-${kind}`]: kind === 'refused' ? findings?.[0]?.code : kind ? '' : undefined,
   }}
-    data-bp-diagnostics={JSON.stringify(findings)} style={placeholderStyle(size, frame.fixedSize)}>{options?.title}<div>{failed ? chartString(wording, 'loadingFailed') : children ?? chartString(wording, 'loading')}</div>{options?.source}</div>;
+    data-bp-diagnostics={reader && !findings?.length ? undefined : JSON.stringify(findings)} style={placeholderStyle(size, frame.fixedSize)}>
+    {reader && findings?.map((finding, index) => <span hidden key={index} data-bp-error-code={finding.code} data-bp-error-path={finding.path ?? ''} />)}
+    {options?.title}<div>{failed ? chartString(wording, 'loadingFailed') : reader ? reader.heading : children ?? chartString(wording, 'loading')}</div>
+    {reader && <div>{reader.content === undefined ? reader.hint : reader.content}</div>}{options?.source}</div>;
 }
 
 /** Empty specs use the same reader frame and the same once-per-entry callback. */

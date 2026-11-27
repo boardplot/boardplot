@@ -78,7 +78,9 @@ describe('spec React entry', () => {
       rendered.geometry = undefined; rendered.theme = undefined;
       const html = await mountedMarkup(<BoardplotChart spec={{ ...doc, charts: [chart] }} />);
       let geometry: Geometry; let theme: Theme;
-      if (type === 'table') {
+      // A table and a dimension-switch table draw as an HTML grid: the static layout is the claim for both.
+      const grid = type === 'table' || type === 'dimswitch';
+      if (grid) {
         expect(html, chart.name).toContain('bp-table-grid');
         const request = resolveChartRequest(parsed.request);
         geometry = requireGeometry(layoutResolvedRequest(request)); theme = request.theme;
@@ -95,8 +97,8 @@ describe('spec React entry', () => {
       const request = resolveChartRequest(parsed.request);
       const full = requireGeometry(layoutResolvedRequest(request));
       expect(draw(full), `${type}/${chart.name} canonical`).toBe(cliSvg);
-      const live = type === 'table' ? full : requireGeometry(layoutContainerRequest(request));
-      const cropped = type !== 'table' && live.frame?.noteList?.length ? withoutSvgFooter(live) : live;
+      const live = grid ? full : requireGeometry(layoutContainerRequest(request));
+      const cropped = !grid && live.frame?.noteList?.length ? withoutSvgFooter(live) : live;
       expect(draw(geometry), `${type}/${chart.name}`).toBe(draw(cropped));
     }
   // 30 s: choropleth with its sizing passes needs more than 15 s on CI.

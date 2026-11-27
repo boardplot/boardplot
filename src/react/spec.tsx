@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useSyncExternalStore, type ComponentType, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ComponentType, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ZoomOption } from './useZoom';
 import { chartLoaders } from './chartLoaders';
@@ -11,7 +11,8 @@ import type { Annotation } from '../core/types/annotations';
 import { withAnnotationOrigins } from '../core/annotationOrigin';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import type { Geometry, LintWarning } from '../core/types/scene';
-import type { RenderTarget } from '../core/types/options';
+import type { BaseOptions, RenderTarget } from '../core/types/options';
+import { resolveSize } from '../core/normalize/shared';
 import type { ThemeRef } from '../core/types/theme';
 import type { TableData } from '../core/types/table';
 import { createChartComponent, type ChartProps } from './createChartComponent';
@@ -19,7 +20,10 @@ import { EmptyPlaceholder, LoadingPlaceholder, type EmptyProps, type RefusalProp
 import type { PreparedChart } from './prepared';
 import type { PreparedTable } from './preparedTable';
 import type { ParsedChartSpec } from './specValidation';
-import { loadedSpecValidator, loadedTableChart, onHandover, publishSpecValidator, publishTableChart, type SpecValidator } from './specHandover';
+import { loadedDimSwitchChart, loadedSpecValidator, loadedTableChart, onHandover, publishDimSwitchChart, publishSpecValidator, publishTableChart, type SpecValidator } from './specHandover';
+import { usePreparedFirstFrame } from './preparedFirstFrame';
+import { withoutZodCodeGeneration } from './zodSetup';
+import type { DimSwitchChartProps } from './DimSwitchChart';
 import { SpecErrorCard } from './SpecErrorCard';
 import { useSpecFrame } from './specFrame';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
@@ -59,11 +63,11 @@ export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps,
   onRecordClick?: (record: InteractionRecord, event: MouseEvent<Element> | KeyboardEvent<Element>) => void;
   /**
    * Called with the row id and `{ row, event, columnId }` when the reader picks a table row: a click in
-   * it outside a link or a button, or Enter or Space on its focused cell. Table only (`table`, alias
-   * `tbl`); no other chart type receives it.
+   * it outside a link or a button, or Enter or Space on its focused cell. Tables only: `table` (alias
+   * `tbl`) and `dimswitch`; no other chart type receives it.
    */
   onRowSelect?: TableChartProps['onRowSelect'];
-  /** Which table rows `onRowSelect` covers; absent, every row but a section heading. Table only. */
+  /** Which table rows `onRowSelect` covers; absent, every row but a section heading. Tables only. */
   isRowSelectable?: TableChartProps['isRowSelectable'];
   /** Line and area on a time, date or number x: Ctrl or Cmd with the wheel, a pinch, or + and - on the focused chart zoom; see the chart components. */
   zoom?: ZoomOption;
@@ -85,6 +89,11 @@ export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps,
   exporter?: ExportLink;
   /** Tables only: the reader's folds as an `options.expansion`, after each fold or unfold. Store it in the spec to keep the view; see `TableChart`. */
   onExpansionChange?: TableChartProps['onExpansionChange'];
+  /** Applied to one wrapper around every state the component draws: the busy placeholder, a card and the chart. */
+  className?: string;
+  style?: CSSProperties;
+  /** Your own text measurer for the layout, as on the chart components. Pass the same function on every render. Not with `prepared`. */
+  measure?: BaseOptions['measure'];
 }
 
 type AnyChart = ComponentType<ChartProps<unknown, Record<string, unknown>>>;
@@ -168,6 +177,7 @@ function useSpecValidator(): { validator?: SpecValidator; failure?: string } {
   // load that failed is retried rather than leaving the chart in limbo.
   useEffect(() => {
     if (validator) { forget(VALIDATION); return; }
+    withoutZodCodeGeneration();
     load(VALIDATION, () => import('./specValidation').then(module => {
       publishSpecValidator({
         beginSpecParse: module.beginSpecParse,
@@ -252,16 +262,18 @@ function refusedSchema(types: readonly string[]): string | undefined {
 }
 
 /** Whether the named type's engine is here, and why it is not. */
-function useChartEngine(type: string): { ready: boolean; failure?: string } {
-  const ready = useSyncExternalStore(subscribe, () => engineReady(type), notReady);
-  const failure = useSyncExternalStore(subscribe, () => (engineReady(type) ? undefined : failures.get(type)), nothingLoaded);
+function useChartEngine(type: string | undefined): { ready: boolean; failure?: string } {
+  const ready = useSyncExternalStore(subscribe, () => type !== undefined && engineReady(type), notReady);
+  const failure = useSyncExternalStore(subscribe, () => (type === undefined || engineReady(type) ? undefined : failures.get(type)), nothingLoaded);
   useEffect(() => {
+    if (type === undefined) return;
     if (ready) { forget(type); return; }
     const start = chartLoaders[type];
     // An unknown type has no loader; validation has already refused it.
     if (!start) return;
     load(type, () => start().then(module => {
       if (type === 'table') publishTableChart((module as { TableChart: ComponentType<TableChartProps> }).TableChart);
+      if (type === 'dimswitch') publishDimSwitchChart((module as { DimSwitchChart: ComponentType<DimSwitchChartProps> }).DimSwitchChart);
     }));
   });
   return { ready, failure };
@@ -274,7 +286,8 @@ function useChartEngine(type: string): { ready: boolean; failure?: string } {
  */
 function engineReady(type: string): boolean {
   // A line chart also waits for its entry, which carries the zoom hook: a server or an export can register its core alone.
-  return type === 'table' ? loadedTableChart() !== undefined : getChart(type) !== undefined && (type !== 'line' || zoomHookFor(type) !== undefined);
+  return type === 'table' ? loadedTableChart() !== undefined
+    : (type === 'dimswitch' ? loadedDimSwitchChart() !== undefined : getChart(type) !== undefined && (type !== 'line' || zoomHookFor(type) !== undefined));
 }
 
 /** What the reader sees when a chunk did not arrive at all. */
@@ -339,14 +352,22 @@ function oneChart<T>(result: { value?: T; errors?: readonly DocumentFinding[] })
  * The spec-driven chart. It takes the same spec `boardplot_render` validates and
  * draws it with the per-type component of its type. Three things load on
  * demand, in that order: the shared validation chunk, the schemas of the type
- * the spec names, and that type's engine. The entry links none of them and a
- * server pass always draws the busy placeholder; markup that has to be in the
- * server response comes from the type's own component. An invalid spec or
- * setting renders `SpecErrorCard` with each diagnostic's path, expected and
+ * the spec names, and that type's engine. The entry links none of them. Until
+ * they are there, a server pass and the browser draw the busy placeholder, or
+ * the chart of a `prepared` SVG value for the same props as a picture. A
+ * `dimswitch` spec draws the interactive dimension-switch table. An invalid spec
+ * or setting renders `SpecErrorCard` with each diagnostic's path, expected and
  * received values, suggestion, JSON Patch fix and reference link, and so does
- * a chunk that could not be loaded.
+ * a chunk that could not be loaded. `className` and `style` sit on one wrapper
+ * around every state.
  */
-export function BoardplotChart(props: BoardplotChartProps): ReactElement {
+export function BoardplotChart({ className, style, ...props }: BoardplotChartProps): ReactElement {
+  const chart = <SpecStates {...props} />;
+  return className !== undefined || style !== undefined ? <div className={className} style={style}>{chart}</div> : chart;
+}
+
+/** Every state of one spec: the busy placeholder or the prepared chart's first frame, a card, and the chart. */
+function SpecStates(props: BoardplotChartProps): ReactElement {
   const { spec: authored, size, fit, fallbackSize, theme, target, hover, rows, columns, onRowsReading } = props;
   const listener = useRef<SpecErrorChannel['listener']['current']>(undefined);
   const reported = useRef(JSON.stringify(NO_ERRORS));
@@ -376,6 +397,10 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   const settings = useMemo(() => validator && specResult(validator, () => validator.specSettings({ size, fit, fallbackSize, theme, target, hover })),
     [validator, size, fit, fallbackSize, theme, target, hover]);
   const dataTable = useDataTable(Boolean(parsed?.value?.request.options?.a11y?.table));
+  // A prepared chart for these props draws from the prepared value until the chart of its type can take its place in one step.
+  const firstFrame = usePreparedFirstFrame(authored, props, frame);
+  const engine = useChartEngine(firstFrame ? parsed?.value?.request.type : undefined);
+  const waiting = firstFrame ?? <LoadingPlaceholder {...frame} />;
   const errors = !parsed || !settings ? undefined
     : settings.errors ?? (parsed.errors && mapped.rewrite ? mapped.rewrite([...parsed.errors]) : parsed.errors);
   // A spec that fails only on an empty data collection is an empty chart: the host hears onEmpty and no error card shows.
@@ -388,13 +413,13 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   // Nothing while a chunk loads or while SpecChart decides; it reports the engine's card and the drawn chart itself.
   useSpecErrorReport(channel, card ?? (empty ? NO_ERRORS : undefined), listening);
   if (card) return <SpecErrorCard errors={card} {...frame} />;
-  if (!parsed || !settings) return <LoadingPlaceholder {...frame} />;
+  if (!parsed || !settings) return waiting;
   if (empty) return <EmptyPlaceholder {...frame} onEmpty={props.onEmpty} />;
-  if (dataTable.waiting) return <LoadingPlaceholder {...frame} />;
-  return <DataTableContext.Provider value={dataTable.module}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
+  if (dataTable.waiting || (firstFrame && !engine.ready && engine.failure === undefined)) return waiting;
+  return <DataTableContext.Provider value={dataTable.module}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} drawn={firstFrame !== undefined} /></DataTableContext.Provider>;
 }
 
-function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
+function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, drawn, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[]; drawn: boolean }): ReactElement {
   const { type, data, options = {} } = parsed.request;
   const { ready, failure } = useChartEngine(type);
   const engineFailure = useMemo(() => (failure === undefined ? undefined : chunkFailure(`'${type}' chart engine`, failure)), [type, failure]);
@@ -420,8 +445,18 @@ function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, targe
     const Table = loadedTableChart()!;
     return <Table {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as TableData} {...{ annotations } as object} prepared={prepared} />;
   }
+  const { onExpansionChange: _onExpansionChange, ...chart } = host;
+  // The interactive table, unless the host asks for something only the picture has. The view comes from the options,
+  // and a prepared picture cannot turn into the table, so the table draws from the data.
+  if (type === 'dimswitch' && !chart.onGeometry && !chart.fixedSize && !chart.onRecordClick && !chart.onSeriesClick && !chart.renderHoverContent) {
+    const { deferLayout: _deferLayout, zoom: _zoom, ...table } = chart;
+    const DimSwitch = loadedDimSwitchChart()!;
+    return <DimSwitch {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as DimSwitchChartProps['data']} {...{ annotations } as object} />;
+  }
   if (prepared && prepared.kind !== 'svg') throw new Error('Expected a prepared SVG chart.');
   const Chart = componentFor(type);
-  const { onExpansionChange: _onExpansionChange, ...chart } = host;
-  return <Chart {...common} {...chart} onWarnings={reportWarnings} data={data} annotations={annotations} prepared={prepared} />;
+  // The first frame drew the prepared chart at the frame `prepareChart` used. The same frame as `fallbackSize` lets a
+  // container chart attach to it at once, where it would otherwise wait for its first width on the busy placeholder.
+  const frameSize = drawn && common.size === 'container' && chart.fallbackSize === undefined ? { fallbackSize: resolveSize(undefined, frame.options.target) } : undefined;
+  return <Chart {...common} {...chart} {...frameSize} onWarnings={reportWarnings} data={data} annotations={annotations} prepared={prepared} />;
 }

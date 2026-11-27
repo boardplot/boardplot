@@ -15,6 +15,7 @@ import { ownCompiledTable } from '../core/charts/table/resolve';
 import { ENGINE_NOTE_KINDS } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
+import type { RowsProps } from './rowsInput';
 import { TableChart, type TableChartProps } from './charts/table';
 import { TableFloorRequestContext } from './TableChart';
 import { BoardplotThemeContext, isStandardThemeProvider } from './themeContext';
@@ -33,7 +34,7 @@ import type { ContainerSizeOptions } from './useContainerSize';
 
 export interface DimSwitchView { variant: DimSwitchVariant; depth: number; splits: boolean; collapsed: string[] }
 export type DimSwitchViewReason = 'variant' | 'depth' | 'splits' | 'collapsed';
-export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & OptionsInput<Omit<DimSwitchOptions, 'size'>> & {
+export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'rows' | 'columns' | 'onRowsReading' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & OptionsInput<Omit<DimSwitchOptions, 'size'>> & {
  data: DimSwitchData;
  variant?: DimSwitchVariant;
  defaultVariant?: DimSwitchVariant;
@@ -91,7 +92,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
  function GatedDimSwitch(props: NormalizedProps): ReactElement {
   // Rows answer before the compile: a dimswitch has no data while the rows chunk loads or after it refuses them.
   // A frozen table snapshot cannot match a table compiled from the variant, depth and splits, so a `prepared` prop from untyped code is dropped and the chart draws from data.
-  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as NormalizedProps & {prepared?:unknown};
+  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as NormalizedProps & RowsProps & {prepared?:unknown};
   const gate=useRowsGate({type:'dimswitch',data:chart.data},{rows,columns,onRowsReading},chart);
   return gate.element ?? <DrawnDimSwitch {...chart} data={gate.data!}/>;
  }
@@ -176,7 +177,11 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     [stableData,warningOptions,variant,splits,failedCompile]);
 
   const maxDepth=compiled?.maxDepth;
-  if(maxDepth!==undefined && (!Number.isInteger(depth) || depth<1 || depth>maxDepth)) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
+  // A depth past the outline levels (a filter can leave fewer) is the compile's own refusal, which the boundary draws as a card.
+  if(maxDepth!==undefined && (!Number.isInteger(depth) || depth<1 || depth>maxDepth)) {
+   withEngineNotes(()=>compileDimSwitch(stableData,{...compileOptions,variant,depth,splits},{records:false}),true);
+   throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
+  }
   const foreign=failedCompile ? undefined : foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
   const refused=failedCompile || foreign!==undefined;
   // Depth only selects folds. Keep the compiled values and table widths.

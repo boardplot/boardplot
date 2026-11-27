@@ -62,12 +62,12 @@ try {
   if (!html) throw new Error(`Next did not respond within 60 seconds:\n${output}`);
   // The table is a CSS grid of ARIA roles, not a <table>: the
   // server pass prints `role="grid"` or `role="treegrid"` on `.bp-table-grid` with the row and
-  // cell roles under it. data-bp-loading: the spec entry links no chart
-  // engine, so its server pass is the busy placeholder and the chart
-  // attaches once the chunk is there.
+  // cell roles under it. The spec section: the spec entry links no chart
+  // engine, so its server pass draws the prepared chart as a picture, and the
+  // chart of the type takes its place once the chunk is there.
   for (const pattern of [
     /<svg\b/, /<div[^>]+role="(?:grid|treegrid)"/, /class="[^"]*\bbp-table-grid\b/, /role="rowheader"/,
-    /<style[^>]*data-bp-table-theme/, /data-bp-engine=/, /data-bp-chart="column"/, /data-bp-loading/,
+    /<style[^>]*data-bp-table-theme/, /data-bp-engine=/, /data-bp-chart="column"/, /data-example="spec"(?:(?!<\/section>)[\s\S])*<svg\b/,
   ]) {
     if (!pattern.test(html)) throw new Error(`Next server output is missing ${pattern}`);
   }

@@ -164,9 +164,12 @@ export type ChartDataProps<D> =
   | { data: DataInput<D>; rows?: undefined; columns?: undefined; onRowsReading?: undefined }
   | (Required<Pick<RowsProps, 'rows' | 'columns'>> & Pick<RowsProps, 'onRowsReading'> & { data?: Partial<D> });
 
-/** Grid's own `rows` and `columns` options lay out its panels; a grid takes no rows mapping. */
-export type ChartProps<D, O extends ChartOptionsLike> = O extends unknown
-  ? OptionsInput<Omit<O, 'annotations' | 'size'>> & ChartHostProps & ('rows' extends keyof O ? { data: D } : ChartDataProps<D>)
+/**
+ * Grid's own `rows` and `columns` options lay out its panels; a grid takes no rows mapping.
+ * `Rows` is false for a type without a rows mapping (`ROWS_SHAPES`): its component takes `data` only.
+ */
+export type ChartProps<D, O extends ChartOptionsLike, Rows extends boolean = true> = O extends unknown
+  ? OptionsInput<Omit<O, 'annotations' | 'size'>> & ChartHostProps & ('rows' extends keyof O ? { data: D } : Rows extends false ? Extract<ChartDataProps<D>, { rows?: undefined }> : ChartDataProps<D>)
   : never;
 
 /** The props every chart component takes besides its chart options. */

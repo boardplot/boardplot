@@ -1044,7 +1044,11 @@ it('renders the full fallback-size refusal on the server', async () => {
   await settle();
   const client = host.querySelector('[data-bp-refused]');
   expect(client?.getAttribute('data-bp-diagnostics')).toBe(card!.getAttribute('data-bp-diagnostics'));
-  expect(client?.textContent).toBe(card!.textContent);
+  // The server writes the card's shell, and the full card replaces it after mount: both hold the message and the host's content.
+  for (const text of [card!.textContent, client?.textContent]) {
+    expect(text).toContain('This chart needs more room.');
+    expect(text).toContain('Column needs at least 120 × 180px; received 119 × 180px');
+  }
 });
 
 // Hydration must keep the server's refusal visible and report it once, without a busy-box flash.
