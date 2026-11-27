@@ -154,17 +154,7 @@ function netLineMarks(domain: BarDomain, area: BarArea, nodes: SceneNode[], clai
   const { x, band } = area;
   const edgeValues = cats.map((_, ci): number | undefined => {
     if (!netLineSeries) return rowEnds[ci]!.pos;
-    const stack = stacks[ci]!;
-    for (let si = 0; si < dataSeries.length; si++) {
-      const series = dataSeries[si]!;
-      const segment = stack.segments[si];
-      if (!segment) {
-        if (series.id === netLineSeries.id) return undefined;
-        continue;
-      }
-      if (series.id === netLineSeries.id) return segment.end;
-    }
-    return undefined;
+    return stacks[ci]!.segments[dataSeries.findIndex((series) => series.id === netLineSeries.id)]?.end;
   });
   edgeValues.forEach((value, ci) => {
     if (value === undefined) return;

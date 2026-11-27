@@ -549,17 +549,7 @@ function netLineMarks(domain: ColumnDomain, area: ColumnArea, nodes: SceneNode[]
   const defaultEdge = posTopP.some((value) => value > 0) ? posTopP : negBotP;
   const edgeValues = cats.map((_, ci): number | undefined => {
     if (!netLineSeries) return defaultEdge[ci];
-    const stack = stacks[ci]!;
-    for (let si = 0; si < dataSeries.length; si++) {
-      const series = dataSeries[si]!;
-      const segment = stack.segments[si];
-      if (!segment) {
-        if (series.id === netLineSeries.id) return undefined;
-        continue;
-      }
-      if (series.id === netLineSeries.id) return segment.end;
-    }
-    return undefined;
+    return stacks[ci]!.segments[dataSeries.findIndex((series) => series.id === netLineSeries.id)]?.end;
   });
   const claimOwner = { annotationId: 'netLine' };
   const line = (id: string, x1: number, y1: number, x2: number, y2: number, owner: { seriesId?: Id; categoryId: Id }, claim: Rect) => {

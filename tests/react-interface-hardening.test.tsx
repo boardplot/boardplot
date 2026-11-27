@@ -154,7 +154,7 @@ describe('React adapter boundary', () => {
       // A report card draws at its natural width and shrinks with its host, never wider.
       expect(svg.getAttribute('width')).toBe(String(width));
       expect(svg.style.maxWidth).toBe('100%');
-      expect(svg.parentElement?.style.maxWidth).toBe(String(width) + 'px');
+      expect(svg.parentElement?.parentElement?.style.maxWidth).toBe(String(width) + 'px');
     }
     act(() => root.render(<KpiChart
       data={{ label: 'Net revenue churn', value: 3.2, delta: { vs: 4.1 }, spark: { kind: 'line', values: [4.1, 3.8, 3.2] } }}
@@ -166,7 +166,7 @@ describe('React adapter boundary', () => {
     act(() => root.render(<ColumnChart data={DATA} />));
     const column = container.querySelector('svg')!;
     expect(column.style.maxWidth).toBe('100%');
-    expect(column.parentElement?.style.maxWidth).toBe('720px');
+    expect(column.parentElement?.parentElement?.style.maxWidth).toBe('720px');
   });
 
   it('shows an undersized chart placeholder without reporting successful geometry', async () => {

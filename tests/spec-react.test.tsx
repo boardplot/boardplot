@@ -211,3 +211,25 @@ it('draws no prepared chart for a spec it does not match or inside a ScaleGroup'
   expect(renderToString(<BoardplotChart spec={stray} prepared={prepared} />)).toContain('data-bp-loading');
   expect(renderToString(<ScaleGroup group="g" members={[]}><BoardplotChart spec={regions} prepared={prepared} /></ScaleGroup>)).toContain('data-bp-loading');
 });
+
+// A spec and the request prepared from it compared in two different forms, so a language tag, a bare chart's theme or an undefined option lost the first chart or broke hydration once JSON carried the spec.
+it('draws the prepared chart in the first frame for every form of the same chart', async () => {
+  const kpi = { type: 'kpi', data: { label: 'Sales', value: 1 } };
+  // The server reads the spec as written, the browser as JSON carried it: both draw the chart.
+  const first = async (spec: object, prepared: object) => [spec, JSON.parse(JSON.stringify(spec)) as object]
+    .map((form) => renderToString(<BoardplotChart spec={form} prepared={prepared as never} />)).join('');
+  const charts = (html: string) => html.split('<svg').length - 1;
+  const tagged = { ...kpi, options: { locale: 'de-DE' } };
+  expect(charts(await first(tagged, await prepareChart(tagged as never)))).toBe(2);
+  const themed = { ...kpi, theme: 'standard-dark' };
+  expect(charts(await first(themed, await prepareChart((await parseChartSpec(themed)).request)))).toBe(2);
+  const untitled = { ...kpi, options: { title: undefined } };
+  expect(charts(await first(untitled, await prepareChart(untitled as never)))).toBe(2);
+  // The host's theme prop wins over the chart's own theme, so a chart prepared with the chart's theme is another chart.
+  const light = renderToString(<BoardplotChart spec={themed} theme="standard" prepared={await prepareChart((await parseChartSpec(themed)).request) as never} />);
+  expect(light).toContain('data-bp-loading');
+  // A request's top-level target wins over its options, so a slide chart is not the report chart of the spec.
+  const slide = await prepareChart({ ...kpi, target: 'slide', options: { target: 'report' } } as never);
+  expect(renderToString(<BoardplotChart spec={{ ...kpi, options: { target: 'report' } }} prepared={slide as never} />)).toContain('data-bp-loading');
+  expect(charts(renderToString(<BoardplotChart spec={kpi} target="slide" prepared={slide as never} />))).toBe(1);
+});

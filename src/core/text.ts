@@ -298,7 +298,8 @@ export function capHeightOfFace(font: FontSpec, face: Face | undefined): number 
   return face && face.capHeight > 0 ? (font.size * face.capHeight) / 1000 : undefined;
 }
 
-export const defaultMeasurer: TextMeasurer = createMeasurer();
+// Pure: an entry that never measures text (boardplot/theme) drops the measurer and the font tables.
+export const defaultMeasurer: TextMeasurer = /* @__PURE__ */ createMeasurer();
 
 /** The default measurer; a chart measures with `options.measure` when a caller passes one. */
 export function measureText(text: string, font: FontSpec): TextSize {

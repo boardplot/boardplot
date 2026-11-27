@@ -18,6 +18,10 @@ export type { BoardplotThemeProps, BoardplotThemeOptions, BoardplotStrings } fro
 // Shared numeric value scales across typed charts and BoardplotChart.
 export * from './scale-group';
 
+// Linked hover across the charts inside one provider.
+export { HoverGroup } from './HoverGroup';
+export type { HoverGroupProps } from './HoverGroup';
+
 export { SceneRenderer } from './SceneRenderer';
 export type { ChartProps, HoverOption } from './createChartComponent';
 export type { ContainerSizeOptions } from './useContainerSize';
