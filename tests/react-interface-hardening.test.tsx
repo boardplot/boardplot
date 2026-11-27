@@ -2,7 +2,7 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement, useState, type ReactElement } from 'react';
+import { act, createElement, useLayoutEffect, useState, type ReactElement } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup, renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,6 +137,20 @@ describe('React adapter boundary', () => {
     expect(container.innerHTML).toContain('data-bp-spec-error');
     expect(errors).not.toHaveBeenCalled();
     expect(logged).not.toHaveBeenCalled();
+    // Data that arrives in the host's first layout effect meets a fresh chart, not the state of the refused one.
+    function Host() {
+      const [facts, setFacts] = useState<unknown[]>([]);
+      useLayoutEffect(() => setFacts(dimSwitchData.facts as unknown[]), []);
+      return createElement(DimSwitchChart, { data: { ...dimSwitchData, facts } } as never);
+    }
+    act(() => root.unmount());
+    container.innerHTML = renderToString(createElement(Host));
+    act(() => { root = hydrateRoot(container, createElement(Host)); });
+    const rows = container.querySelectorAll('[role="row"]').length;
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
   });
 
   it('runs semantic normalization before range-family layout', () => {

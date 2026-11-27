@@ -178,13 +178,16 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     [stableData,warningOptions,variant,splits,failedCompile]);
 
   const maxDepth=compiled?.maxDepth;
-  // A depth past the outline levels (a filter can leave fewer) is the compile's own refusal, which the boundary draws as a card.
+  // A depth past the outline levels (a filter can leave fewer) is the compile's own refusal, which draws its card (useChartFailure).
+  let depthFailure: unknown;
   if(maxDepth!==undefined && (!Number.isInteger(depth) || depth<1 || depth>maxDepth)) {
-   withEngineNotes(()=>compileDimSwitch(stableData,{...compileOptions,variant,depth,splits},{records:false}),true);
-   throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
+   try {
+    withEngineNotes(()=>compileDimSwitch(stableData,{...compileOptions,variant,depth,splits},{records:false}),true);
+    depthFailure=new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
+   } catch(error) { depthFailure=error; }
   }
   const foreign=failedCompile ? undefined : foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
-  const refused=failedCompile || foreign!==undefined;
+  const refused=failedCompile || foreign!==undefined || depthFailure!==undefined;
   // Depth only selects folds. Keep the compiled values and table widths.
   const depthDefaults=useMemo(()=>{
     if(!compiled) return [];
@@ -248,7 +251,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     reported.current=key;
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
-  const card=useChartFailure(compilation instanceof NormalizeError && !failedCompile ? compilation : undefined);
+  const card=useChartFailure(depthFailure ?? (compilation instanceof NormalizeError && !failedCompile ? compilation : undefined));
   if(card) return card;
   if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;

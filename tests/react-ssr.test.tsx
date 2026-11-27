@@ -67,6 +67,8 @@ it('renders the refusal card on the server for an input the engine refuses', () 
   expect(renderToStaticMarkup(<TableChart data={fixture.data} sort={{ segments: 'asc' } as never} />)).toContain('data-bp-spec-error');
   const dimswitch = getFixtures('dimswitch')[0]!;
   expect(renderToStaticMarkup(<DimSwitchChart data={{ ...(dimswitch.data as object), facts: [] } as never} />)).toContain('empty-data');
+  // A saved depth that the filtered outline no longer has.
+  expect(renderToStaticMarkup(<DimSwitchChart data={dimswitch.data as never} depth={99} />)).toContain('data-bp-spec-error');
 });
 
 // Host props and numeric widths must reach the chart without being refused as options.

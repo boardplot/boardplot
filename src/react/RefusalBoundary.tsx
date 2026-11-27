@@ -1,4 +1,4 @@
-import { Component, createContext, useContext, useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import { Component, createContext, Fragment, useContext, useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
 import { NormalizeError } from '../core/normalize/shared';
 import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
@@ -45,9 +45,9 @@ function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: Render
  */
 class Boundary extends Component<
   { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
-  { watch: unknown; inherited: unknown; failed?: { error: unknown } }
+  { watch: unknown; inherited: unknown; failed?: { error: unknown }; mount: number }
 > {
-  override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
+  override state: { watch: unknown; inherited: unknown; failed?: { error: unknown }; mount: number } = { watch: this.props.watch, inherited: this.props.inherited, mount: 0 };
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -59,7 +59,7 @@ class Boundary extends Component<
 
   override render(): ReactNode {
     const { failed } = this.state;
-    if (!failed) return <FallbackContext.Provider value={this}>{this.props.children}</FallbackContext.Provider>;
+    if (!failed) return <FallbackContext.Provider value={this}><Fragment key={this.state.mount}>{this.props.children}</Fragment></FallbackContext.Provider>;
     const { error } = failed;
     if (!(error instanceof NormalizeError)) throw error;
     return this.props.fallback([findingOf(error)]);
@@ -70,10 +70,13 @@ class Boundary extends Component<
 type Fallback = (findings: readonly DocumentFinding[]) => ReactNode;
 const FallbackContext = createContext<Boundary>(undefined!);
 
-/** The server's card of a refusal. Once hydrated, the boundary holds it, as if the chart had thrown in the browser. */
+/**
+ * The server's card of a refusal. Once hydrated, the boundary holds it, as if the chart had thrown in the browser:
+ * the chart mounts afresh after it, also when new props reach the boundary in the same update.
+ */
 function ChartFailure({ error }: { error: NormalizeError }): ReactNode {
   const boundary = useContext(FallbackContext);
-  useIsomorphicLayoutEffect(() => boundary.setState({ failed: { error } }), [error]);
+  useIsomorphicLayoutEffect(() => boundary.setState(({ mount }) => ({ failed: { error }, mount: mount + 1 })), [error]);
   return boundary.props.fallback([findingOf(error)]);
 }
 
