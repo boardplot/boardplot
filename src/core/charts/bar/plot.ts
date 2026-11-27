@@ -23,6 +23,8 @@ import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { hiddenKey } from '../../hiddenSeries';
+import { breakWhileHidden, drawnWithoutBreak } from '../../columnBarChecks';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
 import type { BarOptions, LegendOptions } from '../../types/options';
@@ -82,7 +84,9 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
         label: stringFields(above ? options.strings!.aboveZero! : options.strings!.belowZero!, { series: s.label, meaning: above === (s.direction !== 'lowerIsBetter') ? options.strings!.better! : options.strings!.worse! }),
         paint: signPaint(s, above ? 1 : -1, options.colorblindSafe),
       })))
-    : dataSeries.map((s) => {
+    : domain.keySeries.map((s, place) => {
+        // A series a reader hid keeps its entry, as a hollow box.
+        if (dataSeries[s.lastVisibleIndex ?? place] !== s) return hiddenKey(s.id, s.label, place);
         // A series whose every drawn bar looks the same is keyed in that look, hatch included.
         const looks = s.cells.flatMap((cell, ci) => (cell.v === null ? [] : [paints.cell(s, cats[ci]!, cell.meta, cell.v)]));
         const first = looks[0];
@@ -116,7 +120,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   const planOutlined = dataSeries.some((s) => s.cells.some((cell, ci) =>
     cell.v !== null && paints.scenario(s, cats[ci]?.id ?? '', cell.meta).outline === true));
   // A key row that only the band brought does not repeat the name of the one series.
-  const seriesKeyed = (options.legend !== undefined && options.legend !== 'auto') || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
+  const seriesKeyed = (options.legend !== undefined && options.legend !== 'auto') || signColor || referenceDrawn || netLineKeyed || domain.keySeries.length > 1;
   let items: LegendItemInput[] = [
     ...(seriesKeyed ? seriesItems : []),
     // In the subtitle's order, AC PY PL FC: the plan row before the forecast hatch.
@@ -283,7 +287,8 @@ function barAxisBreak(domain: BarDomain, dLo: number, dHi: number, warnings: Lin
   if (!requestedBreak) return undefined;
   const reason = breakStyleRefusal(requestedBreak) ?? invalidLinearBreakReason([dLo, dHi], requestedBreak, domain.rendered);
   if (reason) {
-    warnings.push(axisBreakInvalid('bar', reason));
+    const invalid = axisBreakInvalid('bar', reason);
+    warnings.push(domain.keySeries === domain.dataSeries ? invalid : breakWhileHidden(invalid, requestedBreak));
     return undefined;
   }
   return { from: requestedBreak.from, to: requestedBreak.to };
@@ -482,8 +487,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     stepTicks = undefined;
     const checks: LintWarning[] = [];
     activeBreak = barAxisBreak(domain, dLo, dHi, checks);
-    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
-      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+    warnings.push(...checks.map(drawnWithoutBreak));
   }
   if (activeBreak && variant !== 'grouped' && stackBreakReversesOrder(brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak), domain.stacks)) {
     warnings.push(axisBreakHeightOrderWarning());

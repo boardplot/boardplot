@@ -54,6 +54,8 @@ import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
+import { shownSeries } from '../../hiddenSeries';
+import { breakWhileHidden, drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -165,19 +167,17 @@ function normalizeColumnData(data: ChartData, warnings: LintWarning[]): { cats: 
 /**
  * Sort (live reorder), then topN: keep the n largest categories and
  * aggregate the rest into 'Others' (always last). Reorders `seriesNorm`'s
- * values in place.
+ * values in place. The categories rank by the series a reader has not hidden.
  */
 function orderColumnCategories(
   options: AnomalyColumnOptions,
   categories: Category[],
   seriesNorm: NormSer[],
-  series: NormSer[],
+  dataSeries: NormSer[],
   warnings: LintWarning[],
-): { cats: Category[]; dataSeries: NormSer[]; othersId: Id | null } {
+): { cats: Category[]; othersId: Id | null } {
   let cats = categories;
-  let dataSeries = series;
   const anomalySpec = options.anomaly;
-  dataSeries = sortSegments(dataSeries, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
   const catTotal = (ci: number) => dataSeries.reduce((a, s) => a + (s.vals[ci]!.v ?? 0), 0);
   const applyOrder = (order: number[]): void => {
     cats = order.map((i) => cats[i]!);
@@ -234,7 +234,7 @@ function orderColumnCategories(
       });
     }
   }
-  return { cats, dataSeries, othersId };
+  return { cats, othersId };
 }
 
 /** The integrated PY reference and the categories whose stack carries one scenario. */
@@ -295,11 +295,15 @@ type ColumnLines = Pick<
   'connectorsOn' | 'connectorDashed' | 'connectorSeries' | 'netLineOn' | 'netLineSeries' | 'netLineSteps'
 >;
 
-/** Series connectors and the net line, with the warnings for the cases they cannot draw. */
+/**
+ * Series connectors and the net line, with the warnings for the cases they cannot draw. The warnings read the boundary
+ * the author named among every series. A reader who hides series sees the line at the last visible series up to it.
+ */
 function columnLines(
   options: AnomalyColumnOptions,
   stackedLike: boolean,
   dataSeries: NormSer[],
+  shown: NormSer[],
   warnings: LintWarning[],
   basesGiven = false,
 ): ColumnLines {
@@ -373,37 +377,12 @@ function columnLines(
       ...(options.legend === 'none' ? {} : { fix: [{ op: 'remove' as const, path: '/options/seriesLabels' }] }),
     });
   }
-  if (netLineOn && netLineSeriesId && !netLineSeries) {
-    netLineOn = false;
-    warnings.push({
-      code: 'net-line-series-missing',
-      severity: 'warn',
-      message: `netLine seriesId '${netLineSeriesId}' is not a plotted data series; net line omitted`,
-      owner: { seriesId: netLineSeriesId },
-    });
-  }
-  if (netLineOn) {
-    const values = dataSeries.flatMap((series) =>
-      series.vals.flatMap((value) => (value.v === null ? [] : [value.v])),
-    );
-    const hasPositive = values.some((value) => value > 0);
-    const hasNegative = values.some((value) => value < 0);
-    // The default line traces the positive top, or the negative bottom when
-    // nothing is positive, so a single-signed default is always the outer edge.
-    const outermost = netLineSeries
-      ? dataSeries.at(-1)?.id === netLineSeries.id
-      : hasPositive !== hasNegative;
-    if (hasPositive !== hasNegative && outermost) {
-      warnings.push({
-        code: 'netline-redundant',
-        severity: 'warn',
-        message: 'netLine traces the visible outer edge of a single-signed stack and adds no information',
-        ...(netLineSeries ? { owner: { seriesId: netLineSeries.id } } : {}),
-        suggest: 'Pick an inner boundary series with netLine.seriesId, or drop netLine.',
-      });
-    }
-  }
-  return { connectorsOn, connectorDashed, connectorSeries, netLineOn, netLineSeries, netLineSteps };
+  const visibleIndex = netLineSeries?.lastVisibleIndex;
+  return {
+    connectorsOn, connectorDashed, connectorSeries, netLineSteps,
+    netLineOn: netLineOn && drawsNetLine(dataSeries, netLineSeriesId, netLineSeries, s => s.vals, 'either', warnings),
+    netLineSeries: visibleIndex === undefined ? netLineSeries : shown[visibleIndex],
+  };
 }
 
 /**
@@ -752,15 +731,12 @@ function integratedVarianceValues(
 function columnValueDomain(
   va: ValueAxisOptions,
   variant: ColumnVariant,
-  cats: Category[],
   dataSeries: NormSer[],
   refSeries: NormSer[],
-  plottedOf: ColumnDomain['plottedOf'],
-  rangeOf: ColumnDomain['rangeOf'],
-  stacks: ColumnDomain['stacks'],
+  basis: ColumnBasis,
   lineExtent: ValueLineExtent | null,
   warnings: LintWarning[],
-): { posTopP: number[]; negBotP: number[]; dLo: number; dHi: number; stepTicks?: number[]; rendered: number[] } {
+) {
   const stackedLike = variant !== 'grouped';
   const rendered: number[] = [];
   const posTopP: number[] = [];
@@ -770,17 +746,14 @@ function columnValueDomain(
   // seeding the line makes it visible instead of refusing it.
   let lo = Math.min(0, lineExtent?.lo ?? 0);
   let hi = Math.max(0, lineExtent?.hi ?? 0);
-  cats.forEach((_, ci) => {
-    const stack = stacks[ci]!;
+  basis.stacks.forEach((stack, ci) => {
     let p = stackedLike ? stack.positive : 0;
     let n = stackedLike ? stack.negative : 0;
-    for (let si = 0; si < dataSeries.length; si++) {
-      const s = dataSeries[si]!;
-      const v = plottedOf(s, ci);
-      if (v === null) continue;
-      const start = stackedLike ? stack.segments[si]!.start : 0;
-      const range = rangeOf(s, ci);
-      rendered.push(stackedLike ? stack.segments[si]!.end : v);
+    for (const segment of stack.segments) {
+      if (!segment) continue;
+      const start = stackedLike ? segment.start : 0;
+      const range = basis.rangeOf(dataSeries[segment.index]!, ci);
+      rendered.push(stackedLike ? segment.end : segment.value);
       if (range) {
         lo = Math.min(lo, start + range.low, start + range.high);
         hi = Math.max(hi, start + range.low, start + range.high);
@@ -788,8 +761,8 @@ function columnValueDomain(
         if (range.mid !== undefined) rendered.push(start + range.mid);
       }
       if (!stackedLike) {
-        p = Math.max(p, v);
-        n = Math.min(n, v);
+        p = Math.max(p, segment.value);
+        n = Math.min(n, segment.value);
       }
     }
     posTopP[ci] = p;
@@ -802,13 +775,12 @@ function columnValueDomain(
   // so refs neither stretch the domain nor render — warned once below.
   if (variant !== 'stacked100') {
     for (const s of refSeries) {
-      cats.forEach((_, ci) => {
-        const v = plottedOf(s, ci);
-        if (v === null) return;
+      for (const { v } of s.vals) {
+        if (v === null) continue;
         rendered.push(v);
         lo = Math.min(lo, v);
         hi = Math.max(hi, v);
-      });
+      }
     }
   } else {
     if (refSeries.some((s) => s.vals.some((val) => val.v !== null))) {
@@ -847,8 +819,7 @@ function columnValueDomain(
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
   // An authored tick step sets the tick rhythm, as on line: the domain snaps
   // out to the step, so no value is cut; more than 20 intervals are ignored.
-  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
-  return { posTopP, negBotP, dLo: stepped.domain[0], dHi: stepped.domain[1], ...(stepped.ticks ? { stepTicks: stepped.ticks } : {}), rendered };
+  return { posTopP, negBotP, rendered, scale: applyTickStep([dLo, dHi], va.tickStep, warnings) };
 }
 
 /** The value-axis break, validated against every value the exhibit renders. */
@@ -998,12 +969,15 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
   const running = runningPeriodIds(normalized.cats, ci => hasActualCategoryValue(plotted, ci));
-  const { cats, dataSeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
+  const keySeries = sortSegments(plotted, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
+  const dataSeries = shownSeries(options, keySeries, true);
+  const { cats, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, dataSeries, warnings);
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
-  const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, dataSeries, refSeries, warnings);
-  const lines = columnLines(options, stackedLike, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
+  // A paint decision and a warning read every series, so hiding one changes neither.
+  const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, keySeries, refSeries, warnings);
+  const lines = columnLines(options, stackedLike, keySeries, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
   const va = options.valueAxis ?? {};
   // A window or zoom draws some periods; the anomaly rule, the mean and the
   // average marker below keep every source period, as on line and combo.
@@ -1056,8 +1030,13 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     : new Map<Id, IntegratedValue>();
   // A drawn value line is part of the stated range (valueLineDomain.ts).
   const lineExtent = valueLineExtent(options.annotations);
-  const { rendered, ...extent } = columnValueDomain(va, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, warnings);
-  const corridor = anomalyCorridor(anomaly, anomalyValues, extent.dLo, extent.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
+  const { rendered, posTopP, negBotP, scale } = columnValueDomain(va, variant, dataSeries, refSeries, basis, lineExtent, warnings);
+  // While a reader hides a series, the shares keep the precision of every series, and an authored bound (a scale group's too) its range.
+  const full = keySeries === dataSeries ? basis : columnBasis(variant, cats, keySeries, [], ranked);
+  const axis = full !== basis && (va.min !== undefined || va.max !== undefined)
+    ? columnValueDomain(va, variant, keySeries, refSeries, full, lineExtent, []).scale : scale;
+  let [dLo, dHi] = axis.domain;
+  const corridor = anomalyCorridor(anomaly, anomalyValues, dLo, dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
   // No total on a 100 % stack unless authored, and none on grouped
   // columns, where the bars stand side by side and add to nothing.
   const grandTotalsRequested = grandTotalRequested(options.grandTotalLabels, variant, warnings, partsAdd);
@@ -1079,7 +1058,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
   warnShareFormatIgnored(variant, options.format, shareFormatExample(options), gtContent?.includes('absolute') === true || columnSegmentsPrintAbsolute(options), warnings);
   // Every computed share the chart prints takes one precision.
-  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
+  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => keySeries.flatMap((s) => full.shareOf(s, ci) ?? [])), options.locale?.language);
   // An authored total100 is the author's whole. Percent cells take part, as on bar:
   // shares that add to exactly 100 print so they still do, and others print as given.
   const wholes = sharesOn ? cats.flatMap((c, ci) => {
@@ -1096,7 +1075,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  const shareExample = shareFormatExample(options, dataSeries);
+  const shareExample = shareFormatExample(options, keySeries);
   const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding === 'sum-consistent') {
     for (const { c, parts } of wholes) {
@@ -1116,38 +1095,38 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const rescaled = options.sharesOfOneWhole === true
     ? wholes.filter(({ c }) => !dataSeries.some((s) => s.vals[cats.indexOf(c)]!.isPct) && Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
-  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, extent.dLo, extent.dHi, warnings);
+  const breakChecks: LintWarning[] = [];
+  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, breakChecks);
+  warnings.push(...(keySeries === dataSeries ? breakChecks : breakChecks.map((warning) => breakWhileHidden(warning, options.valueAxis!.break as LinearBreak))));
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
-  let { stepTicks, ...span } = extent;
-  const checked = activeBreak;
-  const stepAcross = stepFitsAxisBreak(stepTicks, checked, va.tickStep, warnings);
+  const stepTicks = axis.ticks;
+  const stepAcross = stepFitsAxisBreak(stepTicks, activeBreak, va.tickStep, warnings);
   if (!stepAcross) {
     // The rejected step sets no extent either: the nice extent is taken again and the break checked against it.
     // A break excludes the anomaly corridor, so the corridor does not move. Its warnings were given above.
     const { tickStep: _rejected, ...nice } = va;
-    const { rendered: niceRendered, ...niceExtent } = columnValueDomain(nice, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, []);
-    ({ stepTicks, ...span } = niceExtent);
+    const niceExtent = columnValueDomain(nice, variant, dataSeries, refSeries, basis, lineExtent, []);
+    [dLo, dHi] = niceExtent.scale.domain;
     // A break that only the step's extent held is dropped with a warn: the chart drew with it before, so it does not refuse now.
     const checks: LintWarning[] = [];
-    activeBreak = columnAxisBreak(options, anomaly, niceRendered, meanValue, averageMark, corridor.corridorShown, span.dLo, span.dHi, checks);
-    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
-      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+    activeBreak = columnAxisBreak(options, anomaly, niceExtent.rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, checks);
+    warnings.push(...checks.map(drawnWithoutBreak));
   }
   // The average marker's number, in its drawn label and its record (the hover value) alike; a percent chart keeps its '%'.
   const averageFmt = !options.format && (variant === 'stacked100' || options.unit === '%' || pctLevels)
     ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
-    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, keySeries, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
-    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
+    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, posTopP, negBotP, dLo, dHi, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
     gtContent,
     partsAdd,
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
     ...(averageMark === undefined ? {} : { averageMarker: { id: averageMarkerId(options.annotations ?? []), fmt: averageFmt } }),
     annList: columnAnnotationList(options, variant, averageMark, averageFmt, averageMarkerSpan(averageRun, meanSpan)),
-    seriesCagr: stackedLike ? seriesCagrs(options, cats, dataSeries, basis.absOf, warnings) : new Map(),
+    seriesCagr: stackedLike ? seriesCagrs(options, cats, keySeries, full.absOf, warnings) : new Map(),
   };
 }
 
@@ -1359,7 +1338,8 @@ function planEdgeNames(domain: ColumnDomain): EdgePlan {
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   const axis = domain.va.show ? measureValueAxisWidth([domain.dLo, domain.dHi], domain.fmt, theme, measure, 5, domain.valueSpec.spec, domain.stepTicks) : 0;
   const step = (size.width - margin.left - margin.right - axis) / Math.max(1, domain.cats.length);
-  return gutter <= step ? { names, replaceKey: true } : { names: [], replaceKey: false };
+  // While a reader hides a series the key stays, so its hollow entry can be clicked back.
+  return gutter <= step ? { names, replaceKey: domain.dataSeries === domain.keySeries } : { names: [], replaceKey: false };
 }
 
 /** The key of a share printed under rounding 'sum-consistent'. */

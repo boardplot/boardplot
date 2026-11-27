@@ -606,8 +606,8 @@ Every code a render, a measure or a React chart can return, read from the source
 | `name-slugified` | warn | yes | core/doc/document.ts |
 | `negative-value` | error, warn |  | funnel, waffle |
 | `net-line-ignored` | warn | yes | bar, column |
-| `net-line-series-missing` | warn |  | bar, column |
-| `netline-redundant` | warn |  | bar, column |
+| `net-line-series-missing` | warn |  | core/columnBarChecks.ts |
+| `netline-redundant` | warn |  | core/columnBarChecks.ts |
 | `no-data-series` | error |  | bar, dot |
 | `no-mean` | warn |  | bar, core/annotate.ts, dot |
 | `no-plotted-values` | warn |  | core/registry.ts |
