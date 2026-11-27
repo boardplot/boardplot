@@ -12,7 +12,7 @@ export const hoverSchema = z.union([
     ]).optional().describe('Label card with the hovered record\'s own facts. With a mouse or a pen it follows the pointer and flips at the chart edge; a tap or the keyboard places it beside the mark. It stays inside the browser viewport, may extend beyond the chart frame and never changes the page layout. Default \'label\'. On a table, \'sparkline\' draws the row across its column group instead and no card where the group holds fewer than three numbers.'),
     highlight: z.boolean().optional().describe('Dim the other series and outline the hovered marks; on a table, wash the row of the hovered cell instead. Default true.'),
   }).describe('Turn the card or the highlight off separately.'),
-]).describe('Pointer hover: a label card and a highlight of the hovered series. On by default; a table keeps it off. The server render is the static chart.');
+]).describe('Pointer hover: a label card and a highlight of the hovered series. Nothing else is interactive. The server render is the static chart.');
 
 /** Host sizing is separate from the fixed dimensions accepted by core and CLI. */
 export const reactSizingOptionsSchema = z.object({
