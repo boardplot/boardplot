@@ -512,3 +512,5 @@ export const tableDataSchema = baseTableDataSchema.superRefine((data, ctx) => {
     keys: 'hierarchy, cells and scene identities',
   });
 });
+
+export { retiredSettings } from './retired';

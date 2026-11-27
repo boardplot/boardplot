@@ -444,3 +444,5 @@ export const diagramOptionsSchema = commonDiagramOptions
       });
     }
   }).describe('Shared frame metadata and one diagram layout variant.') as unknown as z.ZodType<DiagramOptions>;
+
+export { retiredSettings } from './retired';

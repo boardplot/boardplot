@@ -1,5 +1,7 @@
 /**
- * Every setting Boardplot once accepted and has since retired, in one place.
+ * Every setting Boardplot once accepted and has since retired. A setting of one
+ * chart type alone sits in that type's folder (`charts/<type>/retired.ts`), so
+ * a chart entry links only its own; the rest are here.
  * A retired setting is accepted for good, so a spec or theme saved long ago
  * still draws: a rename draws as its successor, a removal is ignored, and
  * both warn `option-deprecated` with a JSON Patch that rewrites or removes
@@ -20,7 +22,7 @@ type Scalar = string | number | boolean;
  * `to` is the successor key as a chart path; without `to` and `values` the
  * key is removed, and `use` says what to use instead.
  */
-interface RetiredSetting {
+export interface RetiredSetting {
   at: string;
   types?: readonly string[];
   values?: Readonly<Record<string, Scalar | null>>;
@@ -31,69 +33,36 @@ interface RetiredSetting {
 const removed = (types: readonly string[], at: readonly string[], use?: string): RetiredSetting[] =>
   at.map(path => ({ at: path, types, ...(use ? { use } : {}) }));
 
+/** type -> the retired settings of that type alone, kept in its folder and linked by its core and its schemas. */
+const OWN_SETTINGS = new Map<string, readonly RetiredSetting[]>();
+
+/** Called by the registry when a chart's core or schemas register: the type's own retired settings join the shared ones. */
+export function linkRetiredSettings(type: string, settings: readonly RetiredSetting[] | undefined): void {
+  if (settings) OWN_SETTINGS.set(type, settings);
+}
+
 const RETIRED_SETTINGS: readonly RetiredSetting[] = [
   { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
-  // Each chart form is named by one option, variant.
-  { at: 'options.orient', types: ['waterfall'], to: 'options.variant' },
-  { at: 'options.layout', types: ['funnel'], to: 'options.variant' },
-  { at: 'options.variance.mode', types: ['variance'], to: 'options.variant' },
-  { at: 'options.glyph', types: ['heatmap'], to: 'options.variant' },
-  { at: 'options.mode', types: ['mekko'], to: 'options.variant', values: { percent: 'stacked100', unit: 'stacked', bar: 'bar' } },
-  { at: 'options.preset', types: ['table'], to: 'options.variant', values: { plain: 'hierarchy', steering: 'steering', benchmark: 'benchmark', status: 'status', receipts: 'receipts', hierarchy: 'hierarchy' } },
-  { at: 'options.exhibitStyle', types: ['cohort'], to: 'options.variant' },
-  { at: 'options.preset', types: ['diagram'], to: 'options.variant' },
-  { at: 'options.structure', types: ['dimswitch'], to: 'options.variant', values: { byMeasure: 'by-measure', byMember: 'by-member' } },
-  { at: 'options.preset', types: ['dimswitch'], use: 'A dimswitch always draws the steering table.' },
-  { at: 'options.order', types: ['dimswitch'], values: { authored: 'sheet' } },
-  { at: 'options.order', types: ['treemap'], values: { data: 'sheet' } },
-  { at: 'options.cascade', types: ['bartable'], to: 'options.variant', values: { true: 'cascade' } },
-  { at: 'options.panelScale', types: ['bartable'], to: 'options.sharedScale', values: { own: false, shared: true } },
-  { at: 'options.fillMode', types: ['waffle'], to: 'options.variant' },
-  { at: 'options.shape', types: ['treemap'], to: 'options.variant' },
-  { at: 'options.variant', types: ['line'], values: { stackedArea: 'stacked-area', area100: 'stacked100-area' } },
-  { at: 'options.share', types: ['grid'], to: 'options.sharedAxis', values: { categories: 'category', none: 'none' } },
   // Unused options and data fields.
   ...removed(['line', 'combo'], ['options.endpointLabelDefault', 'options.lineLabels'], 'Set seriesLabels and valueLabels.'),
-  ...removed(['pareto'], ['options.ruler']),
-  ...removed(['grid'], ['options.gap', 'options.gutterWidth', 'options.showMaturing', 'options.totalPanel']),
   ...removed(['column', 'line', 'combo'], ['options.eventLegendFootnotes']),
   ...removed(['line', 'combo', 'grid'], ['options.hover'], 'Hover is the hover prop of the React component.'),
   { at: 'options.labels.growth', types: ['combo'], to: 'options.dualAxis.growth' },
-  ...removed(['pvm'], ['options.effectOrder']),
   ...removed(['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel'], ['data.categories.[].total100']),
   ...removed(['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel', 'mekko'], ['data.categories.[].gapAfter', 'data.categories.[].breakAfter']),
   ...removed(['line', 'combo', 'slope', 'butterfly'], ['data.series.[].direction']),
   ...removed(['butterfly', 'heatmap'], ['data.series.[].role']),
   ...removed(['pie', 'heatmap'], ['data.series.[].fill']),
-  ...removed(['diagram'], ['data.nodes.[].ports.[].priority']),
   // Options with no reader on these types.
-  ...removed(['dimswitch'], ['options.groupRule', 'options.groupAlign'], 'These keys set the head of a column group, and a dimswitch draws none.'),
   ...removed(ANNOTATIONS_RETIRED, ['options.annotations', 'annotations'], 'This chart type draws no annotation of any kind.'),
-  ...removed(['variance'], ['options.topN.showRestCount'], 'A variance chart draws no rest bucket, so it has no count to print.'),
-  ...removed(['dot'], ['options.averageMarker.includePartial'], 'A dot chart averages every dot in scope.'),
   { at: 'options.strings.legendCount', use: 'No chart printed this wording.' },
   // Options whose only effect on these types was a warning that they do nothing.
-  ...removed(['box'], ['options.valueAxis.includeZero', 'options.valueAxis.percent', 'options.valueAxis.reverse', 'options.valueAxis.tickStep'], 'A box axis is a plain linear read of the observations.'),
-  ...removed(['butterfly'], ['options.sort.segments'], 'A butterfly has no stacked segments. sort.categories orders the rows.'),
   ...removed(['column', 'combo'], ['options.categoryAxis.crossesBetween'], 'Columns always sit in the middle of their bands.'),
-  ...removed(['dimswitch'], ['options.format'], 'Set measures[].format.'),
-  ...removed(['gantt'], ['options.format'], 'Gantt formats calendar dates through its date options.'),
-  ...removed(['grid'], ['options.format'], 'Set the format on each panel.'),
-  ...removed(['dot'], ['options.topN.threshold', 'options.topN.rest', 'options.topN.restLabel', 'options.topN.showRestCount'], 'A dot chart draws no rest bucket, because a sum of scores is not a score.'),
-  ...removed(['likert'], ['options.legend.order'], 'The legend reads in scale order. Reorder data.scale.'),
-  ...removed(['pareto'], ['options.highlight'], 'The highlight encodes the derived vital few.'),
-  ...removed(['pareto'], ['options.topN.showRestCount'], 'A Pareto always prints the count, because the concentration verdict rests on it.'),
-  ...removed(['pareto'], ['options.topN.threshold'], 'The rank cut is topN.n.'),
   ...removed(['table', 'dimswitch'], ['options.fitFormats'], 'A figure prints the same text at every width, and its track widens to hold it. To print fewer digits, set a shorter format example.'),
   // A table row nests through children: the key is retired on the rows of the first eight levels.
-  ...removed(['table'], ['data.columns.[].fitFormat', ...Array.from({ length: 8 }, (_, depth) => `data.rows.[].${'children.[].'.repeat(depth)}fitFormat`)],
-    'No format is fitted to a width any more.'),
-  { at: 'data.pack', types: ['choropleth'], values: { 'de-laender': 'de-states' } },
-  { at: 'options.density', types: ['dimswitch'], values: { cohort: null, 'cohort-small': null },
-    use: "A cohort density is a one-line row and a dimswitch cell holds two lines; set 'compact' for tight rows." },
 ];
 
 /** Theme keys without a successor, dotted from the theme root, with what to use instead. */
@@ -383,7 +352,7 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
         ...(warning.fix && { fix: warning.fix.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) }) });
     }
   }
-  for (const entry of RETIRED_SETTINGS) {
+  for (const entry of [...RETIRED_SETTINGS, ...OWN_SETTINGS.get(type) ?? []]) {
     if (entry.types && !entry.types.includes(type)) continue;
     for (const at of places(next, entry.at.split('.'))) {
       const value = readAt(next, at);

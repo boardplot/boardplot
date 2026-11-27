@@ -8,6 +8,7 @@ import { claimId, withUnprintedClaims } from '../../claims/ids';
 import { printsInCell } from './cellKey';
 import { layoutTableCard, prepareTableCardExecutor, type TableMarks } from './layout';
 import { cellPrinted } from './view';
+import { retiredSettings } from './retired';
 
 /** A computed cell's claim prints only where its number is the cell's figure and the layout prints that cell. */
 function withUnprintedCells(geometry: Geometry<TableMarks, TableDerived>, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
@@ -20,6 +21,7 @@ function withUnprintedCells(geometry: Geometry<TableMarks, TableDerived>, option
 
 export const tableCore: ChartCore<TableData, TableOptions, TableMarks, TableDerived> = {
   type: 'table',
+  retired: retiredSettings,
   sizing: chartSizing('table'),
   title: 'Table',
   summary:

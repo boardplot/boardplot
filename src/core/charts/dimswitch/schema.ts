@@ -60,3 +60,5 @@ export const dimswitchOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
  widths:z.strictObject({label:z.number().positive().optional().describe('Width of the whole label track in px, indent and affix included. It stays fixed when the frame has room. Absent, the label text adds up to 320 px, indent and affix on top; wider content lets labels use the room.'),range:z.number().positive().optional().describe('Range track in px; default 110.'),change:z.number().positive().optional().describe('Change track in px; default 92.'),period:z.number().positive().optional().describe('Track of each period in px; default 94.')}).optional().describe('Fixed track widths of the value columns.'),
  minimumSample:idRecord(id,z.number().nonnegative()).optional().describe('Minimum judge base per sum field in BOTH windows (below it: neutral). Default none.'),
 }).superRefine(figuresNeedHeat) as unknown as z.ZodType<DimSwitchOptions>;
+
+export { retiredSettings } from './retired';

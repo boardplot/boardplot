@@ -81,3 +81,5 @@ export const paretoOptionsSchema = baseOptionsSchema
       .optional()
       .describe('Footnotes stating the derivation and the vital-few set. Default false: the reader gets the exhibit, not a method statement.'),
   }) as unknown as z.ZodType<ParetoOptions>;
+
+export { retiredSettings } from './retired';

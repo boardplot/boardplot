@@ -7,6 +7,7 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ButterflyOptions } from '../../types/options';
 import { layoutButterfly, type ButterflyDerived, type ButterflyMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const butterflyCore: ChartCore<
   ChartData,
@@ -15,6 +16,7 @@ export const butterflyCore: ChartCore<
   ButterflyDerived
 > = {
   type: 'butterfly',
+  retired: retiredSettings,
   sizing: chartSizing('butterfly'),
   title: 'Butterfly / tornado',
   summary: 'Two mirrored horizontal panes around a shared center category column',

@@ -43,3 +43,5 @@ export const treemapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
     "Total callout at the lower right, no larger than the title. true prints the formatted grand total with the unit; a string prints itself, with '{value}' replaced by the formatted total. Off by default: the title usually states the total.",
   ),
 }) as unknown as z.ZodType<TreemapOptions>;
+
+export { retiredSettings } from './retired';

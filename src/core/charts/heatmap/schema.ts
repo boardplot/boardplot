@@ -74,3 +74,5 @@ export const heatmapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
   minBase: z.number().positive().optional().describe('Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note.'),
   missing: z.enum(['hatch', 'blank']).optional().describe("How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched."),
 }) as unknown as z.ZodType<HeatmapOptions>;
+
+export { retiredSettings } from './retired';

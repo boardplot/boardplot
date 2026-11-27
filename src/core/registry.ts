@@ -34,6 +34,7 @@ import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } fro
 import type { Category } from './types/data';
 import { presentationInfo } from './themeGeometry';
 import { chartRefusals, isRefused } from './schema/refusals';
+import { linkRetiredSettings, type RetiredSetting } from './retired';
 import { rectsOverlap } from './geometry';
 import { isOwnMark } from './label/solver';
 import { reportLabelOmissions } from './label/omissions';
@@ -113,6 +114,8 @@ export interface ChartCore<
   aliases?: string[];
   /** Alias-specific values for existing options, applied before authored options. */
   aliasDefaults?: Record<string, Partial<O>>;
+  /** The retired settings of this type alone (core/retired.ts holds the shared ones). */
+  retired?: readonly RetiredSetting[];
   layout: LayoutFn<D, O, M, DV>;
   /** Prepares private chart data once for all size and note trials in this request. */
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
@@ -216,6 +219,8 @@ export interface ChartSchemas<D = unknown, O extends ChartOptions = BaseOptions>
   /** Explicit option keys that select one data branch before validation. */
   dataSchemaByOption?: Record<string, z.ZodType>;
   optionsSchema: z.ZodType<O>;
+  /** The retired settings of this type alone, as on its core: validation reads them before the core loads. */
+  retired?: readonly RetiredSetting[];
 }
 
 /** Options schemas installed by the built-in catalogue. Custom registries keep their own schema declarations. */
@@ -303,6 +308,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   // Enforce annotationKinds uniformly: unsupported kinds are stripped before
   // layout and surfaced as a warning — never silently swallowed, never
   // accidentally rendered.
+  linkRetiredSettings(def.type, def.retired);
   const sizing = def.sizing ?? chartSizing(def.type);
   const supported = new Set(def.annotationKinds);
   // Width-yielding layouts read repair sizes. A Gantt probe also updates the full-card context.
@@ -1143,6 +1149,7 @@ export function getChartDefinition(
 export function registerChartSchemas(schemas: ChartSchemas<any, any>, aliases: readonly string[] = []): void {
   if (schemaIndex.has(schemas.type)) return;
   schemaIndex.set(schemas.type, schemas);
+  linkRetiredSettings(schemas.type, schemas.retired);
   for (const alias of aliases) schemaAliasIndex.set(alias, schemas.type);
 }
 

@@ -14,6 +14,7 @@ import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
 import { checkedTightAdvice } from '../tableFit';
 import { hostedLayout } from '../../normalize/innerRefusal';
+import { retiredSettings } from './retired';
 
 export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}) {
   const compiled = compileDimSwitch(data, options, form);
@@ -388,5 +389,6 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
 
 export const dimswitchCore: ChartCore<DimSwitchData,DimSwitchOptions,TableMarks,DimSwitchDerived> = {
  type:'dimswitch',title:'Dimension switch table',summary:'A KPI table: measures by one hierarchical dimension by period, switchable between KPI rows over members and member rows over KPIs. The host supplies additive sums per member and period; Boardplot derives ratios, changes and judgement',aliases:['dim-switch-table','dim-switch'],sizing:{...chartSizing('table'),minWidth:CARD_MIN_WIDTH},defaults:{variant:'by-measure',depth:1,splits:false},annotationKinds:[],
+ retired: retiredSettings,
  layout:(data,options)=>withUnprintedCells(layoutDimSwitchCard(data,options)),
 };

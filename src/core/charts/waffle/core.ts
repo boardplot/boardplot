@@ -6,9 +6,11 @@ import type { ChartData } from '../../types/data';
 import { layoutWaffle } from './layout';
 import { WAFFLE_SIZING } from './sizing';
 import type { WaffleDerived, WaffleMarks, WaffleOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const waffleCore: ChartCore<ChartData, WaffleOptions, WaffleMarks, WaffleDerived> = {
   type: 'waffle',
+  retired: retiredSettings,
   sizing: WAFFLE_SIZING,
   title: 'Waffle',
   summary: 'Share of a whole as a grid of square cells, one panel per category: label, headline total and whole-cell segments (largest-remainder rounding), filled from the bottom left',

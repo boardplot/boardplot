@@ -4,6 +4,7 @@ import { chartSizing } from '../../sizing';
 import type { ChartCore } from '../../registry';
 import type { ParetoOptions } from '../../types/options';
 import { layoutPareto, type ParetoData, type ParetoDerived, type ParetoMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const paretoCore: ChartCore<
   ParetoData,
@@ -12,6 +13,7 @@ export const paretoCore: ChartCore<
   ParetoDerived
 > = {
   type: 'pareto',
+  retired: retiredSettings,
   sizing: chartSizing('pareto'),
   title: 'Pareto (vital few)',
   summary:

@@ -6,9 +6,11 @@ import { chartSizing } from '../../sizing';
 import { yieldingWidths } from '../heatmap/columnTracks';
 import { layoutBarTable } from './layout';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const bartableCore: ChartCore<BarTableData, BarTableOptions, BarTableMarks, BarTableDerived> = {
   type: 'bartable',
+  retired: retiredSettings,
   sizing: chartSizing('bartable'),
   title: 'Bar table',
   summary:

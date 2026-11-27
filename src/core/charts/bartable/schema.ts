@@ -203,3 +203,5 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
     .meta({ default: 'rows' })
     .describe("Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch."),
 }) as unknown as z.ZodType<BarTableOptions>;
+
+export { retiredSettings } from './retired';

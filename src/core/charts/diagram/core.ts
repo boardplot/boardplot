@@ -9,6 +9,7 @@ import type {
   DiagramOptions,
 } from '../../types/diagram';
 import { layoutDiagram } from './layout';
+import { retiredSettings } from './retired';
 
 export function normalizeDiagramData(data: DiagramData): DiagramData {
   return {
@@ -33,6 +34,7 @@ export const diagramCore: ChartCore<
   DiagramDerived
 > = {
   type: 'diagram',
+  retired: retiredSettings,
   // A hierarchy draws as a compact org chart down to a 320 px card; every
   // other layout still reports the 480 px floor itself (layout.ts).
   sizing: { ...chartSizing('diagram'), minWidth: CARD_MIN_WIDTH },

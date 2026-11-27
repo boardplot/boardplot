@@ -66,3 +66,5 @@ export const boxOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .optional()
     .describe("Default 'median': each box prints its median. 'all' also prints Q1 and Q3 under the box edges and the whisker ends under the caps, so a quartile or percentile reads as a number.").meta({ default: 'median' }),
 }) as unknown as z.ZodType<BoxOptions>;
+
+export { retiredSettings } from './retired';

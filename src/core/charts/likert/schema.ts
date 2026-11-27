@@ -147,3 +147,5 @@ export const likertOptionsSchema = baseOptionsSchema
       .optional()
       .describe('The two notes a reader needs to read the shares print by default. Turn one off only when the exhibit\'s own text already says it.'),
   }).describe('Statement names and ordinary legend keys use label size. Automatic keys retain footnote size; compact framing retains source, sample bases and required methodology.') as unknown as z.ZodType<LikertOptions>;
+
+export { retiredSettings } from './retired';

@@ -7,6 +7,7 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { VarianceOptions } from '../../types/options';
 import { layoutVariance, type VarianceDerived, type VarianceMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const varianceCore: ChartCore<
   ChartData,
@@ -15,6 +16,7 @@ export const varianceCore: ChartCore<
   VarianceDerived
 > = {
   type: 'variance',
+  retired: retiredSettings,
   sizing: chartSizing('variance'),
   title: 'Variance / deviation',
   summary:

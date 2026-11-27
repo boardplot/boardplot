@@ -983,7 +983,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `unsupported-media` | error |  | core/image.ts |
 | `unsupported-metric` | error |  | core/live/window.ts |
 | `unsupported-ordering` | error |  | core/live/window.ts |
-| `unsupported-shape` | error |  | core/live/window.ts, react/prepare.ts |
+| `unsupported-shape` | error |  | core/live/window.ts, react/prepareEngine.ts |
 | `value-axis-bounds-expanded` | warn |  | line |
 | `value-axis-dropped` | warn |  | butterfly |
 | `value-axis-max-ignored` | warn | yes | core/scale.ts |

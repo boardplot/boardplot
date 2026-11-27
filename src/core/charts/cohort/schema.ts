@@ -141,3 +141,5 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
       ctx.addIssue({ code: 'custom', path: [key], message, params: { refused: true } });
     }
   }) as unknown as z.ZodType<CohortOptions>;
+
+export { retiredSettings } from './retired';

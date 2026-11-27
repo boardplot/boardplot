@@ -666,7 +666,7 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
     'export const schemaLoaders: Readonly<Record<string, () => Promise<ChartSchemas<any, any>>>> = {',
     ...types.map((type) =>
       `  ${type}: () => import('../core/charts/${type}/schema')\n` +
-      `    .then((module) => ({ type: '${type}', dataSchema: module.${type}DataSchema, optionsSchema: module.${type}OptionsSchema${type === 'grid' ? ', dataSchemaByOption: { stack: module.metricStackDataSchema }' : ''}${aliasDefaults[type] ? `, aliasDefaults: ${JSON.stringify(aliasDefaults[type])}` : ''} })),`),
+      `    .then((module) => ({ type: '${type}', dataSchema: module.${type}DataSchema, optionsSchema: module.${type}OptionsSchema${existsSync(join(repositoryRoot, `src/core/charts/${type}/retired.ts`)) ? ', retired: module.retiredSettings' : ''}${type === 'grid' ? ', dataSchemaByOption: { stack: module.metricStackDataSchema }' : ''}${aliasDefaults[type] ? `, aliasDefaults: ${JSON.stringify(aliasDefaults[type])}` : ''} })),`),
     '};',
     '',
     '/** type -> the alias names a spec may write instead, so an aliased type finds its chunk. */',

@@ -10,9 +10,11 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { DotOptions } from '../../types/options';
 import { layoutDot, type DotDerived, type DotMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const dotCore: ChartCore<ChartData, DotOptions, DotMarks, DotDerived> = {
   type: 'dot',
+  retired: retiredSettings,
   sizing: chartSizing('dot'),
   title: 'Dot / dumbbell / lollipop',
   summary:

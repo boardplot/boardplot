@@ -76,3 +76,5 @@ export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     midLabel: z.string().min(1).optional().describe("The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others."),
   }).optional().describe('What the drawn ranges are: their key entry and, on request, their bounds as numbers.'),
 }) as unknown as z.ZodType<DotOptions>;
+
+export { retiredSettings } from './retired';
