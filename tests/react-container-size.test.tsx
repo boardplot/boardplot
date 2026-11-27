@@ -1410,9 +1410,9 @@ it('keeps creative, lookup, sankey and pvm keys in their exported documents', as
 it('exports and prints a capped note without the hover hint', async () => {
   const print = printMedia();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const wave = [10, 11, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16];
-  const capped = { categories: months, series: [{ id: 'a', label: 'North', values: wave },
-    { id: 'b', label: 'South', values: wave.map(value => value + 0.5) }, { id: 'c', label: 'West', values: wave.map(value => value + 0.2) }] };
+  const monthly = [10, 11, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16];
+  const capped = { categories: months, series: [{ id: 'a', label: 'North', values: monthly },
+    { id: 'b', label: 'South', values: monthly.map(value => value + 0.5) }, { id: 'c', label: 'West', values: monthly.map(value => value + 0.2) }] };
   const handle = await exporterOf(exporter => <LineChart data={capped} title="Three regions" valueLabels="all" notes={{ show: ['disclosure'] }}
     size={{ width: 720, height: 405 }} exporter={exporter} />);
   expect(host.textContent).toContain('tap or hover');
