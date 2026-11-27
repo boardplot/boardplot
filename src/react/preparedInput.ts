@@ -7,8 +7,8 @@ export interface PreparedContext {
 
 /**
  * One chart in the form both sides compare: a spec (a bare chart or a document of one chart) or the request that
- * `prepareChart` received. The name drops. The theme and the target come from the host's props, the chart's options,
- * then a bare chart's or a request's top level or the document root, in the order the layout reads them. The document
+ * `prepareChart` received. The name drops. The theme and the target come from the host's props, a bare chart's or a
+ * request's top level, the chart's options, then the document root, in the order the request reads them. The document
  * root takes only a language tag, as `parseChartSpec` reads it. A language tag stands for `{ language }`, and a key
  * whose value is undefined counts as absent, as it does once JSON carries the spec. Undefined for a document of
  * several charts.
@@ -21,14 +21,14 @@ function comparableChart(input: unknown, host: { theme?: unknown; target?: unkno
   const { name: _name, options, theme, target, ...rest } = chart as Record<string, unknown>;
   const own = Object(options) as { theme?: unknown; target?: unknown; locale?: unknown };
   // A chart of a document keeps a top-level theme or target: validation refuses it there.
-  const top = document ? { theme: root.theme } : { theme, target };
+  const top = document ? {} : { theme, target };
   const locale = own.locale ?? (document && typeof root.locale === 'string' ? root.locale : undefined);
   return {
     ...rest, ...(document && { theme, target }),
     options: {
       ...own,
-      theme: host.theme ?? own.theme ?? top.theme,
-      target: host.target ?? own.target ?? top.target,
+      theme: host.theme ?? top.theme ?? own.theme ?? (document ? root.theme : undefined),
+      target: host.target ?? top.target ?? own.target,
       locale: typeof locale === 'string' ? { language: locale } : locale,
     },
   };

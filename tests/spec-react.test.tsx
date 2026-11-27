@@ -228,4 +228,8 @@ it('draws the prepared chart in the first frame for every form of the same chart
   // The host's theme prop wins over the chart's own theme, so a chart prepared with the chart's theme is another chart.
   const light = renderToString(<BoardplotChart spec={themed} theme="standard" prepared={await prepareChart((await parseChartSpec(themed)).request) as never} />);
   expect(light).toContain('data-bp-loading');
+  // A request's top-level target wins over its options, so a slide chart is not the report chart of the spec.
+  const slide = await prepareChart({ ...kpi, target: 'slide', options: { target: 'report' } } as never);
+  expect(renderToString(<BoardplotChart spec={{ ...kpi, options: { target: 'report' } }} prepared={slide as never} />)).toContain('data-bp-loading');
+  expect(charts(renderToString(<BoardplotChart spec={kpi} target="slide" prepared={slide as never} />))).toBe(1);
 });
