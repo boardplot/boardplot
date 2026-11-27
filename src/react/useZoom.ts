@@ -38,7 +38,9 @@ const editable = (target: EventTarget | null) =>
 
 export function useZoom(input: { type: string; data: unknown; annotations: unknown[] | undefined; options: Record<string, unknown>; zoom: ZoomOption | undefined; width: number | undefined;
   /** The provider's strings and language, which the bucket notes follow. */
-  inherited?: { strings?: Record<string, unknown>; language?: string } }) {
+  inherited?: { strings?: Record<string, unknown>; language?: string };
+  /** The chart's hover and series click props, which the view hook of a column or bar chart reads (legendClick.ts). */
+  hover?: unknown; onSeriesClick?: unknown }) {
   const settings: ZoomProps | undefined = input.zoom === true ? {} : input.zoom || undefined;
   // The annotations prop replaces options.annotations in the request, so the zoom reads and filters that list.
   const spec = useMemo(() => ({ type: input.type, data: input.data,

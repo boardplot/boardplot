@@ -7,6 +7,7 @@ import type { StringsSpec } from '../../types/options';
 
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
+import { ranksCategories } from '../../normalize/shared';
 import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, neutralRampPaint, orderedRampPaint, paintColor, rampSlots, recedingRampIds, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { partialPattern } from '../../partialPeriod';
@@ -22,7 +23,7 @@ import { scenarioFillPattern, scenarioPartners, scenarioSlotPaint, seriesScenari
  * patterns the cells actually paint.
  */
 export interface ColumnLegendPaints extends ColumnPaints {
-  identity(s: NormSer, dataIdx: number): Paint;
+  identity(s: NormSer): Paint;
   base(s: NormSer, dataIdx: number): Paint;
   /** Every scenario pattern the cells paint (partial-period hatch excluded). */
   cellPatterns: ('hatch45' | 'outline' | undefined)[];
@@ -47,7 +48,9 @@ export function seriesPattern(s: NormSer): 'hatch45' | 'outline' | undefined {
 
 /** Phase 1, paints: the paint closures, and the sign-colour override disclosures. */
 export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): ColumnLegendPaints {
-  const { options, theme, palette, highlights, cats, dataSeries, variant, plottedOf, othersId, signColor, uniformScenario } = domain;
+  // Every paint decision reads every plotted series, so a series a reader hides leaves each other its colour.
+  // The cells and the indexes the marks pass read the drawn series.
+  const { options, theme, palette, highlights, cats, dataSeries: drawn, keySeries: dataSeries, variant, plottedOf, othersId, signColor, uniformScenario } = domain;
   // One pass resolves the same few paints once per cell, legend entry and adjacency check, and a
   // visible-tint paint walks contrast steps each time. Paints are plain data and the theme is fixed
   // for this call, so the colour is cached per paint value.
@@ -62,7 +65,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // paints the same colour, so no two series of one chart look alike.
   // Colour follows the series, not its sorted place, so sorting
   // the segments never recolours one. Slots are dealt in authored order.
-  const authored = domain.seriesNorm.filter((s) => dataSeries.includes(s));
+  const authored = domain.seriesNorm.filter(ranksCategories);
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
   // carry one scenario counts as that scenario.
   const seriesRoles = new Map(dataSeries.map(s => [s, seriesScenarioRole(s.scenario,
@@ -79,17 +82,16 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
   // A paired scenario series of grouped columns takes no ramp step of its own. One with its own
   // paint keeps it, so it stays in the deal and the plain series step past its colour.
-  const dealt = authored.filter((s) => stackLike || ownPaint(s) || !scenarioPartner.has(s.id));
+  const dealt = stackLike ? authored : authored.filter((s) => ownPaint(s) || !scenarioPartner.has(s.id));
   const authoredSlots = rampSlots(theme, dealt.map((s) => ownPaints[authored.indexOf(s)]), palette, { labels: dealt.map((s) => s.label), warnings });
   // A plain series of a stack beside authored colours keeps apart from them in the active theme.
-  const stackOwn = (variant === 'stacked' || variant === 'stacked100') && ownPaints.some(Boolean) ? ownPaints : undefined;
+  const stackOwn = stackLike && ownPaints.some(Boolean) ? ownPaints : undefined;
   // A Rest series (colorRole 'others') beside the ordered ramp is the quietest part (othersShade).
   const quietRest = !!options.seriesRamp && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
     authored.some((s) => s.colorRole === 'others' && !s.fill);
   if (quietRest) warnings.push(...othersShadeUnavailableWarnings(theme, { token: 'markInk' }));
   const slotOf = new Map(dealt.map((s, i) => [s.id, authoredSlots[i] ?? i]));
   const receding = recedingSeriesId(dataSeries, highlights);
-  const slots = dataSeries.map((s, i) => slotOf.get(s.id) ?? i);
   // Two or more plain series of a stack beside a highlight recede on the neutral ramp, strongest
   // to quietest in authored order. A plan paired with its actual keeps the actual's step.
   const rampIds = stackLike && !options.seriesRamp ? recedingRampIds(authored.filter((s) => !scenarioPartner.has(s.id)), highlights) : [];
@@ -97,11 +99,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // An authored fill or palette keeps its colour. A highlight, a colour role or a receding
   // series keeps every series in its usual colour.
   const marked = authored.some((s) => s.colorRole !== undefined || highlights.has(s.id) || s.id === receding);
-  const stackPlain = (variant === 'stacked' || variant === 'stacked100') && palette === undefined && !marked
+  const stackPlain = stackLike && palette === undefined && !marked
     ? authored.filter((s) => !s.fill) : [];
   const seriesIdentityPaint = (
     s: NormSer,
-    dataIdx: number,
     scenario = roleOf(s),
   ): Paint => {
     if (s.fill) return { css: s.fill };
@@ -114,8 +115,8 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     const step = rampIds.indexOf(s.id);
     if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     const partner = scenarioPartner.get(s.id);
-    if (partner) return seriesIdentityPaint(partner, dataSeries.indexOf(partner), scenario);
-    const slot = slots[dataIdx] ?? dataIdx;
+    if (partner) return seriesIdentityPaint(partner, scenario);
+    const slot = slotOf.get(s.id) ?? dataSeries.indexOf(s);
     if (dataSeries.length === 1) return themeSeriesPaint(slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, slot);
     if (stackOwn && authored.includes(s)) return stackApartPaint(stackOwn, authored.indexOf(s), slot, palette);
@@ -132,10 +133,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
    */
   const restRecedes =
     dataSeries.length === 1 && cats.some((c, ci) => highlights.has(c.id) && (plottedOf(dataSeries[0]!, ci) ?? 0) !== 0);
-  const basePaints = dataSeries.map((s, dataIdx): Paint => {
+  const basePaints = drawn.map((s): Paint => {
     // The rest role, which falls back to neutralLight.
     if (restRecedes && !s.fill && !s.colorRole && !s.scenario) return { token: 'rest' };
-    return seriesIdentityPaint(s, dataIdx);
+    return seriesIdentityPaint(s);
   });
   const baseColors: (string | undefined)[] = [];
   const seriesBasePaint = (_s: NormSer, dataIdx: number): Paint => basePaints[dataIdx]!;
@@ -151,10 +152,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     // authored overrides above (see signColorOverrides).
     if (signColor) return signPaint(s, val.v, options.colorblindSafe);
     if (uniformScenario.has(cat.id)) {
-      return seriesIdentityPaint(s, dataIdx, val.scenario ?? s.scenario);
+      return seriesIdentityPaint(s, val.scenario ?? s.scenario);
     }
     if (val.scenario) {
-      return seriesIdentityPaint(s, dataIdx, val.scenario);
+      return seriesIdentityPaint(s, val.scenario);
     }
     return seriesBasePaint(s, dataIdx);
   };
@@ -172,7 +173,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // scenario keys read `scenarioPattern` and the footnote names the period.
   const cellPattern = (s: NormSer, val: NormVal, cat: Category): 'hatch45' | 'outline' | undefined =>
     partialPattern(cat, scenarioPattern(s, val, cat), cellOutline(cat));
-  if (signColor) signColorOverrides(cats, dataSeries, highlights, othersId, (s, ci) => s.vals[ci]!, warnings);
+  if (signColor) signColorOverrides(cats, drawn, highlights, othersId, (s, ci) => s.vals[ci]!, warnings);
   /**
    * Every scenario pattern the CELLS will actually paint, walked over exactly
    * the cells the emit guards admit: grouped draws every non-null value (a
@@ -182,7 +183,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
    * is what gives the legend its scenario key.
    */
   const paintedCells: { s: NormSer; val: NormVal; c: Category }[] = [];
-  for (const s of dataSeries) {
+  for (const s of drawn) {
     cats.forEach((c, ci) => {
       const v = plottedOf(s, ci);
       if (v === null) return;

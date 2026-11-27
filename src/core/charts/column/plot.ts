@@ -1,4 +1,5 @@
 import { categoryHeightLimit } from '../../label/categoryRow';
+import { hiddenKey } from '../../hiddenSeries';
 import { chartString } from '../../strings/column';
 import { stringFields } from '../../strings';
 import { DEFAULT_TARGET, scaleTextPx } from '../../target';
@@ -129,14 +130,19 @@ function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): Le
           paint: signPaint(s, -1, domain.options.colorblindSafe),
         },
       ].filter((_, index) => s.vals.some(v => v.v !== null && (index === 0 ? v.v > 0 : v.v < 0))))
-    : dataSeries.map((s, i) => ({
-        id: s.id,
-        label: edgePrinted.has(s.id) ? s.label : domain.seriesCagr.get(s.id)?.text ?? s.label,
-        paint: legendUsesSeriesIdentity ? paints.identity(s, i) : paints.base(s, i),
-        pattern: legendUsesSeriesIdentity ? undefined : seriesPattern(s),
-        // A series whose every drawn column looks the same is keyed in that look, hatch included.
-        ...uniformCellLook(domain, paints, s, i),
-      }));
+    : domain.keySeries.map((s, place) => {
+        const i = s.lastVisibleIndex ?? place;
+        const label = edgePrinted.has(s.id) ? s.label : domain.seriesCagr.get(s.id)?.text ?? s.label;
+        // A series a reader hid keeps its entry, as a hollow box.
+        return dataSeries[i] !== s ? hiddenKey(s.id, label, place) : {
+          id: s.id,
+          label,
+          paint: legendUsesSeriesIdentity ? paints.identity(s) : paints.base(s, i),
+          pattern: legendUsesSeriesIdentity ? undefined : seriesPattern(s),
+          // A series whose every drawn column looks the same is keyed in that look, hatch included.
+          ...uniformCellLook(domain, paints, s, i),
+        };
+      });
   // Series the edge names do not repeat in the key.
   const edgeNamed = edgeNamesReplaceKey(domain) ? new Set(rightEdgeSeriesLabels(domain).map((series) => series.id)) : undefined;
   const keyedSeries = edgeNamed ? seriesItems.filter((item) => !edgeNamed.has(item.id)) : seriesItems;
@@ -263,7 +269,7 @@ function columnLegend(
   if (!effectiveLegend || effectiveLegend === 'none' || effectiveLegend === 'auto') return undefined;
   const legendOpts: LegendOptions = normalizeLegendOption(effectiveLegend);
   // A key row that only the band brought does not repeat the name of the one series.
-  const single = options.legend === undefined && !legendForcedByEncoding && domain.dataSeries.length === 1 ? domain.dataSeries[0]!.id : undefined;
+  const single = options.legend === undefined && !legendForcedByEncoding && domain.keySeries.length === 1 ? domain.keySeries[0]!.id : undefined;
   let items = [...columnLegendItems(domain, paints).filter((item) => item.id !== single), ...toleranceKeys];
   // Edge names that explain every series leave no key to draw.
   if (items.length === 0 && edgeNamesReplaceKey(domain)) return undefined;
@@ -286,7 +292,7 @@ function bandKeyRow(domain: ColumnDomain, paints: ColumnLegendPaints, eventKey: 
   const earlierHatch = options.legend !== 'none' && panelTypeClass(options) === undefined
     && hasEarlierPartialHatch(paints.partialHatch, domain.running);
   if (!eventKey?.legend?.length && !earlierHatch) return undefined;
-  const single = domain.dataSeries.length === 1 ? domain.dataSeries[0]!.id : undefined;
+  const single = domain.keySeries.length === 1 ? domain.keySeries[0]!.id : undefined;
   const items = columnLegendItems(domain, paints).filter((item) => item.id !== single);
   return { options: { position: 'top' }, items };
 }

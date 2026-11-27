@@ -1,4 +1,5 @@
 import { chartString } from '../strings/a11y-categoryRecords';
+import { shownSeries } from '../hiddenSeries';
 import type { BarDerived } from '../charts/bar/layout';
 import type { ColumnDerived } from '../charts/column/layout';
 import type { LineDerived } from '../charts/line/layout';
@@ -293,7 +294,8 @@ export function categoryRecords(ctx: RecordContext): InteractionRecord[] | undef
       ? [item, { ...item, id: `${item.id}:negative`, label: `${item.label ?? item.id} (${negName})`,
         labelFromId: item.label === undefined, values: item.negative }] : [item])
     : data.series;
-  const series = drawn.map((series, index) => ({ ...series, scenario: normalizeScenario(series.scenario, `series[${index}].scenario`), cells: normalizeSeriesValues(series, categories, index) }));
+  // A series a reader hid on a column or bar chart has no marks, and the shares and totals in the card leave it out.
+  const series = shownSeries(ctx.request.options, drawn).map((series, index) => ({ ...series, scenario: normalizeScenario(series.scenario, `series[${index}].scenario`), cells: normalizeSeriesValues(series, categories, index) }));
   // A Total column the engine weighted: its records carry the drawn shares and base.
   const computed = ctx.request.type === 'column' ? (ctx.geometry.derived as unknown as ColumnDerived).computedTotal : undefined;
   const ti = computed ? categories.findIndex(category => category.id === computed.categoryId) : -1;

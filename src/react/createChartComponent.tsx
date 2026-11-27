@@ -257,7 +257,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const inherited = useMemo(() => ({ strings: providerStrings, language: languageOf(provider?.locale) }), [providerStrings, provider?.locale]);
     // The annotations prop is the chart's options.annotations, unless the spec path recorded the root list.
     const authoredAnnotations = useMemo(() => annotations && withAnnotationOrigins(annotations, ['options', 'annotations']), [annotations]);
-    const zoomed = useZoom({ type, data, annotations: authoredAnnotations, options: noteOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited });
+    const zoomed = useZoom({ type, data, annotations: authoredAnnotations, options: noteOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited, hover, onSeriesClick });
     // A prepared chart attaches the server's layout, which is checked against the current request. Print lays out
     // at once: the browser takes the printed page right after the print listener's render (printLayout.ts).
     // A zoomed view is a new request, so the server's layout no longer matches it and the client lays it out.
