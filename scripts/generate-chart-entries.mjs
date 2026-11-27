@@ -664,11 +664,16 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
     '',
     "import type { ChartSchemas } from '../core/registry';",
     '',
+    '/** A type\'s schemas, read by their export names `<type>DataSchema` and `<type>OptionsSchema`, with its own retired settings when its folder has them. */',
+    'const schemas = (type: string, module: Promise<Record<string, unknown>>, extra?: object) => module',
+    '  .then((loaded) => ({ type, dataSchema: loaded[`${type}DataSchema`], optionsSchema: loaded[`${type}OptionsSchema`], ...(loaded.retiredSettings ? { retired: loaded.retiredSettings } : {}), ...extra }) as ChartSchemas<any, any>);',
+    '',
     '/** type -> its schemas, without its engine, loaded on first use. */',
     'export const schemaLoaders: Readonly<Record<string, () => Promise<ChartSchemas<any, any>>>> = {',
-    ...types.map((type) =>
-      `  ${type}: () => import('../core/charts/${type}/schema')\n` +
-      `    .then((module) => ({ type: '${type}', dataSchema: module.${type}DataSchema, optionsSchema: module.${type}OptionsSchema${existsSync(join(repositoryRoot, `src/core/charts/${type}/retired.ts`)) ? ', retired: module.retiredSettings' : ''}${type === 'grid' ? ', dataSchemaByOption: { stack: module.metricStackDataSchema }' : ''}${aliasDefaults[type] ? `, aliasDefaults: ${JSON.stringify(aliasDefaults[type])}` : ''} })),`),
+    ...types.map((type) => type === 'grid'
+      ? `  grid: () => import('../core/charts/grid/schema')\n` +
+        `    .then((module) => ({ type: 'grid', dataSchema: module.gridDataSchema, optionsSchema: module.gridOptionsSchema, retired: module.retiredSettings, dataSchemaByOption: { stack: module.metricStackDataSchema } })),`
+      : `  ${type}: () => schemas('${type}', import('../core/charts/${type}/schema')${aliasDefaults[type] ? `, { aliasDefaults: ${JSON.stringify(aliasDefaults[type])} }` : ''}),`),
     '};',
     '',
     ...renderAliasTable(types, aliases),

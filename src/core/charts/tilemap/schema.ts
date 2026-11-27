@@ -1,7 +1,7 @@
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import { addGeoIdIssues, baseOptionsSchema, refusedBaseOptions } from '../../schema/shared';
-import { addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/schema';
+import { addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/geoSchema';
 import { REGION_VALUES_WITHOUT_CODES_REFUSED } from '../choropleth/geoRefusals';
 import type { TilemapData, TilemapOptions } from './types';
 

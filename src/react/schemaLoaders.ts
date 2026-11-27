@@ -5,82 +5,50 @@
 
 import type { ChartSchemas } from '../core/registry';
 
+/** A type's schemas, read by their export names `<type>DataSchema` and `<type>OptionsSchema`, with its own retired settings when its folder has them. */
+const schemas = (type: string, module: Promise<Record<string, unknown>>, extra?: object) => module
+  .then((loaded) => ({ type, dataSchema: loaded[`${type}DataSchema`], optionsSchema: loaded[`${type}OptionsSchema`], ...(loaded.retiredSettings ? { retired: loaded.retiredSettings } : {}), ...extra }) as ChartSchemas<any, any>);
+
 /** type -> its schemas, without its engine, loaded on first use. */
 export const schemaLoaders: Readonly<Record<string, () => Promise<ChartSchemas<any, any>>>> = {
-  bar: () => import('../core/charts/bar/schema')
-    .then((module) => ({ type: 'bar', dataSchema: module.barDataSchema, optionsSchema: module.barOptionsSchema })),
-  bartable: () => import('../core/charts/bartable/schema')
-    .then((module) => ({ type: 'bartable', dataSchema: module.bartableDataSchema, optionsSchema: module.bartableOptionsSchema, retired: module.retiredSettings })),
-  box: () => import('../core/charts/box/schema')
-    .then((module) => ({ type: 'box', dataSchema: module.boxDataSchema, optionsSchema: module.boxOptionsSchema, retired: module.retiredSettings })),
-  bullet: () => import('../core/charts/bullet/schema')
-    .then((module) => ({ type: 'bullet', dataSchema: module.bulletDataSchema, optionsSchema: module.bulletOptionsSchema })),
-  butterfly: () => import('../core/charts/butterfly/schema')
-    .then((module) => ({ type: 'butterfly', dataSchema: module.butterflyDataSchema, optionsSchema: module.butterflyOptionsSchema, retired: module.retiredSettings })),
-  choropleth: () => import('../core/charts/choropleth/schema')
-    .then((module) => ({ type: 'choropleth', dataSchema: module.choroplethDataSchema, optionsSchema: module.choroplethOptionsSchema, retired: module.retiredSettings })),
-  cohort: () => import('../core/charts/cohort/schema')
-    .then((module) => ({ type: 'cohort', dataSchema: module.cohortDataSchema, optionsSchema: module.cohortOptionsSchema, retired: module.retiredSettings })),
-  column: () => import('../core/charts/column/schema')
-    .then((module) => ({ type: 'column', dataSchema: module.columnDataSchema, optionsSchema: module.columnOptionsSchema })),
-  combo: () => import('../core/charts/combo/schema')
-    .then((module) => ({ type: 'combo', dataSchema: module.comboDataSchema, optionsSchema: module.comboOptionsSchema })),
-  creative: () => import('../core/charts/creative/schema')
-    .then((module) => ({ type: 'creative', dataSchema: module.creativeDataSchema, optionsSchema: module.creativeOptionsSchema })),
-  diagram: () => import('../core/charts/diagram/schema')
-    .then((module) => ({ type: 'diagram', dataSchema: module.diagramDataSchema, optionsSchema: module.diagramOptionsSchema, retired: module.retiredSettings })),
-  dimswitch: () => import('../core/charts/dimswitch/schema')
-    .then((module) => ({ type: 'dimswitch', dataSchema: module.dimswitchDataSchema, optionsSchema: module.dimswitchOptionsSchema, retired: module.retiredSettings })),
-  dot: () => import('../core/charts/dot/schema')
-    .then((module) => ({ type: 'dot', dataSchema: module.dotDataSchema, optionsSchema: module.dotOptionsSchema, retired: module.retiredSettings, aliasDefaults: {"dumbbell":{"variant":"dumbbell"},"lollipop":{"variant":"lollipop"}} })),
-  funnel: () => import('../core/charts/funnel/schema')
-    .then((module) => ({ type: 'funnel', dataSchema: module.funnelDataSchema, optionsSchema: module.funnelOptionsSchema, retired: module.retiredSettings })),
-  gantt: () => import('../core/charts/gantt/schema')
-    .then((module) => ({ type: 'gantt', dataSchema: module.ganttDataSchema, optionsSchema: module.ganttOptionsSchema, retired: module.retiredSettings })),
+  bar: () => schemas('bar', import('../core/charts/bar/schema')),
+  bartable: () => schemas('bartable', import('../core/charts/bartable/schema')),
+  box: () => schemas('box', import('../core/charts/box/schema')),
+  bullet: () => schemas('bullet', import('../core/charts/bullet/schema')),
+  butterfly: () => schemas('butterfly', import('../core/charts/butterfly/schema')),
+  choropleth: () => schemas('choropleth', import('../core/charts/choropleth/schema')),
+  cohort: () => schemas('cohort', import('../core/charts/cohort/schema')),
+  column: () => schemas('column', import('../core/charts/column/schema')),
+  combo: () => schemas('combo', import('../core/charts/combo/schema')),
+  creative: () => schemas('creative', import('../core/charts/creative/schema')),
+  diagram: () => schemas('diagram', import('../core/charts/diagram/schema')),
+  dimswitch: () => schemas('dimswitch', import('../core/charts/dimswitch/schema')),
+  dot: () => schemas('dot', import('../core/charts/dot/schema'), { aliasDefaults: {"dumbbell":{"variant":"dumbbell"},"lollipop":{"variant":"lollipop"}} }),
+  funnel: () => schemas('funnel', import('../core/charts/funnel/schema')),
+  gantt: () => schemas('gantt', import('../core/charts/gantt/schema')),
   grid: () => import('../core/charts/grid/schema')
     .then((module) => ({ type: 'grid', dataSchema: module.gridDataSchema, optionsSchema: module.gridOptionsSchema, retired: module.retiredSettings, dataSchemaByOption: { stack: module.metricStackDataSchema } })),
-  heatmap: () => import('../core/charts/heatmap/schema')
-    .then((module) => ({ type: 'heatmap', dataSchema: module.heatmapDataSchema, optionsSchema: module.heatmapOptionsSchema, retired: module.retiredSettings })),
-  histogram: () => import('../core/charts/histogram/schema')
-    .then((module) => ({ type: 'histogram', dataSchema: module.histogramDataSchema, optionsSchema: module.histogramOptionsSchema })),
-  kpi: () => import('../core/charts/kpi/schema')
-    .then((module) => ({ type: 'kpi', dataSchema: module.kpiDataSchema, optionsSchema: module.kpiOptionsSchema })),
-  likert: () => import('../core/charts/likert/schema')
-    .then((module) => ({ type: 'likert', dataSchema: module.likertDataSchema, optionsSchema: module.likertOptionsSchema, retired: module.retiredSettings })),
-  line: () => import('../core/charts/line/schema')
-    .then((module) => ({ type: 'line', dataSchema: module.lineDataSchema, optionsSchema: module.lineOptionsSchema, retired: module.retiredSettings })),
-  mekko: () => import('../core/charts/mekko/schema')
-    .then((module) => ({ type: 'mekko', dataSchema: module.mekkoDataSchema, optionsSchema: module.mekkoOptionsSchema, retired: module.retiredSettings, aliasDefaults: {"bar-mekko":{"variant":"bar"}} })),
-  pareto: () => import('../core/charts/pareto/schema')
-    .then((module) => ({ type: 'pareto', dataSchema: module.paretoDataSchema, optionsSchema: module.paretoOptionsSchema, retired: module.retiredSettings })),
-  pie: () => import('../core/charts/pie/schema')
-    .then((module) => ({ type: 'pie', dataSchema: module.pieDataSchema, optionsSchema: module.pieOptionsSchema })),
-  pvm: () => import('../core/charts/pvm/schema')
-    .then((module) => ({ type: 'pvm', dataSchema: module.pvmDataSchema, optionsSchema: module.pvmOptionsSchema, retired: module.retiredSettings })),
-  pyramid: () => import('../core/charts/pyramid/schema')
-    .then((module) => ({ type: 'pyramid', dataSchema: module.pyramidDataSchema, optionsSchema: module.pyramidOptionsSchema })),
-  sankey: () => import('../core/charts/sankey/schema')
-    .then((module) => ({ type: 'sankey', dataSchema: module.sankeyDataSchema, optionsSchema: module.sankeyOptionsSchema })),
-  scatter: () => import('../core/charts/scatter/schema')
-    .then((module) => ({ type: 'scatter', dataSchema: module.scatterDataSchema, optionsSchema: module.scatterOptionsSchema })),
-  slope: () => import('../core/charts/slope/schema')
-    .then((module) => ({ type: 'slope', dataSchema: module.slopeDataSchema, optionsSchema: module.slopeOptionsSchema })),
-  sparkline: () => import('../core/charts/sparkline/schema')
-    .then((module) => ({ type: 'sparkline', dataSchema: module.sparklineDataSchema, optionsSchema: module.sparklineOptionsSchema })),
-  status: () => import('../core/charts/status/schema')
-    .then((module) => ({ type: 'status', dataSchema: module.statusDataSchema, optionsSchema: module.statusOptionsSchema })),
-  table: () => import('../core/charts/table/schema')
-    .then((module) => ({ type: 'table', dataSchema: module.tableDataSchema, optionsSchema: module.tableOptionsSchema, retired: module.retiredSettings })),
-  tilemap: () => import('../core/charts/tilemap/schema')
-    .then((module) => ({ type: 'tilemap', dataSchema: module.tilemapDataSchema, optionsSchema: module.tilemapOptionsSchema })),
-  treemap: () => import('../core/charts/treemap/schema')
-    .then((module) => ({ type: 'treemap', dataSchema: module.treemapDataSchema, optionsSchema: module.treemapOptionsSchema, retired: module.retiredSettings, aliasDefaults: {"voronoi-treemap":{"variant":"circle"}} })),
-  variance: () => import('../core/charts/variance/schema')
-    .then((module) => ({ type: 'variance', dataSchema: module.varianceDataSchema, optionsSchema: module.varianceOptionsSchema, retired: module.retiredSettings })),
-  waffle: () => import('../core/charts/waffle/schema')
-    .then((module) => ({ type: 'waffle', dataSchema: module.waffleDataSchema, optionsSchema: module.waffleOptionsSchema, retired: module.retiredSettings })),
-  waterfall: () => import('../core/charts/waterfall/schema')
-    .then((module) => ({ type: 'waterfall', dataSchema: module.waterfallDataSchema, optionsSchema: module.waterfallOptionsSchema, retired: module.retiredSettings })),
+  heatmap: () => schemas('heatmap', import('../core/charts/heatmap/schema')),
+  histogram: () => schemas('histogram', import('../core/charts/histogram/schema')),
+  kpi: () => schemas('kpi', import('../core/charts/kpi/schema')),
+  likert: () => schemas('likert', import('../core/charts/likert/schema')),
+  line: () => schemas('line', import('../core/charts/line/schema')),
+  mekko: () => schemas('mekko', import('../core/charts/mekko/schema'), { aliasDefaults: {"bar-mekko":{"variant":"bar"}} }),
+  pareto: () => schemas('pareto', import('../core/charts/pareto/schema')),
+  pie: () => schemas('pie', import('../core/charts/pie/schema')),
+  pvm: () => schemas('pvm', import('../core/charts/pvm/schema')),
+  pyramid: () => schemas('pyramid', import('../core/charts/pyramid/schema')),
+  sankey: () => schemas('sankey', import('../core/charts/sankey/schema')),
+  scatter: () => schemas('scatter', import('../core/charts/scatter/schema')),
+  slope: () => schemas('slope', import('../core/charts/slope/schema')),
+  sparkline: () => schemas('sparkline', import('../core/charts/sparkline/schema')),
+  status: () => schemas('status', import('../core/charts/status/schema')),
+  table: () => schemas('table', import('../core/charts/table/schema')),
+  tilemap: () => schemas('tilemap', import('../core/charts/tilemap/schema')),
+  treemap: () => schemas('treemap', import('../core/charts/treemap/schema'), { aliasDefaults: {"voronoi-treemap":{"variant":"circle"}} }),
+  variance: () => schemas('variance', import('../core/charts/variance/schema')),
+  waffle: () => schemas('waffle', import('../core/charts/waffle/schema')),
+  waterfall: () => schemas('waterfall', import('../core/charts/waterfall/schema')),
 };
 
 /** type -> the alias names a spec may write instead, so an aliased type finds its chunk. */

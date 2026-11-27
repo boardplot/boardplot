@@ -11,7 +11,8 @@ import type { Paint, PlacedLabel, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { NormSer } from './context';
 import type { LineDomain } from './model';
-import { forecastBoundaryX, forecastStart, lastActualIndex, type LinePhaseResolved } from './marks';
+import { forecastBoundaryX, forecastStart, lastActualIndex } from './shared';
+import type { LinePhaseResolved } from './marks';
 import { maxOf } from '../../arrays';
 
 export interface ForecastBoundary {

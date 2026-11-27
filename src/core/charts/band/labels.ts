@@ -23,6 +23,10 @@ import type { LintWarning, PlacedLabel, ShownTexts } from '../../types/scene';
 import type { OccupiedIndex } from '../../label/occupied';
 import { solidMutedPlan, strokeToken } from '../../theme';
 import type { Theme } from '../../types/theme';
+import { INSIDE_MIN_H, INSIDE_MIN_W } from './insideMin';
+import { warnSliverLabels } from './sliverLabels';
+
+export { warnSliverLabels };
 
 export type BandOrientation = 'vertical' | 'horizontal';
 
@@ -92,9 +96,7 @@ const TIGHT_OUTSIDE_GAP = 3;
 const TICK_CLEAR = 2;
 /** Air between a tick through a segment (its stroke included) and the value's line box. */
 const TICK_AIR = 1.5;
-/** The smallest segment that holds a label inside. */
-export const INSIDE_MIN_W = 28;
-export const INSIDE_MIN_H = 14;
+export { INSIDE_MIN_H, INSIDE_MIN_W };
 
 /**
  * Whether a label of `text` size fits inside `rect` with its padding and the
@@ -165,26 +167,6 @@ export function segmentTooShort(
   room = INSIDE_ROOM,
 ): boolean {
   return !pin && density !== 'full' && segmentLength < labelLength + room;
-}
-
-/**
- * The values the sliver gate dropped, reported once per chart: a value
- * that is not on the page is something the reader lost, so it is said, not
- * hidden in silence. `names` reads "B in Q1".
- */
-export function warnSliverLabels(
-  warnings: LintWarning[],
-  names: readonly string[],
-  suggest = "set labelDensity 'full' to move them outside on leaders, or pin one with labelPlacements",
-): void {
-  if (names.length === 0) return;
-  const shown = names.slice(0, 5).join(', ') + (names.length > 5 ? ', ...' : '');
-  warnings.push({
-    code: 'sliver-labels-hidden',
-    severity: 'info',
-    message: `${names.length} segment value${names.length === 1 ? ' is' : 's are'} not printed because the segment is shorter than its label (${shown})`,
-    suggest,
-  });
 }
 
 /**

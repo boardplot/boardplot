@@ -43,7 +43,7 @@ import {
 import { accessibleTitle, MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
-import { cardFrameTheme, cardSize } from '../sparkline/layout';
+import { cardSize } from '../sparkline/card';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
@@ -54,8 +54,10 @@ import {
   resolveTheme,
   semanticPalettePaint,
   emphasisWeight,
+  panelTypeClass,
   secondaryType,
   strokeToken,
+  themeForWidth,
   } from '../../theme';
 import type { Theme, TypeRoleName } from '../../types/theme';
 import type { AnchorRef, Annotation } from '../../types/annotations';
@@ -71,7 +73,7 @@ import {
 } from '../../types/cell';
 import { warnMissingValue } from '../../dataGaps';
 import type { BulletData, BulletRow } from '../../types/data';
-import type { BulletOptions, LabelKind, LegendOptions } from '../../types/options';
+import type { BulletOptions, LabelKind, LegendOptions, RenderTarget } from '../../types/options';
 import type {
   Geometry,
   LintWarning,
@@ -165,6 +167,24 @@ const BAR_FRACTION = 1 / 3;
 const NAME_WEIGHT = 600;
 const BANDS_UNEXPLAINED =
   'qualitative bands carry meaning the reader cannot decode — label the bands or explain them in a footnote';
+
+/**
+ * The bullet card skips the width classes for its own marks, but its title
+ * and subtitle follow the size ladder of every other chart: 17/13 px under
+ * 720 px on report. kpi and sparkline keep 20/14 at every width.
+ */
+function cardFrameTheme(theme: Theme, options: { target?: RenderTarget }, width: number): Theme {
+  const stepped = themeForWidth(theme, panelTypeClass(options) ?? width).type;
+  if (stepped.title.size === theme.type.title.size && stepped.subtitle.size === theme.type.subtitle.size) return theme;
+  return {
+    ...theme,
+    type: {
+      ...theme.type,
+      title: { ...theme.type.title, size: stepped.title.size },
+      subtitle: { ...theme.type.subtitle, size: stepped.subtitle.size },
+    },
+  };
+}
 
 /** Where a band starts: its `from`, else the previous band's `to`, or 0. */
 function bandStart(row: NormRow, index: number): number {
