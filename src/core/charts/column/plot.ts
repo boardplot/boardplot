@@ -30,6 +30,7 @@ import {
   authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
 import { copyFrame, staticFrame } from '../../footer';
 import { zeroLifts } from '../../formatPrecision';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { columnHeightSearch, measureColumnHeight, sameContent, type ColumnHeightTrial } from '../../sizing';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotatedNames, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
@@ -62,7 +63,7 @@ import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '
 import { textScaleOf } from '../../typeFloors';
 import { compactValueLabelFont } from '../band/labels';
 import { groupedOffsets } from '../band/groups';
-import { PLOT_FLOOR_PX, plotFloorRows, plotFloorShare } from '../../sizing';
+import { NARROW_SHARE_WIDTH, PLOT_FLOOR_PX, PLOT_FLOOR_SHARE, plotFloorRows, plotFloorShare } from '../../sizing';
 import { partialWords, stackTotalText } from './labels';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
@@ -972,7 +973,14 @@ export function columnPlotArea(
       }
       const base = chrome + catBandH + ratioTierHeight + 8 + (axisTitle?.height ?? 0) + ruleH;
       const plots = headers.flatMap(([a, b]): [number, number][] => [[1 - a, -base - b], [(1 - a) / (1 - q), (-base - b - room) / (1 - q)]]);
-      const height = maxOf(plots.flatMap(([a, b]) => [(PLOT_FLOOR_PX[options.target ?? DEFAULT_TARGET] - b) / a, -b / (a - plotFloorShare(size.width, options))]));
+      const pixels = PLOT_FLOOR_PX[options.target ?? DEFAULT_TARGET];
+      const pixelHeight = maxOf(plots.map(([a, b]) => (pixels - b) / a));
+      // The narrow-card retry raises the share from 0.4 to 0.5. When even the
+      // stronger bound is below the pixel floor, the fixed drawing is identical.
+      const pixelBound = variant === 'stacked' && size.width < NARROW_SHARE_WIDTH && hasCompleteTextWidths(measure)
+        && plots.every(([a, b]) => a > PLOT_FLOOR_SHARE && b <= 0 && -b / (a - PLOT_FLOOR_SHARE) <= pixelHeight);
+      const share = pixelBound ? undefined : plotFloorShare(size.width, options);
+      const height = share === undefined ? pixelHeight : Math.max(pixelHeight, maxOf(plots.map(([a, b]) => -b / (a - share))));
       const plotAtFloor = minOf(plots.map(([a, b]) => a * height + b));
       if (q >= 0 && q < 1 && Number.isFinite(height)
         && Math.min(...unrowed.map(([a, b]) => a * height + b)) >= 0) fixedPlotChrome(frame, height - plotAtFloor - chrome);

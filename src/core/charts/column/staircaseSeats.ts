@@ -5,8 +5,7 @@ import { claimStaircase, staircaseRequests, type StaircaseName } from '../../lab
 import { hasLabelPosition } from '../band/labelPosition';
 import { kindSetting } from './domain';
 import { planColumnLabels } from './labels';
-import { baselineBounds, netInsideStack, stackSegmentRect } from './marks';
-import { netTotalBounds } from './netTick';
+import { baselineBounds, eachStackRect } from './marks';
 import type { ColumnArea, ColumnDomain } from './model';
 
 /** Prove that the no-axis layout seats every total and every staircase name at the proposed size. */
@@ -29,20 +28,8 @@ export function stackedStaircaseSeatsFit(domain: ColumnDomain, area: ColumnArea,
   if (requests.length !== cats.length * 2 || requests.some(r => (r.kind !== 'grandTotal' && r.kind !== 'category')
     || r.candidates.some(c => c.rect.y - 2 < topContentBottom || c.rect.y + c.rect.h + 2 > bottom))) return false;
   occupied.claim(baselineBounds(area.plot, area.y0), 'axis', {});
-  for (let ci = 0; ci < stacks.length; ci++) {
-    const id = cats[ci]!.id;
-    const x = area.band.position(ci);
-    const w = area.band.bandwidth;
-    const segments = stacks[ci]!.segments;
-    for (let si = 0; si < segments.length; si++) {
-      const seg = segments[si];
-      if (!seg || seg.value === 0) continue;
-      occupied.claim(stackSegmentRect(x, w, area.y, seg.start, seg.end), 'mark',
-        { categoryId: id, seriesId: dataSeries[si]!.id }, 'segment');
-    }
-    if (netInsideStack(domain, ci)) occupied.claim(netTotalBounds(x, w, area.y(domain.stackTotals[id]!)),
-      'mark', { categoryId: id, seriesId: '__netTotal' }, 'netTotal');
-  }
+  eachStackRect(domain, area, (rect, categoryId, seriesId) =>
+    occupied.claim(rect, 'mark', { categoryId, seriesId }, seriesId === '__netTotal' ? 'netTotal' : 'segment'));
   claimStaircase(names, occupied);
   return independentStackSeats(requests, occupied, { x: 0, y: 0, w: domain.size.width, h: height });
 }
@@ -78,4 +65,25 @@ function independentStackSeats(requests: LabelRequest[], occupied: OccupiedIndex
     (total ? totals : names).push(seat);
   }
   return true;
+}
+
+/** Check the category-name seats even when totals themselves can disappear.
+ * Each total either misses a name at every possible seat or its conflicting
+ * seat is blocked by a staircase leader at zero padding. */
+export function compactStaircaseNamesFit(domain: ColumnDomain, area: ColumnArea, frameClaims: OccupiedIndex,
+  names: readonly StaircaseName[]): boolean {
+  const totals: LabelRequest[] = [];
+  planColumnLabels(domain, area, { bars: [], planEnds: undefined, netLineEnd: undefined }, totals, []);
+  if (!totals.every(total => total.kind === 'grandTotal')) return false;
+  const canvas = { x: 0, y: 0, w: domain.size.width, h: domain.size.height };
+  const leaders = createOccupiedIndex(canvas);
+  claimStaircase(names, leaders);
+  const marks = [baselineBounds(area.plot, area.y0)];
+  eachStackRect(domain, area, rect => { marks.push(rect); });
+  return names.every(({ rect }, i) => rectContains(canvas, rect) && rect.x - 2 >= area.plot.x
+    && !frameClaims.hitsWhich(rect, 2).length && !leaders.hitsWhich(rect, 2).length
+    && !marks.some(mark => rectsOverlap(rect, mark, 2))
+    && !names.some((other, j) => j < i && rectsOverlap(rect, other.rect, 2))
+    && totals.every(total => total.candidates.every(seat => !rectsOverlap(rect, seat.rect, 2)
+      || leaders.hitsWhich(seat.rect, 0).length > 0)));
 }
