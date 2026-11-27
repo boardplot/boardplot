@@ -11,6 +11,8 @@ import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { BoardplotChart } from '../src/react/spec';
 import { ScaleGroup } from '../src/react/ScaleGroup';
 import { parseChartSpec } from '../src/react/parseChartSpec';
+import { beginSpecParse } from '../src/react/specValidation';
+import { loadChartTypes } from '../src/react/loadChartTypes';
 import { mount, mountedMarkup, settle } from './helpers/spec-chunks';
 import spec from './fixtures/spec-document.json';
 import { exampleData } from '../src/core/charts/dimswitch/example';
@@ -232,4 +234,20 @@ it('draws the prepared chart in the first frame for every form of the same chart
   const slide = await prepareChart({ ...kpi, target: 'slide', options: { target: 'report' } } as never);
   expect(renderToString(<BoardplotChart spec={{ ...kpi, options: { target: 'report' } }} prepared={slide as never} />)).toContain('data-bp-loading');
   expect(charts(renderToString(<BoardplotChart spec={kpi} target="slide" prepared={slide as never} />))).toBe(1);
+  // The match read the spec a second way beside the parser, so a short form, a one-chart document or a prop over the spec's target showed the loading box.
+  const sorted = { type: 'bar', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [35, 42] }] }, options: { sort: 'desc' } };
+  expect(charts(await first(sorted, await prepareChart((await parseChartSpec(sorted)).request)))).toBe(2);
+  const german = await prepareChart({ ...kpi, options: { locale: 'de-DE' } } as never);
+  expect(charts(await first({ version: 1, locale: 'de-DE', charts: [{ name: 'sales', ...kpi }] }, german))).toBe(2);
+  const report = await prepareChart((await parseChartSpec({ ...kpi, options: { target: 'report' } })).request);
+  expect(charts(renderToString(<BoardplotChart spec={{ ...kpi, options: { target: 'slide' } }} target="report" prepared={report as never} />))).toBe(1);
+  expect(renderToString(<BoardplotChart spec={{ ...kpi, options: { target: 'slides' } }} target="report" prepared={report as never} />)).toContain('data-bp-loading');
+  // A spec that validation refuses read like a valid one, so its first chart showed before the error card.
+  expect(renderToString(<BoardplotChart spec={{ ...kpi, options: null }} prepared={await prepareChart(kpi as never) as never} />)).toContain('data-bp-loading');
+  // An option set to undefined hid the document's root locale only while the spec was not carried as JSON, so the live chart and the first chart differed.
+  const unset = { version: 1, locale: 'de-DE', charts: [{ name: 'sales', ...kpi, options: { locale: undefined } }] };
+  expect((await parseChartSpec(unset)).request.options?.locale).toEqual({ language: 'de-DE' });
+  const begun = beginSpecParse(unset);
+  await loadChartTypes(begun.types, { schemas: true, cores: false });
+  expect(begun.finish().request.options?.locale).toEqual({ language: 'de-DE' });
 });

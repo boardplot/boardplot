@@ -9,6 +9,10 @@ import type { OverlayInputs } from './hover/placement';
 import { chartRefusals, refusalFindings, type RefusalFinding } from '../core/schema/refusals';
 import { footerFrame, type FooterFrame } from './footerFrame';
 import type { PreparedRows } from './rowsStore';
+import { canonicalJson, fnv64 } from './canonicalJson';
+import { matrixInk, preparedResult } from './preparedInput';
+
+export { canonicalJson, fnv64, preparedResult };
 
 export interface PreparedHeader {
   engineRev: number;
@@ -50,22 +54,8 @@ export interface PreparedChart extends PreparedHeader {
   matrices?: Paint[][];
   /** The data `prepareChart` mapped from `rows`: the chart draws it until the rows chunk loads. */
   rows?: PreparedRows;
-  /** The key of the input `prepareChart` received, see `preparedInputKey`. */
-  inputKey?: string;
-}
-
-/** Sorted JSON also rejects values that would silently change during transport. */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) => {
-    if (typeof item === 'function' || typeof item === 'symbol' || typeof item === 'bigint' ||
-        (typeof item === 'number' && !Number.isFinite(item))) {
-      throw new Error('Prepared charts require JSON-safe request and render values.');
-    }
-    if (item && typeof item === 'object' && !Array.isArray(item)) {
-      return Object.fromEntries(Object.keys(item).sort().map(key => [key, (item as Record<string, unknown>)[key]]));
-    }
-    return item;
-  });
+  /** The keys of the pages that show this chart in their first frame, see `preparedInputKey`. */
+  inputKeys?: string[];
 }
 
 /** Opaque 64-bit FNV-1a over UTF-8, not a receipt or authentication mechanism. */
@@ -80,16 +70,6 @@ export function requestRenderKey(request: ResolvedChartRequest): string {
     theme: request.theme, locale: request.locale, scope: request.scope, size: request.size,
   });
   return `render:${fnv64(json)}`;
-}
-
-/** 64-bit FNV-1a over the UTF-8 bytes, as 16 hex digits. */
-export function fnv64(json: string): string {
-  let hash = 0xcbf29ce484222325n;
-  for (const byte of new TextEncoder().encode(json)) {
-    hash ^= BigInt(byte);
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-  }
-  return hash.toString(16).padStart(16, '0');
 }
 
 export function assertPreparedRequest(header: PreparedHeader, request: ResolvedChartRequest): void {
@@ -120,10 +100,6 @@ export function prepareChartRender(request: ResolvedChartRequest, layout: Layout
   return JSON.parse(canonicalJson({ kind: 'svg', engineRev: ENGINE_REV, requestKey, result: { ...result, scene }, ...(matrices.length ? { matrices } : {}) })) as PreparedChart;
 }
 
-type MatrixInk = { token: string; theme: { kind: 'contrast-ink'; matrix?: Paint[] | number } };
-const matrixInk = (node: SceneNode): MatrixInk | undefined => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix !== undefined
-  ? node.ink as unknown as MatrixInk : undefined;
-
 /**
  * Every value of a heatmap or cohort matrix carries the matrix's fills (the contrast-ink recipe's `matrix`), one list
  * shared by all of them. JSON would copy it into each label. The prepared chart lists each matrix once and a label holds its index.
@@ -136,16 +112,6 @@ function sharedMatrices(scene: SceneNode[]): { scene: SceneNode[]; matrices: Pai
     const matrix = ink.theme.matrix as Paint[];
     const index = matrices.includes(matrix) ? matrices.indexOf(matrix) : matrices.push(matrix) - 1;
     return { ...node, ink: { ...ink, theme: { ...ink.theme, matrix: index } } } as unknown as SceneNode;
-  }) };
-}
-
-/** The result of a prepared chart with each label's matrix list put back, shared again so one decision serves the whole matrix. */
-export function preparedResult(prepared: PreparedChart): PreparedChart['result'] {
-  const { result, matrices } = prepared;
-  if (!matrices || result.refused) return result;
-  return { ...result, scene: result.scene.map((node) => {
-    const ink = matrixInk(node);
-    return ink ? { ...node, ink: { ...ink, theme: { ...ink.theme, matrix: matrices[ink.theme.matrix as number] } } } as SceneNode : node;
   }) };
 }
 

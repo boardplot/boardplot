@@ -40,7 +40,7 @@ export function onHandover(redraw: () => void): () => void {
   return () => { waiting.delete(redraw); };
 }
 
-function notify(): void {
+export function notify(): void {
   for (const redraw of [...waiting]) redraw();
 }
 

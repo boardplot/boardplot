@@ -20,7 +20,7 @@ import { EmptyPlaceholder, LoadingPlaceholder, type EmptyProps, type RefusalProp
 import type { PreparedChart } from './prepared';
 import type { PreparedTable } from './preparedTable';
 import type { ParsedChartSpec } from './specValidation';
-import { loadedDimSwitchChart, loadedSpecValidator, loadedTableChart, onHandover, publishDimSwitchChart, publishSpecValidator, publishTableChart, type SpecValidator } from './specHandover';
+import { loadedDimSwitchChart, loadedSpecValidator, loadedTableChart, notify as announce, onHandover as subscribe, publishDimSwitchChart, publishSpecValidator, publishTableChart, type SpecValidator } from './specHandover';
 import { usePreparedFirstFrame } from './preparedFirstFrame';
 import { withoutZodCodeGeneration } from './zodSetup';
 import type { DimSwitchChartProps } from './DimSwitchChart';
@@ -113,25 +113,15 @@ function componentFor(type: string): AnyChart {
 }
 
 /**
- * What this page has loaded on demand, as one store. `subscribe` is shared,
- * so a chunk that lands redraws every chart that was waiting for it.
+ * What this page has loaded on demand, as one store. Its subscription is the
+ * handover's, so a chunk that lands redraws every chart that was waiting for it.
  */
-const waiting = new Set<() => void>();
 /** Chunk key -> the message of the load that failed. */
 const failures = new Map<string, string>();
 /** Chunk key -> the load in flight. A settled load leaves no entry behind. */
 const loads = new Map<string, Promise<void>>();
 const VALIDATION = 'validation';
-
-function subscribe(redraw: () => void): () => void {
-  waiting.add(redraw);
-  const stop = onHandover(redraw);
-  return () => { waiting.delete(redraw); stop(); };
-}
-
-function announce(): void {
-  for (const redraw of [...waiting]) redraw();
-}
+const DOCS = 'docs/reference/react.md#boardplotchart';
 
 /**
  * Starts one chunk's load, one at a time per key. A rejected load leaves no
@@ -169,24 +159,17 @@ const nothingLoaded = () => undefined;
 const notReady = () => false;
 /** A stored failure counts only while the chunk is still missing: a validator or engine that
  * arrived by another route (a static import, another code-split page) wins over it. */
-const readValidationFailure = () => (loadedSpecValidator() ? undefined : failures.get(VALIDATION));
 
 /** Validation: zod, the document parser and the diagnostics, in one chunk, no chart type in it. */
 function useSpecValidator(): { validator?: SpecValidator; failure?: string } {
   const validator = useSyncExternalStore(subscribe, loadedSpecValidator, nothingLoaded);
-  const failure = useSyncExternalStore(subscribe, readValidationFailure, nothingLoaded);
+  const failure = useSyncExternalStore(subscribe, () => (loadedSpecValidator() ? undefined : failures.get(VALIDATION)), nothingLoaded);
   // No dependency list: a render that still has no validator asks again, so a
   // load that failed is retried rather than leaving the chart in limbo.
   useEffect(() => {
     if (validator) { forget(VALIDATION); return; }
     withoutZodCodeGeneration();
-    load(VALIDATION, () => import('./specValidation').then(module => {
-      publishSpecValidator({
-        beginSpecParse: module.beginSpecParse,
-        specSettings: module.specSettings,
-        BoardplotSpecError: module.BoardplotSpecError,
-      });
-    }));
+    load(VALIDATION, () => import('./specValidation').then(publishSpecValidator));
   });
   return { validator, failure };
 }
@@ -194,7 +177,6 @@ function useSpecValidator(): { validator?: SpecValidator; failure?: string } {
 type DataTableModule = typeof import('./hover/dataTable');
 const DATA_TABLE = 'data-table';
 let dataTableModule: DataTableModule | undefined;
-const noFailure = () => false;
 
 /**
  * The accessible data table's module, loaded only for a spec that asks for the table. The chart waits
@@ -203,16 +185,13 @@ const noFailure = () => false;
  */
 function useDataTable(wanted: boolean): { module?: DataTableModule; waiting: boolean } {
   const module = useSyncExternalStore(subscribe, () => dataTableModule, nothingLoaded);
-  const failed = useSyncExternalStore(subscribe, () => failures.has(DATA_TABLE), noFailure);
+  const failed = useSyncExternalStore(subscribe, () => failures.has(DATA_TABLE), notReady);
   useEffect(() => {
     if (!wanted || module || failed) return;
     load(DATA_TABLE, () => import('./hover/dataTable').then(loaded => { dataTableModule = loaded; }));
   });
   return { module, waiting: wanted && !module && !failed };
 }
-
-const NO_TYPES: readonly string[] = [];
-
 
 /** The type a spec's name stands for, or undefined for a name Boardplot does not draw. */
 function knownType(name: string): string | undefined {
@@ -240,8 +219,7 @@ function schemasSettled(type: string): boolean {
  * engine, so `getChart` stays undefined and the chart still waits for
  * `chartLoaders` below.
  */
-function useChartSchemas(types: readonly string[] | undefined): { ready: boolean; failure?: string; failedType?: string } {
-  const wanted = types ?? NO_TYPES;
+function useChartSchemas(wanted: readonly string[] = []): { ready: boolean; failure?: string; failedType?: string } {
   const ready = useSyncExternalStore(subscribe, () => wanted.every(schemasSettled), notReady);
   // The store reads hand back strings, never fresh objects: useSyncExternalStore
   // re-renders on every snapshot that is not identical to the last one.
@@ -300,12 +278,12 @@ function chunkFailure(what: string, message: string): DocumentFinding[] {
     message: `Loading the ${what} failed: ${message}`,
     path: '',
     suggest: 'Reload the page; if it persists the deployment lacks this chunk.',
-    docs: 'docs/reference/react.md#boardplotchart',
+    docs: DOCS,
   }];
 }
 
 /** What one BoardplotChart last told its host, shared by the card paths of BoardplotChart and SpecChart. */
-interface SpecErrorChannel { listener: { current?: (errors: readonly DocumentFinding[]) => void }; reported: { current: string } }
+interface SpecErrorChannel { listener?: (errors: readonly DocumentFinding[]) => void; reported: string }
 
 const NO_ERRORS: readonly DocumentFinding[] = [];
 
@@ -319,11 +297,11 @@ const NO_ERRORS: readonly DocumentFinding[] = [];
  * sends nothing.
  */
 function useSpecErrorReport(channel: SpecErrorChannel, errors: readonly DocumentFinding[] | undefined, listening: boolean): void {
-  const key = errors === undefined ? undefined : JSON.stringify(errors);
+  const key = errors && JSON.stringify(errors);
   useEffect(() => {
-    const listener = channel.listener.current;
-    if (key === undefined || channel.reported.current === key || !listener) return;
-    channel.reported.current = key;
+    const listener = channel.listener;
+    if (key === undefined || channel.reported === key || !listener) return;
+    channel.reported = key;
     listener(errors!);
     // `errors` is left out of the list: it changes with `key`, and an equal set is no new report.
   }, [channel, key, listening]);
@@ -347,7 +325,7 @@ function oneChart<T>(result: { value?: T; errors?: readonly DocumentFinding[] })
     message: 'BoardplotChart draws one chart, and this document holds several.',
     suggest: 'Pass a bare chart or an envelope with one chart, one BoardplotChart per chart.',
     expected: { ...error.expected, condition: 'a bare chart or an envelope with one chart' },
-    docs: 'docs/reference/react.md#boardplotchart',
+    docs: DOCS,
   }) } : result;
 }
 
@@ -372,12 +350,10 @@ export function BoardplotChart({ className, style, ...props }: BoardplotChartPro
 /** Every state of one spec: the busy placeholder or the prepared chart's first frame, a card, and the chart. */
 function SpecStates(props: BoardplotChartProps): ReactElement {
   const { spec: authored, size, fit, fallbackSize, theme, target, hover, rows, columns, onRowsReading } = props;
-  const listener = useRef<SpecErrorChannel['listener']['current']>(undefined);
-  const reported = useRef(JSON.stringify(NO_ERRORS));
-  const channel = useMemo((): SpecErrorChannel => ({ listener, reported }), []);
+  const channel = useRef<SpecErrorChannel>({ reported: JSON.stringify(NO_ERRORS) }).current;
   // The committed callback only: a render that never commits (a suspended transition) must not
   // replace it. Layout effects run before every passive effect of the commit, SpecChart's included.
-  useIsomorphicLayoutEffect(() => { listener.current = props.onSpecError; });
+  useIsomorphicLayoutEffect(() => { channel.listener = props.onSpecError; });
   const listening = props.onSpecError !== undefined;
   // Rows fill the spec's data before validation, so the spec is judged as `boardplot_render` judges it with rows.
   const mapped = useRowsInput<unknown>(authored as { type?: unknown; data?: unknown } | undefined, { rows, columns, onRowsReading });
@@ -407,7 +383,7 @@ function SpecStates(props: BoardplotChartProps): ReactElement {
   const errors = !parsed || !settings ? undefined
     : settings.errors ?? (parsed.errors && mapped.rewrite ? mapped.rewrite([...parsed.errors]) : parsed.errors);
   // A spec that fails only on an empty data collection is an empty chart: the host hears onEmpty and no error card shows.
-  const empty = errors !== undefined && errors.length > 0 && errors.every((error) => error.code === 'empty-data');
+  const empty = errors?.length && errors.every((error) => error.code === 'empty-data');
   const card = mapped.failure !== undefined ? chunkFailure('rows chunk', mapped.failure)
     : mapped.refusal ? [mapped.refusal]
     : failure !== undefined ? chunkFailure('chart validation chunk', failure)

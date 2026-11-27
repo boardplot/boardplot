@@ -4,7 +4,8 @@ import type { LiveWindowOptions } from '../core/live/types';
 import type { BoardplotThemeOptions } from './themeContext';
 import type { ContainerSizeOptions } from './useContainerSize';
 import type { RowsColumns, RowsProps } from './rowsInput';
-import { canonicalJson, type PreparedChart } from './prepared';
+import { canonicalJson } from './canonicalJson';
+import type { PreparedChart } from './prepared';
 import type { PreparedTable } from './preparedTable';
 
 export type PrepareChartRequest<D = unknown, O extends object = RequestInputOptions> =
