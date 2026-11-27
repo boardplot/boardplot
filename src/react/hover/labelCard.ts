@@ -1,5 +1,5 @@
 import { chartString } from '../../core/strings/hover';
-import { joinSentences } from '../../core/strings';
+import { joinSentences, localeStrings } from '../../core/strings';
 import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber, unitMagnitude, type NumberFormatSpec } from '../../core/formatSpec';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
@@ -80,6 +80,8 @@ export interface LabelCardOptions {
   name?: string;
   /** The key's order of the series a card with several records lists: the records' order in the chart. */
   order?: ReadonlyMap<InteractionRecord, number>;
+  /** The series that are parts of a stack in some category (`stackKey`): a missing value of one stands among the parts. */
+  stackSeries?: ReadonlySet<string>;
 }
 
 /** The options that say a chart draws its categories as 100 %. */
@@ -327,9 +329,9 @@ function sameName(a: string, b: string): boolean {
 /**
  * Name the number: the record's statistic ("Median"), else the metric's own
  * name (the series, a panel's title, a sparkline's label) with the category
- * alone as the heading ("Jan 26", "North: 65.8"), else a unit phrase,
- * printed once in front ("Cases per month: 800"), else the chart's metric
- * (`name`). A spec that names nothing prints the bare number, and so does a
+ * alone as the heading ("Jan 26", "North: 65.8"), else the chart's metric
+ * (`name`: a sparkline's measure, a funnel's series), else a unit phrase,
+ * printed once in front ("Cases per month: 800"). A spec that names nothing prints the bare number, and so does a
  * name that repeats the heading. The number keeps its format; only a phrase
  * that moves in front leaves its end.
  */
@@ -346,6 +348,7 @@ function valueName(record: InteractionRecord, locale?: string, options?: LabelCa
     return named(options?.title ?? record.categoryLabel ?? record.label, record.seriesLabel, number || value);
   }
   const heading = options?.title ?? record.label;
+  if (options?.name !== undefined && !sameName(options.name, heading)) return named(heading, options.name);
   const unit = record.value.unit?.trim();
   if (unit && unitPhrase(unit) && value.endsWith(unit)) {
     const number = value.slice(0, -unit.length).replace(/[\s  ]+$/u, '');
@@ -493,6 +496,11 @@ function seriesSwatch(record: InteractionRecord, scene: readonly SceneNode[]): P
   return path?.t === 'path' ? path.stroke : undefined;
 }
 
+/** A series of a panel, for `LabelCardOptions.stackSeries`. */
+export function stackKey(record: InteractionRecord): string {
+  return `${record.target.panel ?? ''}\u0000${record.target.owner.seriesId ?? ''}`;
+}
+
 /** The parts of a stack: records whose share of a category total the card can print. */
 function stackPart(record: InteractionRecord): boolean {
   return record.share !== undefined && record.share.percent.state === 'value' && record.value.state !== 'suppressed';
@@ -527,9 +535,9 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
   const parts = sorted.filter(stackPart);
   // A stack of two parts or more, or one part of an authored total that is not all of it.
   const stacked = parts.length > 1 || (parts.length === 1 && !sameNumber(parts[0]!.share!.numerator, parts[0]!.share!.denominator));
-  // A part with no value keeps its place in the key among the parts it stands between.
-  const last = stacked ? sorted.indexOf(parts.at(-1)!) : -1;
-  const members = sorted.filter((record, index) => parts.includes(record) || (index < last && record.value.state === 'missing' && !record.share));
+  // A part with no value here (a series that is a part in another category) keeps its place in the key.
+  const members = stacked ? sorted.filter(record => parts.includes(record)
+    || (record.value.state === 'missing' && !record.share && options?.stackSeries?.has(stackKey(record)) === true)) : [];
   const listed = stacked ? [...members, ...sorted.filter(record => !members.includes(record))] : sorted;
   const base = stacked ? parts[0]!.share!.denominator : undefined;
   // The parts and their total share one format; other series (a line on its own axis) keep theirs.
@@ -551,7 +559,8 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
     pushAll(rows, content.filter((_, row) => row !== at));
     if (stacked && !whole && index === members.length - 1 && base) {
       const label = chartString({ locale: { language: locale } }, 'totalLabel');
-      const total = stackFormat(base);
+      // A stack with a missing part adds the known parts only, as the drawn total says.
+      const total = `${stackFormat(base)}${members.length > parts.length ? ` ${localeStrings(locale).incomplete}` : ''}`;
       rows.push({ kind: 'total', label: `${label}:`, value: total, text: `${label}: ${total}`, values: [safeValue(base, locale)] });
     }
   });
@@ -1028,30 +1037,38 @@ function rowsWithinHeight(
   const cut = rows.findIndex(row => row.series && ++series > 8);
   // The Total row closes the parts it sums: a card that cuts them leaves it out.
   const maximum = cut < 0 ? rows.length : cut;
-  // The hovered series stays on a card that cuts rows: it takes the last kept series row.
+  // The hovered series stays on a card that cuts rows: its row and the detail
+  // rows under it take the place of the last kept series and its details.
   const pointedAt = rows.findIndex(row => row.series && row.pointed);
+  let pointedEnd = pointedAt + 1;
+  while (pointedAt >= 0 && pointedEnd < rows.length && !rows[pointedEnd]!.series && rows[pointedEnd]!.kind !== 'total') pointedEnd++;
   const first = (count: number) => {
     const kept = rows.slice(0, count);
-    if (pointedAt < count) return kept;
+    if (pointedAt < 0 || pointedAt < count) return kept;
     let at = kept.length - 1;
     while (at > 0 && !kept[at]!.series) at--;
-    if (at > 0) kept[at] = rows[pointedAt]!;
-    return kept;
+    return at > 0 ? [...kept.slice(0, at), ...rows.slice(pointedAt, pointedEnd)] : kept;
   };
-  const limited = cut < 0 ? [...rows] : [...first(maximum), moreRow(rows.length - maximum, locale)];
+  const cutTo = (count: number) => {
+    const kept = first(count);
+    return [...kept, moreRow(rows.length - kept.length, locale)];
+  };
+  const limited = cut < 0 ? [...rows] : cutTo(maximum);
   const measured = measureRows(limited, theme, maxWidth, measure);
   const fits = (sizes: MeasuredRow[]) => cardHeight(sizes) <= maxHeight;
   if (fits(measured)) return { rows: limited, measured };
   const firstValue = rows.findIndex(row => row.kind === 'value');
   const floor = firstValue < 0 ? Math.min(rows.length, 2) : firstValue + 1;
   for (let kept = maximum - 1; kept >= floor; kept--) {
-    const visible = [...first(kept), moreRow(rows.length - kept, locale)];
+    const visible = cutTo(kept);
     const sizes = measureRows(visible, theme, maxWidth, measure);
     if (fits(sizes)) return { rows: visible, measured: sizes };
   }
   const title = rows[0]?.kind === 'title' ? rows[0].text : undefined;
-  for (let from = 0; from < floor; from++) {
-    const visible = rows.slice(from, floor).map(row => from > 0 && title && row.kind === 'value'
+  // The last resort is the title and one value: the hovered series's.
+  const top = pointedAt > firstValue && firstValue >= 0 ? [...rows.slice(0, firstValue), rows[pointedAt]!] : rows.slice(0, floor);
+  for (let from = 0; from < top.length; from++) {
+    const visible = top.slice(from).map(row => from > 0 && title && row.kind === 'value'
       ? { ...row, label: row.label || title, text: `${title}: ${row.text}` } : row);
     const sizes = measureRows(visible, theme, maxWidth, measure);
     if (fits(sizes)) return { rows: visible, measured: sizes };

@@ -640,7 +640,7 @@ describe('default card rows', () => {
     const funnel = { type: 'funnel', data: { categories: [{ id: 'v', label: 'Visits' }, { id: 'o', label: 'Orders' }],
       series: [{ id: 'n', label: 'Visits', values: [5000, 600] }] }, options: { size: { width: 640, height: 360 } } };
     expect(card(funnel, 'v')).toEqual([['Visits'], ['', '5,000', true]]);
-    expect(card(funnel, 'o')).toEqual([['Orders'], ['', '600', true], ['Stage conversion:', '12%']]);
+    expect(card(funnel, 'o')).toEqual([['Orders'], ['Visits:', '600', true], ['Stage conversion:', '12%']]);
     expect(card({ type: 'variance', data: { categories: [{ id: 'jan', label: 'Jan' }], series: [{ id: 'actual', label: 'Actual', values: [4204] },
       { id: 'plan', role: 'reference', scenario: 'PL', values: [4000] }] }, options: { variant: 'integrated', variance: { of: 'actual', vs: 'plan' } } }, 'jan'))
       .toEqual([['Jan'], ['Actual:', '4,204', true], ['plan:', '4,000'], ['vs plan:', '+204 (+5.1%)']]);
@@ -651,7 +651,7 @@ describe('default card rows', () => {
     expect(card({ type: 'kpi', data: { label: 'Orders', value: 100, delta: { vs: 50, scenario: 'PY', mode: 'both' } } })
       .slice(0, 2)).toEqual([['Orders'], ['', '100', true]]);
     expect(card({ type: 'funnel', data: { categories: [{ id: 'l', label: 'Leads' }, { id: 's', label: 'Calls' }], series: [{ id: 'n', label: 'Deals', values: [100, 50] }] },
-      options: { size: { width: 640, height: 360 } } }, 's')).toEqual([['Calls'], ['', '50', true], ['Stage conversion:', '50%']]);
+      options: { size: { width: 640, height: 360 } } }, 's')).toEqual([['Calls'], ['Deals:', '50', true], ['Stage conversion:', '50%']]);
     expect(card({ type: 'variance', data: { categories: [{ id: 'na', label: 'North' }, { id: 'so', label: 'South' }], series: [
       { id: 'a', label: 'Web', values: [61, 44] }, { id: 'b', label: 'Store', values: [22, 18] },
       { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, 55] }] },
@@ -678,11 +678,22 @@ describe('default card rows', () => {
     const parts = [{ id: 'n', label: 'North', values: [100, 120] }, { id: 's', label: 'South', values: [50, null] }, { id: 'e', label: 'East', values: [80, 80] }];
     expect(names({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'n'))
       .toEqual(['Q2', 'North:', 'South:', 'East:', 'Total:']);
+    // A line with no value stays after the Total; a stack with a missing part marks its total partial, as the chart does.
+    const combo = card({ type: 'combo', data: { categories: cats, series: [parts[0], { id: 'p', label: 'Plan', kind: 'line', values: [200, null] }, parts[2]] },
+      options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'n');
+    expect(combo.map(row => row[0])).toEqual(['Q2', 'North:', 'East:', 'Total:', 'Plan:']);
+    expect(card({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'n')
+      .find(row => row[0] === 'Total:')?.[1]).toBe('200 (partial)');
     expect(names({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', legend: { position: 'top', order: ['e', 's', 'n'] },
       size: { width: 640, height: 360 } } }, 'n')).toEqual(['Q2', 'East:', 'South:', 'North:', 'Total:']);
     const nine = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
       values: [10 * index, 10 * index + 1] })) }, options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
     expect(nine.find(row => row.at(-1) === true)?.[0]).toBe('S9:');
+    // The hovered series takes its own detail rows with it, not those of the row it replaces.
+    const detailed = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
+      values: [1, index >= 7 ? { number: 10 * index, details: { owner: index === 7 ? 'East' : 'West' } } : 10 * index] })) },
+    options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
+    expect(detailed.slice(-3, -1)).toEqual([['S9:', '80', true], ['owner:', 'West']]);
   });
 
   // An earlier partial period, closed since, read "to date".
@@ -690,5 +701,11 @@ describe('default card rows', () => {
     const title = (category: string) => card({ type: 'line', data: { categories: [{ id: '2026-01', partial: true }, { id: '2026-02' }, { id: '2026-03', partial: true }],
       series: [{ id: 'o', label: 'Orders', values: [10, 25, 30] }] }, options: { size: { width: 640, height: 360 } } }, category)[0]![0];
     expect([title('2026-01'), title('2026-03')]).toEqual(['January 2026', 'March 2026 to date']);
+    // A forecast after the running month is no actual, and a total category does not hide the other periods.
+    expect(card({ type: 'column', data: { categories: [{ id: '2026-11', partial: true }, { id: '2026-12' }],
+      series: [{ id: 's', label: 'Sales', values: [100, { number: 150, scenario: 'FC' }] }] }, options: { size: { width: 640, height: 360 } } }, '2026-11')[0]![0])
+      .toBe('November 2026 to date');
+    expect(card({ type: 'column', data: { categories: [{ id: '2026-01', label: 'Jan' }, { id: '2027-01', label: 'Jan' }, { id: 'total', role: 'total' }],
+      series: [{ id: 's', label: 'Sales', values: [80, 90, null] }] }, options: { size: { width: 640, height: 360 } } }, '2027-01')[0]![0]).toBe('January 2027');
   });
 });

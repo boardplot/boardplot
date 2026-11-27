@@ -11,14 +11,16 @@ import { calendarPoint, dayUnit } from '../../core/calendarLabels';
 import { dateNames } from '../../core/dateNames';
 import { wordLanguage } from '../../core/numberMarks';
 import { runningPeriodIds, saysToDate } from '../../core/partialPeriod';
+import { scenarioFillPattern } from '../../core/scenarioPairs';
+import type { Scenario } from '../../core/types/cell';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { StringsSpec } from '../../core/types/options';
 import type { Category } from '../../core/types/data';
 
 interface SourceCategory { id: string; label?: string; date?: string; partial?: boolean; role?: string }
-interface SourceSeries { id?: unknown; role?: unknown; values?: unknown }
-interface SourceChart { data?: { categories?: unknown[]; series?: unknown[]; panels?: unknown[] };
+interface SourceSeries { id?: unknown; label?: unknown; role?: unknown; scenario?: unknown; values?: unknown }
+interface SourceChart { type?: string; data?: { categories?: unknown[]; series?: unknown[]; panels?: unknown[] };
   options?: { strings?: StringsSpec; subtitle?: unknown; title?: unknown; legend?: { order?: unknown } } }
 
 const DAY = 86400000;
@@ -46,7 +48,11 @@ function categoriesOf(chart: SourceChart): SourceCategory[] | undefined {
  * category of its chart: a 7-day step is a week, month starts a month. An
  * authored quarter or year keeps its label, which may name a fiscal period.
  */
-function periodName(categories: readonly SourceCategory[], index: number, locale: string | undefined): string | undefined {
+function periodName(all: readonly SourceCategory[], at: number, locale: string | undefined): string | undefined {
+  // A total category names no period, and the periods beside it keep theirs.
+  if (all[at]!.role === 'total') return undefined;
+  const categories = all.filter(category => category.role !== 'total');
+  const index = categories.indexOf(all[at]!);
   const points = categories.map(category => calendarPoint(category.date ?? category.id));
   if (points.some(point => point === undefined) || new Set(points.map(point => point!.unit)).size !== 1) return undefined;
   const point = points[index]!;
@@ -99,14 +105,31 @@ export function cardTitle(request: ResolvedChartRequest, record: InteractionReco
 function running(chart: SourceChart, categories: readonly SourceCategory[]): Set<string> {
   const series = (Array.isArray(chart.data?.series) ? chart.data!.series : []) as SourceSeries[];
   const actual = series.filter(entry => entry?.role !== 'reference' && Array.isArray(entry?.values));
-  return runningPeriodIds(categories as readonly Category[], index => actual.length === 0
-    || actual.some(entry => { const value = (entry.values as unknown[])[index]; return value !== null && value !== undefined; }));
+  // A value the chart draws as forecast or plan (hatched, outlined) is no actual, as the chart counts it.
+  const isActual = (entry: SourceSeries, index: number) => {
+    const cell = (entry.values as unknown[])[index];
+    const value = cell !== null && typeof cell === 'object' ? (cell as { number?: unknown }).number : cell;
+    const scenario = (cell !== null && typeof cell === 'object' ? (cell as { scenario?: Scenario }).scenario : undefined) ?? entry.scenario as Scenario | undefined;
+    return value !== null && value !== undefined && scenarioFillPattern(scenario) === undefined;
+  };
+  return runningPeriodIds(categories as readonly Category[], index => actual.length === 0 || actual.some(entry => isActual(entry, index)));
 }
 
-/** A sparkline's metric where its data names none: the subtitle's measure, else a title short enough to be a name. */
-export function metricName(request: ResolvedChartRequest): string | undefined {
-  if (request.type !== 'sparkline') return undefined;
-  const options = request.options as SourceChart['options'];
+/**
+ * The chart's metric where its records name none: a sparkline's subtitle
+ * measure, else a title short enough to be a name; a funnel's one series.
+ */
+export function metricName(request: ResolvedChartRequest, panel?: string): string | undefined {
+  const chart = sourceChart(request, panel);
+  const top = chart === (request as unknown as SourceChart);
+  const type = top ? request.type : chart.type;
+  const options = (top ? request.options : chart.options) as SourceChart['options'];
+  if (type === 'funnel') {
+    const series = chart.data?.series;
+    const label = Array.isArray(series) && series.length === 1 ? (series[0] as SourceSeries | undefined)?.label : undefined;
+    return typeof label === 'string' && label.trim() ? label.trim() : undefined;
+  }
+  if (type !== 'sparkline') return undefined;
   const measure = (options?.subtitle as { measure?: unknown } | undefined)?.measure;
   if (typeof measure === 'string' && measure.trim()) return measure.trim();
   const title = typeof options?.title === 'string' ? options.title.trim() : '';
@@ -114,11 +137,12 @@ export function metricName(request: ResolvedChartRequest): string | undefined {
 }
 
 /**
- * The place of each record's series in the key: its place in the legend's
- * authored order, else in the spec's series list, else (a series the engine
+ * The place of each record's series in the key: its place in the drawn
+ * legend (`legend`, the chart's own) or the legend's authored order (a
+ * panel's), else in the spec's series list, else (a series the engine
  * adds) after them in record order.
  */
-export function keyOrder(request: ResolvedChartRequest, records: readonly InteractionRecord[]): Map<InteractionRecord, number> {
+export function keyOrder(request: ResolvedChartRequest, records: readonly InteractionRecord[], legend?: readonly string[]): Map<InteractionRecord, number> {
   const ranks = new Map<string | undefined, Map<string, number>>();
   const rankOf = (panel: string | undefined) => {
     let rank = ranks.get(panel);
@@ -131,7 +155,8 @@ export function keyOrder(request: ResolvedChartRequest, records: readonly Intera
       });
       // An authored legend order leads; series it leaves out follow in data order.
       const authored = (chart === (request as unknown as SourceChart) ? request.options : chart.options) as SourceChart['options'];
-      const order = Array.isArray(authored?.legend?.order) ? (authored!.legend!.order as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+      const order = panel === undefined && legend?.length ? [...legend]
+        : Array.isArray(authored?.legend?.order) ? (authored!.legend!.order as unknown[]).filter((id): id is string => typeof id === 'string') : [];
       ranks.set(panel, rank = new Map([...order, ...ids.filter(id => !order.includes(id))].map((id, index) => [id, index] as const)));
     }
     return rank;

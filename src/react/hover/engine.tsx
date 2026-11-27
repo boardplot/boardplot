@@ -29,7 +29,7 @@ import { SceneRenderer } from '../SceneRenderer';
 import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlight';
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
-  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
+  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
 import { cardTitle, keyOrder, metricName } from './cardRows';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
@@ -44,6 +44,10 @@ export interface HoverModel {
   occupied?: (OccupiedRect & { filled: boolean })[];
   /** One drawn model owns the records, locale, composition and scene used to format these cards, keyed by their record ids. */
   cardRows?: Map<string, LabelCardContent>;
+  /** The drawn legend's series ids, in its order. */
+  legend?: string[];
+  /** The series that are parts of a stack in some category (`stackKey`). */
+  stackSeries?: Set<string>;
   /** Each record's place in the key, which a card with several series follows (`keyOrder`). */
   order?: Map<InteractionRecord, number>;
   markBounds?: Map<InteractionRecord, Rect | undefined>;
@@ -263,7 +267,8 @@ export function hoverModel(request: ResolvedChartRequest, geometry: RenderGeomet
   const model = isFullGeometry(geometry)
     ? { records: interactionRecords({ request, geometry, scope: request.scope, claims: [] }), placement: overlayInputs(request, geometry) }
     : { records: prepared?.records ?? [], placement: prepared?.overlay };
-  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map() };
+  const legend = (geometry as { legend?: { items: { id: unknown }[] } }).legend?.items.map(item => String(item.id));
+  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map(), ...legend?.length ? { legend } : {} };
 }
 
 /**
@@ -276,7 +281,8 @@ export function cardOptions(model: HoverModel, request: ResolvedChartRequest, fi
   // A panel projects the option keys this question needs, so a panel's card
   // words its share exactly as the same chart would on its own.
   return { hundredPercent: hundredPercentComposition(panel?.type ?? request.type, panel ? panel.composition : request.options as CompositionOptions),
-    title: cardTitle(request, first), name: metricName(request), order: model.order ??= keyOrder(request, model.records) };
+    title: cardTitle(request, first), name: metricName(request, first.target.panel), order: model.order ??= keyOrder(request, model.records, model.legend),
+    stackSeries: model.stackSeries ??= new Set(model.records.filter(record => record.share).map(stackKey)) };
 }
 
 /** Filled-mark ownership depends on the drawn scene, not the active card. */
