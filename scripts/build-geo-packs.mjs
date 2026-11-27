@@ -1303,26 +1303,33 @@ function buildTilePack(config, geoPack) {
       adjacencyExceptions,
     },
   };
-  const exportName = `${config.id.replace(/-/g, '_').toUpperCase()}_TILE_PACK`;
-  const source =
-    `import type {TilePack} from './types';` +
-    `export const ${exportName}=${tilePackLiteral(pack)} as const satisfies TilePack;\n`;
-  return { pack, source };
+  return { pack, source: tilePackSource(pack) };
 }
 
-/** Compact world storage; expansion preserves the exported records and key order. */
-function tilePackLiteral(pack) {
-  const literal = JSON.stringify(pack);
-  if (pack.id !== 'world') return literal;
-  let source = literal;
+/** Store each geographic border once. Its position in the sorted input preserves the published order. */
+function tilePackSource(pack) {
+  const exportName = `${pack.id.replace(/-/g, '_').toUpperCase()}_TILE_PACK`;
+  const missing = new Set(pack.meta.adjacencyExceptions.filter(({ kind }) => kind === 'missing').map(adjacencyKey));
+  const extra = pack.meta.adjacencyExceptions.filter(({ kind }) => kind === 'extra');
+  const neighbors = (pairs, markMissing) => {
+    const groups = new Map();
+    for (const pair of pairs) {
+      if (!groups.has(pair.a)) groups.set(pair.a, [pair.a]);
+      groups.get(pair.a).push(markMissing && missing.has(adjacencyKey(pair)) ? [pair.b] : pair.b);
+    }
+    return JSON.stringify([...groups.values()]);
+  };
+  let literal = JSON.stringify(pack)
+    .replace(`"geographicAdjacencies":${JSON.stringify(pack.geographicAdjacencies)}`, '"geographicAdjacencies":borders.geographicAdjacencies')
+    .replace(`"adjacencyExceptions":${JSON.stringify(pack.meta.adjacencyExceptions)}`, '"adjacencyExceptions":borders.adjacencyExceptions');
   if (pack.regions.every((region) => region.shortName === region.id)) {
     const rows = pack.regions.map(({ id, aliases, name, row, col }) => [id, aliases, name, row, col]);
     const regions = `(${JSON.stringify(rows)} as const).map(([id,aliases,name,row,col])=>({id,aliases,name,shortName:id,row,col} as const))`;
-    source = source.replace(`"regions":${JSON.stringify(pack.regions)}`, `"regions":${regions}`);
+    literal = literal.replace(`"regions":${JSON.stringify(pack.regions)}`, `"regions":${regions}`);
   }
-  const pairs = pack.meta.adjacencyExceptions.map(({ a, b, kind }) => [a, b, kind]);
-  const exceptions = `(${JSON.stringify(pairs)} as const).map(([a,b,kind])=>({a,b,kind} as const))`;
-  return source.replace(`"adjacencyExceptions":${JSON.stringify(pack.meta.adjacencyExceptions)}`, `"adjacencyExceptions":${exceptions}`);
+  return `import type { TilePack } from './types';\nimport { tileBorders } from './borders';\n` +
+    `const borders = tileBorders(${neighbors(pack.geographicAdjacencies, true)}, ${neighbors(extra, false)});\n` +
+    `export const ${exportName} = ${literal} as const satisfies TilePack;\n`;
 }
 
 function geographicAdjacencyPairs(pack) {
