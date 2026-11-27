@@ -684,6 +684,19 @@ describe('default card rows', () => {
       .toEqual([['Jan'], ['Actual:', '4,204', true], ['PL:', '4,000'], ['vs PL:', '+204 (+5.1%)']]);
   });
 
+  // A unit caption that opens with a scale word printed "1.8 thousand per month"; the card prints the short scale as charts do.
+  it('prints a scale word of the unit as the short scale on the number', () => {
+    const spec = (unit: string, locale?: string) => ({ type: 'column', data: { categories: [{ id: 'q1', label: 'Q1' }],
+      series: [{ id: 'a', label: 'Revenue', values: [1.8] }] }, options: { unit, size: { width: 640, height: 360 }, ...locale ? { locale } : {} } });
+    expect(card(spec('thousand per month'), 'q1')[1]).toEqual(['Revenue:', '1.8k per month', true]);
+    expect(card(spec('€ million'), 'q1')[1]).toEqual(['Revenue:', '€1.8M', true]);
+    expect(card(spec('% of plan'), 'q1')[1]).toEqual(['Revenue:', '1.8% of plan', true]);
+    // A percent unit without a series name stays on the number, not in front of it ("% of workloads: 92").
+    expect(card({ type: 'pie', data: { categories: [{ id: 'a', label: 'Cloud' }, { id: 'b', label: 'Other' }], series: [{ id: 's', values: [92, 8] }] },
+      options: { unit: '% of workloads', size: { width: 480, height: 360 } } }, 'a')[1]?.[1]).toBe('92% of workloads');
+    expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
+  });
+
   // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
   it('prints the total the stack draws', () => {
     const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];

@@ -1,6 +1,7 @@
 import { chartString } from '../../core/strings/hover';
 import { joinSentences, localeStrings } from '../../core/strings';
 import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber, unitMagnitude, type NumberFormatSpec } from '../../core/formatSpec';
+import { magnitudeSuffix } from '../../core/format';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
 import type { SlotCandidate } from '../../core/label/solver';
@@ -211,7 +212,7 @@ function comparisonRow(comparison: InteractionComparison, locale?: string, refer
   const label = comparison.labelKind === 'complete' ? `${comparison.label}:` : chartString({ locale }, 'comparisonLabel', { label: name });
   const value = withheld ? chartString({ locale: { language: locale } }, 'valueWithheld')
     : `${deltaValueText(comparison.delta, precision, locale)} (${signedPercentText(comparison.percent, locale)})`;
-  return { kind: 'comparison', label, value, text: `${label} ${value}`,
+  return { kind: 'comparison', label, value: shortUnit(value, comparison.delta, locale), text: `${label} ${value}`,
   values: withheld ? [] : values.map(value => safeValue(value, locale)) };
 }
 
@@ -316,22 +317,58 @@ function headingNamesDate(record: InteractionRecord, date: InteractionValue): bo
 function fieldRow(field: InteractionRecord['fields'][number], locale?: string): LabelCardRow {
   const label = `${field.label}:`;
   const value = cardValueText(field.value, locale);
-  return { kind: 'field', label, value, text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
+  return { kind: 'field', label, value: shortUnit(value, field.value, locale), text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
+}
+
+/** A scale word that opens a unit ("thousand per month"), and the scale it names. */
+const SCALE_WORD = /^(thousand|million|billion|trillion|tausend|millionen|milliarden|billionen)s?(?![\p{L}\p{N}])/iu;
+const SCALE_MAGNITUDE: Record<string, 'k' | 'm' | 'bn' | 't'> = {
+  thousand: 'k', million: 'm', billion: 'bn', trillion: 't', tausend: 'k', millionen: 'm', milliarden: 'bn', billionen: 't',
+};
+
+/**
+ * The card's number with a unit caption as the chart prints a number: a
+ * scale word that opens the unit becomes the chart language's short scale
+ * on the number ("1.8 thousand per month" reads "1.8k per month", German
+ * "1,8 Tsd. pro Monat"), and a percent sign joins the number ("13.1% of
+ * enquiries"). Only a bare number before the unit changes; the precision
+ * stays. The spoken reading keeps the words: a screen reader says "1.8
+ * thousand" well and "1.8k" badly.
+ */
+function shortUnit(text: string, value: InteractionValue, locale?: string): string {
+  const unit = value.unit?.trim();
+  if (!unit || value.state !== 'value') return text;
+  // A currency sign or code may stand in front of the scale word ("$ billion", "€ million").
+  const sign = /^(?:\p{Sc}|[A-Z]{3})[\s\u00a0]?/u.exec(unit)?.[0] ?? '';
+  const word = SCALE_WORD.exec(unit.slice(sign.length));
+  if (!word && !(unit.startsWith('%') && unit.length > 1)) return text;
+  const tail = word ? unit.slice(sign.length) : unit;
+  let short = unit;
+  if (word) {
+    const magnitude = SCALE_MAGNITUDE[word[1]!.toLocaleLowerCase()]!;
+    const suffix = /^de\b/i.test(locale ?? '') && magnitude === 'k' ? ' Tsd.' : magnitudeSuffix(magnitude, locale);
+    const rest = tail.slice(word[0].length).trim();
+    short = `${suffix.replace(/^ /, '\u00a0')}${rest ? ` ${rest}` : ''}`;
+  }
+  // After every number of the row: the value, a total, a change ("−10 thousand orders (−9.1%)").
+  const escaped = tail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(`(\\d)[\\s\\u00a0\\u202f]+${escaped}(?![\\p{L}\\p{N}])`, 'gu'), (_match, digit: string) => `${digit}${short}`);
 }
 
 /** A word in a unit: four or more letters, lower case after the first ("orders", "Fälle"). "kg", "ms", "USD" and "kWh" hold none. */
 const UNIT_WORD = /(?<!\p{L})\p{L}\p{Ll}{3,}(?!\p{L})/u;
 
 /**
- * A unit that is a phrase in words ("cases per month", "% of started cases",
- * "orders") names the number on the hover card. A sign, a code or a scale
- * stays with the number: "$", "%", "pp", "kg", "ms", "USD", "EUR k", "$bn",
- * "k orders" and "thousand per month" (the scale belongs to the number),
- * "$ per share" (the sign goes in front of the number).
+ * A unit that is a phrase in words ("cases per month", "orders") names the
+ * number on the hover card. A sign, a code or a scale stays with the number:
+ * "$", "%", "pp", "kg", "ms", "USD", "EUR k", "$bn", "k orders" and
+ * "thousand per month" (the scale belongs to the number), "$ per share" (the
+ * sign goes in front of the number), "% of started cases" (the percent sign
+ * joins the number: "92% of started cases").
  */
 export function unitPhrase(unit: string | undefined): boolean {
   const text = unit?.trim();
-  return Boolean(text) && !/^\p{Sc}/u.test(text!) && unitMagnitude(text) === undefined && !SCALE_FIRST.test(text!) && UNIT_WORD.test(text!);
+  return Boolean(text) && !/^[\p{Sc}%]/u.test(text!) && unitMagnitude(text) === undefined && !SCALE_FIRST.test(text!) && UNIT_WORD.test(text!);
 }
 
 /** A unit that opens with a scale ("thousand per month", "M users"): the number is in that scale, so the unit stays on it. */
@@ -429,7 +466,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
   const headline = record.value.state === 'suppressed' || !repeatedHeadline(record);
   const rows: LabelCardRow[] = [{ kind: 'title', text: named.heading }];
   if (headline) rows.push({ kind: 'value', text: `${named.name ? `${named.name}: ` : ''}${named.value}`,
-    label: named.name ? `${named.name}:` : '', value: named.value, pointed: true,
+    label: named.name ? `${named.name}:` : '', value: shortUnit(named.value, record.value, locale), pointed: true,
     values: [safeValue(record.value, locale)] });
   if (record.value.state !== 'suppressed') {
     const members = new Set(record.members?.map(member => member.pointId).filter(id => id !== undefined));
@@ -464,7 +501,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       // The base is a total the record holds for the share; no label states it, so it prints through its format.
       const value = withheld ? chartString(wording, 'valueWithheld')
         : `${shareFormat([record.share.percent], locale)(record.share.percent)}${whole ? '' : chartString(wording, 'ofValueClause', { v1: formattedValueText(base, locale) })}`;
-      rows.push({ kind: 'share', label, value, text: `${label} ${value}`,
+      rows.push({ kind: 'share', label, value: shortUnit(value, base, locale), text: `${label} ${value}`,
       values: withheld ? [] : values.map(value => safeValue(value, locale)) });
     }
     if (record.rank) {
@@ -599,14 +636,14 @@ function groupRows(sorted: readonly InteractionRecord[], pointed: InteractionRec
     const number = namedNumber(name, format(record), record.value.unit);
     const value = `${record.valueLabel ? `${record.valueLabel}: ` : ''}${number}`;
     const part = stacked && shown.includes(record) ? share(record.share!.percent) : undefined;
-    rows.push({ ...content[at]!, label: `${name}:`, value, text: `${name}: ${value}${part ? `, ${part}` : ''}`,
+    rows.push({ ...content[at]!, label: `${name}:`, value: shortUnit(value, record.value, locale), text: `${name}: ${value}${part ? `, ${part}` : ''}`,
       series: true, swatch: seriesSwatch(record, scene), pointed: record === pointed, ...part ? { share: part } : {} });
     pushAll(rows, content.filter((_, row) => row !== at));
     if (stacked && !whole && index === members.length - 1 && total) {
       const label = chartString({ locale: { language: locale } }, 'totalLabel');
       // A stack with a missing part adds the known parts only, as the drawn total says.
       const text = `${stackFormat(total)}${members.length > parts.length ? ` ${localeStrings(locale).incomplete}` : ''}`;
-      rows.push({ kind: 'total', label: `${label}:`, value: text, text: `${label}: ${text}`, values: [safeValue(total, locale)] });
+      rows.push({ kind: 'total', label: `${label}:`, value: shortUnit(text, total, locale), text: `${label}: ${text}`, values: [safeValue(total, locale)] });
     }
   });
   return rows;
