@@ -341,9 +341,7 @@ function narrowPeriodBracket(data: DimSwitchData, options: DimSwitchOptions, per
   const shown = 5;
   const first = card(periods - shown);
   if (fixedFits(first)) return;
-  const prepared = forms.prepared.get(`true:${periods - shown}`);
-  if (!prepared) return;
-  const { compiled, resolved } = prepared;
+  const { compiled, resolved } = forms.prepared.get(`true:${periods - shown}`)!;
   if (resolved.lifted || resolved.warnings.length || resolved.table.footnotes.length ||
     compiled.warnings.some(w => w.code !== 'dimswitch-measure-omitted')) return;
   const omitted = new Set(compiled.omissions.map(o => o.labelId));
@@ -355,7 +353,7 @@ function narrowPeriodBracket(data: DimSwitchData, options: DimSwitchOptions, per
   }))) return;
   const selected = mostShown(card, periods, { shown, geometry: first });
   // A successful projection verifies the retained periods' cells and rows use independent formats.
-  if (selected.shown > 0 && forms.projections?.has(periods - selected.shown)) return selected;
+  if (forms.projections?.has(periods - selected.shown)) return selected;
 }
 
 /** Probe recent periods in doubling groups. The first miss supplies the search bracket. */

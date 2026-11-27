@@ -693,7 +693,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const show = (m:DimSwitchMember) => {
     if (options.show !== 'withData') return true;
     // A member that still counts in the Total through any applicable measure stays.
-    const live=new Set(data.measures.filter(x=>applies(x,m.id)).flatMap(x=>fields(exprOf(x))));
+    const live=new Set(data.measures.filter(x=>applies(x,m.id)).flatMap(x=>measureFields.get(x)!));
     return live.size === 0 || [...live].some(f => !!sums(m.id,range.id)?.[f]);
   };
   const ordered = (parentId?:string) => {
