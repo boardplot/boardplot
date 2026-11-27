@@ -415,12 +415,15 @@ interface WrappedLines { lines: string[]; truncated: boolean }
 interface RecentWrap { font: FontSpec; width: number; maxLines: number; breakAfter: boolean; result: WrappedLines }
 
 let wrappedTexts: WeakMap<TextMeasurer, Map<string, RecentWrap[]>> | undefined;
+/** The row planner supplies its cache scope when a chart imports it. */
+export const layoutText: { withCategoryRows?: <T>(run: () => T) => T } = {};
 
 /** Measurements in one layout revisit the same labels at the current and previous width. */
 export function withWrappedTexts<T>(run: () => T): T {
   if (wrappedTexts) return run();
   wrappedTexts = new WeakMap();
-  try { return run(); } finally { wrappedTexts = undefined; }
+  const scope = layoutText.withCategoryRows;
+  try { return scope ? scope(run) : run(); } finally { wrappedTexts = undefined; }
 }
 
 export function wrapText(

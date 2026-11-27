@@ -18,7 +18,6 @@ import { isRefused } from './schema/refusals';
 import { AUTO_LEGEND } from './legendPolicy';
 import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
-import { withCategoryRowPlans } from './label/categoryRow';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
 import { defaultMeasurer, isCachedTextMeasurer, type TextMeasurer, withWrappedTexts } from './text';
 import { maxOf } from './arrays';
@@ -1867,7 +1866,7 @@ let memoNextId = 0;
 export function withLayoutMemo<T>(run: () => T): T {
   if (layoutMemo) return run();
   layoutMemo = new Map();
-  try { return withPlanInputs(() => withEngineNotes(() => withWrappedTexts(() => withCategoryRowPlans(run)))); } finally {
+  try { return withPlanInputs(() => withEngineNotes(() => withWrappedTexts(run))); } finally {
     layoutMemo = undefined;
     singleLineRefusals = undefined;
     memoSymbolIds = new Map();

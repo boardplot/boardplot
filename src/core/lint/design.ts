@@ -9,7 +9,7 @@
  * grid shares. A render returns at most ADVICE_PER_RENDER of them.
  */
 import { designRuleText } from '../catalog';
-import { CROWDED_NAMES } from '../label/categoryRow';
+import { CROWDED_NAMES } from '../label/categoryWarnings';
 import type { JsonPatchOperation } from '../diagnostics/jsonPatch';
 import type { LintWarning } from '../types/scene';
 import { categoriesOf, cellNumber, chartOptions, isRecord, labelOf, records, seriesOf, type LintRecord, type ScopedLintChart } from './shared';

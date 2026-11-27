@@ -15,7 +15,7 @@ import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { gutterBudget, stepDownFont } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
-import { categoryCutLint } from '../../label/categoryRow';
+import { categoryCutLint } from '../../label/categoryWarnings';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate } from '../../partialPeriod';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
