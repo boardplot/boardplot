@@ -1129,9 +1129,12 @@ function roadmapMilestoneX({ plot, data, u }: PresetContext, laneW: number, mile
     const inLane: number[] = [];
     for (let index = 0, stop; index < run.length; index = stop) {
       for (stop = index + 1; run[stop] && run[stop]!.laneId === run[index]!.laneId; stop++);
-      const left = plot.x + lane(run[index]!) * laneW;
-      inLane.push(...spread(run.slice(index, stop), Math.max(left, first, inLane.at(-1) ?? before ?? left),
-        Math.min(left + laneW, last, after ?? last)));
+      // A lane edge, unlike a neighbour, leaves room for a circle up to its radius from it.
+      const edge = plot.x + lane(run[index]!) * laneW;
+      const [left, right] = [Math.max(edge + 2 * u, first), Math.min(edge + laneW - 2 * u, last)];
+      const from = inLane.at(-1) ?? before;
+      const [lo, hi] = [from !== undefined && from > left ? from : left, after !== undefined && after < right ? after : right];
+      inLane.push(...spread(run.slice(index, stop), lo, hi, (lo === left) === (hi === right) ? 0 : lo === left ? 1 : 2));
     }
     const slots = run.map((node) => {
       const mates = milestones.filter((other) => other.laneId === node.laneId);
