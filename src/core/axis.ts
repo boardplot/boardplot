@@ -359,49 +359,27 @@ export function layoutValueAxis(input: ValueAxisInput, occupied: OccupiedIndex):
     const tsize = measure(text, font);
     const gridId = input.gridlines && t !== 0 ? `axis:${orient}:grid:${seq}` : undefined;
 
-    if (orient === 'y') {
-      if (gridId) {
-        nodes.push({
-          t: 'line', id: gridId, x1: plot.x, y1: pos, x2: plot.x + plot.w, y2: pos,
-          stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), ...gridDash(theme), owner: {}, part: 'gridline',
-        });
-      }
-      const labelRect: Rect = {
-        x: plot.x - tsize.width - 8,
-        y: pos - tsize.height / 2,
-        w: tsize.width,
-        h: tsize.height,
-      };
-      const labelId = `axis:${orient}:tick:${seq}`;
+    const vertical = orient === 'y';
+    if (gridId) {
       nodes.push({
-        t: 'text', id: labelId, x: labelRect.x, y: labelRect.y, lines: [text],
-        align: 'start', font, ink: { token: 'inkMuted' }, owner: {}, part: 'tick', typeRole: 'secondary',
+        t: 'line', id: gridId, ...(vertical ? { x1: plot.x, y1: pos, x2: plot.x + plot.w, y2: pos } : { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.h }),
+        stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), ...gridDash(theme), owner: {}, part: 'gridline',
       });
-      occupied.claim(labelRect, 'axis', {});
-      reserved = Math.max(reserved, tsize.width + 8);
-      axis.ticks.push({ at: t, pos, labelId, gridNodeId: gridId });
-    } else {
-      if (gridId) {
-        nodes.push({
-          t: 'line', id: gridId, x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.h,
-          stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), ...gridDash(theme), owner: {}, part: 'gridline',
-        });
-      }
-      const labelRect: Rect = {
-        x: labelX(pos, tsize.width, seq, ticks.length),
-        y: plot.y + plot.h + 6,
-        w: tsize.width,
-        h: tsize.height,
-      };
-      const labelId = `axis:${orient}:tick:${seq}`;
-      nodes.push({
-        t: 'text', id: labelId, x: labelRect.x, y: labelRect.y, lines: [text],
-        align: 'start', font, ink: { token: 'inkMuted' }, owner: {}, part: 'tick', typeRole: 'secondary',
-      });
-      occupied.claim(labelRect, 'axis', {});
-      reserved = Math.max(reserved, tsize.height + 6);
-      axis.ticks.push({ at: t, pos, labelId, gridNodeId: gridId });
     }
+    const labelRect: Rect = {
+      x: vertical ? plot.x - tsize.width - 8 : labelX(pos, tsize.width, seq, ticks.length),
+      y: vertical ? pos - tsize.height / 2 : plot.y + plot.h + 6,
+      w: tsize.width,
+      h: tsize.height,
+    };
+    const labelId = `axis:${orient}:tick:${seq}`;
+    nodes.push({
+      t: 'text', id: labelId, x: labelRect.x, y: labelRect.y, lines: [text],
+      align: 'start', font, ink: { token: 'inkMuted' }, owner: {}, part: 'tick', typeRole: 'secondary',
+    });
+    occupied.claim(labelRect, 'axis', {});
+    reserved = Math.max(reserved, vertical ? tsize.width + 8 : tsize.height + 6);
+    axis.ticks.push({ at: t, pos, labelId, gridNodeId: gridId });
     seq++;
   }
 

@@ -10,19 +10,18 @@ import { resolveChartRequest, layoutResolvedRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import '../src/core/charts';
 import { claimsForChart } from '../src/core/claims';
-import {
-  PVM_METHOD_NOTE_COMBINED,
-  PVM_METHOD_NOTE_COMBINED_SEPARATE,
-  PVM_METHOD_NOTE_IN_PRICE,
-  PVM_METHOD_NOTE_SEPARATE,
-  assertReconciles,
-  decomposePvm,
-} from '../src/core/charts/pvm/decompose';
+import { assertReconciles, decomposePvm } from '../src/core/charts/pvm/decompose';
+import { chartString } from '../src/core/strings/pvm';
 import { fixtures } from '../src/core/charts/pvm/fixtures';
 import { assertClosingLevel, layoutPvm as layoutPvmRaw } from '../src/core/charts/pvm/layout';
 import { withEngineNotes } from '../src/core/notes';
 import type { PvmData, PvmDerived, PvmOptions } from '../src/core/charts/pvm/types';
 import { NormalizeError } from '../src/core/normalize/shared';
+
+const PVM_METHOD_NOTE_IN_PRICE = chartString(undefined, 'pvmMethodNoteInPrice');
+const PVM_METHOD_NOTE_SEPARATE = chartString(undefined, 'pvmMethodNoteSeparate');
+const PVM_METHOD_NOTE_COMBINED = chartString(undefined, 'pvmMethodNoteCombined');
+const PVM_METHOD_NOTE_COMBINED_SEPARATE = chartString(undefined, 'pvmMethodNoteCombinedSeparate');
 import { getChartDefinition } from '../src/core/registry';
 import { defaultMeasurer } from '../src/core/text';
 import { standardTheme } from '../src/core/theme';

@@ -30,9 +30,6 @@ export interface RetiredSetting {
   use?: string;
 }
 
-const removed = (types: readonly string[], at: readonly string[], use?: string): RetiredSetting[] =>
-  at.map(path => ({ at: path, types, ...(use ? { use } : {}) }));
-
 /** type -> the retired settings of that type alone, kept in its folder and linked by its core and its schemas. */
 const OWN_SETTINGS = new Map<string, readonly RetiredSetting[]>();
 
@@ -41,28 +38,30 @@ export function linkRetiredSettings(type: string, settings: readonly RetiredSett
   if (settings) OWN_SETTINGS.set(type, settings);
 }
 
-const RETIRED_SETTINGS: readonly RetiredSetting[] = [
+/** A shared row may list several places that share the rest of the row. */
+type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly string[] };
+
+const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
   // Unused options and data fields.
-  ...removed(['line', 'combo'], ['options.endpointLabelDefault', 'options.lineLabels'], 'Set seriesLabels and valueLabels.'),
-  ...removed(['column', 'line', 'combo'], ['options.eventLegendFootnotes']),
-  ...removed(['line', 'combo', 'grid'], ['options.hover'], 'Hover is the hover prop of the React component.'),
+  { at: ['options.endpointLabelDefault', 'options.lineLabels'], types: ['line', 'combo'], use: 'Set seriesLabels and valueLabels.' },
+  { at: 'options.eventLegendFootnotes', types: ['column', 'line', 'combo'] },
+  { at: 'options.hover', types: ['line', 'combo', 'grid'], use: 'Hover is the hover prop of the React component.' },
   { at: 'options.labels.growth', types: ['combo'], to: 'options.dualAxis.growth' },
-  ...removed(['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel'], ['data.categories.[].total100']),
-  ...removed(['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel', 'mekko'], ['data.categories.[].gapAfter', 'data.categories.[].breakAfter']),
-  ...removed(['line', 'combo', 'slope', 'butterfly'], ['data.series.[].direction']),
-  ...removed(['butterfly', 'heatmap'], ['data.series.[].role']),
-  ...removed(['pie', 'heatmap'], ['data.series.[].fill']),
+  { at: 'data.categories.[].total100', types: ['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel'] },
+  { at: ['data.categories.[].gapAfter', 'data.categories.[].breakAfter'], types: ['dot', 'butterfly', 'slope', 'variance', 'pie', 'heatmap', 'funnel', 'mekko'] },
+  { at: 'data.series.[].direction', types: ['line', 'combo', 'slope', 'butterfly'] },
+  { at: 'data.series.[].role', types: ['butterfly', 'heatmap'] },
+  { at: 'data.series.[].fill', types: ['pie', 'heatmap'] },
   // Options with no reader on these types.
-  ...removed(ANNOTATIONS_RETIRED, ['options.annotations', 'annotations'], 'This chart type draws no annotation of any kind.'),
+  { at: ['options.annotations', 'annotations'], types: ANNOTATIONS_RETIRED, use: 'This chart type draws no annotation of any kind.' },
   { at: 'options.strings.legendCount', use: 'No chart printed this wording.' },
   // Options whose only effect on these types was a warning that they do nothing.
-  ...removed(['column', 'combo'], ['options.categoryAxis.crossesBetween'], 'Columns always sit in the middle of their bands.'),
-  ...removed(['table', 'dimswitch'], ['options.fitFormats'], 'A figure prints the same text at every width, and its track widens to hold it. To print fewer digits, set a shorter format example.'),
-  // A table row nests through children: the key is retired on the rows of the first eight levels.
+  { at: 'options.categoryAxis.crossesBetween', types: ['column', 'combo'], use: 'Columns always sit in the middle of their bands.' },
+  { at: 'options.fitFormats', types: ['table', 'dimswitch'], use: 'A figure prints the same text at every width, and its track widens to hold it. To print fewer digits, set a shorter format example.' },
 ];
 
 /** Theme keys without a successor, dotted from the theme root, with what to use instead. */
@@ -159,12 +158,12 @@ const VARIANT_SCOPED_KEYS: ReadonlySet<string> = new Set([
 /** Cohort exhibit settings: the heatmap variant does not run the exhibit layout. */
 const COHORT_EXHIBIT_ONLY = ['cohortSizeLabel', 'exhibitLabel', 'heightFill', 'showPercentSign', 'formatScope', 'excludeCurrentPeriod'] as const;
 
-/** A chart copy without settings its type ignores, with one remove warning per setting. */
-export function ignoreChartSettings<C extends { options?: unknown; data?: unknown }>(
-  type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
-): { chart: C; warnings: LintWarning[] } {
+type Settle = (type: string, chart: { options?: unknown; data?: unknown }) => { chart: unknown; warnings: LintWarning[] };
+
+/** A grid's explicit panels and its repeat template are charts of their own type: the chart with each settled, and their warnings pointed into it. */
+function settlePanels(type: string, chart: unknown, settle: Settle, canonical: (name: string) => string | undefined): { next: unknown; warnings: LintWarning[] } {
   const warnings: LintWarning[] = [];
-  let next: unknown = chart;
+  let next = chart;
   const panels = type === 'grid' ? readAt(chart, ['data', 'panels']) : undefined;
   const nested: (string | number)[][] = [
     ...(Array.isArray(panels) ? panels.map((_, index) => ['data', 'panels', index]) : []),
@@ -174,12 +173,21 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
     const panel = readAt(chart, at);
     const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
     if (panelType === undefined) continue;
-    const ignored = ignoreChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
-    if (ignored.chart === panel) continue;
-    next = setAt(next, at, ignored.chart);
-    for (const warning of ignored.warnings) warnings.push({ ...warning, field: [...at, ...warning.field!],
-      fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
+    const settled = settle(panelType, panel as { options?: unknown; data?: unknown });
+    if (settled.chart !== panel) next = setAt(next, at, settled.chart);
+    for (const warning of settled.warnings) {
+      warnings.push({ ...warning, field: [...at, ...warning.field!],
+        ...(warning.fix && { fix: warning.fix.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) }) });
+    }
   }
+  return { next, warnings };
+}
+
+/** A chart copy without settings its type ignores, with one remove warning per setting. */
+export function ignoreChartSettings<C extends { options?: unknown; data?: unknown }>(
+  type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
+): { chart: C; warnings: LintWarning[] } {
+  let { next, warnings } = settlePanels(type, chart, (panelType, panel) => ignoreChartSettings(panelType, panel, canonical), canonical);
   if (!isRecord(chart.options)) return { chart: next as C, warnings };
   // These keys were left out of SVG ids before they became retired settings.
   for (const key of ['animate', 'debug']) {
@@ -333,28 +341,10 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
   type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
   reportRetained = true,
 ): { chart: C; warnings: LintWarning[] } {
-  const warnings: LintWarning[] = [];
-  let next: unknown = chart;
-  // A grid's explicit panels and its repeat template are charts of their own type.
-  const panels = type === 'grid' ? readAt(chart, ['data', 'panels']) : undefined;
-  const nested: (string | number)[][] = [
-    ...(Array.isArray(panels) ? panels.map((_, index) => ['data', 'panels', index]) : []),
-    ...(type === 'grid' && isRecord(readAt(chart, ['data', 'template'])) ? [['data', 'template']] : []),
-  ];
-  for (const at of nested) {
-    const panel = readAt(chart, at);
-    const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
-    if (panelType === undefined) continue;
-    const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical, reportRetained);
-    if (retired.chart !== panel) next = setAt(next, at, retired.chart);
-    for (const warning of retired.warnings) {
-      warnings.push({ ...warning, field: [...at, ...warning.field!],
-        ...(warning.fix && { fix: warning.fix.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) }) });
-    }
-  }
+  let { next, warnings } = settlePanels(type, chart, (panelType, panel) => retireChartSettings(panelType, panel, canonical, reportRetained), canonical);
   for (const entry of [...RETIRED_SETTINGS, ...OWN_SETTINGS.get(type) ?? []]) {
     if (entry.types && !entry.types.includes(type)) continue;
-    for (const at of places(next, entry.at.split('.'))) {
+    for (const path of [entry.at].flat()) for (const at of places(next, path.split('.'))) {
       const value = readAt(next, at);
       // An empty annotation list draws what no list draws: it goes without a warning.
       if (ANNOTATIONS_RETIRED.includes(type) && at.at(-1) === 'annotations' && Array.isArray(value) && value.length === 0) { next = setAt(next, at, undefined); continue; }

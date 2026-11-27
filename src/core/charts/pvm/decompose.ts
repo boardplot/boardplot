@@ -90,24 +90,6 @@ export const PVM_RESIDUAL_TOLERANCE = 1e-9;
  */
 const PVM_THIN_COMMON_SHARE = 0.5;
 
-export const PVM_METHOD_NOTE_IN_PRICE =
-  chartString(undefined, 'pvmMethodNoteInPrice');
-
-// For `interaction: 'separate'`, and deliberately no longer than the in-price
-// note: the frame wraps a footnote to the content width, so a longer
-// sentence takes more footnote lines. tests/pvm.test.ts pins that both notes fit.
-export const PVM_METHOD_NOTE_SEPARATE =
-  chartString(undefined, 'pvmMethodNoteSeparate');
-
-// `volumeMix: 'combined'`. There is no volume/mix boundary to describe here,
-// because there is no volume/mix boundary — that is the whole point of the
-// mode, and it is why this variant needs no unit-basis footnote.
-export const PVM_METHOD_NOTE_COMBINED =
-  chartString(undefined, 'pvmMethodNoteCombined');
-
-export const PVM_METHOD_NOTE_COMBINED_SEPARATE =
-  chartString(undefined, 'pvmMethodNoteCombinedSeparate');
-
 /**
  * The unit-basis disclosure. Printed on every SPLIT exhibit, because the
  * Volume/Mix boundary is not invariant to the unit each item is counted in and

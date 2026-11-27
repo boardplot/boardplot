@@ -185,11 +185,7 @@ function resolvedHatch(fill: Paint, theme: Theme, scope: string, paint: ScenePai
   return { id: `${scope}-${hatchPatternId(stroke, background, hatchAngle, gap, width)}${kind === 'hatch45' ? '' : `-${kind}`}`, stroke, background, gap, width, kind };
 }
 
-/**
- * Hatch defs present in a scene. Exported so the opt-in hybrid frame emits the
- * identical defs for its SVG runs: a patterned node never moves to Canvas, so
- * the pattern it refers to must exist exactly once in the hybrid document too.
- */
+/** Hatch defs present in a scene, one per pattern. */
 function ScenePatternDefs({
   geometry,
   theme,
@@ -209,17 +205,17 @@ function ScenePatternDefs({
     }
   }
   if (patterns.size === 0) return null;
-  // The same pre-rotated tile as the SVG serializer: no patternTransform.
-  const tileOf = (pattern: { gap: number; width: number; kind: HatchPattern }) => hatchTile(pattern.gap, pattern.width, pattern.kind);
   return (
     <defs>
-      {[...patterns.entries()].map(([id, pattern]) => (
-        <pattern key={id} id={id} patternUnits="userSpaceOnUse" width={tileOf(pattern).size} height={tileOf(pattern).size}>
-          <rect width={tileOf(pattern).size} height={tileOf(pattern).size} fill={pattern.background} />
+      {[...patterns.entries()].map(([id, pattern]) => {
+        // The same pre-rotated tile as the SVG serializer: no patternTransform.
+        const { size, d, strokeWidth } = hatchTile(pattern.gap, pattern.width, pattern.kind);
+        return <pattern key={id} id={id} patternUnits="userSpaceOnUse" width={size} height={size}>
+          <rect width={size} height={size} fill={pattern.background} />
           {/* Stroke only, as the SVG serializer writes it. */}
-          <path d={tileOf(pattern).d} fill="none" stroke={pattern.stroke} strokeWidth={tileOf(pattern).strokeWidth} />
-        </pattern>
-      ))}
+          <path d={d} fill="none" stroke={pattern.stroke} strokeWidth={strokeWidth} />
+        </pattern>;
+      })}
     </defs>
   );
 }
@@ -266,24 +262,17 @@ export function SceneRenderer({
       width={width}
       height={height}
       direction="ltr"
-      style={responsive
-        ? { maxWidth: '100%', height: 'auto', display: 'block', ...TEXT_RESETS, ...variables, ...style }
-        : { display: 'block', ...TEXT_RESETS, ...variables, ...style }}
+      style={{ ...responsive && { maxWidth: '100%', height: 'auto' }, display: 'block', ...TEXT_RESETS, ...variables, ...style }}
       fontFamily={theme.type.family}
     >
       {geometry.a11y.includeTitle === true && <title>{plainText(geometry.a11y.title)}</title>}
       <desc id={`${patternScope}-desc`}>{plainText(geometry.a11y.desc)}</desc>
       <ScenePatternDefs geometry={geometry} theme={theme} scope={patternScope} paint={paint} />
       {canvasBackground !== 'transparent' && <rect x={0} y={0} width={size.width} height={size.height} fill={background} />}
-      {geometry.scene.map((node) =>
-        node.tx || node.ty ? (
-          <g key={node.id} transform={`translate(${node.tx ?? 0},${node.ty ?? 0})`}>
-            <Node node={node} theme={theme} paint={paint} patternScope={patternScope} onClick={onElementClick} onSeriesClick={onSeriesClick} legendItem={legendItems.get(node.id)} focusStops={focusStops} />
-          </g>
-        ) : (
-          <Node key={node.id} node={node} theme={theme} paint={paint} patternScope={patternScope} onClick={onElementClick} onSeriesClick={onSeriesClick} legendItem={legendItems.get(node.id)} focusStops={focusStops} />
-        ),
-      )}
+      {geometry.scene.map((node) => {
+        const drawn = <Node key={node.id} node={node} theme={theme} paint={paint} patternScope={patternScope} onClick={onElementClick} onSeriesClick={onSeriesClick} legendItem={legendItems.get(node.id)} focusStops={focusStops} />;
+        return node.tx || node.ty ? <g key={node.id} transform={`translate(${node.tx ?? 0},${node.ty ?? 0})`}>{drawn}</g> : drawn;
+      })}
     </svg>
   );
 }
@@ -330,7 +319,7 @@ function Node({
           width={rect.w}
           height={rect.h}
           rx={node.radius}
-          fill={isHatchPattern(node.pattern) ? `url(#${resolvedHatch(node.fill, theme, patternScope, paint, node.hatchGround, node.hatch, node.pattern).id})` : outlined ? background : paint(mutedPlan ? PLAN_MUTED_PAINT : node.fill)}
+          fill={hatched ? `url(#${resolvedHatch(node.fill, theme, patternScope, paint, node.hatchGround, node.hatch, node.pattern as HatchPattern).id})` : outlined ? background : paint(mutedPlan ? PLAN_MUTED_PAINT : node.fill)}
           stroke={stroke ? paint(stroke) : undefined}
           strokeWidth={hatched ? strokeToken(theme, 'hair') : outlined ? theme.pattern.outlineStrokeWidth : stroke ? (node.strokeWidth ?? strokeToken(theme, 'mark')) : undefined}
           {...(node.title !== undefined && common.role === undefined ? { role: 'img', 'aria-label': node.title } : {})}
@@ -401,29 +390,18 @@ function Node({
         letterSpacing: letterSpacing || undefined,
       } as const;
       const style = figures ? { fontVariantNumeric: figures } : undefined;
+      // Styled runs: no per-tspan x — the font engine owns the intra-line advance (see SceneNode.runs).
+      const runSpans = (runs: readonly { text: string; weight?: number }[]) => runs.map((run, j) => (
+        <tspan key={j} fontWeight={run.weight !== undefined && run.weight !== node.font.weight ? run.weight : undefined}>{run.text}</tspan>
+      ));
       const spans = node.runs
-        ? // Styled runs (single line): no per-tspan x — the font engine
-          // owns the intra-line advance (see SceneNode.runs).
-          node.runs.map((run, i) => (
-            <tspan
-              key={i}
-              fontWeight={
-                run.weight !== undefined && run.weight !== node.font.weight
-                  ? run.weight
-                  : undefined
-              }
-            >
-              {run.text}
-            </tspan>
-          ))
+        ? runSpans(node.runs)
         : node.lines.map((line, i) => (
             <Fragment key={i}>
               {/* A separate space keeps the words of two lines apart in the text a reader copies or reads out, as in the SVG serializer. */}
               {i === 0 || /\S-$/.test(node.lines[i - 1]!) ? null : <tspan x={x} dy={0}>{' '}</tspan>}
               <tspan x={x} dy={i === 0 ? 0 : lineH}>
-                {node.lineRuns ? node.lineRuns[i]!.map((run, j) => (
-                  <tspan key={j} fontWeight={run.weight !== undefined && run.weight !== node.font.weight ? run.weight : undefined}>{run.text}</tspan>
-                )) : line}
+                {node.lineRuns ? runSpans(node.lineRuns[i]!) : line}
               </tspan>
             </Fragment>
           ));

@@ -57,6 +57,17 @@ export function inlineBold(text: string, theme: Theme, baseWeight: number): Reac
     run.weight === undefined ? run.text : <strong key={i} style={{ fontWeight: run.weight }}>{run.text}</strong>);
 }
 
+/** The notes panel's list. Neither panel holds the source note (footerParts, unprintedNotes). */
+function noteList(panel: readonly ChartNote[], mapCredit: string, theme: Theme, weight: number): ReactElement {
+  return <ol style={{ margin: '6px 0 0', paddingLeft: '1.5em' }}>
+    {panel.map((note) => (
+      <li key={note.n} data-kind={note.kind} value={note.ref} style={{ listStyleType: note.ref ? undefined : 'none' }}>
+        {note.kind === 'credit' ? <>{mapCredit}: {linked(note.text, note.links)}</> : inlineBold(note.text, theme, weight)}
+      </li>
+    ))}
+  </ol>;
+}
+
 interface ChartFooterProps {
   geometry: RenderGeometry & { frame?: FooterFrame };
   notes: ChartNote[];
@@ -169,19 +180,10 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
   );
   const label = info ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words);
   const sourceText = source ? sourceLine(source.text, sourceWord ?? words.source) : undefined;
-  const contents = (suffix = '') => <>
-      {panel.length > 0 && !renderNotes && (
-        <div {...notesD.panel} id={notesD.panel.id + suffix} aria-label={words.notesAndSources}>
-          <ol style={{ margin: '6px 0 0', paddingLeft: '1.5em' }}>
-            {panel.map((note) => (
-              <li key={note.n} data-kind={note.kind} value={note.ref} style={{ listStyleType: note.ref ? undefined : 'none' }}>
-                {note.kind === 'source' ? inlineBold(sourceText ?? '', theme, font.weight) : note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : inlineBold(note.text, theme, font.weight)}
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-  </>;
+  // Called only where the panel shows: notes to list and no renderNotes.
+  const contents = (suffix = '') => <div {...notesD.panel} id={notesD.panel.id + suffix} aria-label={words.notesAndSources}>
+    {noteList(panel, words.mapCredit, theme, font.weight)}
+  </div>;
   const close = () => {
     if (native) popoverRef.current?.hidePopover();
     else { setOpen([0]); button?.focus(); }
@@ -318,13 +320,7 @@ function DrawnFooter({ geometry, theme, credit, words, renderNotes, notes, pad, 
       {row}
       {button && (
         <div id={panelId} role="region" data-bp-notes-panel="" hidden={!open} aria-label={words.notesAndSources} style={{ font: fontCss({ font }, lineHeight), whiteSpace: 'normal' }}>
-          <ol style={{ margin: '6px 0 0', paddingLeft: '1.5em' }}>
-            {panel.map((note) => (
-              <li key={note.n} data-kind={note.kind} value={note.ref} style={{ listStyleType: note.ref ? undefined : 'none' }}>
-                {note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : inlineBold(note.text, theme, font.weight)}
-              </li>
-            ))}
-          </ol>
+          {noteList(panel, words.mapCredit, theme, font.weight)}
         </div>
       )}
       {(blocks.length > 0 || row) && <div style={{ height: Math.max(0, geometry.size.height - bottom) }} />}
