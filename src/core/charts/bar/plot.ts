@@ -23,7 +23,7 @@ import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
-import { hiddenKey } from '../../hiddenSeries';
+import { drawnWithoutBreak, hiddenKey } from '../../hiddenSeries';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
 import type { BarOptions, LegendOptions } from '../../types/options';
@@ -286,7 +286,8 @@ function barAxisBreak(domain: BarDomain, dLo: number, dHi: number, warnings: Lin
   if (!requestedBreak) return undefined;
   const reason = breakStyleRefusal(requestedBreak) ?? invalidLinearBreakReason([dLo, dHi], requestedBreak, domain.rendered);
   if (reason) {
-    warnings.push(axisBreakInvalid('bar', reason));
+    const invalid = axisBreakInvalid('bar', reason);
+    warnings.push(domain.keySeries === domain.dataSeries ? invalid : drawnWithoutBreak(invalid));
     return undefined;
   }
   return { from: requestedBreak.from, to: requestedBreak.to };
@@ -485,8 +486,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     stepTicks = undefined;
     const checks: LintWarning[] = [];
     activeBreak = barAxisBreak(domain, dLo, dHi, checks);
-    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
-      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+    warnings.push(...checks.map(drawnWithoutBreak));
   }
   if (activeBreak && variant !== 'grouped' && stackBreakReversesOrder(brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak), domain.stacks)) {
     warnings.push(axisBreakHeightOrderWarning());

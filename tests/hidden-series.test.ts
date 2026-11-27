@@ -71,3 +71,16 @@ it('keeps the net line, the highlight and the fitted names of a column while a s
   const narrow = laidOut('column', { categories, series }, { variant: 'stacked', legend: 'top', seriesLabels: { at: 'right-edge' }, size: { width: 300, height: 300 } }, ['c']).geometry;
   expect(labelTexts(narrow).filter((text) => text === 'a segment name')).toHaveLength(1);
 });
+
+// Hiding the outlier that an axis break was made for refused the chart, so the reader could never hide it; and a bar
+// with an authored bound kept a break across a visible bar end.
+it('draws without the axis break that the visible series cannot hold', () => {
+  const outlier = { categories: ['A', 'B', 'C'], series: [{ id: 'base', values: [80, 90, 75] }, { id: 'peak', values: [85, 900, 95] }] };
+  const stack = { categories: ['A', 'B'], series: [{ id: 's1', values: [100, 100] }, { id: 's2', values: [500, 800] }, { id: 's3', values: [400, 400] }] };
+  for (const type of ['column', 'bar']) {
+    for (const [data, options, hidden] of [[outlier, { valueAxis: { break: { from: 150, to: 750 } } }, 'peak'], [stack, { variant: 'stacked', valueAxis: { min: 0, break: { from: 450, to: 550 } } }, 's1']] as const) {
+      const findings = laidOut(type, data, options, [hidden]).geometry.warnings.filter((warning) => warning.code === 'axis-break-invalid');
+      expect(findings.map((warning) => warning.severity), type).toEqual(['warn']);
+    }
+  }
+});

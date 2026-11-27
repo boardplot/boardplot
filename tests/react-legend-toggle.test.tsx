@@ -74,6 +74,11 @@ it('shows every series again when the page takes the legend click or turns hover
   click(label('North'));
   await render(<ColumnChart data={data} legend="top" size={size} hover={false} />);
   expect(marks('north')).toBe(3);
+  // A chart whose legend goes away has no entry left to click the series back.
+  await render(<ColumnChart data={data} legend="top" size={size} />);
+  click(label('North'));
+  await render(<ColumnChart data={data} legend="none" size={size} />);
+  expect(marks('north')).toBe(3);
   expect(host.querySelector('[data-part="legendLabel"][role="button"]')).toBeNull();
 });
 

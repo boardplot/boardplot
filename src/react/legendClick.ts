@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HIDDEN_SERIES } from '../core/hiddenSeriesKey';
+import { ranksCategories } from '../core/normalize/shared';
 import { chartRefusals, isSizeDependentRefusal } from '../core/schema/refusals';
+import type { ChartData } from '../core/types/data';
 import type { LintWarning } from '../core/types/scene';
 import { noZoom, type ZoomHook } from './zoomHook';
 
 const NONE: string[] = [];
+const ITEM = '[data-bp-legend-item]';
 
 /**
  * The view hook of a column or bar chart, in the slot the zoom hook of a line chart takes: a click on a legend entry
@@ -16,27 +19,30 @@ const NONE: string[] = [];
  */
 export const useLegendClick: ZoomHook = (input) => {
   // Rows that are still loading or refused leave no data yet.
-  const ids = ((input.data as { series?: { id: string; role?: string }[] } | undefined)?.series ?? []).flatMap((s) => (s.role ?? 'data') === 'data' ? [s.id] : []);
+  const ids = (input.data as ChartData | undefined)?.series?.filter(ranksCategories).map((s) => s.id) ?? NONE;
   // One data series has nothing to hide: the last series shown stays.
   // A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
   const variant = input.options.variant;
-  const offered = ids.length > 1 && input.hover !== false && input.onSeriesClick === undefined && variant !== 'tornado' && variant !== 'football-field';
+  const ownsClick = input.onSeriesClick === undefined;
+  // A chart without a legend has no entry to click a series back.
+  const offered = ids.length > 1 && input.hover !== false && ownsClick && input.options.legend !== 'none' && variant !== 'tornado' && variant !== 'football-field';
   const [list, setList] = useState(NONE);
   // New data keeps the hidden series it still has, and never all of them.
-  const key = ids.join('\0');
-  const hidden = useMemo(() => {
-    const kept = list.filter((id) => ids.includes(id));
-    return offered && kept.length < ids.length ? kept : NONE;
-  }, [list, key, offered]);
-  const options = useMemo(() => (hidden.length ? { ...input.options, [HIDDEN_SERIES]: hidden } : input.options), [input.options, hidden]);
+  const [hidden, options] = useMemo(() => {
+    const kept = offered && list.length ? list.filter((id) => ids.includes(id)) : NONE;
+    return kept.length && kept.length < ids.length
+      ? [kept, { ...input.options, [HIDDEN_SERIES]: kept }] as const
+      : [NONE, input.options] as const;
+  }, [input.options, list, offered, list.length && ids.join('\0')]);
   const [element, setElement] = useState<HTMLElement | null>(null);
-  const refused = useRef(false);
+  // The chart calls seen during this render, before its effect runs.
+  let refused = false;
   useEffect(() => {
     // A refusal card has no legend to click a series back, and an offer that ends leaves no control: every series shows.
-    if (!offered || refused.current) setList(NONE);
+    if (!offered || refused) setList(NONE);
     if (!element) return;
     element.onclick = element.onkeydown = offered ? (event: Event) => {
-      const id = (event.target as Element).closest('[data-bp-legend-item]')?.getAttribute('data-bp-legend-item');
+      const id = (event.target as Element).closest<SVGElement>(ITEM)?.dataset.bpLegendItem;
       if (!id || !ids.includes(id) || event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       // The last series shown stays.
@@ -45,18 +51,25 @@ export const useLegendClick: ZoomHook = (input) => {
     // The entry of a data series takes the pointer, and its label is a button that says whether the series shows. Every
     // other entry loses what this hook set on it: the offer ended, or React reuses the node for another entry. Only the
     // page's onSeriesClick has React draw a pointer and a button on the legend, and those stay.
-    element.querySelectorAll<SVGElement>('[data-bp-legend-item]').forEach((node) => {
-      const id = node.getAttribute('data-bp-legend-item')!;
-      const label = node.dataset.part === 'legendLabel';
+    element.querySelectorAll<SVGElement>(ITEM).forEach((node) => {
+      const id = node.dataset.bpLegendItem!;
       if (offered && ids.includes(id)) {
         node.style.cursor = 'pointer';
-        if (label) node.setAttribute('role', 'button'), node.setAttribute('tabindex', '0'), node.setAttribute('aria-pressed', String(!hidden.includes(id)));
-        return;
+        if (node.dataset.part === 'legendLabel') {
+          node.setAttribute('role', 'button');
+          node.tabIndex = 0;
+          node.setAttribute('aria-pressed', String(!hidden.includes(id)));
+        }
+      } else {
+        node.removeAttribute('aria-pressed');
+        if (ownsClick) {
+          node.removeAttribute('role');
+          node.removeAttribute('tabindex');
+          node.style.cursor = '';
+        }
       }
-      node.removeAttribute('aria-pressed');
-      if (input.onSeriesClick === undefined) node.removeAttribute('role'), node.removeAttribute('tabindex'), node.style.cursor = '';
     });
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
-    seen: (geometry) => { refused.current = geometry !== undefined && chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).some((warning) => !isSizeDependentRefusal(warning)); } };
+    seen: (geometry) => { refused = geometry !== undefined && !chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).every(isSizeDependentRefusal); } };
 };

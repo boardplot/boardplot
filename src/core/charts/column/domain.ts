@@ -54,7 +54,7 @@ import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
-import { shownSeries } from '../../hiddenSeries';
+import { drawnWithoutBreak, drawsNetLine, shownSeries } from '../../hiddenSeries';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -376,38 +376,12 @@ function columnLines(
       ...(options.legend === 'none' ? {} : { fix: [{ op: 'remove' as const, path: '/options/seriesLabels' }] }),
     });
   }
-  if (netLineOn && netLineSeriesId && !netLineSeries) {
-    netLineOn = false;
-    warnings.push({
-      code: 'net-line-series-missing',
-      severity: 'warn',
-      message: `netLine seriesId '${netLineSeriesId}' is not a plotted data series; net line omitted`,
-      owner: { seriesId: netLineSeriesId },
-    });
-  }
-  if (netLineOn) {
-    const values = dataSeries.flatMap((series) =>
-      series.vals.flatMap((value) => (value.v === null ? [] : [value.v])),
-    );
-    const hasPositive = values.some((value) => value > 0);
-    const hasNegative = values.some((value) => value < 0);
-    // The default line traces the positive top, or the negative bottom when
-    // nothing is positive, so a single-signed default is always the outer edge.
-    const outermost = netLineSeries
-      ? dataSeries.at(-1)?.id === netLineSeries.id
-      : hasPositive !== hasNegative;
-    if (hasPositive !== hasNegative && outermost) {
-      warnings.push({
-        code: 'netline-redundant',
-        severity: 'warn',
-        message: 'netLine traces the visible outer edge of a single-signed stack and adds no information',
-        ...(netLineSeries ? { owner: { seriesId: netLineSeries.id } } : {}),
-        suggest: 'Pick an inner boundary series with netLine.seriesId, or drop netLine.',
-      });
-    }
-  }
-  const drawn = netLineSeries && shown[netLineSeries.lastVisibleIndex ?? dataSeries.indexOf(netLineSeries)];
-  return { connectorsOn, connectorDashed, connectorSeries, netLineOn: netLineOn && (!netLineSeries || !!drawn), netLineSeries: drawn, netLineSteps };
+  const visibleIndex = netLineSeries?.lastVisibleIndex;
+  return {
+    connectorsOn, connectorDashed, connectorSeries, netLineSteps,
+    netLineOn: netLineOn && drawsNetLine(dataSeries, netLineSeriesId, netLineSeries, s => s.vals, 'either', warnings),
+    netLineSeries: visibleIndex === undefined ? netLineSeries : shown[visibleIndex],
+  };
 }
 
 /**
@@ -1120,7 +1094,9 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const rescaled = options.sharesOfOneWhole === true
     ? wholes.filter(({ c }) => !dataSeries.some((s) => s.vals[cats.indexOf(c)]!.isPct) && Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
-  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, warnings);
+  const breakChecks: LintWarning[] = [];
+  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, breakChecks);
+  warnings.push(...(keySeries === dataSeries ? breakChecks : breakChecks.map(drawnWithoutBreak)));
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
   const stepTicks = axis.ticks;
   const stepAcross = stepFitsAxisBreak(stepTicks, activeBreak, va.tickStep, warnings);
@@ -1133,8 +1109,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     // A break that only the step's extent held is dropped with a warn: the chart drew with it before, so it does not refuse now.
     const checks: LintWarning[] = [];
     activeBreak = columnAxisBreak(options, anomaly, niceExtent.rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, checks);
-    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
-      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+    warnings.push(...checks.map(drawnWithoutBreak));
   }
   // The average marker's number, in its drawn label and its record (the hover value) alike; a percent chart keeps its '%'.
   const averageFmt = !options.format && (variant === 'stacked100' || options.unit === '%' || pctLevels)
