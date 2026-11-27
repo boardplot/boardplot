@@ -535,7 +535,7 @@ describe('hover callback, linked charts and touch', () => {
         <div id="three"><BarChart data={ranked([9, 8, 2, 1])} topN={{ n: 2 }} size={box} /></div>
         <div id="four"><BarChart data={ranked([1, 2, 8, 9])} topN={{ n: 2 }} size={box} /></div>
       </HoverGroup>);
-      const [one, two, three, four] = ['#one', '#two', '#three', '#four'].map(id => host.querySelector(id)!);
+      const [one, two, three, four] = ['#one', '#two', '#three', '#four'].map(id => host.querySelector(id)!) as [Element, Element, Element, Element];
       pointer(mark(one, 'north:Q2'), 'pointermove');
       // Each other chart shows its own number beside the same category.
       expect(outlined(two)).toBe('Q2');
