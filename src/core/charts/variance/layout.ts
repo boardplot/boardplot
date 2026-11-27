@@ -390,10 +390,12 @@ function prepareVarianceValues(data: ChartData, options: VarianceOptions, warnin
   const levelSpec = defaultSetSpec([...acArr, ...refArr], options.locale?.language, options.unit, percentData ? { kind: 'percent' } : {});
   const deltaSpec = joinedChangeSpec(levelSpec, dAbsArr)!;
   const pctChangeSpec = percentChangeSpec(dPctArr, options.locale?.language, '%');
+  // A text is shared only for the value prepared at its position; any other value formats anew.
+  const sharedText = (texts: string[] | undefined, own: readonly (number | null)[], v: number, ci: number, make: () => string): string =>
+    texts && Object.is(v, own[ci]) ? texts[ci] ??= make() : make();
   const percentText: string[] | undefined = shareTexts ? [] : undefined;
-  const pctSigned = (p: number, ci = 0): string => percentText && Object.is(p, dPctArr[ci])
-    ? percentText[ci] ??= formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec)
-    : formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec);
+  const pctSigned = (p: number, ci = 0): string =>
+    sharedText(percentText, dPctArr, p, ci, () => formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec));
   const absoluteFormat = (ci: number): string | undefined => {
     const example = formats[ci];
     return mode === 'relative' && example && specUnitKind(parseFormatExample(example)) === 'percent' ? undefined : example;
@@ -424,11 +426,8 @@ function prepareVarianceValues(data: ChartData, options: VarianceOptions, warnin
   // at every height. The format and underlying number are fixed for this row.
   const actualText: string[] | undefined = shareTexts ? [] : undefined;
   const deltaText: string[] | undefined = shareTexts ? [] : undefined;
-  const absolute = (v: number, ci: number, signed = false): string => {
-    const texts = signed ? deltaText : actualText;
-    return texts && Object.is(v, (signed ? dAbsArr : acArr)[ci])
-      ? texts[ci] ??= formatAbsolute(v, ci, signed) : formatAbsolute(v, ci, signed);
-  };
+  const absolute = (v: number, ci: number, signed = false): string =>
+    sharedText(signed ? deltaText : actualText, signed ? dAbsArr : acArr, v, ci, () => formatAbsolute(v, ci, signed));
   return {
     cats, dataSeries, running, refSeries, ofSeries, direction, nmCats, acArr, refArr, dAbsArr, dPctArr,
     measuredSeries, percentDifferences, integratedPercent, formats, percentSpecs, levelSpec, deltaSpec, pctChangeSpec,
@@ -463,15 +462,14 @@ export function layoutVariance(
   const shared = panelTypeClass(options) !== undefined && measure === defaultMeasurer && !options.sort && !options.topN
     && data && typeof data === 'object'
     ? requestMemo<{ values?: ReturnType<typeof prepareVarianceValues> }>(data,
-      'variance-tier-values:' + JSON.stringify([mode, options.variance?.vs, options.variance?.of,
+      'variance-values:' + JSON.stringify([mode, options.variance?.vs, options.variance?.of,
         options.format, options.locale?.language, options.unit, currentSmallValues(), formatScopeKey(options)]), () => ({})) : undefined;
   const before = warnings.length;
   const values = shared?.values ?? prepareVarianceValues(data, options, warnings, shared !== undefined);
   if (shared && !shared.values && before === warnings.length) shared.values = values;
   const {
     cats, dataSeries, running, refSeries, ofSeries, direction, nmCats, acArr, refArr, dAbsArr, dPctArr,
-    measuredSeries, percentDifferences, integratedPercent, formats, percentSpecs, levelSpec, deltaSpec, pctChangeSpec,
-    pctSigned, absoluteFormat, printed, fmt, absolute
+    measuredSeries, percentDifferences, integratedPercent, deltaSpec, pctChangeSpec, pctSigned, absoluteFormat, printed, absolute
   } = values;
   const integratedExtreme: Id[] = [];
   const refScenario = refSeries.scenario;
@@ -501,10 +499,10 @@ export function layoutVariance(
   // A Δ that prints as zero at its label's precision is neutral:
   // "-0.02%" shown as "0%" is no loss. The precision is the label's own,
   // read from the number: a digit in a unit affix cannot hide it.
-  const absoluteSpecs = formats.map((_, ci) => absoluteFormat(ci) ? parseFormatExample(absoluteFormat(ci)!) : undefined);
+  const absoluteSpecs = values.formats.map((_, ci) => absoluteFormat(ci) ? parseFormatExample(absoluteFormat(ci)!) : undefined);
   // An automatic delta prints zero only under smallValues 'zero'; the other modes print a bound or digits.
   const shownZero = (d: number, ci: number): boolean =>
-    mode === 'relative' ? roundedNumber(d, percentSpecs[ci] ?? pctChangeSpec) === 0
+    mode === 'relative' ? roundedNumber(d, values.percentSpecs[ci] ?? pctChangeSpec) === 0
       : roundedNumber(d, absoluteSpecs[ci] ?? deltaSpec) === 0;
   const toneOf = (d: number, ci = 0): 'good' | 'bad' | 'neutral' =>
     d === 0 || shownZero(d, ci) ? 'neutral' : (d > 0) === (direction === 'higherIsBetter') ? 'good' : 'bad';
@@ -759,7 +757,7 @@ export function layoutVariance(
   const ruleAxisSpec: NumberFormatSpec | undefined = options.format ? undefined : mode === 'relative' ? { ...pctChangeSpec, signed: false }
     : { ...deltaSpec, signed: false, ...(percentDifferences || integratedPercent ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}) };
   // A tick is the engine's number: an authored format keeps its earlier rule on it (engineNumberSpec).
-  const tickFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language, undefined, printed) : fmt;
+  const tickFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language, undefined, printed) : values.fmt;
   const axisFmt = ruleAxisSpec ? (v: number) => formatWithSpec(v, ruleAxisSpec) : mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
     : percentDifferences || integratedPercent ? (v: number) => options.format
       ? formatWithSpec(v, { ...engineNumberSpec(exampleSpec(options.format, options.locale?.language)), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
@@ -1552,7 +1550,7 @@ export function layoutVariance(
     measure,
     format: options.format,
     locale: options.locale?.language,
-    levelSpec: levelSpec,
+    levelSpec: values.levelSpec,
     strings: options.strings,
     valueLinePercentLevels,
     valueLineUnit: percentDifferences ? PERCENTAGE_POINTS : integratedPercent ? '%' : undefined,
