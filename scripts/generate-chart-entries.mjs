@@ -658,6 +658,10 @@ function renderLoaders(types) {
  * brings the type's own React entry.
  */
 function renderSchemaLoaders(types, aliases, aliasDefaults) {
+  const jsLiteral = (value) => JSON.stringify(value).replace(
+    /[<>&\u2028\u2029]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
   return [
     HEADER,
     '// The data and options schemas of one chart type, on demand. See src/react/spec.tsx.',
@@ -673,7 +677,7 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
     ...types.map((type) => type === 'grid'
       ? `  grid: () => import('../core/charts/grid/schema')\n` +
         `    .then((module) => ({ type: 'grid', dataSchema: module.gridDataSchema, optionsSchema: module.gridOptionsSchema, retired: module.retiredSettings, dataSchemaByOption: { stack: module.metricStackDataSchema } })),`
-      : `  ${type}: () => schemas('${type}', import('../core/charts/${type}/schema')${aliasDefaults[type] ? `, { aliasDefaults: ${JSON.stringify(aliasDefaults[type])} }` : ''}),`),
+      : `  ${type}: () => schemas('${type}', import('../core/charts/${type}/schema')${aliasDefaults[type] ? `, { aliasDefaults: ${jsLiteral(aliasDefaults[type])} }` : ''}),`),
     '};',
     '',
     ...renderAliasTable(types, aliases),
