@@ -505,7 +505,7 @@ function layoutDiagramPass(
       plot,
       org?.fills?.get(node.id) ?? nodeFillPaint(node, diagramPalette, theme),
       boldLeads,
-      options.variant === 'roadmap' ? roadmapLabelLane(preset.lanes, node, rect.x + rect.w / 2, 4 * u) : undefined,
+      options.variant === 'roadmap' ? preset.lanes.find(lane => lane.id === node.laneId)?.bounds : undefined,
       org !== undefined && !org.centred,
       emphasisWeight(theme),
       org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) }
@@ -1074,19 +1074,6 @@ function circularSide(rect: Rect, plot: Rect): 'left' | 'right' | 'above' | 'bel
   const dx = rect.x + rect.w / 2 - (plot.x + plot.w / 2);
   const dy = rect.y + rect.h / 2 - (plot.y + plot.h / 2);
   return Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'above' : 'below';
-}
-
-/**
- * A milestone pinned into another phase may put its name anywhere from its own phase to the
- * phase where its circle stands, so the name can stand at its circle. A circle within a circle's
- * width of its own phase keeps the name in that phase, where it already stands beside the circle.
- */
-function roadmapLabelLane(lanes: readonly { id: string; bounds: Rect }[], node: DiagramNode, x: number, reach: number): Rect | undefined {
-  const own = lanes.find((lane) => lane.id === node.laneId)?.bounds;
-  const at = lanes.filter((lane) => lane.bounds.x <= x).pop()?.bounds;
-  if (!own || !at || Math.abs(x - own.x - own.w / 2) <= own.w / 2 + reach) return own;
-  const left = Math.min(own.x, at.x);
-  return { ...own, x: left, w: Math.max(own.x + own.w, at.x + at.w) - left };
 }
 
 function externalCandidates(
