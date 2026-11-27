@@ -38,7 +38,8 @@ import { containerFit, containerHostlessHeight } from './containerLayout';
 import { checkedIdPrefix, IdPrefixContext } from './idPrefix';
 import { isFullGeometry, type PreparedChart } from './prepared';
 import { useDisplayWarnings } from './useDisplayWarnings';
-import { languageOf, useZoom, type ZoomOption } from './useZoom';
+import type { ZoomOption } from './useZoom';
+import { languageOf, noZoom, type ZoomHook } from './zoomHook';
 import { useRefusalSettle } from './useRefusalSettle';
 import { hoverFlags, type HoverOption, type RenderHoverContent } from './useHover';
 import type { StoryLink } from './StoryFrame';
@@ -187,8 +188,10 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * `linked` names the fetched core modules the chart's own entry links by
  * value (likert the theme checks, pareto the annotation engine). Only those
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
+ * `useZoom` is the zoom hook: the entry of a type that zooms passes it, and
+ * every other component draws without the zoom code.
  */
-export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]): (props: ChartProps<D, O>) => ReactElement {
+export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[], useZoom: ZoomHook = noZoom): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
       background, storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
@@ -450,6 +453,6 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
   // from this stamp, so a rename of the export or of displayName cannot make a
   // registered type look covered (or uncovered) by accident.
   Chart.chartType = type;
-  rebindable(Chart, (relinked): unknown => createChartComponent<D, O>(type, checkKeys, relinked));
+  rebindable(Chart, (relinked): unknown => createChartComponent<D, O>(type, checkKeys, relinked, useZoom));
   return Chart;
 }

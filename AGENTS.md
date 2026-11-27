@@ -10,7 +10,7 @@ This file is for people and coding agents who change Boardplot. [CONTRIBUTING.md
 - A colour choice that depends on theme colours (which ramp step, which grey stays apart from another paint) is never made at layout time: a light-to-dark repaint keeps the layout and would keep the light choice. Put it in a paint recipe that decides again in the active theme (`stack-apart`, waterfall's `segment-apart`). `tests/theme-paint-recipes.test.ts` catches a layout-time choice.
 - Derived values are computed from data. Number formatting uses the shared format helpers.
 - A new public option updates its schema, its TypeScript type, the docs and at least one representative fixture.
-- A retired option, theme key or value is accepted for good. A rename maps to its successor, and a removal is ignored. Both warn `option-deprecated` with a fix. Only a key that never existed is refused. Each retired setting has one entry in `src/core/retired.ts`.
+- A retired option, theme key or value is accepted for good. A rename maps to its successor, and a removal is ignored. Both warn `option-deprecated` with a fix. Only a key that never existed is refused. Each retired setting has one entry: in `src/core/charts/<type>/retired.ts` when it belongs to one chart type, otherwise in `src/core/retired.ts`.
 - A change of a visual default lists the old values in its CHANGELOG entry, as a theme or option patch that brings back the old look.
 
 ## Git and security

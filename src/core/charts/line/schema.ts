@@ -405,3 +405,5 @@ export const lineOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions
 }).overwrite((options) => options.xAxis?.type === 'time' && options.annotations
   ? { ...options, annotations: options.annotations.map((annotation) => timeAnnotationAnchors(annotation) as typeof annotation) }
   : options) as unknown as z.ZodType<LineOptions>;
+
+export { retiredSettings } from './retired';

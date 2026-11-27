@@ -217,3 +217,5 @@ export const waterfallOptionsSchema = waterfallOptionsShape.superRefine((options
 
 /** Option vocabulary, so a misplaced option key can name its correct home. */
 const WATERFALL_OPTION_KEYS = new Set(Object.keys(waterfallOptionsShape.shape));
+
+export { retiredSettings } from './retired';

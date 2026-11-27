@@ -9,9 +9,11 @@ import type {
   ChoroplethDerived,
   ChoroplethMarks,
 } from './types';
+import { retiredSettings } from './retired';
 
 export const choroplethCore: ChartCore<ChoroplethData, BaseOptions, ChoroplethMarks, ChoroplethDerived> = {
   type: 'choropleth',
+  retired: retiredSettings,
   sizing: chartSizing('choropleth'),
   title: 'Choropleth map',
   summary: 'Equal-area region map with deterministic pre-baked geometry and explicit missing-data traces',

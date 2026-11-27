@@ -461,7 +461,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `integrated-stacked-variance-overload` | info |  | core/lint/partner.ts |
 | `integrated-variance-reference-ambiguous` | warn |  | column |
 | `internal-error` | not stated at the site |  | cli/result.ts |
-| `invalid` | not stated at the site |  | react/export/download.ts, react/export/frame.ts, react/export/png.ts, react/export/useExport.ts |
+| `invalid` | not stated at the site |  | react/export/download.ts, react/export/frame.ts, react/export/lazy.ts, react/export/png.ts, react/export/useExport.ts |
 | `invalid-annotation` | error |  | core/doc/chartValidation.ts, core/normalize/fraction.ts |
 | `invalid-argument` | error | yes | cli/describe.ts, cli/fixtures.ts, cli/main.ts, cli/render.ts, cli/rows.ts, cli/size.ts, cli/telemetry.ts, core/request.ts, core/rows.ts, mcp/server.ts, telemetry/feedback.ts |
 | `invalid-cell` | error |  | core/normalize/shared.ts |
@@ -983,7 +983,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `unsupported-media` | error |  | core/image.ts |
 | `unsupported-metric` | error |  | core/live/window.ts |
 | `unsupported-ordering` | error |  | core/live/window.ts |
-| `unsupported-shape` | error |  | core/live/window.ts, react/prepare.ts |
+| `unsupported-shape` | error |  | core/live/window.ts, react/prepareEngine.ts |
 | `value-axis-bounds-expanded` | warn |  | line |
 | `value-axis-dropped` | warn |  | butterfly |
 | `value-axis-max-ignored` | warn | yes | core/scale.ts |

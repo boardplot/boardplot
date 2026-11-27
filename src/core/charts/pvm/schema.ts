@@ -76,3 +76,5 @@ export const pvmOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .describe('Which generated numbers print. labelDensity still thins them.'),
   columnOverrides: columnOverridesOption('pvm', ['width']).describe('Horizontal bridge only: width in px of the name band (label) and the value band (value). A bridge that draws vertical warns option-ignored. It never changes the choice of the form.'),
 }) as unknown as z.ZodType<PvmOptions>;
+
+export { retiredSettings } from './retired';

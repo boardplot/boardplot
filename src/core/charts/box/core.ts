@@ -4,9 +4,11 @@ import { chartSizing } from '../../sizing';
 import type { ChartCore } from '../../registry';
 import { layoutBox } from './layout';
 import type { BoxData, BoxDerived, BoxMarks, BoxOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const boxCore: ChartCore<BoxData, BoxOptions, BoxMarks, BoxDerived> = {
   type: 'box',
+  retired: retiredSettings,
   sizing: chartSizing('box'),
   title: 'Box plot (distribution comparison)',
   summary:

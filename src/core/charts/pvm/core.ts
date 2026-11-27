@@ -5,9 +5,11 @@ import type { ChartCore } from '../../registry';
 import type { WaterfallMarks } from '../waterfall/layout';
 import { layoutPvm } from './layout';
 import type { PvmData, PvmDerived, PvmOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const pvmCore: ChartCore<PvmData, PvmOptions, WaterfallMarks, PvmDerived> = {
   type: 'pvm',
+  retired: retiredSettings,
   sizing: chartSizing('pvm'),
   title: 'Price / volume / mix bridge',
   summary:

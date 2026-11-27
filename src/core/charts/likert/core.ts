@@ -9,6 +9,7 @@ import {
   type LikertMarks,
   type LikertOptions,
 } from './layout';
+import { retiredSettings } from './retired';
 
 export const likertCore: ChartCore<
   LikertData,
@@ -17,6 +18,7 @@ export const likertCore: ChartCore<
   LikertDerived
 > = {
   type: 'likert',
+  retired: retiredSettings,
   sizing: chartSizing('likert'),
   title: 'Likert (diverging survey)',
   summary:

@@ -587,3 +587,5 @@ export const gridOptionsSchema = baseOptionsSchema
         "Facets only: a grid of more panels than a numeric columns count, on a card under 480 px, takes columns as a maximum. Where a panel drops category names for room, it draws with fewer columns, down to two, at the largest count that prints every name and that an authored height seats. Default true; false keeps the authored count.",
       ),
   }) as unknown as z.ZodType<GridLayoutOptions>;
+
+export { retiredSettings } from './retired';

@@ -8,7 +8,7 @@ import { sharedKeys10, sharedKeys5 } from '../optionKeyTrees';
 // only the grid core and fetches the cores its panels name (core/deferred).
 
 import { gridCore } from '../../core/charts/grid/core';
-import { registeredTypeWithPanelCores } from '../loadChartTypes';
+import { registeredTypeWithPanelCores } from '../loadChartCores';
 import { createChartComponent } from '../createChartComponent';
 import { optionKeyCheck } from '../../core/schema/unknownKeys';
 import type { GridInput, GridLayoutOptions } from '../../core/charts/grid/normalize';

@@ -64,3 +64,5 @@ export const mekkoOptionsSchema = z.object({
   widthSeriesId: idSchema.optional().describe("Series supplying category widths; omitted uses category totals, or equal widths in bar mode."),
   ridge: idSchema.optional().describe("Data-series id whose top boundary is emphasized across the variable-width columns."),
 }).superRefine(addCanvasBoundsIssues) as unknown as z.ZodType<MekkoOptions>;
+
+export { retiredSettings } from './retired';

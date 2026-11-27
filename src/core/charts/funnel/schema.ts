@@ -73,3 +73,5 @@ export const funnelOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .optional()
     .describe("Rows only: draws the automatic 'Biggest drop' callout at the step with the largest loss. Default false: the step captions already print every rate. An authored note replaces it."),
 }) as unknown as z.ZodType<FunnelOptions>;
+
+export { retiredSettings } from './retired';

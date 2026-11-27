@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore, type ComponentType, t
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ZoomOption } from './useZoom';
 import { chartLoaders } from './chartLoaders';
-import { chartTypeAliases, schemaLoaders } from './schemaLoaders';
+import { aliasOwners, chartTypeAliases, schemaLoaders } from './schemaLoaders';
 import { getChart, getChartSchemas, registerChartSchemas } from '../core/registry';
 import type { Id } from '../core/types/cell';
 import type { Annotation } from '../core/types/annotations';
@@ -29,6 +29,7 @@ import type { HoverOption, RenderHoverContent } from './useHover';
 import { DataTableContext } from './hover/HoverSurface';
 import type { ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
+import { zoomHookFor } from './zoomHook';
 export type { ParsedChartSpec, BoardplotSpecSettings } from './specValidation';
 export type { BoardplotSpec } from '../core/types/specInput';
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -94,7 +95,7 @@ const components = new Map<string, AnyChart>();
 function componentFor(type: string): AnyChart {
   let component = components.get(type);
   if (!component) {
-    component = createChartComponent<unknown, Record<string, unknown>>(type) as unknown as AnyChart;
+    component = createChartComponent<unknown, Record<string, unknown>>(type, undefined, undefined, zoomHookFor(type)) as unknown as AnyChart;
     components.set(type, component);
   }
   return component;
@@ -200,11 +201,6 @@ function useDataTable(wanted: boolean): { module?: DataTableModule; waiting: boo
 
 const NO_TYPES: readonly string[] = [];
 
-/** alias -> the type it names, built once from the generated table. */
-const aliasOwners = new Map<string, string>();
-for (const [type, aliases] of Object.entries(chartTypeAliases)) {
-  for (const alias of aliases) aliasOwners.set(alias, type);
-}
 
 /** The type a spec's name stands for, or undefined for a name Boardplot does not draw. */
 function knownType(name: string): string | undefined {
@@ -277,7 +273,8 @@ function useChartEngine(type: string): { ready: boolean; failure?: string } {
  * `boardplot/react/<type>`, draws it without waiting.
  */
 function engineReady(type: string): boolean {
-  return type === 'table' ? loadedTableChart() !== undefined : getChart(type) !== undefined;
+  // A line chart also waits for its entry, which carries the zoom hook: a server or an export can register its core alone.
+  return type === 'table' ? loadedTableChart() !== undefined : getChart(type) !== undefined && (type !== 'line' || zoomHookFor(type) !== undefined);
 }
 
 /** What the reader sees when a chunk did not arrive at all. */

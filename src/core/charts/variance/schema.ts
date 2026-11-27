@@ -68,3 +68,5 @@ export const varianceOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
   missingMark: z.enum(['dash', 'none']).optional()
     .describe("What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph. A category with a blank part in its actual total leaves the same mark and the info warning missing-value."),
 }) as unknown as z.ZodType<VarianceOptions>;
+
+export { retiredSettings } from './retired';

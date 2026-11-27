@@ -7,6 +7,7 @@ import type { ChartCore } from '../../registry';
 import type { WaterfallData } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import { layoutWaterfall, type WaterfallDerived, type WaterfallMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const waterfallCore: ChartCore<
   WaterfallData,
@@ -15,6 +16,7 @@ export const waterfallCore: ChartCore<
   WaterfallDerived
 > = {
   type: 'waterfall',
+  retired: retiredSettings,
   sizing: chartSizing('waterfall'),
   title: 'Waterfall / bridge',
   summary: 'Contribution-to-change bridge with computed totals, connectors, and delta labels',

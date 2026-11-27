@@ -55,7 +55,7 @@ const OPTION_TYPES = '../../core/types/options';
  * types the barrel never exported get type-named components here.
  *
  * `panels: true` means the entry registers a loader for the cores its
- * panels name (src/react/loadChartTypes.ts): grid lays its panels out
+ * panels name (src/react/loadChartCores.ts): grid lays its panels out
  * through getChart(panel.type), and `requireChartCores` fetches them first.
  *
  * `links` names the core modules this type's layout needs on EVERY chart,
@@ -508,6 +508,9 @@ function sharedKeyTrees(optionKeys) {
   };
 }
 
+/** The types that zoom (core/zoom.ts `zoomAxis`): their entries pass the zoom hook to the component. */
+const ZOOM_TYPES = new Set(['line']);
+
 function renderModule(type, binding, keys, keyTrees) {
   const lines = [HEADER, `// Single-chart React entry for '${type}'.`];
   const shared = new Set();
@@ -567,11 +570,14 @@ function renderModule(type, binding, keys, keyTrees) {
   lines.push(coreImport);
   lines.push(
     binding.panels
-      ? "import { registeredTypeWithPanelCores } from '../loadChartTypes';"
+      ? "import { registeredTypeWithPanelCores } from '../loadChartCores';"
       : "import { registeredType } from '../chartEntry';",
   );
   lines.push("import { createChartComponent } from '../createChartComponent';");
   lines.push("import { optionKeyCheck } from '../../core/schema/unknownKeys';");
+  // Only the entry of a type that zooms links the zoom hook; every other component draws without the zoom code.
+  const zooms = ZOOM_TYPES.has(type);
+  if (zooms) lines.push("import { useZoom } from '../useZoom';", "import { linkZoom } from '../zoomHook';");
   const typeImports = new Map();
   const addTypeImport = (name, from) => {
     if (!typeImports.has(from)) typeImports.set(from, new Set());
@@ -597,7 +603,8 @@ function renderModule(type, binding, keys, keyTrees) {
   lines.push(...keyLines);
   // The deferred modules the entry links count in the server's and the hydrating first frame.
   const DEFERRED_NAMES = { linkThemeShapeRules: 'theme-rules', linkAnnotateEngine: 'annotate' };
-  const linkedArg = binding.links ? `, ${JSON.stringify(binding.links.map(([, link]) => DEFERRED_NAMES[link]))}` : '';
+  const linkedList = binding.links ? `, ${JSON.stringify(binding.links.map(([, link]) => DEFERRED_NAMES[link]))}` : '';
+  const linkedArg = zooms ? `${linkedList || ', undefined'}, linkZoom(${quoted(type)}, useZoom)` : linkedList;
   if (binding.links?.some(([, link]) => !DEFERRED_NAMES[link])) throw new Error(`${type}: a link without a deferred module name`);
   if (binding.loose) {
     lines.push(
@@ -648,7 +655,6 @@ function renderLoaders(types) {
  * brings the type's own React entry.
  */
 function renderSchemaLoaders(types, aliases, aliasDefaults) {
-  const aliased = types.filter((type) => aliases[type].length > 0);
   return [
     HEADER,
     '// The data and options schemas of one chart type, on demand. See src/react/spec.tsx.',
@@ -659,15 +665,30 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
     'export const schemaLoaders: Readonly<Record<string, () => Promise<ChartSchemas<any, any>>>> = {',
     ...types.map((type) =>
       `  ${type}: () => import('../core/charts/${type}/schema')\n` +
-      `    .then((module) => ({ type: '${type}', dataSchema: module.${type}DataSchema, optionsSchema: module.${type}OptionsSchema${type === 'grid' ? ', dataSchemaByOption: { stack: module.metricStackDataSchema }' : ''}${aliasDefaults[type] ? `, aliasDefaults: ${JSON.stringify(aliasDefaults[type])}` : ''} })),`),
+      `    .then((module) => ({ type: '${type}', dataSchema: module.${type}DataSchema, optionsSchema: module.${type}OptionsSchema${existsSync(join(repositoryRoot, `src/core/charts/${type}/retired.ts`)) ? ', retired: module.retiredSettings' : ''}${type === 'grid' ? ', dataSchemaByOption: { stack: module.metricStackDataSchema }' : ''}${aliasDefaults[type] ? `, aliasDefaults: ${JSON.stringify(aliasDefaults[type])}` : ''} })),`),
     '};',
     '',
-    '/** type -> the alias names a spec may write instead, so an aliased type finds its chunk. */',
-    'export const chartTypeAliases: Readonly<Record<string, readonly string[]>> = {',
-    ...aliased.map((type) => `  ${type}: [${aliases[type].map(quoted).join(', ')}],`),
-    '};',
+    ...renderAliasTable(types, aliases),
+    '/** alias -> the type it names, built once for the spec path. */',
+    'export const aliasOwners: ReadonlyMap<string, string> = new Map(Object.entries(chartTypeAliases).flatMap(([type, names]) => names.map((alias) => [alias, type])));',
     '',
   ].join('\n');
+}
+
+/**
+ * The alias table, written into both loader maps: the spec path reads the
+ * copy in the schema map, and the core path (src/react/loadChartCores.ts)
+ * the copy in the core map, so a grid or the barrel links no schema map and
+ * the spec bundle links no core map.
+ */
+function renderAliasTable(types, aliases) {
+  return [
+    '/** type -> the alias names a spec may write instead, so an aliased type finds its chunk. */',
+    'export const chartTypeAliases: Readonly<Record<string, readonly string[]>> = {',
+    ...types.filter((type) => aliases[type].length > 0).map((type) => `  ${type}: [${aliases[type].map(quoted).join(', ')}],`),
+    '};',
+    '',
+  ];
 }
 
 /**
@@ -676,7 +697,7 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
  * at the type's `core.ts`. Unlike `chartLoaders` it reaches no React entry,
  * so a server graph never meets a "use client" module through it.
  */
-function renderCoreLoaders(types) {
+function renderCoreLoaders(types, aliases) {
   // No "use client": `react/prepare` imports this map in server code.
   return [
     '// Generated by scripts/generate-chart-entries.mjs. Do not edit by hand.',
@@ -690,6 +711,7 @@ function renderCoreLoaders(types) {
     ...types.map((type) => `  ${type}: () => import('../core/charts/${type}/core').then((module) => module.${type}Core),`),
     '};',
     '',
+    ...renderAliasTable(types, aliases),
   ].join('\n');
 }
 
@@ -769,7 +791,7 @@ const loadersSource = renderLoaders(types);
 const schemaLoadersFile = join(repositoryRoot, 'src/react/schemaLoaders.ts');
 const schemaLoadersSource = renderSchemaLoaders(types, aliases, aliasDefaults);
 const coreLoadersFile = join(repositoryRoot, 'src/react/coreLoaders.ts');
-const coreLoadersSource = renderCoreLoaders(types);
+const coreLoadersSource = renderCoreLoaders(types, aliases);
 const barrelBindingsFile = join(repositoryRoot, 'src/react/barrelCharts.ts');
 const barrelBindingsSource = renderBarrelBindings(types);
 const rowsTypesFile = join(repositoryRoot, 'src/core/rowsTypes.ts');

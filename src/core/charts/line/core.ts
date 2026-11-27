@@ -10,9 +10,11 @@ import { layoutLine, type LineDerived, type LineMarks } from './layout';
 import { lowerLineX } from './continuous';
 import { validateLineLogSource } from './log';
 import type { LineOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const lineCore: ChartCore<LineChartData, LineOptions, LineMarks, LineDerived> = {
   type: 'line',
+  retired: retiredSettings,
   frameOwnsSourceLimit: true,
   sizing: chartSizing('line'),
   title: 'Line / area',

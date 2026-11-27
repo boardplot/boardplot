@@ -10,6 +10,7 @@ import {
   type GridInput,
   type GridLayoutOptions
 } from './normalize';
+import { retiredSettings } from './retired';
 
 // Keep stack preparation in the lazy grid core, outside shared a11y imports.
 function normalizeGridInput(raw: unknown, options?: GridLayoutOptions): ExplicitGridData | MetricStackData {
@@ -18,6 +19,7 @@ function normalizeGridInput(raw: unknown, options?: GridLayoutOptions): Explicit
 
 export const gridCore: ChartCore<GridInput, GridLayoutOptions, GridMarks, GridDerived> = {
   type: 'grid',
+  retired: retiredSettings,
   sizing: { ...chartSizing('grid'), minWidth: CARD_MIN_WIDTH },
   title: 'Grid / multi-tier',
   summary: 'Facets, variance tiers and metric stacks with shared categories and computed readouts',

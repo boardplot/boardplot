@@ -24,7 +24,7 @@ import type { ManifestV1 } from '../src/core/claims';
 import {
   copyData, copyImage, exportCsv, exportPng, exportSvg, useExport,
 } from '../src/react/export';
-import { rasterizeCanonicalSvg } from '../src/react/export/png';
+import { rasterizeCanonicalSvg } from '../src/react/export/raster';
 import type { ExportInput, ExportOk, UseExport } from '../src/react/export';
 import { resolveThemeRequest } from '../src/react/themeRequest';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';

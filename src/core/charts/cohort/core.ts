@@ -4,6 +4,7 @@ import { chartSizing } from '../../sizing';
 import type { ChartCore } from '../../registry';
 import { layoutCohort } from './layout';
 import type { CohortData, CohortDerived, CohortMarks, CohortOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const cohortCore: ChartCore<
   CohortData,
@@ -12,6 +13,7 @@ export const cohortCore: ChartCore<
   CohortDerived
 > = {
   type: 'cohort',
+  retired: retiredSettings,
   sizing: chartSizing('cohort'),
   title: 'Cohort retention triangle',
   summary:

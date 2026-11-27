@@ -4,9 +4,11 @@ import { chartSizing } from '../../sizing';
 import type { ChartCore } from '../../registry';
 import type { GanttData } from '../../types/data';
 import { layoutGantt, type GanttDerived, type GanttMarks, type GanttOptions } from './layout';
+import { retiredSettings } from './retired';
 
 export const ganttCore: ChartCore<GanttData, GanttOptions, GanttMarks, GanttDerived> = {
   type: 'gantt',
+  retired: retiredSettings,
   sizing: chartSizing('gantt'),
   title: 'Gantt / timeline',
   summary: 'Project timeline: adaptive calendar, activity spans, cadence rows, events, and elapsed-time context',

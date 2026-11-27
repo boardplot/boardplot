@@ -9,6 +9,7 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { MekkoOptions } from '../../types/options';
 import { layoutMekko, type MekkoDerived, type MekkoMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const mekkoCore: ChartCore<
   ChartData,
@@ -17,6 +18,7 @@ export const mekkoCore: ChartCore<
   MekkoDerived
 > = {
   type: 'mekko',
+  retired: retiredSettings,
   sizing: chartSizing('mekko'),
   title: 'Mekko / Marimekko',
   summary:

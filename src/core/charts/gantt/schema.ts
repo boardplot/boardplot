@@ -134,3 +134,5 @@ export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOption
     }
   });
 }) as unknown as z.ZodType<GanttOptions>;
+
+export { retiredSettings } from './retired';

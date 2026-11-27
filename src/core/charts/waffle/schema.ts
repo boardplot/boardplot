@@ -90,3 +90,5 @@ export const waffleOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   }).optional()
     .describe("Cells mode with one panel only. Sums the first segments and prints the sum with its label: beside a bracket that spans their rows when the key stands beside the grid, under the key otherwise. The sum takes the first series' format."),
 }) as unknown as z.ZodType<WaffleOptions>;
+
+export { retiredSettings } from './retired';

@@ -4,9 +4,11 @@ import type { ChartCore } from '../../registry';
 import { CARD_MIN_WIDTH, chartSizing } from '../../sizing';
 import { layoutTreemap, treemapDefaultStrings } from './layout';
 import type { TreemapData, TreemapDerived, TreemapMarks, TreemapOptions } from './types';
+import { retiredSettings } from './retired';
 
 export const treemapCore: ChartCore<TreemapData, TreemapOptions, TreemapMarks, TreemapDerived> = {
   type: 'treemap',
+  retired: retiredSettings,
   // No compact floor, which would multiply note probes: the full frame draws down to a
   // 320 px card, and the layout measures its own floor.
   sizing: { ...chartSizing('treemap'), compactFloor: undefined, minWidth: CARD_MIN_WIDTH },

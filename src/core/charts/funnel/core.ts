@@ -7,6 +7,7 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { FunnelOptions } from '../../types/options';
 import { layoutFunnel, type FunnelDerived, type FunnelMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const funnelCore: ChartCore<
   ChartData,
@@ -15,6 +16,7 @@ export const funnelCore: ChartCore<
   FunnelDerived
 > = {
   type: 'funnel',
+  retired: retiredSettings,
   sizing: chartSizing('funnel'),
   title: 'Funnel / pipeline',
   summary:

@@ -8,9 +8,11 @@ import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
 import { yieldingWidths } from './columnTracks';
 import { layoutHeatmap, type HeatmapDerived, type HeatmapMarks } from './layout';
+import { retiredSettings } from './retired';
 
 export const heatmapCore: ChartCore<HeatmapData, HeatmapOptions, HeatmapMarks, HeatmapDerived> = {
   type: 'heatmap',
+  retired: retiredSettings,
   sizing: chartSizing('heatmap'),
   title: 'Heatmap / matrix',
   summary: 'Row × column matrix — continuous or discrete color scale, in-cell values or Harvey balls',

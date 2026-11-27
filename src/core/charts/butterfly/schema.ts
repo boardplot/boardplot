@@ -58,3 +58,5 @@ export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
   sharedScale: z.boolean().optional().describe("Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable."),
   negatives: z.enum(['direction', 'magnitude']).optional().describe("A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint."),
 }) as unknown as z.ZodType<ButterflyOptions>;
+
+export { retiredSettings } from './retired';
