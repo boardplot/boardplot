@@ -606,24 +606,32 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const warnings: LintWarning[] = [];
   const hiddenWarningByLabel = new Map<Id, LintWarning>();
   const peaks: LabelRequest[] = [];
-  const printedIn = new Map(requests.flatMap(req => {
+  const pinOf = (r: LabelRequest): SlotId | undefined => r.pinnedSlot ?? ctx.pins[r.id];
+  let authoredOrder = false;
+  let simpleOrder = !ctx.focus;
+  const printedIn = new Map<Id, Id>();
+  for (const req of requests) {
     if (req.rowPeak) peaks.push(req);
-    return req.printedIn ? [[req.id, req.printedIn] as const] : [];
-  }));
+    if (req.printedIn) printedIn.set(req.id, req.printedIn);
+    if (req.order !== undefined) authoredOrder = true;
+    if (simpleOrder && (authoredOrder || pinOf(req))) simpleOrder = false;
+  }
   const pad = ctx.labelPad ?? 2;
   const darkInk = ctx.darkInk ?? '#111827';
   const lightInk = ctx.lightInk ?? '#ffffff';
-
-  // Effective pins: explicit request pins + ctx.pins by label id.
-  const pinOf = (r: LabelRequest): SlotId | undefined => r.pinnedSlot ?? ctx.pins[r.id];
 
   // A value on a line point keeps to seats that read as its point's value.
   const ownership = ctx.pointOwnership ? pointOwnership(ctx.pointOwnership) : undefined;
   const owned = ownership ? withOwnedSeats(requests, ownership, pinOf) : requests;
   const ownedPoint = (req: LabelRequest): boolean => req.kind === 'point' && ownership?.pointOf(req.owner.seriesId, req.owner.categoryId) !== undefined;
-  const ownershipLimited = new Set(owned.flatMap((req, i) => req !== requests[i] ? [req.id] : []));
+  const ownershipLimited = new Set<Id>();
+  if (owned !== requests) for (let i = 0; i < owned.length; i++) {
+    if (owned[i] !== requests[i]) ownershipLimited.add(owned[i]!.id);
+  }
   // Deterministic order: pinned first, then priority desc, then id.
-  const baseOrder = [...owned].sort(labelOrder(pinOf, ctx.focus));
+  const baseOrder = [...owned].sort(simpleOrder
+    ? (a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    : labelOrder(pinOf, ctx.focus));
   const rowPeaks = peaks.length ? rankRowPeaks(baseOrder, peaks, pinOf, pad) : undefined;
   const order = rowPeaks?.ranked ?? baseOrder;
   const yieldingTo = rowPeaks && new Map<Id, { rect: Rect; owner: OwnerRef; pad: number; omitYielded?: true }>();
@@ -649,8 +657,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const req = redundant || queued.candidates.length === 0 ? queued : withLiftLeaders(queued, ownedPoint(queued), (from, to) =>
       !occupied.some({ x: from.x - 0.5, y: Math.min(from.y, to) + 0.5, w: 1, h: Math.max(0, Math.abs(to - from.y) - 1) }, 0,
         o => o.kind === 'mark' && !isOwnMark(o.owner, queued.owner, queued.kind, o.part)));
-    const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
+    const slots = first && req.candidates.length === 1 ? [first.slot] : req.candidates.map(c => c.slot);
     const markValue = isMarkValue(req);
     const peakAhead = yieldingTo?.get(req.id);
     const claimIds = requestClaims(req, ctx);
@@ -691,12 +699,11 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       const quiet = hidden === 'collision' && req.quietWhenCrowded === true;
       const reason = quiet ? 'density' : hidden;
       const decisionReason = quiet ? 'density=smart: no free seat' : why;
-      const label: PlacedLabel = Object.assign(base, {
-        rect: first ? first.rect : { x: 0, y: 0, w: 0, h: 0 },
-        slot: first ? first.slot : 'none',
-        ink: { token: 'ink' as const },
-        hidden: reason,
-      });
+      const label = base as PlacedLabel;
+      label.rect = first ? first.rect : { x: 0, y: 0, w: 0, h: 0 };
+      label.slot = first ? first.slot : 'none';
+      label.ink = { token: 'ink' };
+      label.hidden = reason;
       if (markValue && reason === 'collision') label.owed = true;
       placed.push(label);
       onHidden?.(label);
@@ -1265,7 +1272,6 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     }
   }
   // `order` steers only which label claims a seat first; output keeps the id order, so paint order stays put.
-  const authoredOrder = owned.some(req => req.order !== undefined);
   if (authoredOrder || rowPeaks) {
     const paintOrder = authoredOrder ? [...owned].sort(labelOrder(pinOf, ctx.focus, false)) : baseOrder;
     const rank = new Map(paintOrder.map((req, i) => [req.id, i]));

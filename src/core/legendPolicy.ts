@@ -11,7 +11,8 @@ import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { CARD_CLASS_WIDTH, FORCE_COMPACT, contentSized, declaredSizing, fitsSize, hostlessHeight, prepareFitLayout, requestFloor, type FitLayout } from './sizing';
 import { EARLIER_PARTIAL_LEGEND_ID } from './partialPeriod';
 import { panelTypeClass, resolveTheme } from './theme';
-import type { LabelKind } from './types/options';
+import type { ChartData } from './types/data';
+import type { ColumnOptions, LabelKind } from './types/options';
 import type { Geometry, LayoutResult, SceneNode } from './types/scene';
 
 /** Registered drawings that can bound the full chart without its automatic key. */
@@ -312,17 +313,23 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   const baselineOptions = requested ? { ...options, legend: undefined } as O : options;
   const size = baselineOptions?.size;
   const bound = keylessFitBounds.get(definition);
+  const sheet = data as ChartData | undefined;
+  const compactKey = size && typeof size === 'object' && size.height === undefined
+    && (definition.type === 'combo' || definition.type === 'column' && (baselineOptions?.measure ?? defaultMeasurer) === defaultMeasurer
+      && (baselineOptions as ColumnOptions).variant === 'stacked'
+      && Array.isArray(sheet?.series)
+      && sheet.series.some(series => Array.isArray(series?.values) && series.values.includes(null)));
   let firstCandidate: LayoutResult<M, DV> | undefined;
   let firstMode: 'full' | 'compact' = 'full';
   if (bound && baselineOptions && size && typeof size === 'object'
-    && size.unit === undefined && (size.width >= CARD_CLASS_WIDTH || definition.type === 'combo' && size.height === undefined) && hasCompleteTextWidths(baselineOptions.measure ?? defaultMeasurer)
+    && size.unit === undefined && (size.width >= CARD_CLASS_WIDTH || compactKey) && hasCompleteTextWidths(baselineOptions.measure ?? defaultMeasurer)
     && baselineOptions.legend === undefined && !definition.requiredKey && baselineOptions.mode !== 'compact'
     && !(FORCE_COMPACT in baselineOptions) && panelTypeClass(options) === undefined) {
     const policy = declaredSizing(definition, baselineOptions);
     const opening = size.height ?? hostlessHeight(policy, size.width, policy.minHeight, true);
     const floor = requestFloor(policy);
-    // A width-only combo below its full width stays compact at every height.
-    const compact = definition.type === 'combo' && size.height === undefined && !fitsSize({ width: size.width, height: Infinity }, policy)
+    // A width-only chart below its full width stays compact at every height.
+    const compact = compactKey && !fitsSize({ width: size.width, height: Infinity }, policy)
       && size.width >= floor.width && baselineOptions.belowMinimum !== 'refuse';
     if ((compact || size.width >= policy.minWidth) && opening >= policy.minHeight) {
       firstMode = compact ? 'compact' : 'full';

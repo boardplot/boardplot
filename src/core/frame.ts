@@ -51,7 +51,7 @@ import type {
 import type { Theme, ThemeRef } from './types/theme';
 import { VALUE_SELECTION } from './types/sizing';
 import type { OccupiedClaim } from './label/occupied';
-import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
+import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, retainFrameState, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
 import { chartString as wordingString } from './strings';
 import { TEXT_ASCENT } from './svg/renderSvg';
 import { maxOf, pushAll } from './arrays';
@@ -1023,7 +1023,14 @@ export function owedHiddenLabels(
   annotations?: unknown,
   minimal = false,
 ): Map<Id, string> {
-  const drawn = new Map(geo.scene.flatMap((node) => (node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : [])));
+  let drawn: Map<Id, string> | undefined;
+  const drawnText = (id: Id) => {
+    if (!drawn) {
+      drawn = new Map();
+      for (const node of geo.scene) if (node.t === 'text') drawn.set(node.id, node.lines.join(' '));
+    }
+    return drawn.get(id);
+  };
   const idOf = (item: unknown): unknown => (typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : item);
   // Each list is indexed once per call: the first item with an id wins, as `find` would.
   const indexes = new Map<unknown[], Map<unknown, unknown>>();
@@ -1047,23 +1054,23 @@ export function owedHiddenLabels(
   const legendName = (id: Id | undefined): string | undefined => {
     const item = id === undefined ? undefined : geo.legend?.items.find((entry) => entry.id === id);
     // Else the value-axis title the series owns (a Pareto's "Cumulative share, %").
-    return item ? drawn.get(`label:${item.labelId}`) ?? drawn.get(item.labelId) ?? geo.labels.find((l) => l.id === item.labelId)?.text
+    return item ? drawnText(`label:${item.labelId}`) ?? drawnText(item.labelId) ?? geo.labels.find((l) => l.id === item.labelId)?.text
       : id && geo.labels.find((l) => l.kind === 'axisTitle' && l.owner.seriesId === id)?.text;
   };
   const { series, categories, rows, items, cases } = (data ?? {}) as { series?: unknown; categories?: unknown; rows?: unknown; items?: unknown; cases?: unknown };
   // Only a chart with annotations draws a callout, and it has loaded the annotate module.
   const valueCallouts = loadedDeferred('annotate')?.valueAnnotationLabels(geo.labels, annotations) ?? [];
-  const entries = geo.labels.flatMap((label) => {
+  const noteFor = (label: PlacedLabel): string | undefined => {
     // LEFT_OUT_OF_NOTE: a grid panel's own chart leaves this value out of its note (panelNoteTexts).
     if (label.hidden === undefined || label.noted || (label as { [LEFT_OUT_OF_NOTE]?: true })[LEFT_OUT_OF_NOTE]
-      || (minimal || geo[DEFER_DENSITY_NOTES]) && label.hidden === 'density' || !label.text) return [];
+      || (minimal || geo[DEFER_DENSITY_NOTES]) && label.hidden === 'density' || !label.text) return;
     // a drawn callout or note that prints this value with `${value}` at its mark is its label.
     const callout = valueCallouts.find(([own, at]) => holdsToken(own.text, label.text)
       && Object.entries(at).every(([key, id]) => key === 'edge' || (label.owner as Record<string, unknown>)[key] === id));
-    if (callout) { label.printedIn = callout[0].id; return []; }
+    if (callout) { label.printedIn = callout[0].id; return; }
     // A series is unlabelled only when no drawn label names it (a bump's end name covers its start name).
     if (label.kind === 'series' && label.owner.seriesId !== undefined && geo.labels.some((other) => other !== label && other.kind === 'series'
-      && other.hidden === undefined && other.owner.seriesId === label.owner.seriesId)) return [];
+      && other.hidden === undefined && other.owner.seriesId === label.owner.seriesId)) return;
     // A value the chart marked redundant before the solver is
     // dropped unless it prints elsewhere: in the label the chart names, else in a
     // drawn label of its own category or series. An authored 'minimal' asked for the drop.
@@ -1074,9 +1081,9 @@ export function owedHiddenLabels(
       if (label.printedIn !== undefined) {
         // The host prints the same value in its own format: it is owed only when the host lost its own text.
         const host = geo.labels.find((other) => other.id === label.printedIn);
-        if (holdsToken(drawn.get(`label:${label.printedIn}`), label.text) || (host?.text && holdsToken(drawn.get(`label:${label.printedIn}`), host.text))) return [];
+        if (holdsToken(drawnText(`label:${label.printedIn}`), label.text) || (host?.text && holdsToken(drawnText(`label:${label.printedIn}`), host.text))) return;
       } else if (minimal || !['segment', 'total'].includes(label.kind) || geo.labels.some((other) => other !== label && other.hidden === undefined && holdsToken(other.text, label.text)
-        && (label.owner.categoryId !== undefined ? other.owner.categoryId === label.owner.categoryId : other.owner.seriesId === label.owner.seriesId))) return [];
+        && (label.owner.categoryId !== undefined ? other.owner.categoryId === label.owner.categoryId : other.owner.seriesId === label.owner.seriesId))) return;
     }
     // bridge step totals, split values and names remain readable when larger type loses its seat.
     const bridgeValue = ['waterfall', 'pvm', 'variance'].includes(geo.type ?? '') && BRIDGE_OWED_KINDS.has(label.kind);
@@ -1089,8 +1096,8 @@ export function owedHiddenLabels(
     // The shared density ranker gates points and stack totals. Segment
     // layouts retain their own omission notes and must not get a second list.
     const densityValue = label.hidden === 'density' && ['point', 'grandTotal'].includes(label.kind);
-    if (!OWED_KINDS.has(label.kind) && !bridgeValue && !extraValue && !densityValue && !label.owed && pins[label.id] === undefined) return [];
-    if (label.noteText) return [[label.id, label.noteText] as const];
+    if (!OWED_KINDS.has(label.kind) && !bridgeValue && !extraValue && !densityValue && !label.owed && pins[label.id] === undefined) return;
+    if (label.noteText) return label.noteText;
     if (label.kind === 'annotation') {
       // Match by the id the annotate pass gives (authored, else kind-index); name it by its label, else its authored id.
       const list = (Array.isArray(annotations) ? annotations : []) as Array<{ kind: AnnotationKind; id?: Id; label?: unknown; text?: unknown }>;
@@ -1099,11 +1106,11 @@ export function owedHiddenLabels(
       const a = hit && (typeof hit.label === 'string' ? hit.label : typeof hit.text === 'string' ? undefined : hit.id);
       // A drawn label in another case (a band name prints in capitals) is the same name: note the authored spelling once.
       const same = typeof a === 'string' && label.text.toLowerCase().includes(a.toLowerCase());
-      return [[label.id, a && !same ? `${a} ${label.text}` : same && label.text.toLowerCase() === a.toLowerCase() ? a : label.text] as const];
+      return a && !same ? `${a} ${label.text}` : same && label.text.toLowerCase() === a.toLowerCase() ? a : label.text;
     }
     if (label.kind === 'item') {
       const row = nameIn(rows, label.owner.categoryId);
-      return [[label.id, `${label.text}${row ? ` (${row})` : ''}`] as const];
+      return `${label.text}${row ? ` (${row})` : ''}`;
     }
     if ((bridgeValue || extraValue || label.kind === 'grandTotal') && label.kind !== 'category') {
       const name = nameIn(categories, label.owner.categoryId) ?? nameIn(items, label.owner.categoryId) ?? nameIn(rows, label.owner.categoryId)
@@ -1112,17 +1119,23 @@ export function owedHiddenLabels(
       const segment = nameBeforeValue(nameIn(series, label.owner.seriesId) ?? nameIn(cases, label.owner.seriesId)
         ?? nameIn(itemSegments, label.owner.segmentId) ?? label.owner.segmentId, label.text);
       // A tick's text can name its series already ('90 Plan').
-      return [[label.id, `${segment && !label.text.includes(segment) ? `${segment} ` : ''}${label.text}${name ? ` (${name})` : ''}`] as const];
+      return `${segment && !label.text.includes(segment) ? `${segment} ` : ''}${label.text}${name ? ` (${name})` : ''}`;
     }
-    if (label.kind !== 'point') return [[label.id, label.text] as const];
+    if (label.kind !== 'point') return label.text;
     // A value is named by its series and category (never a bare value): a series
     // the data does not list (a Pareto's cumulative line) by its legend entry, a category by its item or row.
     const s = nameBeforeValue(nameIn(series, label.owner.seriesId) ?? legendName(label.owner.seriesId), label.text);
     const c = nameIn(categories, label.owner.categoryId) ?? nameIn(items, label.owner.categoryId) ?? nameIn(rows, label.owner.categoryId)
       ?? (densityValue ? geo.labels.find(candidate => candidate.kind === 'category' && candidate.owner.categoryId === label.owner.categoryId)?.text : undefined);
     // An authored text that names its series already is not prefixed twice ('Coverage Coverage 99.8').
-    return [[label.id, `${s && !label.text.includes(s) ? `${s} ` : ''}${label.text}${c ? ` (${c})` : ''}`] as const];
-  });
+    return `${s && !label.text.includes(s) ? `${s} ` : ''}${label.text}${c ? ` (${c})` : ''}`;
+  };
+  const entries: [Id, string][] = [];
+  for (const label of geo.labels) {
+    const text = noteFor(label);
+    if (text !== undefined) entries.push([label.id, text]);
+  }
+  if (entries.length < 2) return new Map(entries);
   const byData = dataOrder(data, geo.labels);
   return new Map(entries.sort(([a], [b]) => byData(a, b)));
 }
@@ -1330,6 +1343,34 @@ export function hiddenNoteBodyOptions(options: BaseOptions): object {
   return { ...body, authoredFootnotes: authoredFootnotes ?? footnotes ?? [] };
 }
 
+/** The private combo note map contains ordered point/total records. Read all values
+ * afresh, including each label owner, and encode the common shapes in one call.
+ * The generic key counts names and leaves, even the repeated label id. */
+export function packedComboNoteItems(options: object) {
+  const items = (options as { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem> })[NOTE_ITEMS];
+  if (!items || Object.isFrozen(items) || items.size < 32 || items.size > 512) return;
+  let cost = 9; // The map itself.
+  const values: (string | number | null)[] = [];
+  for (const [id, item] of items) {
+    const label = item.label;
+    if (!label || Object.isFrozen(item) || Object.isFrozen(label) || id !== label.id || typeof item.text !== 'string' || typeof id !== 'string'
+      || !Number.isSafeInteger(label.priority) || Object.is(label.priority, -0)) return;
+    const owner = label.owner;
+    if (!owner || Object.isFrozen(owner) || Object.getPrototypeOf(owner) !== Object.prototype && Object.getPrototypeOf(owner) !== null) return;
+    const keys = Reflect.ownKeys(owner);
+    const point = label.kind === 'point' && keys.length === 2 && keys[0] === 'seriesId' && keys[1] === 'categoryId';
+    const total = label.kind === 'grandTotal' && keys.length === 1 && keys[0] === 'categoryId';
+    if ((!point && !total) || typeof owner.categoryId !== 'string' || point && typeof owner.seriesId !== 'string') return;
+    values.push(id, item.text, label.kind, label.priority, point ? owner.seriesId! : null, owner.categoryId);
+    // Each entry pays for three objects (27), six scalar values (6), and
+    // the quoted property names (52). A point adds 11 characters
+    // for the seriesId property name and its string value tag.
+    cost += 85 + 2 * id.length + item.text.length + label.kind.length + String(label.priority).length + owner.categoryId.length
+      + (point ? 11 + owner.seriesId!.length : 0);
+  }
+  return { key: NOTE_ITEMS, value: items, text: 'N' + JSON.stringify(values), cost };
+}
+
 /** What the note needs to order its items: the data, the authored annotations and the labels the ids name. */
 interface NoteContext { data: unknown; labels: readonly PlacedLabel[]; annotations?: unknown }
 
@@ -1455,18 +1496,25 @@ function planNote(items: ReadonlyMap<Id, NoteItem>, context: { data: unknown; an
   // owner holds in full ('780' in 'Marketplaces 780') takes that item's text, and the set below drops the repeat.
   const ownerKey = (item: NoteItem): string | undefined => item.label?.owner.annotationId === undefined && (item.label?.owner.seriesId !== undefined || item.label?.owner.categoryId !== undefined)
     ? `${item.label!.owner.seriesId ?? ''}|${item.label!.owner.categoryId ?? ''}` : undefined;
-  const byOwner = new Map<string, NoteItem[]>();
-  for (const item of items.values()) {
-    const key = ownerKey(item);
-    if (key === undefined) continue;
-    const group = byOwner.get(key);
-    if (group) group.push(item); else byOwner.set(key, [item]);
+  let merged = [...items];
+  if (known.some(label => label.kind !== known[0]!.kind)) {
+    let sharedKinds = false;
+    const byOwner = new Map<string, NoteItem[]>();
+    for (const item of items.values()) {
+      const key = ownerKey(item);
+      if (key === undefined) continue;
+      const group = byOwner.get(key);
+      if (group) {
+        sharedKinds ||= group[0]!.label?.kind !== item.label?.kind;
+        group.push(item);
+      } else byOwner.set(key, [item]);
+    }
+    if (sharedKinds) merged = merged.map(([id, item]): [Id, NoteItem] => {
+      const key = ownerKey(item);
+      const cover = key === undefined ? undefined : byOwner.get(key)!.find((other) => other !== item && other.label?.kind !== item.label?.kind && other.text.length > item.text.length && holdsToken(other.text, item.text));
+      return [id, cover ? { ...item, text: cover.text, label: cover.label } : item];
+    });
   }
-  const merged = [...items].map(([id, item]): [Id, NoteItem] => {
-    const key = ownerKey(item);
-    const cover = key === undefined ? undefined : byOwner.get(key)!.find((other) => other !== item && other.label?.kind !== item.label?.kind && other.text.length > item.text.length && holdsToken(other.text, item.text));
-    return [id, cover ? { ...item, text: cover.text, label: cover.label } : item];
-  });
   const ranked = merged.sort(([a, x], [b, y]) => Number(leadsNote(y)) - Number(leadsNote(x)) || byData(a, b));
   // A diagram's secondary text is the author's description, not a value: it is named in full.
   const described = new Set(ranked.filter(([, item]) => (item.label?.kind as string | undefined) === 'diagramSecondary').map(([, item]) => item.text));
@@ -1540,7 +1588,8 @@ export function markNotedLabels(
   ];
   // A narrow note wraps inside a word, so lines joined with spaces are compared without spaces.
   const heading = (from as BaseOptions | undefined)?.strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
-  const leads = (text: string) => text.replace(/\s+/g, '').includes(`${heading}:`.replace(/\s+/g, ''));
+  const prefix = `${heading}:`.replace(/\s+/g, '');
+  const leads = (text: string) => text.replace(/\s+/g, '').includes(prefix);
   const destination = notes.find(leads);
   if (!destination) return;
   const own = from instanceof Set ? undefined : from as { [NOTE_COUNTED]?: ReadonlySet<Id>; [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string } | undefined;
@@ -1551,6 +1600,9 @@ export function markNotedLabels(
   const listed = named === undefined ? undefined : new Set(list!.items.slice(0, named));
   const counted = from instanceof Set ? from as ReadonlySet<Id>
     : listed ? new Set([...own![NOTE_ITEMS]!].filter(([, item]) => !listed.has(item.text)).map(([id]) => id)) : own?.[NOTE_COUNTED];
+  // All labels in this disclosure refer to the same rendered note.
+  const node = geo.scene.find(node => node.t === 'text' && ids.has(node.id) && leads(node.lines.join(' ')));
+  const note = geo.frame.noteList?.find(note => leads(note.text));
   const gone = new Set<Id>();
   for (const label of geo.labels) {
     if (!noted.has(label.id) || label.noted) continue;
@@ -1562,8 +1614,6 @@ export function markNotedLabels(
     // The reader-facing name the note gives it ("Elo 1,563 (Orion)"), for the omission lists.
     label.noteText ??= own?.[NOTE_ITEMS]?.get(label.id)?.text;
     if (counted?.has(label.id)) label.noteCounted = true;
-    const node = geo.scene.find(node => node.t === 'text' && ids.has(node.id) && leads(node.lines.join(' ')));
-    const note = geo.frame.noteList?.find(note => leads(note.text));
     label.noteLocation = chartString(from as BaseOptions | undefined, node && note
       ? counted?.has(label.id) ? 'countedInNote' : 'listedInNote'
       : counted?.has(label.id) ? 'countedInNotes' : 'listedInNotes', { n: note?.n ?? 1 });
@@ -2071,6 +2121,48 @@ export interface FrameWidthMeasurements {
   topKey?: { nodes: SceneNode[]; legend: LegendGeometry; warnings: LintWarning[]; band: number; seq: number };
 }
 
+function textForFrame(input: FrameInput, footW: number, footFont: FontSpec): FrameText {
+  return frameText({
+    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
+    footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
+    footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
+    numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
+    width: input.size.width, footWidth: footW, footFont, boldWeight: emphasisWeight(input.theme), measure: input.measure,
+    policy: { pinned: staticFrame.pinned, live: staticFrame.live },
+  });
+}
+
+/** Replace notes listed outside a static source-only footer. Check the actual source
+ * lines and tooltip: these are the footer's only scene nodes and occupied row. */
+export function sourceOnlyListNotes(old: FrameResult, footnotes: string[]) {
+  const frame = old.frame;
+  const input = footerPlans.get(frame);
+  if (!input || staticFrame.live || staticFrame.pinned || input.credit || input.footerInset
+    || input[CUT_LABEL_NOTES]?.length || frame.warnings?.length || frame.footnoteNodeIds?.length || !frame.notes?.length || !frame.footerRect) return;
+  const source = old.nodes.find(node => node.id === frame.sourceNodeId);
+  if (source?.t !== 'text') return;
+  const plan = { ...input, footnotes };
+  const text = textForFrame(plan, frame.footerRect.w, source.font);
+  if (!text.sourceBlock || text.printed.length || text.warnings.length || text.placement !== frame.notePlacement
+    || text.sourceOff || text.countable || !text.unprinted.length) return;
+  const fitted = text.sourceLines(text.sourceBlock);
+  if (source.lines.length !== fitted.lines.length || source.lines.some((line, i) => line !== fitted.lines[i])
+    || source.title !== (fitted.title ? plainText(fitted.title) : undefined)) return;
+  const mark = () => {
+    for (const { text: note, meta } of text.marked) engineNote(note, meta.kind, meta.short, meta.values, meta.list ?? null);
+  };
+  return { mark, replace: () => {
+    const copy = retainFrameState(frame, { ...frame, notes: text.unprinted, noteList: text.noteList });
+    footerPlans.set(copy, plan);
+    const chrome = frameChrome.get(frame);
+    const floor = plotChromeFloor.get(frame);
+    if (chrome !== undefined) frameChrome.set(copy, chrome);
+    if (floor !== undefined) plotChromeFloor.set(copy, floor);
+    if (settledAutoHeight.has(frame)) settledAutoHeight.add(copy);
+    return copy;
+  } };
+}
+
 export function solveFrame(input: FrameInput, occupied: FrameClaims, measurements?: FrameWidthMeasurements): FrameResult {
   if (input[CUT_LABEL_NOTES]?.length) input = { ...input, footnotes: [...(input.footnotes ?? []), ...input[CUT_LABEL_NOTES]!] };
   const destination = occupied;
@@ -2122,14 +2214,7 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims, measurement
   const sourceOnly = measurements !== undefined && !input.footnotes?.length && !input.credit;
   let source = sourceOnly ? measurements.source : undefined;
   if (source && (source.pinned !== staticFrame.pinned || source.live !== staticFrame.live)) source = undefined;
-  const text = source?.text ?? frameText({
-    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
-    footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
-    footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
-    numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
-    width: size.width, footWidth: footW, footFont, boldWeight: emphasisWeight(theme), measure,
-    policy: { pinned: staticFrame.pinned, live: staticFrame.live },
-  });
+  const text = source?.text ?? textForFrame(input, footW, footFont);
 
   if (sourceOnly && !source) {
     source = { pinned: staticFrame.pinned, live: staticFrame.live, text,

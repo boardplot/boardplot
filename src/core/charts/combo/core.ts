@@ -1,13 +1,13 @@
 import { AUTO_LEGEND, keylessFitBounds } from '../../legendPolicy';
-import { bandKeyFirst, keylessAreaFits } from '../band/keylessFit';
+import { bandKeyFirst, keylessAreaFits, speculate } from '../band/keylessFit';
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { chartSizing, MIN_COMPACT_PLOT, PLOT_SHARE } from '../../sizing';
+import { chartSizing, MIN_COMPACT_PLOT, PLOT_SHARE, sameContent } from '../../sizing';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer } from '../../text';
-import { canvasMargin, REMOVED_NAMES } from '../../theme';
-import { beforeUnprintedLabelNote, DENSITY_VALUES, freedChromeOf, keylessFrame, LEGEND_HEIGHT, type InternalFootnoteOptions } from '../../frame';
+import { canvasMargin, layoutStepKey, REMOVED_NAMES } from '../../theme';
+import { beforeUnprintedLabelNote, comparableOptions, DENSITY_VALUES, freedChromeOf, keylessFrame, LEGEND_HEIGHT, type InternalFootnoteOptions } from '../../frame';
 import { chartTheme } from '../chartEnv';
 import { fitsInside, INSIDE_MIN_W } from '../band/labels';
 /** Zod-free combo chart registration. */
@@ -16,15 +16,17 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions, ComboOptions } from '../../types/options';
 import { LOCALE_STRINGS, withLocaleStrings } from '../../strings';
-import { rankKeyShown, withEngineNotes } from '../../notes';
+import { rankKeyShown } from '../../notes';
 import { copyFrame, partNeedOf, staticFrame } from '../../footer';
 import { TARGET_SIZE } from '../../target';
-import { AUTHORED_EXAMPLES, zeroLifts } from '../../formatPrecision';
+import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { INSIDE_ENDPOINT_IDS, insideEndpointGutters } from './endpoints';
 import { MARKER_R } from './model';
 import { resolveComboEnv, resolveComboDomain, TOTALS_AXIS } from './domain';
 import { comboPaints, comboPlotArea, solveComboFrame } from './plot';
-import { layoutCombo, type ComboDerived, type ComboMarks } from './layout';
+import { requestMemo } from '../../layoutPlan';
+import type { FrameGeometry } from '../../types/scene';
+import { layoutCombo, refreshListNotes, type ComboDerived, type ComboMarks } from './layout';
 
 export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDerived> = {
   type: 'combo',
@@ -96,14 +98,14 @@ keylessFitBounds.set(comboCore, comboKeyFirst);
 const openingMarkers = new Set<symbol>([AUTO_LEGEND, LEGEND_HEIGHT, TARGET_SIZE, PLOT_SHARE, DENSITY_VALUES,
   AUTHORED_EXAMPLES, REMOVED_NAMES, LOCALE_STRINGS]);
 const openingOptions = new Set(['size', 'title', 'mode', 'secondaryAxis', 'target', 'locale', 'measure', 'theme', 'strings',
-  'legend', 'footnotes', 'authoredFootnotes']);
+  'legend', 'footnotes', 'authoredFootnotes', 'valueLabels']);
 
 /** The static report footer keeps value disclosures in its list. Only the chosen axis
- * and the failed last endpoints can change a plain combo's measured opening. */
+ * and the failed endpoints can change a plain combo's measured opening. */
 function plainComboOpening(data: ChartData, raw: BaseOptions, size: { width: number; height: number }) {
   const options = raw as ComboOptions;
   if (staticFrame.live || staticFrame.pinned || options.target !== 'report' || options.legend !== 'top'
-    || (options.measure ?? defaultMeasurer) !== defaultMeasurer
+    || (options.measure ?? defaultMeasurer) !== defaultMeasurer || options.valueLabels !== undefined && options.valueLabels !== 'all'
     || Object.entries(options).some(([key, val]) => val !== undefined && !openingOptions.has(key))
     || !Array.isArray(data?.categories) || !Array.isArray(data.series)
     || data.categories.length < 30 || data.categories.some(c => !c || typeof c !== 'object' || !('calendar' in c) || !c.calendar || c.partial || c.footnote !== undefined)
@@ -113,54 +115,74 @@ function plainComboOpening(data: ChartData, raw: BaseOptions, size: { width: num
   // Unknown caller markers may attach claim callbacks or change the chart's frame.
   const plain = beforeUnprintedLabelNote(options);
   if (!plain || Object.getOwnPropertySymbols(plain).some(marker => !openingMarkers.has(marker))) return;
-  const counted = staticFrame.countable, lifts = zeroLifts.count;
-  try {
-    return withEngineNotes(() => {
-      const input = withLocaleStrings({ ...options, size });
-      const prepared = prepareFractionData(data);
-      let answer: { plot: number; freed: number; part: number } | undefined;
-      for (const next of [input, { ...input, [TOTALS_AXIS]: true }]) {
-        const warnings: import('../../types/scene').LintWarning[] = [];
-        const env = resolveComboEnv(next, warnings);
-        const domain = resolveComboDomain(prepared, next, warnings, env.theme);
-        if (domain.anomaly || domain.lineFloat || domain.anatomy || domain.secondaryActive) return;
-        const paints = comboPaints(env, domain);
-        const framed = solveComboFrame(env, domain, paints, warnings);
-        if (!framed.frame.legend || framed.frame.deficit || framed.frame.frame.noteList?.some(n => n.inFrame)) return;
-        const measure = (chosen: typeof domain) => comboPlotArea(env, chosen, paints, {
-          ...framed, frame: { ...framed.frame, frame: copyFrame(framed.frame.frame) },
-        }, undefined, warnings);
-        const without = measure(domain);
-        if (without.first.size || without.last.size > 3 || without.gutters.first || without.gutters.last) return;
-        const agree = (area: typeof without) => {
-          const frame = area.frame.frame;
-          if (!area.catPlan.dateNumeric || area.catPlan.cutNotes.length || (frame.minHeight ?? 0) > size.height
-            || (frame.plotMinHeight ?? 0) > size.height) return false;
-          const trial = { plot: area.plot.h, freed: freedChromeOf(frame), part: partNeedOf(frame) };
-          if (answer && (trial.plot !== answer.plot || trial.freed !== answer.freed || trial.part !== answer.part)) return false;
-          answer = trial;
-          return true;
-        };
-        if (!agree(without)) return;
-        // With no first gutter, the last gutter of any failed subset is the
-        // largest individual gutter. Try each such width through the real row planner.
-        const measuredGutters = new Set([0]);
-        for (const [id, end] of without.last) {
-          const ids = new Set([`point:${id}:${domain.cats[end.ci]!.id}`]);
-          const gutter = insideEndpointGutters({ ids, first: without.first, last: without.last, cats: domain.cats,
-            width: without.endpointWidth, font: without.labelFont, measure: env.measure, markerR: MARKER_R }).last;
-          if (measuredGutters.has(gutter)) continue;
-          measuredGutters.add(gutter);
-          if (!agree(measure({ ...domain, options: { ...domain.options, [INSIDE_ENDPOINT_IDS]: ids } as ComboOptions }))) return;
+  // The ordinary drawing owns invalid data, options and error order.
+  return speculate(() => {
+    // The sizing caller can change its target plot share or lock hidden labels.
+    // Neither changes the plot that this calculation measures. For a new note,
+    // check its real footer at both axis settings before returning the old height.
+    const shape = comparableOptions(plain, DENSITY_VALUES, PLOT_SHARE, AUTHORED_EXAMPLES);
+    type Opening = { plot: number; freed: number; part: number };
+    const state = `${layoutStepKey()}:${staticFrame.countable}:${currentSmallValues()}:${formatScopeKey(options)}:${size.width}:${size.height}`;
+    const previous = requestMemo<{ shape: object; frames: FrameGeometry[]; answer: Opening }[]>(data, 'combo-opening:' + state, () => []);
+    const saved = previous.find(entry => sameContent(entry.shape, shape));
+    const notes = options.footnotes;
+    if (saved && (!notes || saved.frames.every(frame => refreshListNotes({ frame }, [], notes)))) return saved.answer;
+    const frames: FrameGeometry[] = [];
+    const input = withLocaleStrings({ ...options, size });
+    const prepared = prepareFractionData(data);
+    let answer: { plot: number; freed: number; part: number } | undefined;
+    for (const next of [input, { ...input, [TOTALS_AXIS]: true }]) {
+      const warnings: import('../../types/scene').LintWarning[] = [];
+      const env = resolveComboEnv(next, warnings);
+      const domain = resolveComboDomain(prepared, next, warnings, env.theme);
+      if (domain.anomaly || domain.lineFloat || domain.anatomy || domain.secondaryActive) return;
+      const paints = comboPaints(env, domain);
+      const framed = solveComboFrame(env, domain, paints, warnings);
+      if (!framed.frame.legend || framed.frame.deficit || framed.frame.frame.noteList?.some(n => n.inFrame)) return;
+      frames.push(framed.frame.frame);
+      const measure = (chosen: typeof domain) => comboPlotArea(env, chosen, paints, {
+        ...framed, frame: { ...framed.frame, frame: copyFrame(framed.frame.frame) },
+      }, undefined, warnings);
+      const without = measure(domain);
+      if (without.first.size > 3 || without.last.size > 3 || without.gutters.first || without.gutters.last) return;
+      const agree = (area: typeof without) => {
+        const frame = area.frame.frame;
+        if (!area.catPlan.dateNumeric || area.catPlan.cutNotes.length || (frame.minHeight ?? 0) > size.height
+          || (frame.plotMinHeight ?? 0) > size.height) return false;
+        const trial = { plot: area.plot.h, freed: freedChromeOf(frame), part: partNeedOf(frame) };
+        if (answer && (trial.plot !== answer.plot || trial.freed !== answer.freed || trial.part !== answer.part)) return false;
+        answer = trial;
+        return true;
+      };
+      if (!agree(without)) return;
+      // At either end positive, complete series have the same category centre.
+      // At that centre a failed subset takes the gutter of its widest label.
+      // Keep the actual pair calculation because the two gutters narrow one another.
+      const representatives = (ends: typeof without.first, ci: number) => {
+        if (!without.first.size)
+          return [undefined, ...[...ends].map(([id, end]) => `point:${id}:${domain.cats[end.ci]!.id}`)];
+        const widths = new Map<number, string>();
+        for (const [id, end] of ends) {
+          if (end.ci !== ci) return;
+          if (!end.suppressed) widths.set(env.measure(end.text || '0', without.labelFont).width, `point:${id}:${domain.cats[ci]!.id}`);
         }
+        return [undefined, ...widths.values()];
+      };
+      const first = representatives(without.first, 0);
+      const last = representatives(without.last, domain.cats.length - 1);
+      if (!first || !last) return;
+      const measuredGutters = new Set(['0:0']);
+      for (const left of first) for (const right of last) {
+        const ids = new Set([left, right].filter((id): id is string => id !== undefined));
+        const room = insideEndpointGutters({ ids, first: without.first, last: without.last, cats: domain.cats,
+          width: without.endpointWidth, font: without.labelFont, measure: env.measure, markerR: MARKER_R });
+        const key = `${room.first}:${room.last}`;
+        if (measuredGutters.has(key)) continue;
+        measuredGutters.add(key);
+        if (!agree(measure({ ...domain, options: { ...domain.options, [INSIDE_ENDPOINT_IDS]: ids } as ComboOptions }))) return;
       }
-      return answer;
-    }, true);
-  } catch {
-    // The ordinary drawing owns invalid data, options and error order.
-    return;
-  } finally {
-    zeroLifts.count = lifts;
-    staticFrame.countable = counted;
-  }
+    }
+    if (answer && !notes) previous.push({ shape, frames, answer });
+    return answer;
+  }, undefined);
 }

@@ -790,8 +790,13 @@ export function planComboLabels(
     r.kind === 'grandTotal' && !r.redundant && r.candidates[0] ? [r.candidates[0].rect] : []);
   appendEndpointRequests(env, domain, area, geometry.plans, requests, strokes, fills, segmentSeats, totalSeats);
   const interiorAt = requests.length;
-  // Compact density can promote an interior point before an endpoint.
-  const deferInterior = probeEndpoints !== undefined && domain.options.mode !== 'compact';
+  // Only points in the latest category get the compact priority bonus. When
+  // the endpoint pass owns all such points, interiors cannot change this probe.
+  const latest = domain.cats.length - 1;
+  const deferInterior = probeEndpoints !== undefined && (domain.options.mode !== 'compact'
+    || domain.cats.findIndex(category => category.id === domain.cats[latest]?.id) === latest
+      && geometry.plans.every(plan => plan.pts.at(-1)?.ci !== latest
+        || area.last.get(plan.s.id)?.ci === latest || area.first.get(plan.s.id)?.ci === latest));
   if (!deferInterior) linePointLabels(env, domain, area, geometry, requests, strokes, fills);
   // A value may sit on an area where it clears that fill's edges by the solver's pad; another series' value keeps off a shaded one.
   seatValuesOnGround(requests, geometry.areaGrounds, 2, (ground) => paints.css(ground.paint), !shadesFills(domain.options.annotations ?? []), ['point', 'grandTotal']);
@@ -801,7 +806,7 @@ export function planComboLabels(
   rankValueLabels(requests, request => request.kind === 'grandTotal' && request.owner.categoryId !== undefined
     ? domain.stackTotals[request.owner.categoryId] : undefined, env.density, domain.options.labelPlacements,
     { categories: domain.cats.length, last: domain.options.mode === 'compact' ? domain.cats.at(-1)?.id : undefined, pitch: band.step, orientation: 'vertical', measure: env.measure });
-  // The endpoint probe runs in full mode without area grounds. Its interior points have
+  // Deferred interior points have
   // no density rank or fill treatment, so they can rejoin at their original position.
   if (probeEndpoints && !probeEndpoints(requests) && deferInterior) {
     const interior: LabelRequest[] = [];

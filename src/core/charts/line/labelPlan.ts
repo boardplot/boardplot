@@ -7,7 +7,7 @@
  */
 
 import { GAP_BRACKET_REFUSED, gapBracketPairs } from '../../annotateParts';
-import type { Rect } from '../../geometry';
+import { rectContains, type Rect } from '../../geometry';
 import { screenEdges, seatValuesOnGround, type AreaGround } from '../../label/areaGround';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
 import { addRatioTierRequests, type RatioTierRequestState } from '../../ratioTier';
@@ -52,7 +52,7 @@ export function planLineLabels(
   paints: LinePaints,
   text: LineText,
   reserves: LineReserves,
-  scene: LineMarkGeometry,
+  scene: LineMarkGeometry | undefined,
   warnings: LintWarning[],
 ): LineLabelPlan {
   const { isBump, theme, size, measure, highlights } = env;
@@ -61,9 +61,9 @@ export function planLineLabels(
   const { labelFont, labelH } = text;
   const focusName = lineFocusFont(env, domain, text.nameFont, emphasisWeight(theme));
   const focusValue = lineFocusFont(env, domain, labelFont, emphasisWeight(theme));
-  const { marks } = scene;
-  const { paintedAreaCats } = scene.rendered;
-  const labelRequests: LabelRequest[] = [...scene.headerRequests];
+  const marks = scene?.marks ?? { series: [] };
+  const paintedAreaCats = scene?.rendered.paintedAreaCats ?? new Map<Id, Set<number>>();
+  const labelRequests: LabelRequest[] = scene ? [...scene.headerRequests] : [];
   const ratioTierRequestState = area.ratioTier
     ? addRatioTierRequests(area.ratioTier, labelRequests, {
         plot,
@@ -73,8 +73,10 @@ export function planLineLabels(
         measure,
       })
     : undefined;
-  pushAll(labelRequests, scene.phaseRequests);
-  pushAll(labelRequests, scene.targetRequests);
+  if (scene) {
+    pushAll(labelRequests, scene.phaseRequests);
+    pushAll(labelRequests, scene.targetRequests);
+  }
   const inlineNamesEnabled = reserves.endpoint.inlineNamesEnabled;
   // The band dividers the annotation pass draws later stand between two
   // categories (annotateFields' band edges), where an inline name sits, or on
@@ -123,7 +125,7 @@ export function planLineLabels(
   });
   const lastCarried = new Set([...merged, ...reserves.keyValues.keys()]);
   const valueInput: Parameters<typeof placePointValueLabels>[0] = {
-    drawnEdges: scene.rendered.rangeEdges,
+    drawnEdges: scene?.rendered.rangeEdges,
     valueLabels: domain.labelModes.values,
     firstWithheld: domain.x?.range && isArea && usesEndLabelKey(domain.options) && domain.labelModes.values === 'ends'
       ? new Set(drawnSeries.filter(s => {
@@ -160,7 +162,7 @@ export function planLineLabels(
   // A value may sit on a fill where it clears that fill's edges by the solver's pad.
   // A shading draws a mix over the fills (fillShadings) that this plan cannot see, so other series' values keep off them.
   // A stacked value sits in its own band, which keeps it clear of the next band's edge.
-  const grounds: AreaGround[] = scene.rendered.areaOutlines.filter((outline) => !outline.stacked).map((outline) => ({ seriesId: outline.seriesId, ...screenEdges(outline.top, outline.bottom), paint: outline.paint, ...(outline.forecast ? { pattern: 'hatch45' as const } : {}) }));
+  const grounds: AreaGround[] = (scene?.rendered.areaOutlines ?? []).filter((outline) => !outline.stacked).map((outline) => ({ seriesId: outline.seriesId, ...screenEdges(outline.top, outline.bottom), paint: outline.paint, ...(outline.forecast ? { pattern: 'hatch45' as const } : {}) }));
   seatValuesOnGround(labelRequests, grounds, 2, (ground) => ground.pattern ? effectiveFill(paints.css(ground.paint), ground.pattern, env.theme) : paints.css(ground.paint), !shadesFills(reserves.annList));
   for (const request of labelRequests) {
     if (request.kind !== 'point') continue;
@@ -175,7 +177,16 @@ export function planLineLabels(
   // A tie's shared value reads with its note at the shared point.
   const tieShows = joinTieValues({ bump: domain.bumpDerived, labelRequests, font: text.tickFont, measure });
   const xPartial = xPartialWords(env, domain, area, reserves, lineToDateIds(env, domain, text));
-  const catLabelsShown = area.xTicks && area.xOfValue
+  // A lone line puts its last value in the key when every seat is outside the canvas.
+  // The trial's category row cannot move that value back onto the page.
+  const end = labelRequests.length === 1 ? labelRequests[0] : undefined;
+  const canvas = { x: 0, y: 0, w: size.width, h: size.height };
+  const offPageEnd = !scene && bounded && domain.options.seriesLabels === undefined && domain.running.size === 0
+    && env.density !== 'minimal' && end?.kind === 'point' && end.noLeader && !end.redundant
+    && !end.quietWhenCrowded && !end.printedIn && end.owner.categoryId === domain.endpoints[drawnSeries[0]!.id]?.categoryId
+    && end.candidates.every(seat => !rectContains(canvas, seat.rect));
+  if (offPageEnd) bounded.fallback = true;
+  const catLabelsShown = !scene ? false : area.xTicks && area.xOfValue
     ? placeXTickLabels({ show: area.showCategoryTickRow, plan: area.xTicks, xOf: area.xOfValue, row: area.frame.plot,
       bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, plotLeft: plot.x, labelRequests, ...xPartial })
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,

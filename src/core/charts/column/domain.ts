@@ -4,6 +4,7 @@
  * stacks and totals, the anomaly rule, the value domain and the axis break.
  */
 
+import { requestMemo } from '../../layoutPlan';
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
@@ -55,6 +56,7 @@ import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
 import { shownSeries } from '../../hiddenSeries';
+import { HIDDEN_SERIES } from '../../hiddenSeriesKey';
 import { breakWhileHidden, drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
@@ -939,7 +941,16 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
 /** Phase 1: data and options in, the plotted values and the value domain out. */
 function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnDomain {
   const env = resolveColumnEnv(options, warnings);
-  const normalized = normalizeColumnData(data, warnings);
+  // These trials keep the original sheet order. Simple cells emit no range
+  // warnings, and a missing part stays null in the prepared values and shares.
+  // A reader's hidden series change the stacks and mark the shared series, so such a request prepares its own.
+  const shareValues = options.variant === 'stacked' && !(options as { [HIDDEN_SERIES]?: readonly string[] })[HIDDEN_SERIES]?.length && !options.valueAxis?.percent && !options.sort && !options.topN
+    && !options.window && !options.viewDomain && !options.ribbons && (options.measure ?? defaultMeasurer) === defaultMeasurer
+    && data && typeof data === 'object' && requestMemo(data, 'column-simple-missing', () =>
+      Array.isArray(data.series) && data.series.some(s => Array.isArray(s?.values) && s.values.includes(null))
+      && data.series.every(s => Array.isArray(s?.values) && s.values.every(v => v === null || typeof v === 'number')));
+  const normalized = shareValues ? requestMemo(data, 'column-missing-values', () => normalizeColumnData(data, warnings))
+    : normalizeColumnData(data, warnings);
   const { seriesNorm } = normalized;
   // Exhibit-wide format raster: style from the example, ONE
   // precision for every value label, decided over the plotted values — "53"
@@ -988,7 +999,9 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // The Total column's weighted shares are statistics: a set of their own beside the shares they weigh.
   const totalStatFmt = computedTotal ? statisticFormatter(Object.values(computedTotal.values), valueSpec.percentSpec) : undefined;
   const ranked = ribbons.ribbonsOn && ribbons.ribbonRank;
-  const source = columnBasis(variant, cats, dataSeries, viewportOn ? [] : warnings, ranked);
+  const source = shareValues
+    ? requestMemo(data, 'column-missing-stacks', () => columnBasis(variant, cats, dataSeries, warnings))
+    : columnBasis(variant, cats, dataSeries, viewportOn ? [] : warnings, ranked);
   let anomaly: AnomalyModel | undefined;
   let anomalyValues: number[] = [];
   if (options.anomaly) {

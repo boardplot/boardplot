@@ -1,3 +1,5 @@
+import { engineNoteMeta, knownPartsLead, withEngineNotes } from '../../notes';
+import { hasBold } from '../../inlineBold';
 import { valueLineLabelsOn } from '../labelOn';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
@@ -51,33 +53,33 @@ import { currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPreci
 import { requestMemo } from '../../layoutPlan';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
-import { isCachedTextMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, layoutStepKey, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
-import { bandValueLabelUniformity, compactValueLabelFont, groupedValueLabelPolicy, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
+import { bandValueLabelUniformity, compactValueLabelFont, INSIDE_MIN_W, groupedValueLabelPolicy, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
 import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, rightEdgeSeriesLabels, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
-import { layoutColumnMarks, stackPaddingProbe } from './marks';
+import { cellValueText, COLUMN_LABEL_PAD, firstSegmentHidesRow, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
+import { layoutColumnMarks, stackSegmentRect, stackPaddingProbe } from './marks';
 import { compactStaircaseNamesFit, stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
-import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo } from './plot';
+import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnValueNotes, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo, type ColumnNoteRows } from './plot';
 import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
-import { dataOrder, hiddenNoteBodyOptions, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
+import { authoredNotes, comparableOptions, dataOrder, sourceOnlyListNotes, hiddenNoteBodyOptions, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
 import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
 import { pushAll } from '../../arrays';
-import { freedChromeOf, partNeedOf, staticFrame } from '../../footer';
+import { footerPlans, freedChromeOf, partNeedOf, staticFrame } from '../../footer';
 import { HOST_CLAIMS } from '../../claims/ids';
 
 /** Route straight leaders around printed boxes, or cut their blocked runs, with the shared gap. */
@@ -650,7 +652,7 @@ export function layoutColumn(
 }
 
 /** Whether the value axis was turned on for columns left with no number: decided once per chart. */
-interface AxisFallback { on: boolean; noteParent?: ColumnPass }
+interface AxisFallback { on: boolean; noteParent?: ColumnPass; noteEnd?: ColumnPass }
 
 const AXIS_FALLBACK = Symbol('columnAxisFallback');
 const SHORT_WITHOUT_AXIS = Symbol('shortWithoutAxis');
@@ -699,6 +701,55 @@ function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geomet
   });
 }
 
+/** A band disclosure can live outside the chart. Check every frame the retry would use. */
+function refreshColumnBandNote(
+  first: Geometry<ColumnMarks, ColumnDerived>, before: AnomalyColumnOptions, after: AnomalyColumnOptions, axis: AxisFallback,
+): boolean {
+  const start = axis.noteParent, end = axis.noteEnd;
+  if (!axis.on || !start?.noteFrame?.rows || !end?.noteFrame?.rows || first !== end.geometry
+    || start.geometry.labels !== first.labels || staticFrame.pinned || staticFrame.live
+    || before.categoryLabels === 'staircase' || before.notes || before.footnotes === false) return false;
+  const previous = authoredNotes(before), notes = authoredNotes(after);
+  if (previous.length > 1 || notes.length !== 1 || [...previous, ...notes].some(note => engineNoteMeta(note)?.kind !== 'disclosure' || hasBold(note))) return false;
+  if (first.frame !== end.noteFrame.area.frame.frame) return false;
+  const marks: (() => void)[] = [];
+  // The later frame reads any metadata the opening frame fitted. A rejected
+  // update must leave the ordinary layout's note registry untouched.
+  const updated = withEngineNotes(() => {
+    let updated: ReturnType<typeof sourceOnlyListNotes>;
+    for (const pass of start === end ? [start] : [start, end]) {
+      const context = pass.noteFrame!;
+      const old = context.area.frame;
+      const input = footerPlans.get(old.frame);
+      if (!input || input.measure !== defaultMeasurer || input.credit || input.footnotesOff || input.notes
+        || input.pointedNotes || input.numberedFootnotes?.length || input.unreferencedNotes?.length
+        || input[COLLECT_IDENTITIES] || previous.some((note, i) => input.footnotes?.[i] !== note)) return;
+      const extra = input.footnotes?.slice(previous.length) ?? [];
+      if (extra.length > 2 || !extra.length || extra.some(note => engineNoteMeta(note)?.kind !== 'disclosure' || hasBold(note))
+        || !extra.at(-1)!.startsWith(knownPartsLead(before))
+        || extra.length === 2 && !extra[0]!.startsWith(before.strings!.valuesNotOnColumns!)) return;
+      if (!context.prepared) return;
+      const items = (context.options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE];
+      const withItems = (options: AnomalyColumnOptions) => items ? { ...withValueAxis(options), [SEGMENT_NOTE]: items } : withValueAxis(options);
+      if (!sameContent(context.options, withItems(before))) return;
+      const domain = { ...context.prepared.domain, options: withItems(after) };
+      const valueNotes = columnValueNotes(domain);
+      if (!sameContent(extra, valueNotes)) return;
+      const fitted = sourceOnlyListNotes(old, [...notes, ...valueNotes]);
+      if (!fitted) return;
+      fitted.mark();
+      marks.push(() => { columnValueNotes(domain); fitted.mark(); });
+      updated = fitted;
+    }
+    return updated;
+  }, true);
+  if (!updated) return false;
+  for (const mark of marks) mark();
+  first.frame = updated.replace();
+  if (typeof after.size === 'object') columnMidpointFloor.delete(after.size);
+  return true;
+}
+
 /** The column laid out with its value notes, and again with every series keyed when an edge name lost its seat. */
 function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keepEachValue: boolean): Geometry<ColumnMarks, ColumnDerived> {
   const axis: AxisFallback = { on: false };
@@ -707,7 +758,7 @@ function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keep
     // pass can prove the whole midpoint short.
     if (next !== resolved && typeof next.size === 'object') columnMidpointFloor.delete(next.size);
     return layoutColumnWithNotes(data, next, keepEachValue, axis, next === resolved && typeof next.size === 'object' && measureColumnHeight.has(next.size));
-  });
+  }, (first, before, after) => refreshColumnBandNote(first, before, after, axis));
   // An edge name that lost its seat leaves its series to the key: lay out again with every series keyed.
   const keyed = new Set(geometry.legend?.items.map((item) => item.id));
   const lost = geometry.labels.some((label) => label.hidden && label.id.startsWith('seriesEdge:') && !keyed.has(label.owner.seriesId!));
@@ -807,6 +858,7 @@ function layoutColumnSettled(
   let pass!: Exclude<ReturnType<typeof layoutColumnPass>, { retry: StaircaseOutcome }>;
   let minimumChrome = Infinity;
   let first = true;
+  let drawCount = 0;
   const run = (next: AnomalyColumnOptions, probeAxis = false, noteParent?: ColumnPass): AnomalyColumnOptions => {
     // Only the staircase padding or fallback flag changes between these draws.
     const staircase: (ColumnStaircaseMemo & Pick<AxisProbe, 'prepared'>) | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
@@ -823,6 +875,7 @@ function layoutColumnSettled(
       if (search && search.growthHeight === next.size.height) staircase.growthTrial = true;
     }
     const draw = (o: AnomalyColumnOptions) => {
+      drawCount++;
       const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, probeAxis, staircase, noteParent);
       first = false;
       if ('retry' in trial) return trial.retry;
@@ -933,7 +986,11 @@ function layoutColumnSettled(
     if (pass.noteFrame.area.stairTop !== undefined) axis.noteParent = pass;
     // The band note starts again before the segment note. If the column kept its first
     // drawing through every note and reserve, compare that original body to the new frame.
-    else if (options.categoryLabels !== 'staircase' && firstBody.geometry.labels === pass.geometry.labels) axis.noteParent = firstBody;
+    else if (options.categoryLabels !== 'staircase' && firstBody.geometry.labels === pass.geometry.labels) {
+      axis.noteParent = firstBody;
+      // Retain a footer only if there was no intervening reserve or discarded drawing.
+      if (drawCount === (firstBody === pass ? 1 : 2)) axis.noteEnd = pass;
+    }
   }
   return pass.geometry;
 }
@@ -1190,7 +1247,7 @@ interface ColumnPass {
   unseated: number;
   seatNeed: number;
   staircase?: StaircaseOutcome;
-  noteFrame?: { options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
+  noteFrame?: { rows?: ColumnNoteRows; options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
 }
 
 interface KeyedColumnBody {
@@ -1259,12 +1316,17 @@ function layoutColumnPass(
   // The frame is the first claimer, so its index becomes the run's index.
   // The event lane sizes itself and the key with the frame and plot passes.
   const staircaseMemo = staircaseInputs?.prepared && isCachedTextMeasurer(domain.measure) ? staircaseInputs : undefined;
+  // A direct segment-note retry has the same header, margins and series key.
+  // Its footer still uses the current disclosure, and its claims are replayed in order.
+  const noteRows = note?.rows ?? (domain.incompleteCats.size && domain.variant === 'stacked' && domain.measure === defaultMeasurer
+    && !domain.annList.length && !options.notes && !options.seriesLabels && options.categoryLabels !== 'staircase'
+    && !staircaseMemo && !(COLLECT_IDENTITIES in options) ? { rows: {} } : undefined);
   let areaWarningsAt = 0;
   const settled = settleEventLane({
     annotations: domain.annList, categories: domain.cats, events: options.events, language: options.locale?.language,
     colorblindSafe: options.colorblindSafe, inline: false, footnotesOff: (options as InternalFootnoteOptions).footnotesOff,
     theme, measure: domain.measure, size, compact: options.mode === 'compact',
-    solve: (key, w) => solveColumnFrame(domain, paints, w, key, staircaseMemo),
+    solve: (key, w) => solveColumnFrame(domain, paints, w, key, staircaseMemo, noteRows),
     area: (framed, w) => {
       areaWarningsAt = w.length;
       return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo, note?.prepared ? note.area : undefined);
@@ -1311,18 +1373,24 @@ function layoutColumnPass(
     && !(COLLECT_IDENTITIES in options) && area.frame.legend !== undefined
     && domain.dataSeries.every(series => area.frame.legend!.items.some(item => item.id === series.id))
     && !rightEdgeSeriesLabels(domain).length;
+  // A segment disclosure on an incomplete stack can leave the bars and their labels in place.
+  // Compare the actual frame and claims below before keeping the previous drawing.
+  const offCanvasMissing = domain.incompleteCats.size > 0 && !options.notes && !options.seriesLabels
+    && options.categoryLabels !== 'staircase' && panelTypeClass(options) === undefined;
   const noteFrame = domain.variant === 'stacked' && (keyed || domain.cats.length > 12 && !options.seriesLabels) && hasCompleteTextWidths(domain.measure)
     && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
     && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
     && !options.shareLabels && !area.tier
-    && (staircaseNote || options.categoryLabels !== 'staircase' && !(typeof options.size === 'object' && measureColumnHeight.has(options.size)))
-    && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
+    && (staircaseNote || options.categoryLabels !== 'staircase' && (offCanvasMissing || !(typeof options.size === 'object' && measureColumnHeight.has(options.size))))
+    && !domain.cats.some(c => c.partial || c.footnote !== undefined) && (!domain.incompleteCats.size || offCanvasMissing)
     && !domain.uniformScenario.size
-    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
+    ? { options, area, rows: noteRows, claims: occupied.snapshot(), warnings: warnings.slice(),
       prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
-  const bodies = keyed && noteFrame && !noteParent && reusablePreparation
+  const measuredBody = typeof options.size === 'object' && measureColumnHeight.has(options.size);
+  const bodies = (keyed || offCanvasMissing && domain.va.show === true && !measuredBody
+    && !(COLLECT_IDENTITIES in options) && !options.window && !options.viewDomain) && noteFrame && !noteParent && reusablePreparation
     ? requestMemo<KeyedColumnBody[]>(data, `column-note:${size.width}:${size.height}:${keepEachValue}:${probeAxis}:${layoutStepKey()}:${currentSmallValues()}:${formatScopeKey(options)}`, () => []) : undefined;
-  const bodyOptions = bodies && hiddenNoteBodyOptions(options);
+  const bodyOptions = bodies && (offCanvasMissing ? comparableOptions(hiddenNoteBodyOptions(options)) : hiddenNoteBodyOptions(options));
   const saved = bodyOptions && NOTED_LABELS in options ? bodies?.find(entry => sameContent(entry.options, bodyOptions)) : undefined;
   const parent = noteParent ?? saved?.pass;
   const before = parent?.noteFrame;
@@ -1357,6 +1425,38 @@ function layoutColumnPass(
     return { retry: retryStair };
   }
   if (measuring && options.mode === 'compact') measureCompactTrial(domain, area, occupied, staircaseMemo, stairInput);
+  // When every segment is suppressed, an omitted total leaves that column with no number.
+  // Digit seats, replacement values and annotations can still give a suppressed segment a number.
+  const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
+    && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
+    && (options.categoryLabels !== 'staircase' || area.showCatRow) && !domain.cats.some(c => c.partial)
+    && !options.labelPlacements && !options.labelOffsets;
+  const needAxis = () => {
+    if (axisProbe && reusablePreparation) fallback();
+    throw AXIS_FALLBACK;
+  };
+  // A missing part cannot link its segment to the total when every stack has
+  // two drawn parts. One too-wide segment and one omitted total then require the axis.
+  if (probeStack && area.band.bandwidth < INSIDE_MIN_W && options.categoryLabels !== 'staircase' && !domain.activeBreak
+    && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn && !domain.pyRef
+    && !options.shareLabels && !options.window && !options.viewDomain && !options.seriesLabels && !domain.averageMarker
+    && domain.cats.length % 2 === 0 && domain.stacks[0]?.segments[0]?.value
+    && domain.dataSeries.every(s => s.vals.every(cell => cell.labelOverride === undefined && !cell.range))
+    && domain.stacks.every(stack => stack.segments.filter(part => part && part.value !== 0).length > 1)) {
+    const part = domain.stacks[0]!.segments[0]!;
+    const first = { s: domain.dataSeries[0]!, si: 0, c: domain.cats[0]!, ci: 0, v: part.value,
+      rect: stackSegmentRect(area.band.position(0), area.band.bandwidth, area.y, part.start, part.end) };
+    // An optional probe must not add a rounding warning for a label it tried.
+    const before = zeroLifts.count;
+    try {
+      if (firstSegmentHidesRow(domain, area, first)) {
+        planColumnTotals(domain, area, { bars: [first] }, [], () => {
+          if (zeroLifts.count === before) needAxis();
+        });
+      }
+    } finally { zeroLifts.count = before; }
+  }
   const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area), measureSegments, ready);
   // the value-axis title is a label in the head band, solved first.
   const requests: LabelRequest[] = area.axisTitle && domain.va.show
@@ -1384,23 +1484,12 @@ function layoutColumnPass(
   const noted = { items: new Map<string, string>(), slivers: new Set<string>() };
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
   const labelWarnings: LintWarning[] = [];
-  // When every segment is suppressed, an omitted total leaves that column with no number.
-  // Digit seats, replacement values and annotations can still give a suppressed segment a number.
-  const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
-    && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
-    && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
-    && (options.categoryLabels !== 'staircase' || area.showCatRow) && !domain.cats.some(c => c.partial)
-    && !options.labelPlacements && !options.labelOffsets;
   // At the smallest font one wide value hides the entire segment row. When
-  // every stack has multiple parts and no authored value label, no total can
+  // every drawn stack has multiple parts and no authored value label, no total can
   // inherit a segment and no digit seat survives. Test the totals immediately.
-  const needAxis = () => {
-    if (axisProbe && reusablePreparation) fallback();
-    throw AXIS_FALLBACK;
-  };
   const testTotals = probeStack ? () => {
-    if (domain.dataSeries.length > 1 && domain.dataSeries.every(series =>
-      series.vals.every(cell => cell.v !== null && cell.v !== 0 && cell.labelOverride === undefined))) {
+    if (scene.marks.bars.every(bar => (bar.segments?.length ?? 0) > 1)
+      && domain.dataSeries.every(series => series.vals.every(cell => cell.labelOverride === undefined))) {
       planColumnTotals(domain, area, scene, [], needAxis);
     }
   } : undefined;
@@ -1412,7 +1501,7 @@ function layoutColumnPass(
     density: domain.density,
     measure: domain.measure,
     plot: area.plot,
-    labelPad: 2,
+    labelPad: COLUMN_LABEL_PAD,
     // A histogram keeps each fitting count, even when other bins need a note.
     // values valueLabels picks are no scatter; each one that cannot sit goes to the note alone.
     seriesUniform: keepEachValue || pickedValues(domain.options) ? undefined : bandValueLabelUniformity(),

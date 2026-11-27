@@ -52,6 +52,8 @@ import { chartString } from '../../strings';
 import { disclosuresShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
+export const COLUMN_LABEL_PAD = 2;
+
 /** The label's parts, each with its text: the value, its share, the category and series names. */
 function composeParts(
   domain: ColumnDomain,
@@ -181,6 +183,21 @@ function valueLines(domain: ColumnDomain, place: BarPlace, content: LabelContent
   }
   const shows = shownParts(parts, val.labelOverride);
   return !text && val.labelOverride !== false ? null : { text, lines, ...(shows ? { shows } : {}) };
+}
+
+/** A single ordinary segment can prove the entire value row too wide before the marks draw. */
+export function firstSegmentHidesRow(domain: ColumnDomain, area: ColumnArea, place: BarPlace): boolean {
+  const { options, measure } = domain;
+  const content = contentOf(options, 'segment', ['absolute']);
+  if (!content || content.join() !== 'absolute' || options.shareLabels || domain.density !== 'smart' || domain.highlights.size
+    || place.c.role === 'total' || restValuesHidden(options, place.s.colorRole)) return false;
+  // The row can still fit at a smaller font. Leave that trial to the ordinary planner.
+  if (stepDownFont(domain.theme, area.labelFont, 'label', options.target, textScaleOf(options))) return false;
+  const label = valueLines(domain, place, content, null);
+  if (!label) return false;
+  const ink = linesSize(label.lines, area.labelFont, measure);
+  return !segmentTooShort(domain.density, place.rect.h, ink.height, undefined, STACK_ROOM)
+    && !fitsInside({ ...place.rect, h: Infinity }, ink, 0);
 }
 
 /** A cell's value as its label prints it: the cell or series format, an authored percent cell's '%' and the `${value}` override. */

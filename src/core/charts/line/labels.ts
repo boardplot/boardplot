@@ -1564,6 +1564,8 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
   /** The running categories whose values print the to-date words under them (lineToDateIds). */
   toDate?: ToDateWords;
 }): void {
+  const selected = pointLabelSelection(input);
+  if (!selected.length) return;
   const lost = { sliver: [] as string[], thinned: [] as string[] };
   const strokesOf = new Map(input.drawnSeries.map((series) => {
     const row = input.pv[input.rowOf.get(series)!]!;
@@ -1572,7 +1574,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     const stroke = { runs, queries: undefined as PolylineQueries[] | undefined };
     return [series.id, stroke] as const;
   }));
-  for (const { series, dataIdx, row, content, only, lastActual } of pointLabelSelection(input)) {
+  for (const { series, dataIdx, row, content, only, lastActual } of selected) {
     const shapeSide = input.shapeSides ? new Map<number, string>() : undefined;
     if (shapeSide) {
       const runs = drawnRuns(row, series.interpolateGaps);

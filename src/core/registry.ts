@@ -121,11 +121,13 @@ export interface ChartCore<
   /** Prepares private chart data once for all size and note trials in this request. */
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
   /** Height-search inputs shared by every possible label outcome of a discarded opening. */
-  openingPlot?(data: D, options: O, size: { width: number; height: number }): { plot: number; freed: number; part: number } | undefined;
+  openingPlot?(data: D, options: O, size: { width: number; height: number }): { plot: number; freed: number; part: number; certifiedChrome?: number } | undefined;
   /** Returns the slope reference plot height when the chart can measure it without drawing. */
   referencePlotHeight?(data: D, options?: O): number | undefined;
   /** The full one-row key when every automatic candidate can only omit its entries. */
   coveringKey?(data: D, options: O, baseline: Geometry<M, DV>): Pick<Geometry, 'scene' | 'legend'> | undefined;
+  /** True when the one taller fixed candidate must retain at least as many noted labels. */
+  notesAtTallerHeight?(data: D, options: O, fixed: O, noted: Geometry<M, DV>['labels']): boolean;
   /** True when every label in the note still needs it at any taller layout with this width and mode. */
   notesBoundByWidth?(data: D, options: O, geometry: Geometry<M, DV>, noted: Geometry<M, DV>['labels']): boolean;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
@@ -379,7 +381,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (geo.refused || nested) return { geo, noteRefused: false };
       lastGeometry = geo;
       const first = geo;
-      const noted = new Map<string, string>();
+      let noted = new Map<string, string>();
       let owed = owedHiddenLabels(geo, data, pins, options?.annotations, minimal);
       let previousOwed: string | undefined;
       for (let run = 0; owed.size > 0; run++) {
@@ -427,10 +429,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           return { geo: hiddenLabelCollision(def.title, geo, owed, [...owed.keys()].every(id => noted.has(id))), noteRefused: true };
         }
         // Rounds find labels in the order they lose their seat; the note lists them in data order.
-        const byData = dataOrder(data, geo.labels);
-        const merged = [...noted, ...owed].sort(([a], [b]) => byData(a, b));
-        noted.clear();
-        for (const [id, item] of merged) noted.set(id, item);
+        if (noted.size === 0) noted = owed; // owedHiddenLabels already returned this drawing's data order.
+        else {
+          const byData = dataOrder(data, geo.labels);
+          noted = new Map([...noted, ...owed].sort(([a], [b]) => byData(a, b)));
+        }
         const noteOptions: O = withHiddenLabelNote((runOptions ?? {}) as O, noted, { data, labels: geo.labels, annotations: options?.annotations });
         let next: LayoutResult<M, DV>;
         // Gantt's full-card context changes during raw layout. Keep

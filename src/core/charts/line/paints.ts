@@ -285,10 +285,11 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     fade && !highlights.has(s.id) ? fadedPaint(paint) : paint;
   const css = (paint: Paint): string => paintColor(theme, paint);
   const markersOff = theme.marks?.lineMarkers === 'none';
-  const paintCategoryIndex = new Map(cats.map((category, index) => [category.id, index] as const));
+  let paintCategoryIndex: Map<Id, number> | undefined;
   const shadedBandRanges = (options.annotations ?? []).flatMap((annotation) => {
     if (annotation.kind !== 'band' || (annotation.style ?? 'shade') !== 'shade') return [];
     if (annotation.from === undefined || annotation.to === undefined) return [];
+    paintCategoryIndex ??= new Map(cats.map((category, index) => [category.id, index] as const));
     const from = paintCategoryIndex.get(annotation.from);
     const to = paintCategoryIndex.get(annotation.to);
     return from === undefined || to === undefined ? [] : [[Math.min(from, to), Math.max(from, to)] as const];

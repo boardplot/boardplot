@@ -3,18 +3,19 @@ import { bandKeyFirst, keylessAreaFits, speculate } from '../band/keylessFit';
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { CARD_CLASS_WIDTH, chartSizing } from '../../sizing';
+import { CARD_CLASS_WIDTH, CARD_HEIGHT_MEMO, PLOT_SHARE, chartSizing, sameContent } from '../../sizing';
 import { staticFrame } from '../../footer';
 import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
 import { COLUMN_FRACTION_MAX, columnPlotArea, solveColumnFrame } from './plot';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
-import { keylessFrame, LEGEND_HEIGHT } from '../../frame';
+import { comparableOptions, keylessFrame, LEGEND_HEIGHT } from '../../frame';
+import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { withLocaleStrings } from '../../strings';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { canvasMargin, classStepWidth, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from '../../theme';
+import { canvasMargin, classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from '../../theme';
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
 import { chartTheme } from '../chartEnv';
@@ -29,6 +30,9 @@ import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
 import { barDrawsAlike, stepToBar, withoutPatchesThatStep } from './stepToBar';
 import { layoutColumn, type ColumnDerived, type ColumnMarks } from './layout';
+
+import { requestMemo } from '../../layoutPlan';
+import { stackedNoteCount, stackedOpening } from './height';
 
 // These settings keep the segment text, font ladder and note policy fixed as a plain stack grows.
 const widthBoundOptions = new Set([
@@ -53,6 +57,8 @@ export const columnCore: ChartCore<
     const column = layoutColumn(prepared, options);
     return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column), options);
   },
+  openingPlot: stackedOpening,
+  notesAtTallerHeight: stackedNoteCount,
   coveringKey(data, options, baseline) {
     const size = options.size;
     if (baseline.legend?.items.length || baseline.mode !== 'full' || options.variant !== 'stacked'
@@ -131,9 +137,13 @@ export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
   const base = withValueLabelDefaults(withLocaleStrings({ ...options, size }), 'column', options.variant, []);
   const prepared = prepareFractionData(data);
   const mayStep = barDrawsAlike(prepared, base);
+  // Only a plain dated stack has the same vertical form and key candidates
+  // throughout its narrow-card height search.
+  if (options.mode === 'compact' && (mayStep || options.notes || !data.categories.every(c => c.date && !c.footnote)
+    || data.series.some(s => s.role || s.values.some(v => v !== null && (typeof v !== 'number' || !(v >= 0)))))) return false;
   // A lost value can turn the axis on. Measure the two frames the chart can use.
   const axes = base.valueAxis?.show === undefined ? [base.valueAxis, { ...base.valueAxis, show: true }] : [base.valueAxis];
-  return axes.every(valueAxis => {
+  const measure = () => axes.every(valueAxis => {
     const warnings: import('../../types/scene').LintWarning[] = [];
     const domain = resolveColumnDomain(prepared, { ...base, valueAxis }, warnings);
     if (domain.annList.length || domain.activeBreak || domain.netLineOn || domain.averageMarker
@@ -152,6 +162,21 @@ export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
     }
     return keylessAreaFits(options, frame, area.plot, opening, printedDisclosure);
   });
+  // On a note-free static card the requested plot share changes only the private height
+  // floor. This keyless check reads the fixed opening plot and its minimum dimensions.
+  const memo = options.variant === 'stacked' && !staticFrame.live && !staticFrame.pinned && !options.notes
+    && (options.measure ?? defaultMeasurer) === defaultMeasurer && (options.footnotes === undefined || Array.isArray(options.footnotes) && !options.footnotes.length)
+    && data.series.some(s => s.values.includes(null));
+  if (!memo) return measure();
+  const saved = requestMemo<{ shape: object; fits: boolean }[]>(data, JSON.stringify(['column-keyless', size.width, opening,
+    layoutStepKey(), currentSmallValues(), formatScopeKey(options), staticFrame.countable]), () => []);
+  const examples = (options as { [AUTHORED_EXAMPLES]?: ReadonlySet<string> })[AUTHORED_EXAMPLES];
+  const shape = { ...comparableOptions(options, CARD_HEIGHT_MEMO, PLOT_SHARE), ...(examples ? { [AUTHORED_EXAMPLES]: [...examples] } : {}) };
+  const prior = saved.find(entry => sameContent(entry.shape, shape));
+  if (prior) return prior.fits;
+  const fits = measure();
+  saved.push({ shape, fits });
+  return fits;
 });
 
 keylessFitBounds.set(columnCore, columnKeyFirst);

@@ -15,7 +15,7 @@ export function lineMeans(
   const firstVals = firstRow.filter((v): v is number => v !== null);
   const meanValue =
     firstVals.length > 0 ? firstVals.reduce((a, b) => a + b, 0) / firstVals.length : undefined;
-  const catIndex = new Map(cats.map((c, i) => [c.id, i] as const));
+  let catIndex: Map<Id, number> | undefined;
   // Scoped-mean measurement for valueLine seriesId/from/to: measured over the
   // PLOTTED values (pv), the same basis the whole-plot 'mean' uses, over an
   // inclusive category span.
@@ -35,6 +35,7 @@ export function lineMeans(
     let ci0 = 0;
     let ci1 = cats.length - 1;
     if (scope.from !== undefined && scope.to !== undefined) {
+      catIndex ??= new Map(cats.map((c, i) => [c.id, i] as const));
       const fi = catIndex.get(scope.from);
       const ti = catIndex.get(scope.to);
       if (fi === undefined || ti === undefined) {
@@ -63,7 +64,7 @@ export function lineMeans(
       ...(ownUnits && s.format !== undefined ? { format: s.format } : {}),
     };
   };
-  return { meanValue, catIndex, meanValueFor };
+  return { meanValue, meanValueFor };
 }
 
 /** Source statistics remain stable when the host changes the visible categories. */

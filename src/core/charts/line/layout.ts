@@ -56,7 +56,7 @@ import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
 import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from '../../grid/lineKeyTrial';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, bumpNamesMuted, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, PLOT_END_AIR, bumpNamesMuted, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
@@ -1213,6 +1213,17 @@ function layoutLinePass(
   const framed = settled.framed;
   commitClaims(occupied, framed.claims, true);
   const area = settled.area;
+  // A plain line's endpoint seats depend on its sampled stroke, before any mark is painted.
+  // Try them only when the right seat can leave the canvas. Other seats may still fit.
+  if (reserves.centredEndRoom && area.xOf(domain.cats.length - 1) + reserves.categoryEndRoom.right - PLOT_END_AIR > size.width
+    && domain.variant === 'line' && !env.isBump && !domain.fan && !domain.phases && !domain.targets.length
+    && !area.axisTitle && !area.ratioTier && !area.forecast.length && !domain.x && !domain.anomaly && !reserves.annList.length
+    && domain.drawnSeries.length === 1 && domain.labelModes.series === 'none' && domain.labelModes.values === 'last'
+    && !reserves.endpoint.endLabels.length && !reserves.endpoint.inlineNamesEnabled && !reserves.startLabels.length
+    && !usesEndLabelKey(options) && !options.labelOffsets && !options.labelPlacements && measure === defaultMeasurer
+    && planLineLabels(env, domain, area, paints, text, reserves, undefined, []).endpointFallback) {
+    return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
+  }
   const scene = layoutLineMarks(env, domain, area, paints, text, reserves, warnings);
   // Every inline name must fit entirely inside the plot. When even one line of type is
   // taller, the fallback cannot name a drawn series and the key will carry the names.
@@ -1261,7 +1272,7 @@ function layoutLinePass(
       keepEnds: !env.isBump,
     })) } : {}),
     // A value reads as its own point's (label/ownership.ts); stacked values sit in their bands.
-    ...(domain.isStacked ? {} : {
+    ...(domain.isStacked || (!reserves.annList.length && !plan.labelRequests.some(request => request.kind === 'point')) ? {} : {
       pointOwnership: {
         points: scene.marks.series.flatMap((series) => series.points.map((p) => ({ seriesId: series.seriesId, categoryId: p.categoryId, x: p.x, y: p.y }))),
         categoryX: new Map(domain.cats.map((c, ci) => [c.id, area.xOf(ci)])),
@@ -1398,12 +1409,15 @@ function layoutLinePass(
  * one; the seats it found are handed out again in that order.
  */
 function keepEndValueOrder(placed: PlacedLabel[], requests: readonly LabelRequest[], pins: Readonly<Record<string, unknown>>, offsets: Readonly<Record<string, unknown>> | undefined): void {
+  const rightValues = placed.filter(label => label.kind === 'point' && label.hidden === undefined
+    && (label.slot === 'right' || label.slot.startsWith('rightStep')));
+  if (rightValues.length < 2) return;
   const index = new Map(requests.map((request, i) => [request.id, i]));
   const anchorOf = (label: PlacedLabel) => requests[index.get(label.id)!]?.candidates.find((candidate) => candidate.slot === label.slot)?.leaderFrom
     ?? { x: label.rect.x - 7, y: label.rect.y + label.rect.h / 2 };
   const groups = new Map<Id | undefined, PlacedLabel[]>();
-  for (const label of placed) {
-    if (label.kind !== 'point' || label.hidden !== undefined || !index.has(label.id) || pins[label.id] !== undefined || offsets?.[label.id] !== undefined || requests[index.get(label.id)!]?.pinnedSlot !== undefined || !(label.slot === 'right' || label.slot.startsWith('rightStep'))) continue;
+  for (const label of rightValues) {
+    if (!index.has(label.id) || pins[label.id] !== undefined || offsets?.[label.id] !== undefined || requests[index.get(label.id)!]?.pinnedSlot !== undefined) continue;
     groups.set(label.owner.categoryId, [...(groups.get(label.owner.categoryId) ?? []), label]);
   }
   for (const group of groups.values()) {
