@@ -8,7 +8,7 @@ import { structureCount } from '../../structureCounts';
  * Likert diverging survey (registry type 'likert') — a diverging
  * stacked bar centred on the neutral midpoint.
  *
- * This module DERIVES; it draws nothing. Every pixel comes from `layoutBar`
+ * This module DERIVES; it draws nothing. Every pixel comes from `layoutBarRows`
  * called with constructed input: one stacked series per emitted response
  * segment, signed so the disagree side grows left of zero, and a per-cell
  * `label` override carrying the POSITIVE display share so the sign flip never
@@ -65,9 +65,12 @@ import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
-import { layoutBar, stackedBarPlotHeight, surveyFootnoteRows, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
+import { layoutBarRows, stackedBarPlotHeight, type BarDerived, type BarMarks, type BarNaturalMinimum, type BarRowsForFrame } from '../bar/rows';
+import { rowLabelX, type Rect } from '../../geometry';
+import type { OccupiedIndex } from '../../label/occupied';
+import { drawBarIndicator, fixedRowWithFraction, positionBarLabels } from '../bar/rowOptions';
 import { hostedLayout } from '../../normalize/innerRefusal';
-import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK } from '../bar/model';
+import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK, type BarArea } from '../bar/model';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { repaintSeparation } from '../../markVisibility';
@@ -738,7 +741,7 @@ export function layoutLikert(
   const negativeEmissions: Emission[] = [];
   const positiveEmissions: Emission[] = [];
 
-  // INNERMOST FIRST on both sides: layoutBar stacks each side outward from
+  // INNERMOST FIRST on both sides: the bar layout stacks each side outward from
   // zero in series order, so the FIRST negative series sits adjacent to the
   // centre line. Emitting the scale in its natural order would therefore put
   // 'strongly disagree' INSIDE 'disagree' — the extreme option must end up
@@ -819,7 +822,7 @@ export function layoutLikert(
   ];
   /**
    * The split neutral is ONE response option drawn as two stack segments that
-   * meet at the centre line, and `layoutBar` builds one legend entry per data
+   * meet at the centre line, and the bar layout builds one legend entry per data
    * series, which would print SIX keys for a five-point scale, the middle two
    * identical in fill and in label. `dedupeLegendKeys` collapses keys that
    * agree in rendered appearance AND label, so the two neutral halves arrive
@@ -974,7 +977,7 @@ export function layoutLikert(
   const layoutWith = (rows: Rows) => {
     const check = reuseNaturalMinimum && !narrowNote && rows.bandFraction === defaultFraction && !rows.bandPad
       ? naturalMinimum : checkBarNaturalHeight;
-    const drawn = withBarOptions(rows, options => layoutBar(barData, options, annotationPass, check));
+    const drawn = withBarOptions(rows, options => layoutBarRows(barData, options, surveyBarFeatures, annotationPass, check));
     // The bar layout owes a hidden sliver's share to its generic note. Here a
     // share too narrow to print stays unlabelled: its length and colour show
     // it, and every side total and net is in the description (no prose list).
@@ -999,7 +1002,7 @@ export function layoutLikert(
     return { bandFraction: Math.min(0.9, thickness / step), bandPad: pad };
   };
   let rows: Rows = { bandFraction: defaultFraction };
-  const plotHeightWith = (initial: Rows) => withBarOptions(initial, options => stackedBarPlotHeight(barData, options, annotationPass));
+  const plotHeightWith = (initial: Rows) => withBarOptions(initial, options => stackedBarPlotHeight(barData, options, surveyBarFeatures, annotationPass));
   const probeRows = stacked && !ownTracks && !checkBarNaturalHeight;
   if (probeRows) rows = stackedRows(plotHeightWith(rows));
   let geo = layoutWith(rows);
@@ -1680,6 +1683,8 @@ function resolveLegend(
   return { ...asOptions, order };
 }
 
+const surveyBarFeatures = { intervals: undefined, topN: undefined, nameTrack: undefined, alignRow: rowLabelX, fixedRow: fixedRowWithFraction, indicator: drawBarIndicator, positionLabels: positionBarLabels };
+
 /** Keep Likert's reading order and typography when delegating to the bar engine. */
 function likertBarOptions(options: LikertOptions, labelSize: number): BaseOptions {
   const {
@@ -1701,4 +1706,31 @@ function likertBarOptions(options: LikertOptions, labelSize: number): BaseOption
   delete out.sort;
   delete out.topN;
   return { ...out, theme: statementLabelTheme(options.theme, labelSize) };
+}
+
+/** Reuse only the drawing below an equivalent frame. The survey owns one set of rows and column tracks. */
+function surveyFootnoteRows(): BarRowsForFrame<Geometry<BarMarks, BarDerived>> {
+  type Drawing = Geometry<BarMarks, BarDerived>;
+  type Entry = { frame: BarArea['frame']; plot: Rect; claims: ReturnType<OccupiedIndex['snapshot']>;
+    rows: BarArea['catLines']; before: LintWarning[]; geometry: Drawing; warnings: LintWarning[] };
+  const byBand = new Map<string, Entry>();
+  return (domain, area, occupied, warnings) => {
+    const { options, size } = domain;
+    const band = JSON.stringify([size.width, size.height, area.availH, options.bandFraction, (options as { [BAND_PAD]?: number })[BAND_PAD]]);
+    const old = byBand.get(band);
+    const claims = occupied.snapshot();
+    const frame = area.frame;
+    if (old && sameContent(old.plot, area.plot) && sameContent(old.rows, area.catLines)
+      && sameContent(old.frame.plot, frame.plot) && sameContent(old.frame.legend, frame.legend)
+      && sameContent(old.before, warnings) && sameContent(old.claims, claims) && sameContent(old.frame.nodes, frame.nodes)) {
+      return { result: { ...old.geometry, frame: frame.frame, legend: frame.legend,
+        labels: old.geometry.labels.map(label => ({ ...label })), warnings: [...warnings, ...old.warnings] } };
+    }
+    const start = warnings.length;
+    return { save(geometry) {
+      // The note pass changes labels and the caller can raise the reported natural height.
+      byBand.set(band, { frame, plot: area.plot, rows: area.catLines, claims, before: warnings.slice(0, start),
+        geometry: { ...geometry, labels: geometry.labels.map(label => ({ ...label })) }, warnings: warnings.slice(start) });
+    } };
+  };
 }

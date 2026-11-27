@@ -9,10 +9,9 @@ import { strokeToken, dashToken } from '../../theme';
 
 import { namedLineText } from '../../annotateParts';
 import { formatterFromExample } from '../../formatSpec';
-import type { Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
-import type { Annotation } from '../../types/annotations';
+import type { drawBarIndicator } from './rowOptions';
 import type { LintWarning, PlacedAnnotation, SceneNode } from '../../types/scene';
 import { valueLineValue } from './domain';
 import type { BarArea, BarDomain } from './model';
@@ -20,14 +19,14 @@ import { composedTextRole } from '../../textRole';
 import { SHARES_OF_ONE_WHOLE_FIX } from '../../stackAdds';
 import { percentLevels } from '../../annotatePass';
 
-interface BarLocalAnnotations {
+export interface BarLocalAnnotations {
   nodes: SceneNode[];
   claims: OccupiedIndex;
   requests: LabelRequest[];
   placed: PlacedAnnotation[];
 }
 
-export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warnings: LintWarning[]): BarLocalAnnotations {
+export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warnings: LintWarning[], indicator?: typeof drawBarIndicator): BarLocalAnnotations {
   const { size, measure, fmt, statFmt, meanValue } = domain;
   const { plot, x, strongFont } = area;
   const out: BarLocalAnnotations = {
@@ -108,66 +107,7 @@ export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warn
       });
       continue;
     }
-    indicator100(domain, area, ann, out);
+    indicator?.(domain, area, ann, out);
   }
   return out;
-}
-
-/** indicator100: a small tick above the plot at the 100% position, labelled "100%". */
-function indicator100(domain: BarDomain, area: BarArea, ann: Annotation, out: BarLocalAnnotations): void {
-  const { measure } = domain;
-  const { plot, x, tickFont } = area;
-  const { nodes, claims, requests, placed } = out;
-  const id = ann.id!;
-  const vx = x(100);
-  const tickId = `ann:${id}:tick`;
-  nodes.push({
-    t: 'line',
-    id: tickId,
-    x1: vx,
-    y1: plot.y - 12,
-    x2: vx,
-    y2: plot.y - 4,
-    stroke: { token: 'ink' },
-    width: strokeToken(domain.theme, 'rule'),
-    owner: { annotationId: id },
-    part: 'indicator100',
-  });
-  claims.claim({ x: vx - 1, y: plot.y - 12, w: 2, h: 8 }, 'annotation', { annotationId: id });
-  const text = '100%';
-  const tsize = measure(text, tickFont);
-  const side = (ann as { side?: 'left' | 'right' }).side ?? 'left';
-  const leftRect: Rect = {
-    x: vx - tsize.width - 5,
-    y: plot.y - tsize.height - 6,
-    w: tsize.width,
-    h: tsize.height,
-  };
-  const rightRect: Rect = { ...leftRect, x: vx + 5 };
-  requests.push({
-    id: `indicator100:${id}`,
-    kind: 'percentIndicator',
-    owner: { annotationId: id },
-    text,
-    lines: [text],
-    typeRole: 'label', font: tickFont,
-    priority: ann.priority ?? PRIORITY.valueLine,
-    candidates:
-      side === 'left'
-        ? [
-            { slot: 'left', rect: leftRect, penalty: 0 },
-            { slot: 'right', rect: rightRect, penalty: 1 },
-          ]
-        : [
-            { slot: 'right', rect: rightRect, penalty: 0 },
-            { slot: 'left', rect: leftRect, penalty: 1 },
-          ],
-  });
-  placed.push({
-    id,
-    kind: 'indicator100',
-    computedText: text,
-    nodeIds: [tickId],
-    labelId: `indicator100:${id}`,
-  });
 }

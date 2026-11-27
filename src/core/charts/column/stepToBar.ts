@@ -15,7 +15,7 @@ import { textScaleOf } from '../../typeFloors';
 import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import type { Geometry, LintWarning } from '../../types/scene';
-import { layoutBar } from '../bar/layout';
+import { layoutBarRows, type BarRowFeatures } from '../bar/rows';
 import { barChromeFloor } from '../bar/plot';
 import { BarTooTall, STOP_IF_TOO_TALL } from '../bar/model';
 import type { ColumnDerived, ColumnMarks } from './layout';
@@ -25,7 +25,7 @@ import type { AnomalyColumnOptions } from './types';
  * Options a bar draws as a column does. Every option not named here keeps the column. The last row holds keys the
  * engine adds to the request itself: a text measurer, the compact size floor and the footnotes as authored.
  */
-const SAME_OPTIONS = new Set([
+const SAME_OPTIONS = new Set<Exclude<keyof AnomalyColumnOptions | 'measure' | 'sizeFloor' | 'authoredFootnotes' | 'footnotesOff', ColumnDrops>>([
   'size', 'target', 'textScale', 'textSize', 'a11y', 'mode', 'margin', 'canvas', 'title', 'subtitle', 'unit', 'unitShown', 'source', 'footnotes', 'notes', 'theme', 'locale', 'format',
   'sort', 'highlight', 'focus', 'signColor', 'legend', 'valueLabels', 'labelDensity', 'averageMarker',
   'variant', 'referenceStyle', 'netLine', 'labels', 'strings', 'valueAxis', 'annotations',
@@ -87,6 +87,12 @@ export function withoutPatchesThatStep(data: ChartData, options: AnomalyColumnOp
   return column;
 }
 
+/** A stepped bar draws none of the optional bar parts. */
+const columnBarFeatures = { intervals: undefined, topN: undefined, nameTrack: undefined, alignRow: undefined, fixedRow: undefined, indicator: undefined, positionLabels: undefined };
+/** The option each bar part draws. The gate list cannot hold one whose part the column leaves undefined. */
+type SlotOption = { intervals: never; topN: 'topN'; nameTrack: 'columnOverrides'; alignRow: 'rowLabels'; fixedRow: 'bandFraction'; indicator: never; positionLabels: 'labelPosition' };
+type ColumnDrops = { [K in keyof BarRowFeatures]: undefined extends (typeof columnBarFeatures)[K] ? SlotOption[K] : never }[keyof BarRowFeatures];
+
 export function stepToBar(
   data: ChartData,
   options: AnomalyColumnOptions,
@@ -108,9 +114,9 @@ export function stepToBar(
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
   if (pinned && rowsExceed(names.length, options, column.size.height)) return undefined;
   // A pinned height the rows cannot fit stops the bar layout once its frame and rows are sized, before its marks and labels are built.
-  let bar: ReturnType<typeof layoutBar>;
+  let bar: ReturnType<typeof layoutBarRows>;
   try {
-    bar = layoutBar(data, (pinned ? { ...options, [STOP_IF_TOO_TALL]: true } : options) as BarOptions);
+    bar = layoutBarRows(data, (pinned ? { ...options, [STOP_IF_TOO_TALL]: true } : options) as BarOptions, columnBarFeatures);
   } catch (error) {
     if (error instanceof BarTooTall) return undefined;
     throw error;
@@ -130,7 +136,7 @@ export function stepToBar(
   return bar as unknown as Geometry<ColumnMarks, ColumnDerived>;
 }
 
-/** The bar row floor in px, before the text scale (barSizing in bar/layout.ts). */
+/** The bar row floor in px, before the text scale (barSizing in bar/rows.ts). */
 const BAR_ROW_FLOOR = 28;
 
 /**

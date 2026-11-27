@@ -1,46 +1,18 @@
-import { staticFrame } from '../../footer';
-import { refuseLabelPosition } from '../band/labelPosition';
-import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
+/** Native horizontal bars, including tornado drivers and football-field ranges. */
 import { chartPalette, chartTheme } from '../chartEnv';
-import { chartString } from '../../strings/bar';
+import { chartString } from '../../strings/barIntervals';
+import { chartString as barString } from '../../strings/bar';
 import { separationStroke, withSegmentSeams } from '../../markVisibility';
-import { stringFields, withLocaleStrings } from '../../strings';
+import { stringFields } from '../../strings';
 import { structureCount, type StructureCount } from '../../structureCounts';
-import type { PaintWarningRule } from '../../types/scene';
-/**
- * Bar — the horizontal twin of column.
- * Categories run top→down as rows, values run left→right from a vertical
- * zero baseline. Label policy is the bar-family cascade: inside-end →
- * outside-end (right of the bar); negatives extend left and label
- * outside-left. Variants: grouped | stacked | stacked100.
- */
-
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
-import { PARTIAL_KEY, partialIds, toDateRoom } from '../../partialPeriod';
-import { noTotal } from '../../stackAdds';
-import type { AnchorResolution, AnnotatePassInput, AnnotatePassResult } from '../../annotate';
-import { BAND_PAD, pruneOrphanAnnotationArms } from '../../annotateParts';
-import { emptyAnnotatePass, percentLevels, runAnnotatePass } from '../../annotatePass';
-import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
-import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { NOT_AVAILABLE } from '../../format';
 import { seriesRasterFormatter } from '../../formatSpec';
-import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect, type Size } from '../../geometry';
-import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
-import { stackParts, withoutShareAnnotations } from '../band/stacks';
+import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
-import {
-  labelCtx,
-  PRIORITY,
-  solveLabels,
-  type LabelRequest,
-  type SlotCandidate,
-  type SolveCtx,
-  type SolveResult,
-} from '../../label/solver';
+import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { accessibleTitle,
   NormalizeError,
   normalizeCategory,
@@ -51,119 +23,79 @@ import { accessibleTitle,
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
-import { HARD_MINIMUM, rowSizing, sameContent, SIZE_TOLERANCE } from '../../sizing';
-import { requestMemo } from '../../layoutPlan';
-import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
-import { rowDrivenHeight } from '../../rowCanvas';
-import { defaultMeasurer, isCachedTextMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
-import {
-  canvasMargin,
-  joinHatchPeers,
-  layoutStepKey,
-  markRolePaint,
-  paintColor,
-  panelTypeClass,
-  resolveTheme,
-  seriesPaint as themeSeriesPaint,
-  typeWidthClass,
-  emphasisWeight,
-  strokeToken,
-  dashToken,
-} from '../../theme';
-import type { AnchorRef } from '../../types/annotations';
+import { HARD_MINIMUM } from '../../sizing';
+import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
+import { canvasMargin, markRolePaint, paintColor, panelTypeClass, seriesPaint as themeSeriesPaint, typeWidthClass, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { cellMeta, cellValue, type CellMeta, type Id, type OwnerRef } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { BarOptions, LabelKind, LegendOptions } from '../../types/options';
-import type {
-  Geometry,
-  LintWarning,
-  Paint,
-  PlacedAnnotation,
-  PlacedLabel,
-  SceneNode,
-  ShownMark,
-} from '../../types/scene';
+import type { Geometry, LintWarning, Paint, PlacedAnnotation, SceneNode, ShownMark } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
-import { layoutBarLocalAnnotations } from './annotations';
-import { displayFor, prepareBar, textFor, toDateOnValues } from './domain';
-import { labelOn as barLabelOn, valueLineLabelsOn } from '../labelOn';
-import { planBarLabels } from './labels';
-import { layoutBarMarks } from './marks';
-import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
-import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
-import { barPlotArea, solveBarFrame, barPassText } from './plot';
-import { toleranceKeyed } from '../../valueLineDomain';
+import { labelOn as barLabelOn } from '../labelOn';
+import { CAT_BAND_GAP, CAT_MAX_LINES, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN } from './model';
 import { composedTextRole } from '../../textRole';
-import { withBandValueNotes } from '../band/valueNotes';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { emptyIdRecord } from '../../idRecords';
 import { ITEM_BUDGET } from '../../itemBudget';
+import { layoutBarRows, barSizing, baseValueIgnored, LABEL_PAD, naturalCategoryHeights, type BarAnnotationPass, type BarNaturalMinimum, type BarDerived, type BarMarks, type RowIntervalMode, type TornadoRowDerived } from './rows';
+import { applyBarTopN, barNameTrack, drawBarIndicator, fixedRowWithFraction, positionBarLabels } from './rowOptions';
 
-export interface BarMarks {
-  rows: { id: Id; rect: Rect; bars: { seriesId: Id; rect: Rect; nodeId: Id }[] }[];
-  referenceTicks: { seriesId: Id; categoryId: Id; nodeId: Id }[];
-  rowTints: { categoryId: Id; nodeId: Id }[];
-  ranges?: RangeMark[];
-  currentValue?: { value: number; nodeId: Id; labelId?: Id };
-  /** tornado only: the base-case spine. A different claim from currentValue. */
-  baseValue?: { value: number; nodeId: Id; labelId?: Id };
-  /** tornado only: the case texts the rows draw, stated for the driver's record (ShownMark). */
-  shown?: ShownMark[];
+export type { BarAnnotationPass, BarDerived, BarMarks, BarNaturalMinimum } from './rows';
+
+const barFeatures = {
+  intervals: layoutRowIntervals, topN: applyBarTopN, nameTrack: barNameTrack,
+  alignRow: rowLabelX, fixedRow: fixedRowWithFraction, indicator: drawBarIndicator, positionLabels: positionBarLabels,
+};
+
+/** The data-role series of a tornado (two cases) or a football field (one), or the refusal. */
+function intervalSeries(data: ChartData, mode: RowIntervalMode): ChartData['series'] {
+  const tornado = mode === 'tornado';
+  if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
+    throw new NormalizeError('empty-data', 'categories', tornado ? 'tornado requires at least one driver' : 'football-field requires at least one method', undefined, undefined, ['data', 'categories']);
+  }
+  if (!Array.isArray(data.series) || data.series.length === 0) {
+    throw new NormalizeError('empty-data', 'series', tornado ? 'tornado requires two case series' : 'football-field requires one data series', undefined, undefined, ['data', 'series']);
+  }
+  const series = data.series.filter((s) => (s.role ?? 'data') === 'data');
+  if (series.length !== (tornado ? 2 : 1)) {
+    throw new NormalizeError(
+      tornado ? 'tornado-two-series' : 'football-field-one-series',
+      'series',
+      tornado
+        ? `tornado requires exactly two data-role series (the low-input case and the high-input case), got ${series.length}`
+        : `football-field requires exactly one data-role series, got ${series.length}`,
+      undefined, undefined, ['data', 'series'],
+    );
+  }
+  return series;
 }
 
-/** One driver's one-at-a-time sensitivity receipt. Every field is derived. */
-interface TornadoRowDerived {
-  id: Id;
-  low: number;
-  high: number;
-  swing: number;
-  down: number;
-  up: number;
-  inverse: boolean;
-  straddles: boolean;
+function tornadoBaseRequired(): NormalizeError {
+  return new NormalizeError(
+    'tornado-base-required',
+    'options.baseValue',
+    'tornado requires options.baseValue: the output metric computed with every driver at its base input', undefined, undefined, ['options', 'baseValue'],
+  );
 }
 
-export interface BarDerived {
-  /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
-  roundingAdjustments?: import('../../shareRounding').RoundingAdjustment[];
-  /** Row totals; empty for grouped bars with several series and for a stack whose parts do not add. */
-  totals: Record<Id, number>;
-  /** The data-series parts of each total in totals, per category × series; absent on tornado and range bars. */
-  stackParts?: Record<Id, Record<Id, number>>;
-  /** stacked100 only: percent share per category per series. */
-  shares?: Record<Id, Record<Id, number>>;
-  /** Final category order after sort + topN. */
-  order: Id[];
-  /**
-   * Mean of grouped cells or stacked category totals (feeds valueLine 'mean').
-   * ABSENT when nothing is plotted: there is no mean of no values, and this is
-   * a receipt surface, so the key is omitted rather than reported as 0. Absent
-   * too for a stack whose parts do not add.
-   */
-  mean?: number;
-  /**
-   * tornado only. `method` is the receipt that this is a one-at-a-time
-   * sensitivity: there is deliberately NO contribution share, no share of
-   * variance and no decomposition, because OAT swings do not sum to a total
-   * and carry no interaction effects.
-   */
-  tornado?: {
-    baseValue: number;
-    method: 'one-at-a-time';
-    /**
-     * One entry per tied RANK GROUP. The silhouette ranks at the precision the
-     * exhibit prints, so rows whose swings the reader cannot tell apart share a
-     * rank; their drawn top-to-bottom order is a tie-break on the larger
-     * excursion from base, and that is a fact about the ordering the receipt
-     * has to carry rather than hide.
-     */
-    ties: { rank: number; categoryIds: Id[] }[];
-    rows: TornadoRowDerived[];
-  };
+/** No method of the football field has a range; `first` is the first method's index. */
+function footballRangeRequired(data: ChartData, options: BarOptions, series: ChartData['series'][number], first: number): NormalizeError {
+  return new NormalizeError(
+    'football-field-range-required',
+    `series[${series.id}].values[${first}].range`,
+    barString(options, 'footballRangeRequired'),
+    barString(options, 'footballRangeSuggest'),
+    undefined, ['data', 'series', data.series.indexOf(series), 'values'],
+  );
+}
+
+/** All native bar variants share the sizing and label passes used by column and Likert. */
+export function layoutBar(data: ChartData, options: BarOptions = {}, annotationPass?: BarAnnotationPass,
+  checkNaturalHeight: boolean | BarNaturalMinimum = true): Geometry<BarMarks, BarDerived> {
+  return layoutBarRows(data, options, barFeatures, annotationPass, checkNaturalHeight);
 }
 
 function warnRangeBarIgnoredRanking(
@@ -202,170 +134,8 @@ function warnRangeBarIgnoredRanking(
     });
   }
 }
-/** Internal adapter for charts whose displayed segments encode derived values. */
-export type BarAnnotationPass = ((input: AnnotatePassInput, marks: BarMarks) => AnnotatePassInput) & {
-  /** The adapter reads only annotations supplied by the bar. */
-  skipWhenEmpty?: boolean;
-  /** One survey layout can fit the same rows with a different disclosure footer. */
-  footnoteRows?: BarRowsForFrame<Geometry<BarMarks, BarDerived>>;
-};
-type BarRowsForFrame<R> = (domain: BarDomain, area: BarArea, claims: OccupiedIndex, warnings: LintWarning[]) =>
-  { result: R } | { save: (result: R) => void };
-
-/** Reuse only the drawing below an equivalent frame. The survey owns one set of rows and column tracks. */
-export function surveyFootnoteRows(): BarRowsForFrame<Geometry<BarMarks, BarDerived>> {
-  type Drawing = Geometry<BarMarks, BarDerived>;
-  type Entry = { frame: BarArea['frame']; plot: Rect; claims: ReturnType<OccupiedIndex['snapshot']>;
-    rows: BarArea['catLines']; before: LintWarning[]; geometry: Drawing; warnings: LintWarning[] };
-  const byBand = new Map<string, Entry>();
-  return (domain, area, occupied, warnings) => {
-    const { options, size } = domain;
-    const band = JSON.stringify([size.width, size.height, area.availH, options.bandFraction, (options as { [BAND_PAD]?: number })[BAND_PAD]]);
-    const old = byBand.get(band);
-    const claims = occupied.snapshot();
-    const frame = area.frame;
-    if (old && sameContent(old.plot, area.plot) && sameContent(old.rows, area.catLines)
-      && sameContent(old.frame.plot, frame.plot) && sameContent(old.frame.legend, frame.legend)
-      && sameContent(old.before, warnings) && sameContent(old.claims, claims) && sameContent(old.frame.nodes, frame.nodes)) {
-      return { result: { ...old.geometry, frame: frame.frame, legend: frame.legend,
-        labels: old.geometry.labels.map(label => ({ ...label })), warnings: [...warnings, ...old.warnings] } };
-    }
-    const start = warnings.length;
-    return { save(geometry) {
-      // The note pass changes labels and the caller can raise the reported natural height.
-      byBand.set(band, { frame, plot: area.plot, rows: area.catLines, claims, before: warnings.slice(0, start),
-        geometry: { ...geometry, labels: geometry.labels.map(label => ({ ...label })) }, warnings: warnings.slice(start) });
-    } };
-  };
-}
-
-export type BarNaturalMinimum = (width: number, height: number, drawMinimum: () => number | undefined) => number | undefined;
-
-const LABEL_PAD = 2;
 /** The current-value claim is x±0.5 because the rule has width 1. */
 const SPINE_CLAIM_HALF_WIDTH = 0.5;
-
-export function layoutBar(
-  data: ChartData,
-  options: BarOptions = {},
-  annotationPass?: BarAnnotationPass,
-  checkNaturalHeight: boolean | BarNaturalMinimum = true,
-): Geometry<BarMarks, BarDerived> {
-  const dropped: LintWarning[] = [];
-  options = barOptionsForLayout(options, dropped);
-  const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
-  // A content-fit host often asks for exactly the shorter chart we drew to check its
-  // minimum. Keep that private drawing for one retry, including its fitted notes.
-  // Once returned, the chart belongs to its caller and cannot be handed out again.
-  const retry = options.variant === 'stacked' && annotationPass === undefined && checkNaturalHeight === true
-    && isCachedTextMeasurer(options.measure ?? defaultMeasurer)
-    ? requestMemo(data, JSON.stringify(['bar-natural-retry', layoutStepKey(), staticFrame.pinned, staticFrame.live, currentSmallValues(), formatScopeKey(options)]),
-      (): { next?: { options: BarOptions; geometry: Geometry<BarMarks, BarDerived> } } => ({}))
-    : undefined;
-  const next = retry?.next;
-  if (retry) delete retry.next;
-  const geo = next && sameContent(next.options, options) ? next.geometry : withBandValueNotes(data, options, layout);
-  const natural = geo.sizing?.naturalHeight;
-  if (checkNaturalHeight && natural !== undefined && natural < geo.size.height) {
-    // a shorter row layout may need a disclosure that the tall layout did not.
-    const drawMinimum = () => {
-      const shorter = { ...options, size: { width: geo.size.width, height: natural } };
-      const geometry = withBandValueNotes(data, shorter, layout);
-      if (retry) retry.next = { options: shorter, geometry };
-      return geometry.sizing?.minHeight;
-    };
-    const minimum = typeof checkNaturalHeight === 'function' ? checkNaturalHeight(geo.size.width, natural, drawMinimum) : drawMinimum();
-    if (minimum !== undefined && minimum > natural) geo.sizing = { ...geo.sizing!, naturalHeight: minimum };
-  }
-  geo.warnings.push(...dropped);
-  return geo;
-}
-
-function barOptionsForLayout(options: BarOptions, dropped: LintWarning[]): BarOptions {
-  const variant = options.variant ?? 'grouped';
-  if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
-    variant === 'stacked' || variant === 'stacked100' ? ['center', 'insideEnd', 'insideBase'] : []);
-  return withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
-}
-
-/** The stacked Likert row probe needs the plot after hidden values have taken their footer space. */
-export function stackedBarPlotHeight(data: ChartData, options: BarOptions, annotationPass: BarAnnotationPass): number {
-  options = barOptionsForLayout(options, []);
-  refuseSignColor(data, options);
-  return withBandValueNotes(data, options, next => layoutStandardBar(data, next, annotationPass, barPlotWithNotes)).plot.h;
-}
-
-function barPlotWithNotes(_domain: BarDomain, area: BarArea, _scene: BarMarkGeometry, solved: SolveResult, annotated: AnnotatePassResult) {
-  return {
-    plot: area.plot,
-    labels: [...solved.placed, ...annotated.labels],
-    frame: area.frame.frame,
-    scene: area.frame.nodes,
-    a11y: {},
-  };
-}
-
-function layoutBarSized(
-  data: ChartData,
-  options: BarOptions,
-  annotationPass?: BarAnnotationPass,
-): Geometry<BarMarks, BarDerived> {
-  const first = layoutBarVariant(data, options, annotationPass);
-  if (!resolveTheme(options.theme).space.barRow || first.sizing === undefined) return first;
-  const relayout = (height: number) =>
-    layoutBarVariant(data, { ...options, size: { width: first.size.width, height } }, annotationPass);
-  // Fixed rows make bar a row-driven exhibit: unsized, it takes the
-  // canvas its rows need, as a table or a bullet card does.
-  const grow = rowDrivenHeight({
-    options, width: first.size.width, height: first.size.height,
-    chromeH: 0, rowsH: first.sizing.naturalHeight,
-  });
-  return fixedRowsAtTop(grow === undefined ? first : relayout(grow), relayout);
-}
-
-/**
- * Fixed bar rows on a canvas taller than the chart: the chart is
- * laid out again at its natural height and keeps the canvas it was given, so
- * the rows, the axis and the notes stay together at the top and the rest of
- * the canvas stays empty, where a content-fit chart leaves its host's air.
- */
-function fixedRowsAtTop(
-  geometry: Geometry<BarMarks, BarDerived>,
-  relayout: (height: number) => Geometry<BarMarks, BarDerived>,
-): Geometry<BarMarks, BarDerived> {
-  const natural = geometry.sizing?.naturalHeight;
-  if (natural === undefined || natural >= geometry.size.height) return geometry;
-  return { ...relayout(natural), size: geometry.size };
-}
-
-function layoutBarVariant(
-  data: ChartData,
-  options: BarOptions,
-  annotationPass?: BarAnnotationPass,
-): Geometry<BarMarks, BarDerived> {
-  refuseSignColor(data, options);
-  if (options.variant === 'tornado') {
-    refuseTornadoDetails(data, options);
-    return layoutTornado(data, options as TornadoBarOptions);
-  }
-  if (options.variant === 'football-field') {
-    const fieldGeometry = layoutFootballField(data, options as FootballFieldBarOptions);
-    if (options.baseValue !== undefined) fieldGeometry.warnings.push(baseValueIgnored());
-    return fieldGeometry;
-  }
-  const geometry = layoutStandardBar(data, options as BarOptions, annotationPass, assembleBarGeometry, annotationPass?.footnoteRows);
-  if (options.currentValue !== undefined) {
-    geometry.warnings.push({
-      code: 'current-value-ignored',
-      severity: 'warn',
-      message: 'currentValue applies only to bar variant football-field and was ignored',
-      suggest: "set variant: 'football-field' or remove currentValue",
-    });
-  }
-  if (options.baseValue !== undefined) geometry.warnings.push(baseValueIgnored());
-  return geometry;
-}
-
 /**
  * A tornado row joins a low and a high case into one swing, so no one cell's
  * details describe it; refusing beats a card that silently drops them.
@@ -383,395 +153,6 @@ function refuseTornadoDetails(data: ChartData, options: BarOptions): void {
     "remove the details and detailFields, or draw the cases with variant 'grouped'",
   );
 }
-
-/**
- * signColor preconditions, as on column (fail closed, before any geometry). A
- * stacked segment's sign does not describe its stack, and a range bar has no
- * sign; silently ignoring the option would leave the agent reporting a
- * sign-coloured exhibit that is not one.
- */
-function refuseSignColor(data: ChartData, options: BarOptions): void {
-  if (options.signColor !== true) return;
-  const variant = options.variant ?? 'grouped';
-  const dataSeries = data.series.filter((s) => s.role !== 'reference').length;
-  if (variant === 'grouped' && dataSeries === 1) return;
-  throw new NormalizeError(
-    'sign-color-unsupported',
-    'options.signColor',
-    `signColor requires variant 'grouped' with exactly one data-role series; got variant '${variant}' with ${dataSeries} data-role series`,
-    'drop signColor, or split the stack into one bar chart per measure', undefined, ['options', 'signColor'],
-  );
-}
-
-/** Mirror of current-value-ignored: baseValue is a tornado-only claim. */
-function baseValueIgnored(): LintWarning {
-  return {
-    code: 'base-value-ignored',
-    severity: 'warn',
-    message: 'baseValue applies only to bar variant tornado and was ignored',
-    suggest: "set variant: 'tornado' (and options.tornado naming the two case series) or remove baseValue",
-  };
-}
-
-function barSizing(
-  size: Size, area: Pick<BarArea, 'availH' | 'plot' | 'minWidth'>, step: number, labels: { h: number }[],
-  naturalLabels = labels, fixedRowsH?: number, segmentStep = 0, targetSizing = false, textScale = 1, segmentMinStep = segmentStep, compactRows = false,
-) {
-  const { availH, plot, minWidth } = area;
-  // The 28 px row floor holds a value at the label size, so it scales with the text:
-  // at textScale 1.25 an unscaled floor sent every value to the compact font.
-  const floor = compactRows ? 0 : 28 * textScale;
-  // Fixed rows need exactly their own height, no less and no more.
-  // reserve the solver's gap as well as the measured row and segment text.
-  const labelGap = targetSizing || compactRows ? 4 : 0;
-  const minimumRowsH = fixedRowsH ?? (plot.h / step) * Math.max(floor, targetSizing || compactRows ? segmentMinStep : 0, maxOf(labels.map((label) => label.h + labelGap)));
-  return rowSizing('bar', size, {
-    chromeH: size.height - availH,
-    minWidth,
-    minimumRowsH,
-    // At its natural height a bar is thick enough for its segment labels.
-    naturalRowsH: fixedRowsH ?? (plot.h / step) * Math.max(floor, segmentStep, maxOf(naturalLabels.map((label) => label.h + labelGap))),
-  });
-}
-
-/** Phase 4, second half: the shared annotation pass, anchored on the drawn bars (horizontal value axis). */
-function annotateBar(
-  domain: BarDomain,
-  area: BarArea,
-  scene: BarMarkGeometry,
-  occupied: OccupiedIndex,
-  solveCtx: SolveCtx,
-  annotationPass: BarAnnotationPass | undefined,
-): AnnotatePassResult {
-  const { cats } = domain;
-  const { plot, x0, band } = area;
-  const resolve = (ref: AnchorRef): AnchorResolution | null => {
-    const norm = typeof ref === 'string' ? { categoryId: ref, edge: 'total' as const } : ref;
-    if (!('categoryId' in norm)) return null;
-    if (norm.seriesId) {
-      const found = scene.anchorBySeg?.get(`${norm.categoryId}:${norm.seriesId}`);
-      if (!found) return null;
-      const named = [...domain.dataSeries, ...domain.refSeries].find((s) => s.id === norm.seriesId);
-      const cell = named?.cells[cats.findIndex((c) => c.id === norm.categoryId)];
-      const seg = { ...found, format: named?.format, ...(named && cell && domain.variant !== 'stacked100' ? { markValueText: displayFor(domain, found.value, cell, undefined, named) } : {}),
-        ...(named && domain.dataSeries.length > 1 ? { series: { id: named.id, label: named.label } } : {}) };
-      if (norm.edge === 'start') return { ...seg, x: x0 };
-      return seg;
-    }
-    // Grouped bars with several series: one series, as column does.
-    if (domain.variant === 'grouped' && domain.dataSeries.length > 1 && norm.edge !== 'start') {
-      const anchorSeries = domain.dataSeries.find((x) => domain.highlights.has(x.id)) ?? domain.dataSeries[0]!;
-      return resolve({ categoryId: norm.categoryId, seriesId: anchorSeries.id });
-    }
-    const found = scene.anchorByCat?.get(norm.categoryId);
-    if (!found) return null;
-    const cat = { ...found, format: domain.dataSeries.length === 1 ? domain.dataSeries[0]!.format : undefined };
-    if (norm.edge === 'start') return { ...cat, x: x0, value: 0 };
-    // a stack whose parts do not add, or that has a blank part, keeps its seat and has no value.
-    return { ...cat, ...noTotal(domain.partsAdd, domain.stacks[cats.findIndex((c) => c.id === norm.categoryId)]!.hasValue && !domain.incompleteRows.has(norm.categoryId)) };
-  };
-  const passInput: AnnotatePassInput = {
-    target: domain.options.target,
-    annotations: domain.passAnns,
-    resolve,
-    defaultSpan:
-      cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
-    occupied,
-    plot,
-    bandCeiling: area.frame.plot.y,
-    theme: domain.theme,
-    measure: domain.measure,
-    ...barPassText(domain),
-    toleranceKeyed: toleranceKeyed(domain.passAnns, area.frame.legend?.items),
-    sharesFormat: domain.variant === 'stacked100',
-    valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
-    valueLineLabels: valueLineLabelsOn(domain.options),
-    solveCtx,
-    meanValue: domain.meanValue,
-    ...(domain.meanMissing ? { meanMissing: domain.meanMissing } : {}),
-    xScale: area.x,
-    ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
-    valueAxis: 'horizontal',
-    calloutRowPitch: band.step,
-    partialCategories: partialIds(cats),
-    ...(!annotationPass && cagrInset(domain) ? { barInset: { gapWord: chartString(domain.options, 'gapLead') } } : {}),
-  };
-  if (annotationPass) return runAnnotatePass(annotationPass(passInput, scene.marks));
-  // A plain bar's CAGR arm and its label stand in the room reserved right of
-  // the plot (RIGHT_ROOM or the CAGR default), so the arm reaches into it.
-  const room = area.frame.plot.x + area.frame.plot.w - (plot.x + plot.w);
-  return runAnnotatePass(room > 0 ? { ...passInput, plot: { ...plot, w: plot.w + room } } : passInput);
-}
-
-/**
- * The two halves of a split option (likert's neutral) in one row are one block: the pair rule
- * for it, none without halves, so the seam pass can take its edge buckets.
- */
-function halvesOfOneBlock(halves: { neg: string; pos: string } | undefined) {
-  if (halves === undefined) return undefined;
-  return (a: OwnerRef, b: OwnerRef) => a.categoryId === b.categoryId
-    && ((a.seriesId === halves.neg && b.seriesId === halves.pos) || (a.seriesId === halves.pos && b.seriesId === halves.neg));
-}
-
-/** The sizing of a standard bar; the natural heights only set its natural height, not its minimum. */
-function standardBarSizing(domain: BarDomain, area: BarArea, naturalLabels: { h: number }[]) {
-  const { options, size } = domain;
-  const hardMinimum = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true;
-  return barSizing(size, area, area.band.step, area.catLines, naturalLabels, area.fixedRowsH, area.segmentStep, !hardMinimum, textScaleOf(options), area.segmentMinStep,
-    domain.incompleteRows.size > 0 && options.mode === 'compact' && hardMinimum);
-}
-
-/** Phase 5: label nodes, the adjacency lint, the receipts, the sizing and the accessible text. */
-function assembleBarGeometry(
-  domain: BarDomain,
-  area: BarArea,
-  scene: BarMarkGeometry,
-  solved: SolveResult,
-  annotated: AnnotatePassResult,
-  placedAnnotations: PlacedAnnotation[],
-  occupied: OccupiedIndex,
-  warnings: LintWarning[],
-  /** Record texts a label prints for another owner, by label id (planBarLabels). */
-  stated: ReadonlyMap<Id, Omit<ShownMark, 'drawn'>>,
-): Geometry<BarMarks, BarDerived> {
-  const { options, theme, size, measure, variant, cats, dataSeries, fmt, totalFmt, totals, shares, meanValue } = domain;
-  const { tickFont, labelFont, strongFont, band } = area;
-  const { nodes } = scene;
-  const allLabels: PlacedLabel[] = [...solved.placed, ...annotated.labels];
-  spliceAnnotationNodes(nodes, annotated.nodes);
-  pushAll(
-    nodes,
-    labelsToNodes(theme, allLabels, (l) =>
-      l.kind === 'grandTotal' || l.kind === 'total'
-        ? strongFont
-        : l.kind === 'category' || l.kind === 'percentIndicator' || l.kind === 'tick'
-          ? tickFont
-          : l.kind === 'annotation' || l.kind === 'valueLine'
-            ? strongFont
-            : l.kind === 'point'
-              ? area.pointFont
-              : labelFont, nodes,
-    ),
-  );
-  const paintWarningRules: PaintWarningRule[] = [];
-  pushAll(warnings, rectSeriesAdjacentWarnings(nodes, (paint) => paintColor(theme, paint), 'horizontal', domain.highlights, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length },
-    (options as { [DEFER_ADJACENT]?: boolean })[DEFER_ADJACENT] !== true));
-  const totalsById: Record<Id, number> = emptyIdRecord();
-  // Receipt value: the engine's raw answer (see receiptValue), not a rounded
-  // one.
-  // A row with no value has no total: omitted, not a certified 0.
-  // grouped bars with several series, and a stack whose parts do not
-  // add, have no total to certify or read out; one series is its own total.
-  const totalsAdd = dataSeries.length === 1 || (variant !== 'grouped' && domain.partsAdd);
-  if (totalsAdd) cats.forEach((c, ci) => { if (domain.stacks[ci]!.hasValue) totalsById[c.id] = receiptValue(totals[ci]!); });
-  const sharesById: Record<Id, Record<Id, number>> | undefined =
-    variant === 'stacked100'
-      ? Object.fromEntries(
-          cats.map((c, ci) => [
-            c.id,
-            // Shares are already scale-free percentages, so round2 is not a unit
-            // hazard here — but it IS a receipt, and a receipt that disagrees with
-            // the printed share on the third decimal is still a receipt that cannot
-            // be recomputed. Raw for the same reason as the totals above.
-            Object.fromEntries(dataSeries.map((s, si) => [s.id, receiptValue(shares[ci]![si]!)])),
-          ]),
-        )
-      : undefined;
-  const variantWord =
-    variant === 'grouped' ? chartString(options, 'groupedCapital') : variant === 'stacked' ? chartString(options, 'stackedCapital') : chartString(options, 'stacked100');
-  // A label that prints the value of another owner (a one-part stack's total): where it is drawn, the record takes its text.
-  const shown: ShownMark[] = [];
-  const drawnForPart = new Map<Id, string>();
-  for (const label of allLabels) {
-    const text = label.hidden === undefined ? stated.get(label.id) : undefined;
-    if (!text) continue;
-    shown.push({ ...text, drawn: true });
-    drawnForPart.set(text.owner.categoryId!, label.text);
-  }
-  // One series reads out each value as its label prints it: the cell or
-  // series format and an authored label, not the chart format alone; a value
-  // its stack's total prints reads as the total prints it.
-  const oneValueText = (ci: number): string | null => {
-    const s = dataSeries.length === 1 ? dataSeries[0]! : undefined;
-    const cell = s?.cells[ci];
-    if (!s || !cell || cell.v === null) return null;
-    return drawnForPart.get(cats[ci]!.id) ?? textFor(domain, cell.v, cell, undefined, s) ?? displayFor(domain, cell.v, cell, undefined, s);
-  };
-  // A share reads as its drawn label prints it (the label's ShownTexts); a share drawn nowhere keeps the share format.
-  const drawnShares = new Map<string, string>();
-  for (const label of allLabels) {
-    const text = label.hidden === undefined ? label.shows?.['share.percent'] : undefined;
-    if (text !== undefined) drawnShares.set(`${label.owner.categoryId}\0${label.owner.seriesId}`, text);
-  }
-  // A category with no value at all has no total; the description says so
-  // rather than read out a zero.
-  const a11yDesc = cats
-    .map((c, ci) =>
-      !domain.stacks[ci]!.hasValue
-        ? `${c.label} ${NOT_AVAILABLE}`
-        : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${drawnShares.get(`${c.id}\0${s.id}`) ?? domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
-          : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
-    )
-    .join(', ');
-  return {
-    type: 'bar',
-    size,
-    sizing: standardBarSizing(domain, area, naturalCategoryHeights(cats, tickFont, area.capW, measure)),
-    plot: area.plot,
-    scene: withSegmentSeams(joinHatchPeers(nodes), theme, halvesOfOneBlock(barHalves(options))),
-    labels: allLabels,
-    axes: [
-      {
-        axis: 'y',
-        baselineNodeId: 'axis:baseline',
-        ticks: cats.map((c, i) => ({ at: c.id, pos: band.center(i), labelId: `category:${c.id}` })),
-      },
-      ...scene.axes,
-    ],
-    annotations: [...placedAnnotations, ...annotated.placed],
-    legend: area.frame.legend,
-    frame: area.frame.frame,
-    marks: shown.length > 0 ? { ...scene.marks, shown } : scene.marks,
-    derived: {
-      totals: totalsById,
-      stackParts: stackParts(totalsById, cats, dataSeries, (si, ci) => dataSeries[si]!.cells[ci]!.v),
-      ...(sharesById ? { shares: sharesById } : {}),
-      ...(domain.roundingAdjustments.length > 0 ? { roundingAdjustments: domain.roundingAdjustments } : {}),
-      order: cats.map((c) => c.id),
-      // Omitted rather than 0 when nothing is plotted: `derived` is a receipt
-      // surface, and a fabricated 0 there is a number the engine certifies but
-      // the data never produced.
-      ...(meanValue === undefined ? {} : { mean: receiptValue(meanValue) }),
-    },
-    a11y: {
-      titleCounts: [structureCount('categories', cats.length, undefined, options)],
-      title: accessibleTitle(options.title, chartString(options, 'barTitle', { v1: cats.length })),
-      counts: [structureCount('series', dataSeries.length, undefined, options)],
-      desc:
-        chartString(options, 'barDesc', { v1: variantWord, v2: dataSeries.length, v3: totalsAdd ? ` ${a11yDesc}.` : '' }) +
-        (scene.rangeMarks.length
-          ? chartString(options, 'rangesClause', { v1: scene.rangeMarks
-              .map((range) => chartString(options, 'namedRange', { v1: range.categoryId, v2: fmt(range.low), v3: fmt(range.high) }))
-              .join(', ') })
-          : ''),
-    },
-    warnings,
-    paintWarningRules,
-    debug: {
-      occupied: occupied.snapshot(),
-      decisions: [...solved.decisions, ...annotated.decisions],
-    },
-  };
-}
-
-/**
- * The standard variants (grouped, stacked, stacked100) run five phases:
- * domain and scales (domain.ts, paints.ts, plot.ts), mark geometry
- * (marks.ts), label planning (labels.ts), the annotations (bar's own vertical
- * valueLines and indicator100 in annotations.ts before the solver, the shared
- * runAnnotatePass after it), and the geometry assembly above. The frame's own
- * index becomes the run's index; the marks and the local annotations claim
- * into indexes of their own, which this function replays in claim order.
- */
-const BAND_TRIES = Symbol('bandTries');
-
-function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>(
-  data: ChartData,
-  options: BarOptions,
-  annotationPass: BarAnnotationPass | undefined,
-  finish: (...parts: Parameters<typeof assembleBarGeometry>) => R,
-  rowsForFrame?: BarRowsForFrame<R>,
-): R {
-  const warnings: LintWarning[] = [];
-  const reuseData = annotationPass === undefined || (annotationPass.skipWhenEmpty === true && !options.annotations?.length && !options.averageMarker);
-  const { domain, paints } = prepareBar(data, options, warnings, reuseData);
-  const framed = solveBarFrame(domain, paints, warnings);
-  const occupied = framed.claims;
-  const area = barPlotArea(domain, framed.frame, warnings);
-  // The cut row names go to the notes once; the note moves the plot, so the chart refits.
-  if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
-    return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass, finish, rowsForFrame);
-  }
-  // A caller that keeps the bar only when its rows fit (STOP_IF_TOO_TALL) learns it now, before the marks and labels cost anything.
-  if ((options as { [STOP_IF_TOO_TALL]?: boolean })[STOP_IF_TOO_TALL] === true
-    && standardBarSizing(domain, area, area.catLines).minHeight > domain.size.height + SIZE_TOLERANCE) throw new BarTooTall();
-  const needsAnnotationPass = domain.passAnns.length > 0 || !isCachedTextMeasurer(domain.measure)
-    || (annotationPass !== undefined && !annotationPass.skipWhenEmpty);
-  const rows = rowsForFrame && !needsAnnotationPass && !domain.localAnns.length && domain.running.size === 0
-    ? rowsForFrame(domain, area, occupied, warnings) : undefined;
-  if (rows && 'result' in rows) return rows.result;
-  const scene = layoutBarMarks(domain, paints, area, needsAnnotationPass);
-  const local = layoutBarLocalAnnotations(domain, area, warnings);
-  pushAll(scene.nodes, local.nodes);
-  for (const c of [...scene.claims.snapshot(), ...local.claims.snapshot()]) occupied.claim(c.rect, c.kind, c.owner, c.part);
-  const { size, theme } = domain;
-  const solveCtx: SolveCtx = labelCtx(theme, size, options, {
-    measure: domain.measure,
-    plot: area.plot,
-    labelPad: 2,
-    // values valueLabels picks are no scatter; each one that cannot sit goes to the note alone.
-    seriesUniform: pickedValues(options) ? undefined : bandValueLabelUniformity(),
-  });
-  // the value-axis title is a label under the tick row, solved first.
-  const titleRequests = area.axisTitle && area.axisTitleAt && options.valueAxis?.show
-    ? [valueAxisTitleRequest(area.axisTitle, area.axisTitleAt, 'end', 'axis:x:title')]
-    : [];
-  const stated = new Map<Id, Omit<ShownMark, 'drawn'>>();
-  const values = keepValuesWithoutAxis(planBarLabels(domain, paints, area, scene, warnings, stated), solveCtx.density, options.valueAxis?.show === true);
-  const solved = solveLabels([...titleRequests, ...values, ...local.requests], occupied, solveCtx);
-  // A running period keeps a cue: a to-date value without a seat, or a value and words taller than the drawn row, bring the hatch key back.
-  const toDate = toDateOnValues(domain);
-  const toDateRoomH = toDateRoom(area.band.bandwidth);
-  if (toDate.size > 0 && solved.placed.some((l) => (l.kind === 'grandTotal' || l.kind === 'point') && toDate.has(l.owner.categoryId ?? '')
-    && (l.hidden !== undefined || l.rect.h > toDateRoomH))) {
-    return layoutStandardBar(data, { ...options, [PARTIAL_KEY]: true } as BarOptions, annotationPass, finish);
-  }
-  applyValueAxisTitleInk(solved.placed);
-  // A reference value reads muted, apart from the bar's own value.
-  for (const label of solved.placed) if (label.id.startsWith('tick:') && !label.hidden) label.ink = { token: 'inkMuted' };
-  pushAll(warnings, solved.warnings);
-  // Prune the local indicator when its label hides.
-  pruneOrphanAnnotationArms(scene.nodes, local.placed, solved.placed);
-  const annotated = needsAnnotationPass
-    ? annotateBar(domain, area, scene, occupied, solveCtx, annotationPass)
-    : emptyAnnotatePass();
-  // A CAGR arm too near its bars to give its arrow end the minimum shaft
-  // (MIN_LEG) gets the room it lacked, over at most three more layouts.
-  const room = (options as { [RIGHT_ROOM]?: number; [CAGR_TRIES]?: number; [BAND_PAD]?: number; [BAND_TRIES]?: number });
-  if (annotated.legDeficit > 0.5 && !annotationPass && (room[CAGR_TRIES] ?? 0) < 3
-    && (room[RIGHT_ROOM] === undefined || room[CAGR_TRIES] !== undefined)) {
-    return layoutStandardBar(data, {
-      ...options,
-      [RIGHT_ROOM]: (room[RIGHT_ROOM] ?? (cagrInset(domain) ? CAGR_INSET_ROOM : CAGR_ROOM)) + Math.ceil(annotated.legDeficit) + 2,
-      [CAGR_TRIES]: (room[CAGR_TRIES] ?? 0) + 1,
-    } as BarOptions, annotationPass, finish);
-  }
-  // Room reserved right of the plot for a CAGR arm that is not drawn
-  // (its label found no seat) goes back to the plot, in one more layout.
-  const cagrs = annotated.placed.filter((placed) => placed.kind === 'cagr');
-  const cagrHidden = cagrs.length > 0 && cagrs.every((placed) => annotated.labels.some((label) => label.id === placed.labelId && label.hidden));
-  // Type steps: a hidden CAGR label first gets one more layout with wider room, then the room goes back.
-  if (!annotationPass && cagrHidden && room[RIGHT_ROOM] !== 0 && (room[CAGR_TRIES] ?? 0) < 3 && cagrInset(domain)) {
-    const wider = layoutStandardBar(data, { ...options, [RIGHT_ROOM]: (room[RIGHT_ROOM] ?? CAGR_INSET_ROOM) + 24, [CAGR_TRIES]: 3 } as BarOptions, annotationPass, finish);
-    if (!wider.refused && wider.labels.some((label) => cagrs.some((placed) => placed.labelId === label.id) && !label.hidden)) return wider;
-  }
-  if (!annotationPass && room[RIGHT_ROOM] !== 0 && cagrHidden) {
-    return layoutStandardBar(data, { ...options, [RIGHT_ROOM]: 0, [CAGR_TRIES]: 3 } as BarOptions, annotationPass, finish);
-  }
-  if (annotated.bandNeed > 0 && (room[BAND_TRIES] ?? 0) < 2) {
-    return layoutStandardBar(data, {
-      ...options,
-      [BAND_PAD]: (room[BAND_PAD] ?? 0) + Math.ceil(annotated.bandNeed),
-      [BAND_TRIES]: (room[BAND_TRIES] ?? 0) + 1,
-    } as BarOptions, annotationPass, finish);
-  }
-  pushAll(warnings, annotated.warnings);
-  const result = finish(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
-  rows?.save(result);
-  return result;
-}
-
 /* ------------------------------------------------------------------------ *
  * Row-interval skeleton — shared by variant 'football-field' and 'tornado'.
  *
@@ -783,8 +164,6 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
  * shared. A second copy of this engine would drift from its twin, so the mode
  * hooks stay data, not code.
  * ------------------------------------------------------------------------ */
-
-type RowIntervalMode = 'football-field' | 'tornado';
 
 /** Exactly what normalizeCategory returns; its label stays optional. */
 type RowCat = ReturnType<typeof normalizeCategory>;
@@ -898,6 +277,19 @@ interface RowPlanCtx {
   highlights: Set<Id>;
 }
 
+function tornadoEndpointCandidates(
+  side: RowEndpoint['side'], at: number, size: { width: number; height: number },
+  center: number, rowY: number, barHeight: number,
+): SlotCandidate[] {
+  const { width: w, height: h } = size;
+  const low = side === 'low';
+  const centered = at - w / 2;
+  return [
+    { slot: low ? 'outsideLow' : 'outsideHigh', rect: { x: low ? at - LABEL_GAP - w : at + LABEL_GAP, y: center - h / 2, w, h }, penalty: 0 },
+    { slot: low ? 'aboveLow' : 'aboveHigh', rect: { x: centered, y: rowY - h - 3, w, h }, penalty: 1 },
+    { slot: low ? 'belowLow' : 'belowHigh', rect: { x: centered, y: rowY + barHeight + 3, w, h }, penalty: 2 },
+  ];
+}
 
 function outsideLaneCandidates(
   side: RowEndpoint['side'],
@@ -968,18 +360,12 @@ function outsideLaneCandidates(
   return candidates;
 }
 
-function layoutFootballField(
-  data: ChartData,
-  options: FootballFieldBarOptions,
-): Geometry<BarMarks, BarDerived> {
-  return layoutRowIntervals(data, options, 'football-field');
-}
-
-function layoutTornado(
-  data: ChartData,
-  options: TornadoBarOptions,
-): Geometry<BarMarks, BarDerived> {
-  return layoutRowIntervals(data, options, 'tornado');
+/** A native interval bar uses the shared range layout and its variant's warnings. */
+function layoutRowIntervals(data: ChartData, options: BarOptions, mode: RowIntervalMode): Geometry<BarMarks, BarDerived> {
+  if (mode === 'tornado') refuseTornadoDetails(data, options);
+  const geometry = layoutRows(data, options, mode);
+  if (mode === 'football-field' && options.baseValue !== undefined) geometry.warnings.push(baseValueIgnored());
+  return geometry;
 }
 
 /**
@@ -1101,7 +487,7 @@ function compactNameRequests(name: CompactName, cat: RowCat, x: number, bottom: 
   return requests;
 }
 
-function layoutRowIntervals(
+function layoutRows(
   data: ChartData,
   options: BarOptions,
   mode: RowIntervalMode,
@@ -1218,10 +604,7 @@ function layoutRowIntervals(
     const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH);
     const lineH = tickFont.size * 1.2;
     const nameColumn = !noNameColumn && labelOn('category');
-    columnOverrideWarnings('bar', options.columnOverrides, nameColumn ? ['label'] : [], [], rowWarnings);
-    const authoredName = options.columnOverrides?.label?.width;
-    const nameTrack = (options as { [NAME_TRACK]?: number })[NAME_TRACK] ?? (authoredName === undefined || !nameColumn ? undefined
-      : authoredTrackWidth('label', authoredName, 24, plot0.w - CAT_BAND_GAP - trackPlotFloor(plot0.w), rowWarnings));
+    const nameTrack = barNameTrack(options, nameColumn, plot0.w, rowWarnings);
     const catCap = nameTrack ?? Math.max(24, plot0.w * 0.28);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
@@ -1410,28 +793,6 @@ function layoutRowIntervals(
         const text = rowFmt(endpoint.value);
         const textSize = measure(text, labelFont);
         const at = x(endpoint.value);
-        const outsideCandidate: SlotCandidate =
-          endpoint.side === 'low'
-            ? {
-                slot: 'outsideLow',
-                rect: {
-                  x: at - LABEL_GAP - textSize.width,
-                  y: rowCenter - textSize.height / 2,
-                  w: textSize.width,
-                  h: textSize.height,
-                },
-                penalty: 0,
-              }
-            : {
-                slot: 'outsideHigh',
-                rect: {
-                  x: at + LABEL_GAP,
-                  y: rowCenter - textSize.height / 2,
-                  w: textSize.width,
-                  h: textSize.height,
-                },
-                penalty: 0,
-              };
         // A low end right of the current-value line prints inside its range,
         // so the gap to the line stays clear.
         const piece = mode === 'football-field' && endpoint.side === 'low' && currentRuleClaim
@@ -1461,53 +822,7 @@ function layoutRowIntervals(
                 valueBody,
                 rowLane,
               )
-            : endpoint.side === 'low'
-              ? [
-                  outsideCandidate,
-                  {
-                    slot: 'aboveLow',
-                    rect: {
-                      x: at - textSize.width / 2,
-                      y: rowY - textSize.height - 3,
-                      w: textSize.width,
-                      h: textSize.height,
-                    },
-                    penalty: 1,
-                  },
-                  {
-                    slot: 'belowLow',
-                    rect: {
-                      x: at - textSize.width / 2,
-                      y: rowY + band.bandwidth + 3,
-                      w: textSize.width,
-                      h: textSize.height,
-                    },
-                    penalty: 2,
-                  },
-                ]
-              : [
-                  outsideCandidate,
-                  {
-                    slot: 'aboveHigh',
-                    rect: {
-                      x: at - textSize.width / 2,
-                      y: rowY - textSize.height - 3,
-                      w: textSize.width,
-                      h: textSize.height,
-                    },
-                    penalty: 1,
-                  },
-                  {
-                    slot: 'belowHigh',
-                    rect: {
-                      x: at - textSize.width / 2,
-                      y: rowY + band.bandwidth + 3,
-                      w: textSize.width,
-                      h: textSize.height,
-                    },
-                    penalty: 2,
-                  },
-                ];
+            : tornadoEndpointCandidates(endpoint.side, at, textSize, rowCenter, rowY, band.bandwidth);
         const shows = Object.fromEntries(endpoint.fields.map((key) => [`field:${key}`, text]));
         labelRequests.push({
           id: endpoint.id,
@@ -1739,7 +1054,7 @@ function layoutRowIntervals(
     // swatches the scene paints, the hatch key included. Consumers that index
     // the legend through the geometry rather than by scanning the scene
     // (grid's panel-legend collection, the a11y and parity sweeps) read it
-    // there. Twin of the main bar path at the top of this file.
+    // there, as for grouped and stacked bars in rows.ts.
     legend: frameResult.legend,
     marks,
     derived: plan.derived,
@@ -1762,22 +1077,9 @@ function planFootballField(
   ctx: RowPlanCtx,
 ): RowIntervalPlan {
   const { warnings, labelOn, highlights } = ctx;
-  if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'football-field requires at least one method', undefined, undefined, ['data', 'categories']);
-  }
-  if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'football-field requires one data series', undefined, undefined, ['data', 'series']);
-  }
+  // rowIntervalValues has normalized every category already, so the series refusals may come first.
+  const sourceSeries = intervalSeries(data, 'football-field');
   let cats = data.categories.map((category, index) => normalizeCategory(category as never, index));
-  const sourceSeries = data.series.filter((series) => (series.role ?? 'data') === 'data');
-  if (sourceSeries.length !== 1) {
-    throw new NormalizeError(
-      'football-field-one-series',
-      'series',
-      `football-field requires exactly one data-role series, got ${sourceSeries.length}`,
-      undefined, undefined, ['data', 'series'],
-    );
-  }
   if (data.series.length !== sourceSeries.length) {
     warnings.push({
       code: 'football-field-reference-ignored',
@@ -1825,16 +1127,7 @@ function planFootballField(
     if (!range) missingRange.push(ci);
     return { value: cellValue(cell), meta: cellMeta(cell), range: range! };
   });
-  if (missingRange.length === cats.length) {
-    const first = missingRange[0]!;
-    throw new NormalizeError(
-      'football-field-range-required',
-      `series[${series.id}].values[${first}].range`,
-      chartString(options, 'footballRangeRequired'),
-      chartString(options, 'footballRangeSuggest'),
-      undefined, ['data', 'series', data.series.indexOf(series), 'values'],
-    );
-  }
+  if (missingRange.length === cats.length) throw footballRangeRequired(data, options, series, missingRange[0]!);
   const missing = new Set(missingRange);
   const leftOut = missingRange.map(index => cats[index]!.label ?? cats[index]!.id);
   for (const index of missingRange) warnings.push({
@@ -1973,7 +1266,7 @@ function planFootballField(
     // correctness fix for the ones that come.
     cats.map((cat, ci) => [
       cat.id,
-      receiptValue(cells[ci]!.value ?? (cells[ci]!.range.low + cells[ci]!.range.high) / 2),
+      cells[ci]!.value ?? (cells[ci]!.range.low + cells[ci]!.range.high) / 2,
     ]),
   );
   const mean =
@@ -2006,7 +1299,7 @@ function planFootballField(
     derived: {
       totals,
       order: cats.map((cat) => cat.id),
-      mean: receiptValue(mean),
+      mean,
     },
     a11yTitleCounts: [structureCount('methods', cats.length, undefined, options)],
     a11yTitle: chartString(options, 'footballTitle', { v1: cats.length }),
@@ -2014,7 +1307,7 @@ function planFootballField(
       chartString(options, 'footballDesc', { v1: cats
         .map(
           (cat, ci) =>
-            chartString(options, 'namedRange', { v1: cat.label ?? cat.id, v2: fmt(cells[ci]!.range.low), v3: fmt(cells[ci]!.range.high) }),
+            barString(options, 'namedRange', { v1: cat.label ?? cat.id, v2: fmt(cells[ci]!.range.low), v3: fmt(cells[ci]!.range.high) }),
         )
         .join('; ') }) +
       (current ? chartString(options, 'currentValueSentence', { v1: fmt(current.value) }) : ''),
@@ -2042,22 +1335,9 @@ function planTornado(
   ctx: RowPlanCtx,
 ): RowIntervalPlan {
   const { warnings, paletteRamp, fmt, labelOn, highlights, theme } = ctx;
-  if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'tornado requires at least one driver', undefined, undefined, ['data', 'categories']);
-  }
-  if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'tornado requires two case series', undefined, undefined, ['data', 'series']);
-  }
+  // rowIntervalValues has normalized every category already, so the series refusals may come first.
+  const dataSeries = intervalSeries(data, 'tornado');
   const cats = data.categories.map((category, index) => normalizeCategory(category as never, index));
-  const dataSeries = data.series.filter((series) => (series.role ?? 'data') === 'data');
-  if (dataSeries.length !== 2) {
-    throw new NormalizeError(
-      'tornado-two-series',
-      'series',
-      `tornado requires exactly two data-role series (the low-input case and the high-input case), got ${dataSeries.length}`,
-      undefined, undefined, ['data', 'series'],
-    );
-  }
   if (data.series.length !== dataSeries.length) {
     warnings.push({
       code: 'tornado-reference-ignored',
@@ -2066,13 +1346,7 @@ function planTornado(
       suggest: 'remove reference series and set options.baseValue',
     });
   }
-  if (options.baseValue === undefined) {
-    throw new NormalizeError(
-      'tornado-base-required',
-      'options.baseValue',
-      'tornado requires options.baseValue: the output metric computed with every driver at its base input', undefined, undefined, ['options', 'baseValue'],
-    );
-  }
+  if (options.baseValue === undefined) throw tornadoBaseRequired();
   const base =
     typeof options.baseValue === 'number' ? { value: options.baseValue } : options.baseValue;
   if (!Number.isFinite(base.value)) {
@@ -2164,17 +1438,7 @@ function planTornado(
   const lowCells = normalizeSeriesValues(lowSeries, cats, 0, 'values', data.series);
   const highCells = normalizeSeriesValues(highSeries, cats, 1, 'values', data.series);
 
-  interface DerivedRow {
-    index: number;
-    cat: RowCat;
-    low: number;
-    high: number;
-    swing: number;
-    down: number;
-    up: number;
-    inverse: boolean;
-    straddles: boolean;
-  }
+  type DerivedRow = Omit<TornadoRowDerived, 'id'> & { index: number; cat: RowCat };
   const derivedRows: DerivedRow[] = [];
   const droppedDrivers: string[] = [];
   cats.forEach((cat, index) => {
@@ -2198,20 +1462,7 @@ function planTornado(
       cat,
       low,
       high,
-      // RAW, and every decision below reads these raw.
-      //
-      // These three were round2'd, and the engine then FORKED on the rounded
-      // number: `if (row.swing === 0)` printed "moves the output by 0" over a
-      // 0.001 bar, `derived.tornado` published swing:0 next to its own raw low
-      // and high, and the order comparator manufactured ties that the tie-break
-      // then resolved on a different quantity — putting a smaller swing above a
-      // larger one. round2's epsilon is 0.005 in whatever unit the numbers
-      // happen to be counted in, so an output metric measured in EPS, ratios,
-      // per-share amounts or percentages sat entirely underneath it.
-      //
-      // ROUND FOR DISPLAY, NEVER FOR DECISION: `fmt` is applied where the
-      // number is printed, `cleanFloat` where it is serialised, and neither is
-      // in the path of a threshold, a fork, a flag or an ordering.
+      // The receipt, tie detection and sort use the raw swing. Rounding here once turned a 0.001 swing into zero.
       swing: hi - lo,
       down: lo - base.value,
       up: hi - base.value,
@@ -2406,7 +1657,7 @@ function planTornado(
       // something is not the exhibit.
       const collapsed =
         fmt(lo) === fmt(hi) || fmt(lo) === fmt(base.value) || fmt(hi) === fmt(base.value);
-      const say = (v: number): string => (collapsed ? String(receiptValue(v)) : fmt(v));
+      const say = (v: number): string => (collapsed ? String(v) : fmt(v));
       warnings.push({
         code: 'tornado-base-outside-swing',
         severity: 'warn',
@@ -2568,14 +1819,13 @@ function planTornado(
       // `totals` on a tornado is the row's swing — the magnitude the row
       // encodes. There is no total: OAT swings do not sum.
       //
-      // Every number below is the RAW derivation, carried through `cleanFloat`
-      // only to drop IEEE754 representation noise on the way into the receipt.
+      // Every number below is the RAW derivation, including floating-point representation noise.
       // The swing is as raw as `low` and `high` beside it, so the receipt never
       // contradicts itself (swing:0 next to low 2.452, high 2.453) and stays
       // auditable.
-      totals: Object.fromEntries(ordered.map((row) => [row.cat.id, receiptValue(row.swing)])),
+      totals: Object.fromEntries(ordered.map((row) => [row.cat.id, row.swing])),
       order: ordered.map((row) => row.cat.id),
-      mean: receiptValue(ordered.reduce((sum, row) => sum + row.swing, 0) / ordered.length),
+      mean: ordered.reduce((sum, row) => sum + row.swing, 0) / ordered.length,
       tornado: {
         baseValue: base.value,
         method: 'one-at-a-time',
@@ -2585,9 +1835,9 @@ function planTornado(
           id: row.cat.id,
           low: row.low,
           high: row.high,
-          swing: receiptValue(row.swing),
-          down: receiptValue(row.down),
-          up: receiptValue(row.up),
+          swing: row.swing,
+          down: row.down,
+          up: row.up,
           inverse: row.inverse,
           straddles: row.straddles,
         })),
@@ -2625,28 +1875,6 @@ function planTornado(
         : ''),
   };
 }
-
-/**
- * THE RECEIPT CARRIES THE ENGINE'S ANSWER, UNMODIFIED.
- *
- * No IEEE754 noise is stripped on the way into `derived`. Rounding to
- * significant digits breaks large totals (`toPrecision(12)` prints
- * 10000000000000 for an input total of 10000000000001) and quantizes genuine
- * repeating decimals such as 100/3.
- *
- * A receipt exists so someone can RECOMPUTE the number and compare. Whatever
- * the engine actually computed IS the answer, including its representation
- * error: a consumer who evaluates 2.462 − 2.44 gets 0.022000000000000242 too, and a receipt that says
- * 0.022 disagrees with them. Cosmetics belong to the formatter, which is a
- * different path with a different job.
- *
- * So the receipt is raw: `receiptValue` passes the value through unchanged.
- */
-function receiptValue(v: number): number {
-  return v;
-}
-
-
 /**
  * A swing is a DIFFERENCE. On a percent-valued output metric the level
  * formatter prints "9.0%", which states as a percent what is really nine
@@ -2659,13 +1887,4 @@ function receiptValue(v: number): number {
 function formatDifference(fmt: (v: number) => string, v: number): string {
   const level = fmt(v);
   return level.endsWith('%') ? `${level.slice(0, -1)} percentage points` : level;
-}
-
-/** Natural rows retain the two category lines even when the current frame thins them. */
-function naturalCategoryHeights(cats: readonly { id: string; label?: string }[], font: FontSpec, width: number, measure: TextMeasurer) {
-  // A name past two lines needs the step plot.ts asks for its lines (lines x line height + 4).
-  return cats.map((cat) => {
-    const lines = wrapText(cat.label ?? cat.id, font, width, CAT_MAX_LINES, measure).lines.length;
-    return { h: lines * font.size * 1.2 + (lines > 2 ? 4 : 0) };
-  });
 }
