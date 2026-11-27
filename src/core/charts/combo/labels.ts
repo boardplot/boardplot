@@ -30,7 +30,6 @@ import { NET_TICK_REACH } from '../column/netTick';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
-import { totalColumn } from './domain';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { rankValueLabels } from '../band/valueDensity';
 import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
@@ -93,7 +92,7 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
     // An authored text prints the values where it says `${value}`.
     const shows = val.labelOverride === false || (typeof val.labelOverride === 'string' && !val.labelOverride.includes('${value}')) ? undefined : composed.shows;
     // The drawn part itself: a zero cell beside it is not the stack's one part.
-    const single = v !== 0 && totalColumn(domain, ci) === s;
+    const single = v !== 0 && domain.totalColumns[ci] === s;
     const printed = val.isPct || share !== null ? content : content.filter((part) => part !== 'percent');
     if (typeof val.labelOverride === 'string') {
       text = val.labelOverride.replace(/\$\{value\}/g, text);
@@ -170,14 +169,14 @@ function grandTotalRow(env: ComboEnv, domain: ComboDomain, area: ComboArea, gtCo
   // Each total's composed text and the values it prints: the stack's total, which is a single column's own value.
   const totals = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
-    const cell = totalColumn(domain, ci)?.vals[ci];
+    const cell = domain.totalColumns[ci]?.vals[ci];
     return composeWithShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
   });
   const totalShows = totals.map((total) => total?.shows);
   const nets = new Set(domain.cats.flatMap((_, ci) => netInsideStack(domain, ci) ? [ci] : []));
   const texts = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
-    const single = totalColumn(domain, ci);
+    const single = domain.totalColumns[ci];
     const cell = single?.vals[ci];
     const composed = totals[ci]!.text;
     // A single column's total is its value: an authored cell label speaks for it.
@@ -236,7 +235,7 @@ export function stackNeedsTotalsAxis(env: ComboEnv, domain: ComboDomain, area: C
   const content = domain.columnsAdd && contentOf(domain, 'grandTotal', ['absolute']);
   if (!content || domain.columns.length < 2) return false;
   const { texts, skips } = grandTotalRow(env, domain, area, content);
-  return texts.some((text, ci) => text !== null && skips(ci) && (totalColumn(domain, ci)?.vals[ci]?.v ?? 0) === 0);
+  return texts.some((text, ci) => text !== null && skips(ci) && (domain.totalColumns[ci]?.vals[ci]?.v ?? 0) === 0);
 }
 
 /** Grand totals, signed: above a positive top, below a negative bottom. */
@@ -262,7 +261,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     const c = domain.cats[ci]!;
     return ci === latest || texts[ci] == null || nets.has(ci) || negBot[ci]! < 0 || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
       || c.partial === true || toDateIds.has(c.id) || authored.has(c.id) || domain.options.labelPlacements?.[idAt(ci)] !== undefined
-      || (totalColumn(domain, ci)?.vals[ci]?.v ?? 0) !== 0;
+      || (domain.totalColumns[ci]?.vals[ci]?.v ?? 0) !== 0;
   };
   const peak = thinned && canTryRowPeak(domain.options) && texts.filter((text, ci) => text && skips(ci)).length > 1
     ? planCrowdedRow(texts.map((text, ci) => text ? posTop[ci] : null), area.plot,
@@ -769,7 +768,7 @@ export function planComboLabels(
     if (!first || !/^(segment|grandTotal):/.test(request.id)) continue;
     const ci = domain.cats.findIndex(cat => cat.id === request.owner.categoryId);
     const total = request.id.startsWith('grandTotal:');
-    const single = total ? totalColumn(domain, ci) : undefined;
+    const single = total ? domain.totalColumns[ci] : undefined;
     const place = geometry.segments.find(segment => segment.ci === ci && segment.s.id === (total ? single?.id : request.owner.seriesId));
     if (!place) continue;
     const { s, si, v, rect } = place;

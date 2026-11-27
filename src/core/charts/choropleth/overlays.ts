@@ -4,7 +4,7 @@ import { chartString } from '../../strings/choropleth';
 import type { LegendItemInput } from '../../frame';
 import { boxGap, rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { compileIcon, isIconName, listIcons } from '../../icons';
-import type { OccupiedIndex } from '../../label/occupied';
+import type { OccupiedClaim, OccupiedIndex } from '../../label/occupied';
 import {
   leaderTerminus,
   PRIORITY,
@@ -260,17 +260,12 @@ export function renderGeoOverlays(input: RenderGeoOverlaysInput): GeoOverlayRend
     return { overlay, anchor, rect, owner, description: overlay.a11y ?? describeOverlay(overlay, input.options) };
   });
 
-  const visibleClaims = (rect: Rect, pad = 0) =>
-    input.occupied
-      .hitsWhich(rect, pad)
-      .filter(
-        (claim) =>
-          !(claim.kind === 'mark' && claim.part && input.ignoredBaseParts.has(claim.part)),
-      );
+  const ignored = (claim: OccupiedClaim) => claim.kind === 'mark' && !!claim.part && input.ignoredBaseParts.has(claim.part);
   const overlayOccupied: OccupiedIndex = {
     claim: (rect, kind, owner, part) => input.occupied.claim(rect, kind, owner, part),
-    hits: (rect, pad = 0) => visibleClaims(rect, pad).length > 0,
-    hitsWhich: visibleClaims,
+    hits: (rect, pad = 0) => input.occupied.hits(rect, pad, ignored),
+    hitsWhich: (rect, pad = 0) => input.occupied.hitsWhich(rect, pad, ignored),
+    some: (rect, pad, test) => input.occupied.some(rect, pad, (claim) => !ignored(claim) && test(claim)),
     snapshot: () => input.occupied.snapshot(),
   };
 

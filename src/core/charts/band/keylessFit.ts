@@ -17,6 +17,12 @@ export function keylessAreaFits(options: ChartOptions, frame: FrameResult, plot:
       || plot.h >= PLOT_FLOOR_PX[options.target ?? DEFAULT_TARGET]);
 }
 
+/** A discarded trial keeps its notes, footer count and rounding lifts to itself. A throw gives `failed`. */
+export function speculate<T>(run: () => T, failed: T): T {
+  const counted = staticFrame.countable, lifts = zeroLifts.count;
+  try { return withEngineNotes(run, true); } catch { return failed; } finally { staticFrame.countable = counted; zeroLifts.count = lifts; }
+}
+
 type MeasureBody = (data: ChartData, options: ColumnOptions, opening: number) => boolean;
 
 /** A key item whose series no keyless label can name decides the coverage comparison. */
@@ -37,15 +43,7 @@ export function bandKeyFirst(measureBody: MeasureBody) {
     const unnamed = new Set(data.series.filter(s => !categories.has(s.id) &&
       (type !== 'combo' || (s.axis === 'secondary' ? secondary : primary).length > 1)).map(s => s.id));
     if (!unnamed.size) return;
-    const counted = staticFrame.countable, lifts = zeroLifts.count;
-    try {
-      if (!withEngineNotes(() => measureBody(data, band, opening), true)) return;
-    } catch {
-      return;
-    } finally {
-      staticFrame.countable = counted;
-      zeroLifts.count = lifts;
-    }
+    if (!speculate(() => measureBody(data, band, opening), false)) return;
     return (key: Geometry<object, object>) => key.mode === (options.mode === 'compact' ? 'compact' : 'full') && !!key.legend?.items.some(item => unnamed.has(item.id))
       && (!staticFrame.pinned || staticFrame.countable || options.notes?.maxListed === 0);
   };

@@ -58,11 +58,6 @@ export function resolveComboEnv(options: ComboOptions, warnings: LintWarning[]):
   };
 }
 
-/** The column whose cell speaks for a stack's total: the only populated one, else the only drawn (non-zero) one. */
-export function totalColumn(domain: Pick<ComboDomain, 'totalColumns'>, ci: number): NormSer | undefined {
-  return domain.totalColumns[ci];
-}
-
 /** A null breaks a line by default, as on line. */
 function normalizeComboData(data: ChartData): { cats: Category[]; seriesNorm: NormSer[] } {
   const { cats, series } = normalizeCategorySeries('combo', data, (s, cells): NormSer => ({

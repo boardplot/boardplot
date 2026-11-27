@@ -27,7 +27,7 @@ export interface OccupiedIndex {
    * `hitsWhich(rect, pad).some(test)` without the list: it stops at the first hit that passes.
    * `test` must not query this index again (a nested query restarts the visit stamps).
    */
-  some?(rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean;
+  some(rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean;
   /** Transfer claims in insertion order. The receiving index owns its copies. */
   copyTo?(target: OccupiedIndex, withPolygons?: boolean): void;
   snapshot(keep?: (claim: OccupiedClaim) => boolean): OccupiedClaim[];
@@ -87,6 +87,12 @@ function cellRange(rect: Rect, pad: number, cellSize: number, range: [number, nu
   if (!(x0 <= x1 && y0 <= y1 && (x1 - x0 + 1) * (y1 - y0 + 1) <= 256 && Math.max(-x0, x1, -y0, y1) < 1 << 15)) return undefined;
   range[0] = x0; range[1] = x1; range[2] = y0; range[3] = y1;
   return range;
+}
+
+/** Replays a phase's claims, in claim order, into a run's index, with its tick columns. Every index but a map's wrappers copies. */
+export function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex, withPolygons = false): void {
+  phase.copyTo!(occupied, withPolygons);
+  if (phase.tickColumns) occupied.tickColumns = phase.tickColumns;
 }
 
 export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'scatter-label-pass'): OccupiedIndex {

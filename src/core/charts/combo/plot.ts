@@ -61,7 +61,7 @@ import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPO
 import type { ForecastBoundary } from '../line/forecast';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer, type NormVal } from './model';
 import { formatShare } from '../../format';
-import { comboBandFraction, primaryLineMean, secondaryPrimaryRange, totalColumn } from './domain';
+import { comboBandFraction, primaryLineMean, secondaryPrimaryRange } from './domain';
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
@@ -730,7 +730,7 @@ export function comboPlotArea(
     // A total seats inside its column only where the column holds it; a narrow column puts it over
     // the top, where a line through the column top (a Pareto's first share point) takes the seat.
     && frame.plot.w / Math.max(1, cats.length) * 0.6 >= Math.max(0, maxOf(cats.map((c, ci) => measure(composeText(domain, gtContent ?? ['absolute'],
-      { abs: domain.stackTotals[c.id] ?? 0, isPct: totalColumn(domain, ci)?.vals[ci]?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci)), strongFont).width))) + 8;
+      { abs: domain.stackTotals[c.id] ?? 0, isPct: domain.totalColumns[ci]?.vals[ci]?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci)), strongFont).width))) + 8;
   const totalsRow = gtContent && !(domain.anatomy && columns.length === 1) && (keylessLimit || !totalsAirInScale) ? gtH + 6 : 0;
   // A tinted column fill is no text colour: its axis title takes the ink.
   const columnTitlePaint = (paint: Paint): Paint => ('tint' in paint && paint.tint !== undefined ? { token: 'ink' } : paint);

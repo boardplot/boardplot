@@ -24,7 +24,7 @@
  */
 
 import type { Rect } from '../geometry';
-import { boxGap, inflate, rectContains, rectsOverlap, segmentHitsRect, type Point } from '../geometry';
+import { boxGap, inflate, rectContains, rectsOverlap, sameRect, segmentHitsRect, type Point } from '../geometry';
 import { labelTypeRole } from '../textRole';
 import { pickInk } from '../color';
 import { leaderPath } from '../svgPath';
@@ -633,7 +633,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const pinOverDensity = queued.redundant === true && queued.suppressedAs === 'density' && !queued.owed && pin !== undefined;
     const redundant = queued.redundant && !pinOverDensity && !peakNeighbours;
     const req = redundant || queued.candidates.length === 0 ? queued : withLiftLeaders(queued, ownedPoint(queued), (from, to) =>
-      !anyHit(occupied, { x: from.x - 0.5, y: Math.min(from.y, to) + 0.5, w: 1, h: Math.max(0, Math.abs(to - from.y) - 1) }, 0,
+      !occupied.some({ x: from.x - 0.5, y: Math.min(from.y, to) + 0.5, w: 1, h: Math.max(0, Math.abs(to - from.y) - 1) }, 0,
         o => o.kind === 'mark' && !isOwnMark(o.owner, queued.owner, queued.kind, o.part)));
     const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
@@ -803,7 +803,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       const [left, right] = a.x <= b.x ? [a, b] : [b, a];
       const x = (left.x + left.w + right.x) / 2;
       const y = (Math.max(a.y, b.y) + Math.min(a.y + a.h, b.y + b.h)) / 2;
-      return anyHit(occupied, { x: x - 0.5, y: y - 0.5, w: 1, h: 1 }, 0, (o) => o.kind === 'mark');
+      return occupied.some({ x: x - 0.5, y: y - 0.5, w: 1, h: 1 }, 0, (o) => o.kind === 'mark');
     };
     // A segment value outside its column stands in the gap to the next column; level with that
     // column's value it reads as a second number of it (ebit-bridge 400x300: '+38 +6'), whatever its series.
@@ -811,7 +811,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // Type steps: with 12 px values at the S widths a row of totals fits one by one; two totals
     // side by side keep the same gap as two values of a series, or read as one number.
     const crowdsTotal = (rect: Rect): boolean => TOTAL_KINDS.has(req.kind)
-      && anyHit(occupied, rect, SERIES_VALUE_GAP, (o) => o.kind === 'label' && o.part === TOTAL_PART && o.owner.seriesId === req.owner.seriesId
+      && occupied.some(rect, SERIES_VALUE_GAP, (o) => o.kind === 'label' && o.part === TOTAL_PART && o.owner.seriesId === req.owner.seriesId
         && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId && o.owner !== peakAhead?.owner
         // Two totals on one row: their boxes share at least half of one line (0.1 px absorbs scale noise).
         // A total one stair step lower reads as its own number; the 6 px would hide it for nothing.
@@ -832,7 +832,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       } else {
         // Hard when any counted hit is not a label, else label when any is: the order of hits does not matter.
         let sawLabel = false;
-        const hard = anyHit(occupied, rect, padding, (o) => {
+        const hard = occupied.some(rect, padding, (o) => {
           // A moved label leaves its annotation's drawing where it is, so a move onto that drawing is blocked. The claim of its own old seat blocks nothing.
           if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn && (!isMoved || o.part === 'bracketLabel' || !rectsOverlap(o.rect, rect, 0))) return false;
           if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
@@ -866,7 +866,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         if (value !== 'hard' && inTickColumn(rect, cand.tickAir)) value = 'hard';
         // The tick labels themselves (axis claims with a text box, not a rule): the same air.
         const tickAir = cand.tickAir;
-        if (value !== 'hard' && tickAir && anyHit(occupied, rect, tickAir, (o) => o.kind === 'axis' && o.rect.w > 2 && o.rect.h > 2)) value = 'hard';
+        if (value !== 'hard' && tickAir && occupied.some(rect, tickAir, (o) => o.kind === 'axis' && o.rect.w > 2 && o.rect.h > 2)) value = 'hard';
         if (value === 'free' && onLeader(rect, padding)) value = 'label';
         if (value === 'free' && isMoved && ctx.naturalSeats) {
           for (const [id, seat] of ctx.naturalSeats) if (id !== req.id && rectsOverlap(seat, rect, padding)) value = 'label';
@@ -1042,14 +1042,14 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           return pieces.some(([a, b]) => near.some(claim => segmentHitsRect(a, b, claim.rect)));
         }
       }
-      return pieces.some(([a, b]) => anyHit(occupied, pieceBox(a, b), 0, claim => obstacle(claim) && segmentHitsRect(a, b, claim.rect)));
+      return pieces.some(([a, b]) => occupied.some(pieceBox(a, b), 0, claim => obstacle(claim) && segmentHitsRect(a, b, claim.rect)));
     };
     const claimLeader = (label: PlacedLabel): void => {
       if (req.leaderClear && label.leader && !moved.includes(req.id)) for (const [a, b] of splitLeader(label.leader.d)) occupied.claim(pieceBox(a, b), 'label', req.owner);
       keepOffLeader(label, req);
     };
     const crowds = (cand: SlotCandidate) => req.labelGap !== undefined &&
-      anyHit(occupied, cand.rect, req.labelGap, (o) => o.kind === 'label' && !sameOwner(o.owner, req.owner));
+      occupied.some(cand.rect, req.labelGap, (o) => o.kind === 'label' && !sameOwner(o.owner, req.owner));
     const indices = req.candidates.map((_, i) => i);
     // Crowding reorders seats within a penalty, never across one.
     const crowded = indices.map((i) => crowds(req.candidates[i]!));
@@ -1072,8 +1072,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const place = (cand: SlotCandidate, reason: string, leader?: PlacedLabel['leader']): void => {
       const label = finalize(base, req, cand, false, darkInk, lightInk);
       if (leader) label.leader = leader;
-      if (cand.overRules && anyHit(occupied, cand.rect, req.pad ?? pad, (o) => o.part === 'referenceLine')) label.halo = true;
-      if (cand.overValueLines && anyHit(occupied, cand.rect, req.pad ?? pad, isValueLine)) label.halo = true;
+      if (cand.overRules && occupied.some(cand.rect, req.pad ?? pad, (o) => o.part === 'referenceLine')) label.halo = true;
+      if (cand.overValueLines && occupied.some(cand.rect, req.pad ?? pad, isValueLine)) label.halo = true;
       placed.push(label);
       occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
       if (peakNeighbours?.length) {
@@ -1319,7 +1319,7 @@ function nearerOtherMark(req: LabelRequest, cand: SlotCandidate, occupied: Occup
   const own = Math.min(boxGap(cand.rect, anchor), ...ownLabels.map((o) => boxGap(cand.rect, o.rect)));
   // '__' owners are furniture claimed under an escape owner (an anomaly flag,
   // range whiskers, stack connectors) that belongs to a mark, not a rival.
-  return anyHit(occupied, cand.rect, Math.max(0, own - 1), (o) => o.kind === 'mark' && !o.owner.seriesId?.startsWith('__') &&
+  return occupied.some(cand.rect, Math.max(0, own - 1), (o) => o.kind === 'mark' && !o.owner.seriesId?.startsWith('__') &&
     // Point ownership already compares the actual points and category lanes.
     // A box around the same line's connecting stroke is not another value.
     !(ownsPoint && req.noLeader && req.kind === 'point' && (o.part === undefined || o.part === AREA_FILL_PART) && o.owner.seriesId === req.owner.seriesId) &&
@@ -1457,10 +1457,6 @@ function nearestPointOf(rect: Rect, other: Rect): Point {
     return from <= to ? (from + to) / 2 : otherLow > low ? low + size : low;
   };
   return { x: nearest(rect.x, rect.w, other.x, other.w), y: nearest(rect.y, rect.h, other.y, other.h) };
-}
-
-function sameRect(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The shortest authored move that draws a leader back to the mark: about one text line. */

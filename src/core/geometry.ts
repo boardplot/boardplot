@@ -29,6 +29,11 @@ export interface Margin {
   left: number;
 }
 
+/** Whether two rects have the same four coordinates. */
+export function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
 export function rectsOverlap(a: Rect, b: Rect, pad = 0): boolean {
   return !(
     a.x + a.w + pad <= b.x ||

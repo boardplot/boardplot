@@ -907,7 +907,7 @@ function copyLayout<M extends object, DV extends object>(result: LayoutResult<M,
 export function copyFitDrawing<M extends object, DV extends object>(result: Geometry<M, DV>): Geometry<M, DV> {
   return {
     ...result,
-    sizing: result.sizing ? { ...result.sizing } : undefined,
+    ...(result.sizing ? { sizing: { ...result.sizing } } : {}),
     warnings: [...result.warnings],
     frame: copyFrame(result.frame),
     a11y: { ...result.a11y },

@@ -1314,6 +1314,15 @@ const NOTE_COUNTED = Symbol('noteCounted');
 
 /** Options for comparing a chart body before and after withHiddenLabelNote.
  * The new frame still consumes every note field, including its reference numbers. */
+/** Options as plain data for a sameContent key: without the given markers, and with the legend budget's names as a list. */
+export function comparableOptions(options: object, ...drop: symbol[]): Record<PropertyKey, unknown> {
+  const copy: Record<PropertyKey, unknown> = { ...options };
+  for (const key of drop) delete copy[key];
+  const budget = copy[LEGEND_HEIGHT] as LegendBudget | undefined;
+  if (budget) copy[LEGEND_HEIGHT] = { ...budget, names: [...budget.names] };
+  return copy;
+}
+
 export function hiddenNoteBodyOptions(options: BaseOptions): object {
   const { footnotes, authoredFootnotes, [NOTED_LABELS]: _ids, [NOTE_ITEMS]: _items,
     [NOTE_CONTEXT]: _context, [NOTE_LINE]: _line, [NOTE_COUNTED]: _counted, [FOOTNOTE_REFS]: _refs,

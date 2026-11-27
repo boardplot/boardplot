@@ -53,9 +53,9 @@ import { BAND_PAD, hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../anno
 import { emptyAnnotatePass, emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
-import { rectsOverlap, type Rect } from '../../geometry';
+import { rectsOverlap, sameRect, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
@@ -71,7 +71,7 @@ import type { Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode, ShownMark, ShownTexts } from '../../types/scene';
 import { applyComboAxisTitlePaint, comboAxisTitleSwatches } from './axisTitles';
-import { resolveComboDomain, resolveComboEnv, totalColumn, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
+import { resolveComboDomain, resolveComboEnv, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, INSIDE_ENDPOINT_IDS, insideEndpointGutters, unusedEndpointGutters, type EndpointGutters } from './endpoints';
 import { applyGrowthInk, paretoCurveFitsWithoutGutters, planComboLabels, stackNeedsTotalsAxis } from './labels';
 import { layoutComboMarks } from './marks';
@@ -264,7 +264,7 @@ function assembleComboGeometry(input: {
     if (label.kind !== 'grandTotal' || label.hidden !== undefined || !label.shows || categoryId === undefined) continue;
     totalShows.set(categoryId, label.shows);
     const ci = cats.findIndex((c) => c.id === categoryId);
-    const single = ci < 0 ? undefined : totalColumn(domain, ci);
+    const single = ci < 0 ? undefined : domain.totalColumns[ci];
     if (single) shown.push({ owner: { seriesId: single.id, categoryId }, shows: label.shows, drawn: true });
   }
   const nodes = [...frame.nodes, ...geometry.nodes];
@@ -379,13 +379,6 @@ function assembleComboGeometry(input: {
       decisions: [...solved.decisions, ...annotated.decisions],
     },
   };
-}
-
-/** Replays a phase's claims, in claim order, into the run's index. */
-function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex, withPolygons = false): void {
-  if (phase.copyTo) phase.copyTo(occupied, withPolygons);
-  else for (const c of phase.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part, withPolygons ? c.polygon : undefined);
-  if (phase.tickColumns) occupied.tickColumns = phase.tickColumns;
 }
 
 /** Internal option: the category notes (rank mapping, cut names) are in; the refit happens once. */
@@ -521,11 +514,9 @@ export function layoutCombo(
     const hidden = new Set(geo.labels.filter(label => label.kind === 'grandTotal' && label.hidden === 'density').map(label => label.id));
     if (hidden.size && geo.debug.decisions.every(d => !hidden.has(d.labelId) || d.chose === 'hidden' && d.tried.length === 0
       && (d.reason === 'density gate' || d.reason === 'density=smart: no free seat'))) {
-      // Only one of the two private drawings is returned. Give the registry its
-      // usual editable fields and keep the rewritten density decisions separate.
+      // Only one of the two private drawings is returned. Give the registry its usual editable fields.
+      // The density lock replaces decisions, so the two drawings can share them.
       const copy = copyFitDrawing(geo);
-      if (!('sizing' in geo)) delete copy.sizing;
-      copy.debug = { ...geo.debug, decisions: geo.debug.decisions.map(decision => ({ ...decision })) };
       saved.body = { options: densityBodyOptions(options), geo: copy, proof };
     }
   }
@@ -560,10 +551,6 @@ type ComboNoteTrialOptions = {
   [INSIDE_ENDPOINT_IDS]?: Set<Id>;
 };
 
-function sameBox(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
-}
-
 /** Only empty-owner header, footer and legend boxes can take part in the note-only transfer. */
 function sameFrameClaims(before: OccupiedIndex, after: OccupiedIndex): boolean {
   const a = before.snapshot();
@@ -572,13 +559,13 @@ function sameFrameClaims(before: OccupiedIndex, after: OccupiedIndex): boolean {
     const other = b[i]!;
     return (claim.kind === 'frame' || claim.kind === 'legend') && claim.kind === other.kind
       && !claim.part && !other.part && !claim.polygon && !other.polygon
-      && !Object.keys(claim.owner).length && !Object.keys(other.owner).length && sameBox(claim.rect, other.rect);
+      && !Object.keys(claim.owner).length && !Object.keys(other.owner).length && sameRect(claim.rect, other.rect);
   });
 }
 
 /** A note can change its text without changing the plot or any mark. */
 function sameMarkArea(a: ComboArea, b: ComboArea): boolean {
-  return sameBox(a.plot, b.plot)
+  return sameRect(a.plot, b.plot)
     && a.rightTickX === b.rightTickX
     && a.band.range.every((value, i) => value === b.band.range[i])
     && a.band.bandwidth === b.band.bandwidth && a.band.step === b.band.step
@@ -801,12 +788,16 @@ function layoutComboFramePass(
     && hasCompleteTextWidths(env.measure) && stackNeedsTotalsAxis(env, domain, area)) {
     return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   }
+  // Saved seats need measured text and the chart's own frame, marks and labels.
+  const stableSeats = () => hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive
+    && !domain.anomaly && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
+    && !area.forecast.length && !domain.cats.some(category => category.partial);
+  // An unchanged plot, category numbering and frame claims give saved labels the same seats.
+  const seatsMatch = (saved: ComboNoteMarks) => !!saved.seats && sameRect(saved.area.frame.plot, area.frame.plot)
+    && saved.seats.authoredCount === authoredFootnoteCount(domain.options) && sameFrameClaims(saved.seats.frameClaims, settled.framed.claims);
   const trialOptions = options as ComboNoteTrialOptions;
   const bandTrial = trialOptions[BAND_NOTE_TRIAL] && !noteMarks && !gutterOverride && !noted && !(UNPRINTED in options) && TOTALS_AXIS in options
-    && hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive && !domain.anomaly
-    && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
-    && !area.forecast.length && !domain.cats.some(category => category.partial)
-    ? trialOptions[BAND_NOTE_TRIAL] : undefined;
+    && stableSeats() ? trialOptions[BAND_NOTE_TRIAL] : undefined;
   const inside = trialOptions[INSIDE_ENDPOINT_IDS];
   if (bandTrial?.replay) {
     const index = bandTrial.trials.findIndex(trial => trial.inside === inside
@@ -814,8 +805,7 @@ function layoutComboFramePass(
     // Each saved drawing has one receiver. Its labels and index can be edited by the note.
     if (index >= 0) {
       const prior = bandTrial.trials.splice(index, 1)[0]!.marks;
-      if (sameBox(prior.area.frame.plot, area.frame.plot) && prior.seats!.authoredCount === authoredFootnoteCount(domain.options)
-        && sameFrameClaims(prior.seats!.frameClaims, settled.framed.claims)) noteMarks = prior;
+      if (seatsMatch(prior)) noteMarks = prior;
     }
   }
   const keptMarks = noteMarks && sameMarkArea(noteMarks.area, area) ? noteMarks : undefined;
@@ -833,11 +823,7 @@ function layoutComboFramePass(
     commitClaims(geometry.claims, marks.claims);
   }
   const anomalyMarks = domain.anomaly ? comboAnomalyMarks(env, domain, domain.anomaly, area, geometry) : undefined;
-  // The note retry has rebuilt its frame. An unchanged plot, category numbering and
-  // frame claims give the original marks and labels exactly the same seats.
-  const seats = keptMarks && keptMarks.seats && sameBox(keptMarks.area.frame.plot, area.frame.plot)
-    && keptMarks.seats.authoredCount === authoredFootnoteCount(domain.options)
-    && sameFrameClaims(keptMarks.seats.frameClaims, settled.framed.claims) ? keptMarks.seats : undefined;
+  const seats = keptMarks && seatsMatch(keptMarks) ? keptMarks.seats : undefined;
   // Retained placements already own the original frame, mark and label claims.
   const occupied = seats?.occupied ?? createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   if (!seats) {
@@ -875,7 +861,6 @@ function layoutComboFramePass(
       prefix.some(earlier => earlier.id === request.id || request.rowPeak!.neighbours.includes(earlier.id)))) return false;
     if (proof && prefix.some(req => req.kind !== 'point')) proof.eligible = false;
     const probe = createOccupiedIndex(area.plot);
-    probe.tickColumns = occupied.tickColumns;
     commitClaims(probe, occupied);
     trialContext = comboLabelContext(options, env, domain, area, geometry);
     const retry = failedEndpointGutters(solveLabels(prefix, probe, trialContext).placed, ends, area, domain, env);
@@ -990,10 +975,8 @@ function layoutComboFramePass(
       const note = noteLine(options.strings!.valuesNotBesideMarks!, [...named.values()].sort((a, b) => a[0] - b[0]).map(([, item]) => item), options, valueCount);
       const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
       const next = { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } };
-      const stableSeats = hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive
-        && !domain.anomaly && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
-        && !area.forecast.length && !domain.cats.some(category => category.partial);
-      if (stableSeats && options.mode === 'compact' && TOTALS_AXIS in options && !prior.runs
+      const stable = stableSeats();
+      if (stable && options.mode === 'compact' && TOTALS_AXIS in options && !prior.runs
         && refreshListNotes(area.frame, authoredNotes(options), authoredNotes(next))) {
         // The hidden disclosure leaves the marks and seats where they are. Keep its
         // normal ordering and count on each label when completing the drawing below.
@@ -1002,7 +985,7 @@ function layoutComboFramePass(
       } else {
         return layoutComboPass(data, next, gutterOverride, {
           area, geometry: marks,
-          seats: stableSeats ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),
+          seats: stable ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),
             occupied, solved, warnings: warnings.slice(labelWarningStart) } : undefined,
         });
       }
