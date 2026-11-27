@@ -131,9 +131,10 @@ function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): Le
         },
       ].filter((_, index) => s.vals.some(v => v.v !== null && (index === 0 ? v.v > 0 : v.v < 0))))
     : domain.keySeries.map((s, place) => {
-        const i = dataSeries.indexOf(s), label = edgePrinted.has(s.id) ? s.label : domain.seriesCagr.get(s.id)?.text ?? s.label;
+        const i = s.lastVisibleIndex ?? place;
+        const label = edgePrinted.has(s.id) ? s.label : domain.seriesCagr.get(s.id)?.text ?? s.label;
         // A series a reader hid keeps its entry, as a hollow box.
-        return i < 0 ? hiddenKey(s.id, label, place) : {
+        return dataSeries[i] !== s ? hiddenKey(s.id, label, place) : {
           id: s.id,
           label,
           paint: legendUsesSeriesIdentity ? paints.identity(s) : paints.base(s, i),

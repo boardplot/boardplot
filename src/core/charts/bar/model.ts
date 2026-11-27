@@ -97,6 +97,7 @@ export const CAGR_TRIES = Symbol('cagrTries');
 
 export interface NormSeries {
   id: Id;
+  lastVisibleIndex?: number;
   label: string;
   scenario?: Scenario;
   direction?: 'higherIsBetter' | 'lowerIsBetter';
@@ -107,6 +108,8 @@ export interface NormSeries {
   format?: string;
   unit?: string;
   slot: number; // ramp slot among data series
+  /** Series fill, colour role or highlight resolved against the whole legend. */
+  ownPaint?: Paint;
   cells: { v: number | null; isPct?: boolean; meta: CellMeta | null; range?: DataRange }[];
   /** Some authored cell is a `{ pct }` cell: the series is stated in percent. */
   pctCells?: boolean;
@@ -210,8 +213,8 @@ export interface BarDomain {
   meanValue: number | undefined;
   netLineOn: boolean;
   netLineSeries: NormSeries | undefined;
-  /** The net line's boundary series as authored, which the paints read while a reader hides series. */
-  netKeySeries?: NormSeries;
+  /** Index of the authored subtotal boundary for the paints, or -1 when there is none. */
+  netKeyIndex: number;
   /** Vertical valueLines and indicator100, which bar draws itself. */
   localAnns: Annotation[];
   /** Everything else, for the shared annotation pass. */

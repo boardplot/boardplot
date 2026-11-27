@@ -4,7 +4,7 @@
  */
 
 import { partialPattern } from '../../partialPeriod';
-import { colorRolePaints, effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
+import { effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { scenarioFillPattern, scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 import type { CellMeta, Id } from '../../types/cell';
@@ -19,6 +19,10 @@ export interface BarLegendPaints extends BarPaints {
   scenario(s: NormSeries, catId: Id, meta: CellMeta | null): BarFill;
 }
 
+export function barSeriesScenario(s: NormSeries) {
+  return seriesScenarioRole(s.scenario, s.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario));
+}
+
 export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegendPaints {
   // Every paint decision reads every plotted series, so a series a reader hides leaves each other its colour.
   const { options, theme, palette, highlights, keySeries: dataSeries, uniformScenario, restRecedes } = domain;
@@ -28,27 +32,20 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
   // A stack's net line marks the sum up to its series. A plain series stacked
   // beyond that tick is outside the marked sum and recedes into the rest tone,
   // so the tick reads against it.
-  const netAt = domain.netKeySeries ? dataSeries.indexOf(domain.netKeySeries) : -1;
+  const netAt = domain.netKeyIndex;
   const highlighted = dataSeries.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))));
-  const plainParts = dataSeries.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id)).map((s) => s.id);
-  const stackGreys = domain.variant !== 'grouped' && highlighted && plainParts.length >= 2 ? plainParts : [];
-  const beyondNet = new Set(netAt >= 0 ? dataSeries.slice(netAt + 1).filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id)).map((s) => s.id) : []);
+  const plainParts = dataSeries.filter((s) => !s.ownPaint);
+  const stackGreys = domain.variant !== 'grouped' && highlighted && plainParts.length >= 2 ? plainParts.map((s) => s.id) : [];
+  const beyondNet = new Set(netAt >= 0 ? dataSeries.slice(netAt + 1).filter((s) => !s.ownPaint).map((s) => s.id) : []);
   // The plain series of a stack take the theme's stack ramp, dark to light in
   // authored order. An authored fill or palette keeps its colour. A highlight, a colour role, a
   // receding series or a rest beyond a net line keeps every series in its own colour.
   const marked = highlighted || receding !== undefined || beyondNet.size > 0 || dataSeries.some((s) => s.colorRole !== undefined || highlights.has(s.id));
-  const stackPlain = (domain.variant === 'stacked' || domain.variant === 'stacked100') && palette === undefined && !marked
-    ? dataSeries.filter((s) => !s.fill) : [];
+  const stackPlain = (domain.variant === 'stacked' || domain.variant === 'stacked100') && palette === undefined && !marked ? plainParts : [];
   // A plain series of a stack beside authored colours keeps apart from them in the active theme (domain's rampSlots input).
-  const roles = colorRolePaints(dataSeries);
-  const ownPaints = dataSeries.map((s): Paint | undefined =>
-    s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
-  const stackOwn = domain.variant !== 'grouped' && ownPaints.some(Boolean) ? ownPaints : undefined;
-  const roleOf = (s: NormSeries) => seriesScenarioRole(s.scenario, s.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario));
-  const seriesIdentityPaint = (s: NormSeries, scenario = roleOf(s)): Paint => {
-    if (s.fill) return { css: s.fill };
-    if (s.colorRole) return roles.get(s.id)!;
-    if (highlights.has(s.id)) return { token: 'focus' };
+  const stackOwn = domain.variant !== 'grouped' && plainParts.length < dataSeries.length ? dataSeries.map((s) => s.ownPaint) : undefined;
+  const seriesIdentityPaint = (s: NormSeries, scenario = barSeriesScenario(s)): Paint => {
+    if (s.ownPaint) return s.ownPaint;
     // The plain sibling of a highlight recedes into the full neutral mark, dark
     // enough to carry white value labels inside its bar ends; lines and slopes
     // keep the lighter muted tint.
@@ -79,10 +76,8 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
     if (signColor && catId !== OTHERS_ID && !highlights.has(s.id) && !highlights.has(catId)) {
       return { paint: signPaint(s, v, options.colorblindSafe), pattern, outline };
     }
-    if (s.fill) return { paint: { css: s.fill }, pattern, outline };
-    if (catId === OTHERS_ID) return { paint: { token: 'othersMark' }, pattern, outline };
-    if (s.colorRole) return { paint: roles.get(s.id)!, pattern, outline };
-    if (highlights.has(s.id)) return { paint: { token: 'focus' }, pattern, outline };
+    if (catId === OTHERS_ID && !s.fill) return { paint: { token: 'othersMark' }, pattern, outline };
+    if (s.ownPaint) return { paint: s.ownPaint, pattern, outline };
     if (highlights.has(catId) && dataSeries.length === 1) {
       return { paint: { token: 'focus' }, pattern, outline };
     }

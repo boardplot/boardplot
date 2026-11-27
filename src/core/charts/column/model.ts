@@ -45,6 +45,7 @@ export interface ComputedTotal {
 
 export interface NormSer {
   id: Id;
+  lastVisibleIndex?: number;
   label: string;
   role: 'data' | 'reference';
   scenario?: Scenario;

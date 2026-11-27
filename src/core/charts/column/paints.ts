@@ -7,6 +7,7 @@ import type { StringsSpec } from '../../types/options';
 
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
+import { ranksCategories } from '../../normalize/shared';
 import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, neutralRampPaint, orderedRampPaint, paintColor, rampSlots, recedingRampIds, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { partialPattern } from '../../partialPeriod';
@@ -64,7 +65,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // paints the same colour, so no two series of one chart look alike.
   // Colour follows the series, not its sorted place, so sorting
   // the segments never recolours one. Slots are dealt in authored order.
-  const authored = domain.seriesNorm.filter((s) => dataSeries.includes(s));
+  const authored = domain.seriesNorm.filter(ranksCategories);
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
   // carry one scenario counts as that scenario.
   const seriesRoles = new Map(dataSeries.map(s => [s, seriesScenarioRole(s.scenario,
@@ -81,10 +82,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
   // A paired scenario series of grouped columns takes no ramp step of its own. One with its own
   // paint keeps it, so it stays in the deal and the plain series step past its colour.
-  const dealt = authored.filter((s) => stackLike || ownPaint(s) || !scenarioPartner.has(s.id));
+  const dealt = stackLike ? authored : authored.filter((s) => ownPaint(s) || !scenarioPartner.has(s.id));
   const authoredSlots = rampSlots(theme, dealt.map((s) => ownPaints[authored.indexOf(s)]), palette, { labels: dealt.map((s) => s.label), warnings });
   // A plain series of a stack beside authored colours keeps apart from them in the active theme.
-  const stackOwn = (variant === 'stacked' || variant === 'stacked100') && ownPaints.some(Boolean) ? ownPaints : undefined;
+  const stackOwn = stackLike && ownPaints.some(Boolean) ? ownPaints : undefined;
   // A Rest series (colorRole 'others') beside the ordered ramp is the quietest part (othersShade).
   const quietRest = !!options.seriesRamp && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
     authored.some((s) => s.colorRole === 'others' && !s.fill);
@@ -98,7 +99,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // An authored fill or palette keeps its colour. A highlight, a colour role or a receding
   // series keeps every series in its usual colour.
   const marked = authored.some((s) => s.colorRole !== undefined || highlights.has(s.id) || s.id === receding);
-  const stackPlain = (variant === 'stacked' || variant === 'stacked100') && palette === undefined && !marked
+  const stackPlain = stackLike && palette === undefined && !marked
     ? authored.filter((s) => !s.fill) : [];
   const seriesIdentityPaint = (
     s: NormSer,

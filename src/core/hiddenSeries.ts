@@ -2,11 +2,21 @@ import type { Id } from './types/cell';
 import type { SeriesIdentity } from './seriesIdentity';
 import { HIDDEN_SERIES } from './hiddenSeriesKey';
 
-/** The series of `all` the reader has not hidden: `all` itself when none is hidden or every one is. */
-export function shownSeries<S extends { id: string }>(options: object, all: S[]): S[] {
+/** Keep the original list when the reader hides none or all. Only normalized layout series receive indexes. */
+export function shownSeries<S extends { id: string; lastVisibleIndex?: number }>(options: object, all: S[], indexForLayout = false): S[] {
   const hidden = (options as { [HIDDEN_SERIES]?: readonly string[] })[HIDDEN_SERIES];
-  const shown = hidden ? all.filter((s) => !hidden.includes(s.id)) : all;
-  return shown.length && shown.length < all.length ? shown : all;
+  if (!hidden?.length) return all;
+  const shown = all.filter((s) => !hidden.includes(s.id));
+  if (!shown.length || shown.length === all.length) return all;
+  if (indexForLayout) {
+    // A hidden key shares its predecessor's index, the subtotal boundary after hiding it.
+    let last = -1;
+    for (const s of all) {
+      if (s === shown[last + 1]) last++;
+      s.lastVisibleIndex = last;
+    }
+  }
+  return shown;
 }
 
 /**

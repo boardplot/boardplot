@@ -29,7 +29,7 @@ import {
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { requestMemo } from '../../layoutPlan';
-import { barPaints } from './paints';
+import { barPaints, barSeriesScenario } from './paints';
 import { colorRolePaints, strokeToken, panelTypeClass, rampSlots, resolveTheme, themeForWidth, typeWidthClass } from '../../theme';
 import type { Annotation } from '../../types/annotations';
 import { cellMeta, cellValue, isPctCell, type CellMeta, type Id, type Scenario } from '../../types/cell';
@@ -39,12 +39,12 @@ import { labelOn } from '../labelOn';
 import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, runningPeriodIds, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
-import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
+import type { LintWarning, ShownTexts } from '../../types/scene';
 import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, printsValue, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
-import { scenarioFillPattern, scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
+import { scenarioFillPattern, scenarioPartners } from '../../scenarioPairs';
 import { OTHERS_ID, SHOWN_SLOT, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 import { isRecord } from '../../lint/shared';
@@ -220,16 +220,15 @@ function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: No
   const nmRows: boolean[] = cats.map(() => false);
   const naRows: boolean[] = cats.map(() => false);
   const overfull: { id: Id; sum: number }[] = [];
-  const composition = cats.map((cat, ci) => compositionBasis(dataSeries.map((s) => s.cells[ci]!), cat.total100));
-  const basisByCat = composition.map((c) => (variant === 'stacked100' ? c.basis : 1));
+  const basisByCat: number[] = [];
   const shares: number[][] = cats.map((cat, ci) => {
     if (variant !== 'stacked100') return [];
-    if (composition[ci]!.nm) {
+    const cells = dataSeries.map((s) => s.cells[ci]!);
+    const { basis, nm, na } = compositionBasis(cells, cat.total100);
+    basisByCat[ci] = basis;
+    if (nm) {
       nmRows[ci] = true;
-      return dataSeries.map(() => 0);
-    }
-    const basis = basisByCat[ci]!;
-    if (composition[ci]!.na) {
+    } else if (na) {
       warnings.push({
         code: 'total100-nonpositive',
         severity: 'warn',
@@ -237,21 +236,14 @@ function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: No
         owner: { categoryId: cat.id },
       });
       naRows[ci] = true;
-      return dataSeries.map(() => 0);
-    }
-    const cells = dataSeries.map((s) => s.cells[ci]!);
-    const sum = overfullShareSum(cells, basis);
-    if (sum !== undefined) {
+    } else {
+      const sum = overfullShareSum(cells, basis);
+      // A percent cell states its own share, even when the row has no absolute basis.
+      if (sum === undefined) return cells.map((cell) =>
+        cell.isPct ? cell.v ?? 0 : basis > 0 ? ((cell.v ?? 0) / basis) * 100 : 0);
       overfull.push({ id: cat.id, sum });
-      return dataSeries.map(() => 0);
     }
-    // A { pct } cell (also a valueKind 'fraction' value) states its share
-    // directly and is outside the basis, as on column; a row of pct cells
-    // only has basis 0 and must not divide by it.
-    return cells.map((cell) => {
-      if (cell.isPct) return cell.v ?? 0;
-      return basis > 0 ? ((cell.v ?? 0) / basis) * 100 : 0;
-    });
+    return cells.map(() => 0);
   });
   if (variant === 'stacked100' && nmRows.some(Boolean)) {
     warnings.push(mixedSignsWarning(cats.filter((_, ci) => nmRows[ci]).map((c) => c.id), cats.length));
@@ -315,13 +307,12 @@ function barNetLine(
   dataSeries: NormSeries[],
   shown: NormSeries[],
   warnings: LintWarning[],
-): Pick<BarDomain, 'netLineOn' | 'netLineSeries' | 'netKeySeries'> {
+): Pick<BarDomain, 'netLineOn' | 'netLineSeries' | 'netKeyIndex'> {
   const netLineRequested = options.netLine !== undefined && options.netLine !== false;
   const netLineSeriesId =
     typeof options.netLine === 'object' ? options.netLine.seriesId : undefined;
-  const netLineSeries = netLineSeriesId
-    ? dataSeries.find((series) => series.id === netLineSeriesId)
-    : undefined;
+  const netAt = netLineSeriesId ? dataSeries.findIndex((series) => series.id === netLineSeriesId) : -1;
+  const netLineSeries = dataSeries[netAt];
   let netLineOn = netLineRequested && variant !== 'grouped';
   if (netLineRequested && variant === 'grouped') {
     warnings.push({
@@ -360,9 +351,8 @@ function barNetLine(
       });
     }
   }
-  // null: every series up to the boundary is hidden, so no line is drawn.
-  const drawn = netLineSeries && (dataSeries.slice(0, dataSeries.indexOf(netLineSeries) + 1).filter((s) => shown.includes(s)).at(-1) ?? null);
-  return { netLineOn: netLineOn && drawn !== null, netLineSeries: drawn ?? undefined, ...(netLineOn ? { netKeySeries: netLineSeries } : {}) };
+  const drawn = netLineSeries && shown[netLineSeries.lastVisibleIndex ?? netAt];
+  return { netLineOn: netLineOn && (!netLineSeries || !!drawn), netLineSeries: drawn, netKeyIndex: netLineOn ? netAt : -1 };
 }
 
 /**
@@ -398,25 +388,23 @@ function barAnnotations(
  * (mirrors column; warned once).
  */
 function barValueExtent(
-  domain: Pick<BarDomain, 'options' | 'variant' | 'cats' | 'dataSeries' | 'refSeries' | 'plotVal' | 'plotRange' | 'stacks' | 'rowEnds' | 'localAnns' | 'passAnns' | 'meanValue'>,
+  domain: Pick<BarDomain, 'options' | 'variant' | 'refSeries' | 'localAnns' | 'passAnns' | 'meanValue'>,
+  basis: BarBasis,
   warnings: LintWarning[],
 ): Pick<BarDomain, 'lo' | 'hi' | 'rendered'> {
-  const { options, variant, cats, dataSeries, refSeries, plotVal, plotRange, stacks, meanValue } = domain;
+  const { options, variant, refSeries, meanValue } = domain;
   const rendered: number[] = [];
   let lo = 0;
   let hi = 0;
-  for (const e of domain.rowEnds) {
-    lo = Math.min(lo, e.neg);
-    hi = Math.max(hi, e.pos);
-  }
-  cats.forEach((_, ci) => {
-    const stack = stacks[ci]!;
-    dataSeries.forEach((_, si) => {
-      const value = plotVal(ci, si);
-      if (value === null) return;
-      const start = variant === 'grouped' ? 0 : stack.segments[si]!.start;
-      const range = plotRange(ci, si);
-      rendered.push(variant === 'grouped' ? value : stack.segments[si]!.end);
+  basis.stacks.forEach((stack, ci) => {
+    const end = basis.rowEnds[ci]!;
+    lo = Math.min(lo, end.neg);
+    hi = Math.max(hi, end.pos);
+    stack.segments.forEach((segment, si) => {
+      if (!segment) return;
+      const start = variant === 'grouped' ? 0 : segment.start;
+      const range = basis.plotRange(ci, si);
+      rendered.push(variant === 'grouped' ? segment.value : segment.end);
       if (range) {
         lo = Math.min(lo, start + range.low, start + range.high);
         hi = Math.max(hi, start + range.low, start + range.high);
@@ -523,8 +511,9 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const { rawCats, normSeries } = normalizeBarSeries(data, warnings);
   // The colours, the legend and the formats read every plotted series. The bars, the totals and the category order read
   // the series a reader has not hidden (hiddenSeries.ts).
-  const keySeries = sortSegments(normSeries.filter(ranksCategories), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
-  const dataSeries = shownSeries(options, keySeries);
+  const authored = normSeries.filter(ranksCategories);
+  const keySeries = sortSegments(authored, options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
+  const dataSeries = shownSeries(options, keySeries, true);
   const refSeries = normSeries.filter((s) => s.role === 'reference');
   if (keySeries.length === 0) {
     throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series', undefined, undefined, ['data', 'series']);
@@ -587,22 +576,21 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   const roles = colorRolePaints(keySeries);
+  for (const s of keySeries) {
+    if (s.fill) s.ownPaint = { css: s.fill };
+    else if (s.colorRole) s.ownPaint = roles.get(s.id);
+    else if (highlights.has(s.id)) s.ownPaint = { token: 'focus' };
+  }
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
   // carry one scenario counts as that scenario. Grouped bars pair in authored order, so sorting the
   // segments never re-pairs a plan. A stack keeps its stack colours: only a plan pairs.
   const stacked = variant !== 'grouped';
-  const ownPaint = (x: NormSeries): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
-  const scenarioPartner = stacked
-    ? scenarioPartners(keySeries, (x) => x.scenario, ownPaint, true)
-    : scenarioPartners(normSeries.filter((x) => x.role === 'data'), (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
+  const scenarioPartner = scenarioPartners(stacked ? keySeries : authored, stacked ? (s) => s.scenario : barSeriesScenario, (s) => !!s.ownPaint, stacked);
   // A paired scenario series of grouped bars takes no ramp step of its own. One with its own
   // paint keeps it, so it stays in the deal and the plain series step past its colour.
-  const dealt = keySeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
-  const slots = rampSlots(theme, dealt.map((s): Paint | undefined =>
-    s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined,
-  ), paletteRamp ? options.palette : undefined, { labels: dealt.map((s) => s.label), warnings });
+  const dealt = stacked ? keySeries : keySeries.filter((s) => s.ownPaint || !scenarioPartner.has(s.id));
+  const slots = rampSlots(theme, dealt.map((s) => s.ownPaint), paletteRamp ? options.palette : undefined, { labels: dealt.map((s) => s.label), warnings });
   dealt.forEach((s, i) => (s.slot = slots[i]!));
-  keySeries.forEach((s) => { const partner = scenarioPartner.get(s.id); if (partner && !dealt.includes(s)) s.slot = partner.slot; });
   const basis = barBasis(variant, cats, dataSeries, warnings);
   // While a reader hides a series, the shares keep the precision of every series, and an authored bound (a scale group's too) its range.
   const full = keySeries === dataSeries ? basis : barBasis(variant, cats, keySeries, []);
@@ -644,43 +632,38 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const sharesOn = variant === 'stacked100' && labelOn(options, 'segment');
   warnIncompleteStacks(variant, cats, basis.incompleteRows, grandTotalsOn, sharesOn, 'bars', warnings, disclosuresShown(options));
   warnShareFormatIgnored(variant, options.format, shareFormatExample(options), grandTotalsOn, warnings);
-  // Computed shares only: an authored total100 is the author's whole.
+  // A complete row has one share per visible series, in series order. An authored total100 names its own whole.
   const wholes = sharesOn ? cats.flatMap((c, ci) =>
     basis.nmRows[ci] || basis.naRows[ci] || basis.incompleteRows.has(c.id) || c.total100 !== undefined
-      ? []
-      : [{ c, parts: dataSeries.flatMap((s, si) => (s.cells[ci]!.v === null ? [] : [{ s, share: basis.shares[ci]![si]! }])) }]) : [];
-  // rounding 'sum-consistent': each complete bar's shares print so they add up to 100%.
+      ? [] : [{ c, ci, shares: basis.shares[ci]! }]) : [];
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
   const shareExample = shareFormatExample(options, keySeries);
   const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
   const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
   if (options.rounding === 'sum-consistent') {
-    for (const { c, parts } of wholes) {
-      const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, shareSpec);
+    for (const { c, shares } of wholes) {
+      const rounded = sumConsistentShares(shares, options.locale?.language, shareSpec);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label, rounded.warning));
-      else if (rounded) parts.forEach((part, index) => {
-        shareTexts.set(`${c.id}\0${part.s.id}`, rounded.texts[index]!);
-        if (rounded.moved[index]) roundingAdjustments.push({ whole: c.label, part: part.s.label, share: Math.round(part.share * 1e4) / 1e4,
-          nearest: pctFmt(part.share), printed: rounded.texts[index]! });
+      else if (rounded) dataSeries.forEach((s, si) => {
+        const share = shares[si]!;
+        shareTexts.set(`${c.id}\0${s.id}`, rounded.texts[si]!);
+        if (rounded.moved[si]) roundingAdjustments.push({ whole: c.label, part: s.label, share: Math.round(share * 1e4) / 1e4,
+          nearest: pctFmt(share), printed: rounded.texts[si]! });
       });
     }
   } else if (sharesOn) {
-    // 'nearest': the shares of one bar print at the one precision sum-consistent gives that bar (whole percents, one
-    // decimal more while a nonzero share would print 0), each rounded on its own: "2% · 2% · 1%", not "1.7% · 2.4% · 1.2%".
-    // The drift warning sums the shares at the decimals the labels print.
     const labelDecimals = new Map<Id, number>();
-    if (!shareExample) for (const { c, parts } of wholes) {
-      const ci = cats.indexOf(c);
-      const decimals = shareSetDecimals(keySeries.flatMap((s, si) => (s.cells[ci]!.v === null ? [] : [full.shares[ci]![si]!])));
+    if (!shareSpec) for (const { c, ci, shares } of wholes) {
+      // Missing cells contribute zero to the full row, which cannot raise its precision.
+      const decimals = shareSetDecimals(full.shares[ci]!);
       labelDecimals.set(c.id, decimals);
-      for (const part of parts) shareTexts.set(`${c.id}\0${part.s.id}`, shareText(part.share, decimals, options.locale?.language));
+      dataSeries.forEach((s, si) => shareTexts.set(`${c.id}\0${s.id}`, shareText(shares[si]!, decimals, options.locale?.language)));
     }
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals ?? labelDecimals.get(c.id) })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, shares }) => ({ name: c.label, shares, decimals: shareSpec?.decimals ?? labelDecimals.get(c.id) })));
   }
-  // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true
-    ? wholes.filter(({ c, parts }) => !dataSeries.some((s) => s.cells[cats.indexOf(c)]!.isPct) && Math.abs(parts.reduce((sum, part) => sum + part.s.cells[cats.indexOf(c)]!.v!, 0) - 100) > 0.05).map(({ c }) => c.label) : [];
+    ? wholes.filter(({ ci }) => !dataSeries.some((s) => s.cells[ci]!.isPct) && Math.abs(dataSeries.reduce((sum, s) => sum + s.cells[ci]!.v!, 0) - 100) > 0.05).map(({ c }) => c.label) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const domain = {
     options, theme, palette: paletteRamp ? options.palette : undefined, size,
@@ -716,6 +699,6 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     ...barNetLine(options, variant, keySeries, dataSeries, warnings),
     ...barAnnotations(options, variant, averageMarkerValue, statFmt, averageRun?.span),
   };
-  const bound = options.valueAxis?.min !== undefined || options.valueAxis?.max !== undefined;
-  return { ...domain, ...barValueExtent(full !== basis && bound ? { ...domain, ...full, dataSeries: keySeries } : domain, warnings) };
+  const axisBasis = full !== basis && (options.valueAxis?.min !== undefined || options.valueAxis?.max !== undefined) ? full : basis;
+  return { ...domain, ...barValueExtent(domain, axisBasis, warnings) };
 }

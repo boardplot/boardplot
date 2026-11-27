@@ -85,7 +85,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
       })))
     : domain.keySeries.map((s, place) => {
         // A series a reader hid keeps its entry, as a hollow box.
-        if (!dataSeries.includes(s)) return hiddenKey(s.id, s.label, place);
+        if (dataSeries[s.lastVisibleIndex ?? place] !== s) return hiddenKey(s.id, s.label, place);
         // A series whose every drawn bar looks the same is keyed in that look, hatch included.
         const looks = s.cells.flatMap((cell, ci) => (cell.v === null ? [] : [paints.cell(s, cats[ci]!, cell.meta, cell.v)]));
         const first = looks[0];

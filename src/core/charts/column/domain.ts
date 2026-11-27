@@ -172,13 +172,11 @@ function orderColumnCategories(
   options: AnomalyColumnOptions,
   categories: Category[],
   seriesNorm: NormSer[],
-  series: NormSer[],
+  dataSeries: NormSer[],
   warnings: LintWarning[],
-): { cats: Category[]; dataSeries: NormSer[]; keySeries: NormSer[]; othersId: Id | null } {
+): { cats: Category[]; othersId: Id | null } {
   let cats = categories;
   const anomalySpec = options.anomaly;
-  const keySeries = sortSegments(series, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
-  const dataSeries = shownSeries(options, keySeries);
   const catTotal = (ci: number) => dataSeries.reduce((a, s) => a + (s.vals[ci]!.v ?? 0), 0);
   const applyOrder = (order: number[]): void => {
     cats = order.map((i) => cats[i]!);
@@ -235,7 +233,7 @@ function orderColumnCategories(
       });
     }
   }
-  return { cats, dataSeries, keySeries, othersId };
+  return { cats, othersId };
 }
 
 /** The integrated PY reference and the categories whose stack carries one scenario. */
@@ -753,15 +751,12 @@ function integratedVarianceValues(
 function columnValueDomain(
   va: ValueAxisOptions,
   variant: ColumnVariant,
-  cats: Category[],
   dataSeries: NormSer[],
   refSeries: NormSer[],
-  plottedOf: ColumnDomain['plottedOf'],
-  rangeOf: ColumnDomain['rangeOf'],
-  stacks: ColumnDomain['stacks'],
+  basis: ColumnBasis,
   lineExtent: ValueLineExtent | null,
   warnings: LintWarning[],
-): { posTopP: number[]; negBotP: number[]; dLo: number; dHi: number; stepTicks?: number[]; rendered: number[] } {
+) {
   const stackedLike = variant !== 'grouped';
   const rendered: number[] = [];
   const posTopP: number[] = [];
@@ -771,17 +766,14 @@ function columnValueDomain(
   // seeding the line makes it visible instead of refusing it.
   let lo = Math.min(0, lineExtent?.lo ?? 0);
   let hi = Math.max(0, lineExtent?.hi ?? 0);
-  cats.forEach((_, ci) => {
-    const stack = stacks[ci]!;
+  basis.stacks.forEach((stack, ci) => {
     let p = stackedLike ? stack.positive : 0;
     let n = stackedLike ? stack.negative : 0;
-    for (let si = 0; si < dataSeries.length; si++) {
-      const s = dataSeries[si]!;
-      const v = plottedOf(s, ci);
-      if (v === null) continue;
-      const start = stackedLike ? stack.segments[si]!.start : 0;
-      const range = rangeOf(s, ci);
-      rendered.push(stackedLike ? stack.segments[si]!.end : v);
+    for (const segment of stack.segments) {
+      if (!segment) continue;
+      const start = stackedLike ? segment.start : 0;
+      const range = basis.rangeOf(dataSeries[segment.index]!, ci);
+      rendered.push(stackedLike ? segment.end : segment.value);
       if (range) {
         lo = Math.min(lo, start + range.low, start + range.high);
         hi = Math.max(hi, start + range.low, start + range.high);
@@ -789,8 +781,8 @@ function columnValueDomain(
         if (range.mid !== undefined) rendered.push(start + range.mid);
       }
       if (!stackedLike) {
-        p = Math.max(p, v);
-        n = Math.min(n, v);
+        p = Math.max(p, segment.value);
+        n = Math.min(n, segment.value);
       }
     }
     posTopP[ci] = p;
@@ -803,13 +795,12 @@ function columnValueDomain(
   // so refs neither stretch the domain nor render — warned once below.
   if (variant !== 'stacked100') {
     for (const s of refSeries) {
-      cats.forEach((_, ci) => {
-        const v = plottedOf(s, ci);
-        if (v === null) return;
+      for (const { v } of s.vals) {
+        if (v === null) continue;
         rendered.push(v);
         lo = Math.min(lo, v);
         hi = Math.max(hi, v);
-      });
+      }
     }
   } else {
     if (refSeries.some((s) => s.vals.some((val) => val.v !== null))) {
@@ -848,8 +839,7 @@ function columnValueDomain(
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
   // An authored tick step sets the tick rhythm, as on line: the domain snaps
   // out to the step, so no value is cut; more than 20 intervals are ignored.
-  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
-  return { posTopP, negBotP, dLo: stepped.domain[0], dHi: stepped.domain[1], ...(stepped.ticks ? { stepTicks: stepped.ticks } : {}), rendered };
+  return { posTopP, negBotP, rendered, scale: applyTickStep([dLo, dHi], va.tickStep, warnings) };
 }
 
 /** The value-axis break, validated against every value the exhibit renders. */
@@ -999,7 +989,9 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
   const running = runningPeriodIds(normalized.cats, ci => hasActualCategoryValue(plotted, ci));
-  const { cats, dataSeries, keySeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
+  const keySeries = sortSegments(plotted, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
+  const dataSeries = shownSeries(options, keySeries, true);
+  const { cats, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, dataSeries, warnings);
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
@@ -1057,14 +1049,13 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     : new Map<Id, IntegratedValue>();
   // A drawn value line is part of the stated range (valueLineDomain.ts).
   const lineExtent = valueLineExtent(options.annotations);
-  const { rendered, ...extent } = columnValueDomain(va, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, warnings);
+  const { rendered, posTopP, negBotP, scale } = columnValueDomain(va, variant, dataSeries, refSeries, basis, lineExtent, warnings);
   // While a reader hides a series, the shares keep the precision of every series, and an authored bound (a scale group's too) its range.
   const full = keySeries === dataSeries ? basis : columnBasis(variant, cats, keySeries, [], ranked);
-  if (full !== basis && (va.min !== undefined || va.max !== undefined)) {
-    const all = columnValueDomain(va, variant, cats, keySeries, refSeries, full.plottedOf, full.rangeOf, full.stacks, lineExtent, []);
-    extent.dLo = all.dLo; extent.dHi = all.dHi; extent.stepTicks = all.stepTicks;
-  }
-  const corridor = anomalyCorridor(anomaly, anomalyValues, extent.dLo, extent.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
+  const axis = full !== basis && (va.min !== undefined || va.max !== undefined)
+    ? columnValueDomain(va, variant, keySeries, refSeries, full, lineExtent, []).scale : scale;
+  let [dLo, dHi] = axis.domain;
+  const corridor = anomalyCorridor(anomaly, anomalyValues, dLo, dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
   // No total on a 100 % stack unless authored, and none on grouped
   // columns, where the bars stand side by side and add to nothing.
   const grandTotalsRequested = grandTotalRequested(options.grandTotalLabels, variant, warnings, partsAdd);
@@ -1123,20 +1114,19 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const rescaled = options.sharesOfOneWhole === true
     ? wholes.filter(({ c }) => !dataSeries.some((s) => s.vals[cats.indexOf(c)]!.isPct) && Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
-  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, extent.dLo, extent.dHi, warnings);
+  let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, warnings);
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
-  let { stepTicks, ...span } = extent;
-  const checked = activeBreak;
-  const stepAcross = stepFitsAxisBreak(stepTicks, checked, va.tickStep, warnings);
+  const stepTicks = axis.ticks;
+  const stepAcross = stepFitsAxisBreak(stepTicks, activeBreak, va.tickStep, warnings);
   if (!stepAcross) {
     // The rejected step sets no extent either: the nice extent is taken again and the break checked against it.
     // A break excludes the anomaly corridor, so the corridor does not move. Its warnings were given above.
     const { tickStep: _rejected, ...nice } = va;
-    const { rendered: niceRendered, ...niceExtent } = columnValueDomain(nice, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, []);
-    ({ stepTicks, ...span } = niceExtent);
+    const niceExtent = columnValueDomain(nice, variant, dataSeries, refSeries, basis, lineExtent, []);
+    [dLo, dHi] = niceExtent.scale.domain;
     // A break that only the step's extent held is dropped with a warn: the chart drew with it before, so it does not refuse now.
     const checks: LintWarning[] = [];
-    activeBreak = columnAxisBreak(options, anomaly, niceRendered, meanValue, averageMark, corridor.corridorShown, span.dLo, span.dHi, checks);
+    activeBreak = columnAxisBreak(options, anomaly, niceExtent.rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, checks);
     warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
       ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
   }
@@ -1147,7 +1137,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
     ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, keySeries, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
-    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
+    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, posTopP, negBotP, dLo, dHi, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
     gtContent,
     partsAdd,
