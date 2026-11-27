@@ -22,7 +22,7 @@ import { resolveThemeRequest } from './themeRequest';
 import { LiveDataError } from '../core/live/types';
 import { rowsKey } from './rowsStore';
 import { rowsModule } from './rowsModule';
-import { preparedInputKey } from './preparedInput';
+import { dataHash, preparedInputKey } from './preparedInput';
 
 /** The spec that `parseChartSpec` read, on the request it returns (parseChartSpec.ts writes it): `prepareChart` keys the page of that spec. */
 const SPEC_SOURCE = Symbol.for('boardplot.specSource');
@@ -60,7 +60,7 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const geometry = adapted ? { ...laidOut, warnings: rowsModule.rewriteWarningFields(laidOut.warnings, adapted.pathMap) } as typeof laidOut : laidOut;
   const mapped = adapted && { rows: { key: rowsKey({ type: resolved.type, data: input.data }, rows, columns), data: adapted.spec.data,
     reading: { rows: adapted.rows, ignoredColumns: adapted.ignoredColumns, states: adapted.states } } };
-  const inputKeys = window ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, requestRenderKey(resolved), resolveFor, 'theme' in theme);
+  const inputKeys = window ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, resolved, resolveFor, 'theme' in theme);
   const prepared = { ...prepareChartRender(resolved, geometry), ...mapped, ...(inputKeys.length ? { inputKeys } : {}) };
   if (geometry.refused) return { ...prepared, fit: activeFit, records: [], ...theme };
   const records = interactionRecords({ request: resolved, geometry, scope: resolved.scope, claims: claimsForChart(resolved.type, geometry) });
@@ -79,7 +79,7 @@ type Page = [spec: Record<string, unknown>, host: { theme?: unknown; target?: un
  * Each key also stands for the pages of the same form, see `pageForm` in preparedInput.ts.
  */
 async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((page: Record<string, unknown>) => unknown) | undefined, sizing: Record<string, unknown>, context: BoardplotThemeOptions,
-  key: string, resolveFor: (chart: Omit<ChartRequest, 'size'>) => ResolvedChartRequest, carriesTheme: boolean): Promise<string[]> {
+  prepared: ResolvedChartRequest, resolveFor: (chart: Omit<ChartRequest, 'size'>) => ResolvedChartRequest, carriesTheme: boolean): Promise<string[]> {
   const { theme, target, [SPEC_SOURCE]: source, ...rest } = authored;
   const { theme: optionTheme, target: optionTarget, ...options } = (rest.options ?? {}) as Record<string, unknown>;
   const T = theme ?? optionTheme, G = target ?? optionTarget;
@@ -98,9 +98,14 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
     pages.push([{ ...rest, ...(t === 'top' && { theme: T }), options: { ...options, ...(t === 'options' && { theme: T }), ...(g === 'options' && { target: G }) } },
       { ...(t === 'prop' && { theme: T }), ...(g === 'prop' && { target: G }) }]);
   }
+  // A page draws the prepared chart when its render key without the data and its data as one JSON string are the same.
+  // The data is the large part, so the check compares it as a string and every page hashes it once.
+  const apart = (request: ResolvedChartRequest) => [requestRenderKey({ ...request, data: null }), canonicalJson(request.data)].join();
+  const key = apart(prepared), hashes = new Map<unknown, string>();
+  const hashData = (data: unknown) => hashes.get(data) ?? hashes.set(data, dataHash(data)).get(data)!;
   const keys = new Set<string>(), tried = new Set<string | undefined>();
   for (const [spec, host] of pages) {
-    const page = preparedInputKey(spec, { ...host, ...sizing }, context, themes);
+    const page = preparedInputKey(spec, { ...host, ...sizing }, context, themes, hashData);
     // Pages of one form draw one chart, so one check serves them all. The first frame draws a theme object without a
     // preset that the prepared value does not carry in the default theme, so such a page shows the busy placeholder.
     // The theme the first frame reads, in its order. A grid panel's theme draws inside the prepared scene.
@@ -112,7 +117,7 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
       specSettings({ ...host, size: sizing.size, fit: sizing.fit, fallbackSize: sizing.fallbackSize } as never);
       const { request } = await parseChartSpec(mapRows ? { ...spec, data: mapRows(spec) } : spec);
       const live = { ...request, options: { ...request.options, ...Object.fromEntries(Object.entries(host).filter(([, value]) => value !== undefined)) } };
-      if (page && requestRenderKey(resolveFor(live)) === key) keys.add(page);
+      if (page && apart(resolveFor(live)) === key) keys.add(page);
     } catch { /* a page the parser refuses shows no prepared chart */ }
   }
   return [...keys];

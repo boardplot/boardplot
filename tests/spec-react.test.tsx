@@ -251,3 +251,19 @@ it('draws the prepared chart in the first frame for every form of the same chart
   await loadChartTypes(begun.types, { schemas: true, cores: false });
   expect(begun.finish().request.options?.locale).toEqual({ language: 'de-DE' });
 });
+
+// The page key and the render key hash with fnv64 on 16-bit limbs. A slip in the carry would give the server and the
+// browser keys that never meet, so a prepared chart would never show; the BigInt form of FNV-1a 64 is the reference.
+it('hashes as 64-bit FNV-1a over UTF-8', async () => {
+  const { fnv64 } = await import('../src/react/canonicalJson');
+  const reference = (text: string) => {
+    let hash = 0xcbf29ce484222325n;
+    for (const byte of new TextEncoder().encode(text)) hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+    return hash.toString(16).padStart(16, '0');
+  };
+  const texts = ['', 'a', '{"data":[1,2,3]}', 'Umsatz € 😀', '\ud800 lone', 'x'.repeat(5000)];
+  for (let seed = 1; texts.length < 300; seed = seed * 48271 % 2147483647) {
+    texts.push(String.fromCodePoint(...Array.from({ length: seed % 40 }, (_, i) => (seed * (i + 7)) % 0x10ffff % 0xd7ff + 1)));
+  }
+  for (const text of texts) expect(fnv64(text)).toBe(reference(text));
+});

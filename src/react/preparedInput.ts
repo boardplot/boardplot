@@ -48,15 +48,27 @@ function pageForm(spec: unknown, host: Fields, themes: object): unknown {
  * and sizing props and the provider settings. `prepareChart` stores the keys of the pages that the parser and the
  * layout turn into its chart, and the first frame shows the chart only for one of them. Undefined for a value JSON
  * cannot carry. `themes` is the theme registry of `src/core/theme.ts`: only a registered theme name drops or moves.
+ * The chart's data enters as its own hash, so `prepareChart` hashes the data of its pages once (`hashData`).
  */
-export function preparedInputKey(spec: unknown, host: Fields, context: PreparedContext = {}, themes: object): string | undefined {
+export function preparedInputKey(spec: unknown, host: Fields, context: PreparedContext = {}, themes: object, hashData = dataHash): string | undefined {
   const { theme, target, locale, strings, textScale, textSize, density } = context;
   try {
-    // JSON drops a key whose value is undefined, so it and a missing key give one key, as they give one live chart.
-    return fnv64(canonicalJson({ page: pageForm(JSON.parse(JSON.stringify(spec)), host, themes), host, theme, target, locale, textScale, textSize, density,
-      strings: strings && Object.keys(strings).length ? strings : undefined }));
+    // The JSON copy holds the chart's data apart as a mark; its hash enters next to the page, where no spec can write it.
+    // Data that JSON reads through toJSON or a getter is hashed from the copy, so every page hashes what JSON reads.
+    const page = Object(spec) as Fields, chart = Object(Array.isArray(page.charts) ? page.charts[0] : page) as Fields, data = chart.data;
+    let hash: string | undefined;
+    const copy = JSON.parse(JSON.stringify(spec, function (this: unknown, key, value: unknown) {
+      return this === chart && key === 'data' && value === data && typeof data === 'object' && data !== null ? (hash = hashData(data), 0) : value;
+    }));
+    const held = Object(Array.isArray(copy?.charts) ? copy.charts[0] : copy) as Fields;
+    if (hash === undefined && held.data !== null && typeof held.data === 'object') { hash = dataHash(held.data); held.data = 0; }
+    return fnv64(canonicalJson({ page: pageForm(copy, host, themes), data: hash,
+      host, theme, target, locale, textScale, textSize, density, strings: strings && Object.keys(strings).length ? strings : undefined }));
   } catch { return undefined; }
 }
+
+/** The hash of a chart's data as JSON carries it. */
+export const dataHash = (data: unknown): string => fnv64(canonicalJson(JSON.parse(JSON.stringify(data))));
 
 type MatrixInk = { token: string; theme: { kind: 'contrast-ink'; matrix?: Paint[] | number } };
 export const matrixInk = (node: SceneNode): MatrixInk | undefined => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix !== undefined

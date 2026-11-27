@@ -17,12 +17,15 @@ export function canonicalJson(value: unknown): string {
   });
 }
 
-/** 64-bit FNV-1a over the UTF-8 bytes, as 16 hex digits. */
+/** 64-bit FNV-1a over the UTF-8 bytes, as 16 hex digits. The 64-bit product runs on 16-bit limbs, so no BigInt is needed. */
 export function fnv64(json: string): string {
-  let hash = 0xcbf29ce484222325n;
+  // The offset basis 0xcbf29ce484222325 as four 16-bit limbs from the low end.
+  let h0 = 0x2325, h1 = 0x8422, h2 = 0x9ce4, h3 = 0xcbf2;
   for (const byte of new TextEncoder().encode(json)) {
-    hash ^= BigInt(byte);
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+    h0 ^= byte;
+    // Times the prime 0x100000001b3 = 2^40 + 0x1b3: each limb times 0x1b3 with its carry, plus the hash shifted by 40 bits.
+    const t0 = h0 * 0x1b3, t1 = h1 * 0x1b3 + (t0 >>> 16), t2 = h2 * 0x1b3 + (t1 >>> 16) + (h0 << 8), t3 = h3 * 0x1b3 + (t2 >>> 16) + (h1 << 8);
+    h0 = t0 & 0xffff; h1 = t1 & 0xffff; h2 = t2 & 0xffff; h3 = t3 & 0xffff;
   }
-  return hash.toString(16).padStart(16, '0');
+  return [h3, h2, h1, h0].map(limb => limb.toString(16).padStart(4, '0')).join('');
 }
