@@ -213,7 +213,8 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
     const next = driver && refs.held.shift();
     if (!next) return;
     (driver.handlers as Record<string, ((event: never) => void) | undefined>)[next.kind]?.(next as never);
-    if (refs.held.length) again(count => count + 1);
+    // Also after the last one: the engine's handlers take over in that render.
+    again(count => count + 1);
   });
   // The page hears each change of the hovered records, also a new layout under a resting pointer, and one empty list at the end.
   const listener = useRef(onHoverChange);
@@ -234,7 +235,8 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   const mouse = (event: { pointerType: string }) => { if (event.pointerType !== 'touch') hold('onP', 'onPointerMove', event); };
   // A tap lifts before the engine is here: the lift is held after its touch, so the engine does not take the next tap for a second finger.
   const lifted = (event: { pointerType: string }) => { if (event.pointerType === 'touch') hold('-', 'onPointerUp', event); };
-  const handlers = driver ? driver.handlers : keys ? {
+  // Input keeps queuing behind held input, so it runs after it, in order.
+  const handlers = driver && !refs.held.length ? driver.handlers : keys ? {
     ...asked && {
       onPointerEnter: mouse, onPointerMove: mouse,
       onPointerDown: (event: { pointerType: string }) => { if (event.pointerType === 'touch') hold('onP', 'onPointerDown', event); },
