@@ -79,10 +79,14 @@ export function schemaDescriptionsPlugin(root) {
         const imports = source.includes('schemaWords.') ? `import * as schemaWords from ${runtime};\n` : '';
         modules.set(resolve(file.fileName), imports + source);
       }
+      // One string with a line per text compresses better than an array literal.
+      const texts = [...slots.keys()];
+      const broken = texts.find(text => text.includes('\n'));
+      if (broken) throw new Error(`schema-descriptions: a description holds a line break: ${broken}`);
       build.onLoad({ filter: /[/\\]src[/\\]core[/\\].*\.ts$/ }, ({ path }) => {
         if (path === join(core, 'schema/linkDescriptions.ts')) return { contents: `
           import { install } from ${runtime};
-          const dictionary = ${JSON.stringify([...slots.keys()])};
+          const dictionary = ${JSON.stringify(texts.join('\n'))}.split('\\n');
           export function linkSchemaDescriptions() {
             install(dictionary);
           }`, loader: 'ts' };
