@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import '../src/core/charts';
 import { interactionRecords } from '../src/core/a11y/records';
-import { withHiddenSeries } from '../src/core/hiddenSeries';
+import { HIDDEN_SERIES } from '../src/core/hiddenSeriesKey';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { getFixtures } from '../src/fixtures';
@@ -9,7 +9,7 @@ import type { Geometry } from '../src/core/types/scene';
 
 // A React chart hides a series with a registered symbol on its options; the layout reads it as a mounted chart passes it.
 function laidOut(type: string, data: unknown, options: object, hidden: string[] = []) {
-  const request = resolveChartRequest({ type, data, options: withHiddenSeries(options, hidden) } as never);
+  const request = resolveChartRequest({ type, data, options: hidden.length ? { ...options, [HIDDEN_SERIES]: hidden } : options } as never);
   return { request, geometry: requireGeometry(layoutResolvedRequest(request)) as Geometry };
 }
 

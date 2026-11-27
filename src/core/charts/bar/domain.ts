@@ -716,10 +716,6 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     ...barNetLine(options, variant, keySeries, dataSeries, warnings),
     ...barAnnotations(options, variant, averageMarkerValue, statFmt, averageRun?.span),
   };
-  const extent = barValueExtent(domain, warnings);
-  if (full !== basis && (options.valueAxis?.min !== undefined || options.valueAxis?.max !== undefined)) {
-    const all = barValueExtent({ ...domain, ...full, dataSeries: keySeries }, []);
-    extent.lo = all.lo; extent.hi = all.hi;
-  }
-  return { ...domain, ...extent };
+  const bound = options.valueAxis?.min !== undefined || options.valueAxis?.max !== undefined;
+  return { ...domain, ...barValueExtent(full !== basis && bound ? { ...domain, ...full, dataSeries: keySeries } : domain, warnings) };
 }

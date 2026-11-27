@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { readsHiddenSeries, withHiddenSeries } from '../core/hiddenSeries';
+import { HIDDEN_SERIES } from '../core/hiddenSeriesKey';
 import { chartRefusals, isSizeDependentRefusal } from '../core/schema/refusals';
 import type { LintWarning } from '../core/types/scene';
 import { noZoom, type ZoomHook } from './zoomHook';
@@ -17,10 +17,12 @@ const NONE: string[] = [];
 export const useLegendClick: ZoomHook = (input) => {
   const ids = ((input.data as { series?: { id: string; role?: string }[] }).series ?? []).flatMap((s) => (s.role ?? 'data') === 'data' ? [s.id] : []);
   // One data series has nothing to hide: the last series shown stays.
-  const offered = ids.length > 1 && input.hover !== false && input.onSeriesClick === undefined && readsHiddenSeries(input.type, input.options);
+  // A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
+  const variant = input.options.variant;
+  const offered = ids.length > 1 && input.hover !== false && input.onSeriesClick === undefined && variant !== 'tornado' && variant !== 'football-field';
   const [list, setList] = useState(NONE);
   const hidden = offered ? list : NONE;
-  const options = useMemo(() => withHiddenSeries(input.options, hidden), [input.options, hidden]);
+  const options = useMemo(() => (hidden.length ? { ...input.options, [HIDDEN_SERIES]: hidden } : input.options), [input.options, hidden]);
   const [element, setElement] = useState<HTMLElement | null>(null);
   const refused = useRef(false);
   useEffect(() => {

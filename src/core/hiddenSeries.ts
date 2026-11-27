@@ -1,14 +1,6 @@
-/**
- * The series a reader hides with a legend click, on the options of a mounted React chart. A registered symbol:
- * the request keeps it and JSON never carries it, so the CLI, the MCP tools and the server draw every series.
- * A list, not a set, so the layout's request key tells two hidden lists apart.
- */
-export const HIDDEN_SERIES = Symbol.for('boardplot.hiddenSeries');
-
-/** The options with `ids` hidden, or unchanged when nothing is hidden. */
-export function withHiddenSeries<T extends object>(options: T, ids: readonly string[]): T {
-  return ids.length ? { ...options, [HIDDEN_SERIES]: ids } : options;
-}
+import type { Id } from './types/cell';
+import type { SeriesIdentity } from './seriesIdentity';
+import { HIDDEN_SERIES } from './hiddenSeriesKey';
 
 /** The series of `all` the reader has not hidden: `all` itself when none is hidden or every one is. */
 export function shownSeries<S extends { id: string }>(options: object, all: S[]): S[] {
@@ -18,9 +10,10 @@ export function shownSeries<S extends { id: string }>(options: object, all: S[])
 }
 
 /**
- * Whether the layout draws without the hidden series: every column chart, and the grouped, stacked and 100% stacked bars.
- * A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
+ * The key entry of a series a reader hid with a legend click: the omitted look, under the series' own name. No
+ * pattern, so it keys no scenario that a cell paints. A box key draws no level: the series' place in the legend
+ * keeps two hidden entries apart for the collision check, which would call them indistinguishable.
  */
-export function readsHiddenSeries(type: string, options: { variant?: string }): boolean {
-  return type === 'column' || type === 'bar' && options.variant !== 'tornado' && options.variant !== 'football-field';
+export function hiddenKey(id: Id, label: string, place: number): SeriesIdentity {
+  return { id, label, paint: { token: 'inkMuted' }, hollow: true, level: place };
 }

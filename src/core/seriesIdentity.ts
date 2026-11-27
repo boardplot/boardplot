@@ -14,15 +14,6 @@ export function omittedKey(id: Id, label: string): SeriesIdentity {
   return { id, label: label.replace(/\.$/, ''), paint: { token: 'inkMuted' }, pattern: 'outline', hollow: true };
 }
 
-/**
- * The key entry of a series a reader hid with a legend click: the omitted look, under the series' own name. No
- * pattern, so it keys no scenario that a cell paints. A box key draws no level: the series' place in the legend
- * keeps two hidden entries apart for the collision check, which would call them indistinguishable.
- */
-export function hiddenKey(id: Id, label: string, place: number): SeriesIdentity {
-  return { id, label, paint: { token: 'inkMuted' }, hollow: true, level: place };
-}
-
 export interface SeriesIdentity {
   id: Id;
   label: string;

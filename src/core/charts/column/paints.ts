@@ -22,7 +22,7 @@ import { scenarioFillPattern, scenarioPartners, scenarioSlotPaint, seriesScenari
  * patterns the cells actually paint.
  */
 export interface ColumnLegendPaints extends ColumnPaints {
-  identity(s: NormSer, dataIdx: number): Paint;
+  identity(s: NormSer): Paint;
   base(s: NormSer, dataIdx: number): Paint;
   /** Every scenario pattern the cells paint (partial-period hatch excluded). */
   cellPatterns: ('hatch45' | 'outline' | undefined)[];
@@ -102,7 +102,6 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     ? authored.filter((s) => !s.fill) : [];
   const seriesIdentityPaint = (
     s: NormSer,
-    _dataIdx: number,
     scenario = roleOf(s),
   ): Paint => {
     if (s.fill) return { css: s.fill };
@@ -115,7 +114,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     const step = rampIds.indexOf(s.id);
     if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     const partner = scenarioPartner.get(s.id);
-    if (partner) return seriesIdentityPaint(partner, 0, scenario);
+    if (partner) return seriesIdentityPaint(partner, scenario);
     const slot = slotOf.get(s.id) ?? dataSeries.indexOf(s);
     if (dataSeries.length === 1) return themeSeriesPaint(slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, slot);
@@ -133,10 +132,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
    */
   const restRecedes =
     dataSeries.length === 1 && cats.some((c, ci) => highlights.has(c.id) && (plottedOf(dataSeries[0]!, ci) ?? 0) !== 0);
-  const basePaints = drawn.map((s, dataIdx): Paint => {
+  const basePaints = drawn.map((s): Paint => {
     // The rest role, which falls back to neutralLight.
     if (restRecedes && !s.fill && !s.colorRole && !s.scenario) return { token: 'rest' };
-    return seriesIdentityPaint(s, dataIdx);
+    return seriesIdentityPaint(s);
   });
   const baseColors: (string | undefined)[] = [];
   const seriesBasePaint = (_s: NormSer, dataIdx: number): Paint => basePaints[dataIdx]!;
@@ -152,10 +151,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     // authored overrides above (see signColorOverrides).
     if (signColor) return signPaint(s, val.v, options.colorblindSafe);
     if (uniformScenario.has(cat.id)) {
-      return seriesIdentityPaint(s, dataIdx, val.scenario ?? s.scenario);
+      return seriesIdentityPaint(s, val.scenario ?? s.scenario);
     }
     if (val.scenario) {
-      return seriesIdentityPaint(s, dataIdx, val.scenario);
+      return seriesIdentityPaint(s, val.scenario);
     }
     return seriesBasePaint(s, dataIdx);
   };

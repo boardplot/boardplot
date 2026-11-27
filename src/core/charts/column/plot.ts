@@ -1,5 +1,5 @@
 import { categoryHeightLimit } from '../../label/categoryRow';
-import { hiddenKey } from '../../seriesIdentity';
+import { hiddenKey } from '../../hiddenSeries';
 import { chartString } from '../../strings/column';
 import { stringFields } from '../../strings';
 import { DEFAULT_TARGET, scaleTextPx } from '../../target';
@@ -136,7 +136,7 @@ function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): Le
         return i < 0 ? hiddenKey(s.id, label, place) : {
           id: s.id,
           label,
-          paint: legendUsesSeriesIdentity ? paints.identity(s, i) : paints.base(s, i),
+          paint: legendUsesSeriesIdentity ? paints.identity(s) : paints.base(s, i),
           pattern: legendUsesSeriesIdentity ? undefined : seriesPattern(s),
           // A series whose every drawn column looks the same is keyed in that look, hatch included.
           ...uniformCellLook(domain, paints, s, i),
