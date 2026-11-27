@@ -640,10 +640,22 @@ describe('default card rows', () => {
     const funnel = { type: 'funnel', data: { categories: [{ id: 'v', label: 'Visits' }, { id: 'o', label: 'Orders' }],
       series: [{ id: 'n', label: 'Visits', values: [5000, 600] }] }, options: { size: { width: 640, height: 360 } } };
     expect(card(funnel, 'v')).toEqual([['Visits'], ['', '5,000', true]]);
-    expect(card(funnel, 'o')).toEqual([['Orders'], ['Visits:', '600', true], ['Stage conversion:', '12%']]);
+    expect(card(funnel, 'o')).toEqual([['Orders'], ['Visits:', '600', true], ['Advance:', '12%']]);
     expect(card({ type: 'variance', data: { categories: [{ id: 'jan', label: 'Jan' }], series: [{ id: 'actual', label: 'Actual', values: [4204] },
       { id: 'plan', role: 'reference', scenario: 'PL', values: [4000] }] }, options: { variant: 'integrated', variance: { of: 'actual', vs: 'plan' } } }, 'jan'))
-      .toEqual([['Jan'], ['Actual:', '4,204', true], ['plan:', '4,000'], ['vs plan:', '+204 (+5.1%)']]);
+      .toEqual([['Jan'], ['Actual:', '4,204', true], ['PL:', '4,000'], ['vs PL:', '+204 (+5.1%)']]);
+  });
+
+  // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
+  it('prints the total the stack draws', () => {
+    const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const total = (options: object, series: object[], categories: object[] = cats) => card({ type: 'column', data: { categories, series },
+      options: { size: { width: 640, height: 360 }, ...options } }, 'q2', 'a').find(row => row[0] === 'Total:')?.[1];
+    const two = (a: number[], b: number[]) => [{ id: 'a', label: 'A', values: a }, { id: 'b', label: 'B', values: b }];
+    expect(total({ variant: 'stacked' }, two([60, 55], [30, 25]), cats.map(category => ({ ...category, total100: 200 })))).toBe('80');
+    expect(total({ variant: 'stacked' }, two([50, 55], [-20, -25]))).toBe('30');
+    expect(total({ variant: 'stacked100' }, two([30, 35], [45, 40]))).toBe('75');
+    expect(total({ variant: 'stacked100' }, two([60, 55], [40, 45]))).toBeUndefined();
   });
 
   // The rules against repeated numbers dropped a value that only matched by chance: a KPI's value, a funnel's conversion, a variance total.
@@ -651,7 +663,7 @@ describe('default card rows', () => {
     expect(card({ type: 'kpi', data: { label: 'Orders', value: 100, delta: { vs: 50, scenario: 'PY', mode: 'both' } } })
       .slice(0, 2)).toEqual([['Orders'], ['', '100', true]]);
     expect(card({ type: 'funnel', data: { categories: [{ id: 'l', label: 'Leads' }, { id: 's', label: 'Calls' }], series: [{ id: 'n', label: 'Deals', values: [100, 50] }] },
-      options: { size: { width: 640, height: 360 } } }, 's')).toEqual([['Calls'], ['Deals:', '50', true], ['Stage conversion:', '50%']]);
+      options: { size: { width: 640, height: 360 } } }, 's')).toEqual([['Calls'], ['Deals:', '50', true], ['Advance:', '50%']]);
     expect(card({ type: 'variance', data: { categories: [{ id: 'na', label: 'North' }, { id: 'so', label: 'South' }], series: [
       { id: 'a', label: 'Web', values: [61, 44] }, { id: 'b', label: 'Store', values: [22, 18] },
       { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, 55] }] },

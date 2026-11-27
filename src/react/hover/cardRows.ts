@@ -12,7 +12,6 @@ import { dateNames } from '../../core/dateNames';
 import { wordLanguage } from '../../core/numberMarks';
 import { runningPeriodIds, saysToDate } from '../../core/partialPeriod';
 import { scenarioFillPattern } from '../../core/scenarioPairs';
-import type { Scenario } from '../../core/types/cell';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { StringsSpec } from '../../core/types/options';
@@ -84,7 +83,7 @@ function periodName(all: readonly SourceCategory[], at: number, locale: string |
  * (`partial`) adds the chart's "to date" words. Undefined where the record
  * has no category, or where the card's own heading already says it all.
  */
-export function cardTitle(request: ResolvedChartRequest, record: InteractionRecord): string | undefined {
+export function cardTitle(request: ResolvedChartRequest, record: InteractionRecord, records: readonly InteractionRecord[] = []): string | undefined {
   const categoryId = record.target.owner.categoryId;
   if (categoryId === undefined || record.target.owner.annotationId !== undefined || record.event) return undefined;
   // A record that names its series only in its label (a waffle of several series) keeps that label.
@@ -95,45 +94,73 @@ export function cardTitle(request: ResolvedChartRequest, record: InteractionReco
   if (index < 0) return undefined;
   const locale = request.locale?.language;
   const period = periodName(categories!, index, locale);
-  if (!categories![index]!.partial || !running(chart, categories!).has(categoryId)) return period;
+  if (!categories![index]!.partial || !running(chart, categories!, records.filter(other => other.target.panel === record.target.panel)).has(categoryId)) return period;
   const heading = period ?? record.categoryLabel ?? categories![index]!.label ?? categoryId;
   const toDate = chartString({ locale: { language: locale }, strings: chart.options?.strings ?? request.options.strings }, 'toDate');
   return toDate === '' || saysToDate(heading, toDate) ? heading : `${heading} ${toDate}`;
 }
 
-/** The categories that run now: a partial period with no actual after it. An earlier partial period has closed. */
-function running(chart: SourceChart, categories: readonly SourceCategory[]): Set<string> {
+/**
+ * The categories that run now: a partial period with no actual after it. An
+ * earlier partial period has closed. An actual is a value the chart's
+ * records hold for a series that is no reference, and that the chart does
+ * not draw as forecast or plan (hatched, outlined), as the chart counts it.
+ */
+function running(chart: SourceChart, categories: readonly SourceCategory[], records: readonly InteractionRecord[]): Set<string> {
   const series = (Array.isArray(chart.data?.series) ? chart.data!.series : []) as SourceSeries[];
-  const actual = series.filter(entry => entry?.role !== 'reference' && Array.isArray(entry?.values));
-  // A value the chart draws as forecast or plan (hatched, outlined) is no actual, as the chart counts it.
-  const isActual = (entry: SourceSeries, index: number) => {
-    const cell = (entry.values as unknown[])[index];
-    const value = cell !== null && typeof cell === 'object' ? (cell as { number?: unknown }).number : cell;
-    const scenario = (cell !== null && typeof cell === 'object' ? (cell as { scenario?: Scenario }).scenario : undefined) ?? entry.scenario as Scenario | undefined;
-    return value !== null && value !== undefined && scenarioFillPattern(scenario) === undefined;
-  };
-  return runningPeriodIds(categories as readonly Category[], index => actual.length === 0 || actual.some(entry => isActual(entry, index)));
+  const references = new Set(series.filter(entry => entry?.role === 'reference').map(entry => entry.id));
+  const actual = new Set<string>();
+  for (const record of records) {
+    const { categoryId, seriesId, annotationId } = record.target.owner;
+    if (categoryId !== undefined && annotationId === undefined && !references.has(seriesId) && record.value.state === 'value'
+      && scenarioFillPattern(record.scenario) === undefined) actual.add(categoryId);
+  }
+  return runningPeriodIds(categories as readonly Category[], index => records.length === 0 || actual.has(categories[index]!.id));
 }
 
 /**
  * The chart's metric where its records name none: a sparkline's subtitle
- * measure, else a title short enough to be a name; a funnel's one series.
+ * measure (or a subtitle of words alone), else a title short enough to be a
+ * name; a funnel's series, which its last stages name nowhere else.
  */
-export function metricName(request: ResolvedChartRequest, panel?: string): string | undefined {
+export function metricName(request: ResolvedChartRequest, panel?: string, seriesId?: string): string | undefined {
   const chart = sourceChart(request, panel);
   const top = chart === (request as unknown as SourceChart);
   const type = top ? request.type : chart.type;
   const options = (top ? request.options : chart.options) as SourceChart['options'];
   if (type === 'funnel') {
-    const series = chart.data?.series;
-    const label = Array.isArray(series) && series.length === 1 ? (series[0] as SourceSeries | undefined)?.label : undefined;
+    const series = (Array.isArray(chart.data?.series) ? chart.data!.series : []) as SourceSeries[];
+    const label = (series.length === 1 ? series[0] : series.find(entry => entry?.id === seriesId))?.label;
     return typeof label === 'string' && label.trim() ? label.trim() : undefined;
   }
   if (type !== 'sparkline') return undefined;
-  const measure = (options?.subtitle as { measure?: unknown } | undefined)?.measure;
+  const subtitle = options?.subtitle;
+  const measure = typeof subtitle === 'string' ? subtitle : (subtitle as { measure?: unknown } | undefined)?.measure;
   if (typeof measure === 'string' && measure.trim()) return measure.trim();
   const title = typeof options?.title === 'string' ? options.title.trim() : '';
   return title && title.split(/\s+/).length <= 4 ? title : undefined;
+}
+
+/**
+ * The series that stand in a stack, by `stackKey`: every series of a
+ * stacked column, bar or area that is no reference, and a combo's column
+ * series. A part with no value in any shown category still has its place.
+ */
+export function stackSeries(request: ResolvedChartRequest, panels: readonly (string | undefined)[]): Set<string> {
+  const ids = new Set<string>();
+  for (const panel of panels) {
+    const chart = sourceChart(request, panel);
+    const top = chart === (request as unknown as SourceChart);
+    const type = top ? request.type : chart.type;
+    const variant = ((top ? request.options : chart.options) as { variant?: unknown } | undefined)?.variant;
+    const series = (Array.isArray(chart.data?.series) ? chart.data!.series : []) as (SourceSeries & { kind?: unknown })[];
+    const stacked = (type === 'column' || type === 'bar' || type === 'area') && (variant === 'stacked' || variant === 'stacked100');
+    for (const entry of series) {
+      if (typeof entry?.id !== 'string' || entry.role === 'reference') continue;
+      if (stacked || (type === 'combo' && (entry.kind ?? 'column') === 'column')) ids.add(`${top ? '' : panel ?? ''}\u0000${entry.id}`);
+    }
+  }
+  return ids;
 }
 
 /**

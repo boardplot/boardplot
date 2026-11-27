@@ -80,7 +80,9 @@ export interface LabelCardOptions {
   name?: string;
   /** The key's order of the series a card with several records lists: the records' order in the chart. */
   order?: ReadonlyMap<InteractionRecord, number>;
-  /** The series that are parts of a stack in some category (`stackKey`): a missing value of one stands among the parts. */
+  /** A funnel's word for its stage conversion, as its labels print the rate. */
+  conversionName?: string;
+  /** The series that stand in a stack (`stackKey`): a missing value of one stands among the parts. */
   stackSeries?: ReadonlySet<string>;
 }
 
@@ -218,6 +220,17 @@ function cardValueText(value: InteractionValue, locale?: string): string {
 }
 
 /**
+ * The reference's name, one in every row: its authored label, else the
+ * scenario code the chart's key and labels print ("PL"), never its raw id.
+ */
+function referenceName(record: InteractionRecord): string | undefined {
+  const comparison = record.comparisons[0];
+  const field = record.fields.find(entry => entry.key === 'reference')?.label;
+  if (comparison && comparison.labelKind === undefined && comparison.scenario) return comparison.scenario;
+  return field;
+}
+
+/**
  * A number through one card format: the format's text, or its bound ("<$1k",
  * "<0.1%") where the format prints a nonzero value as zero.
  */
@@ -240,26 +253,28 @@ const SHARE_EXAMPLE = '12.3%';
  * and not "$0.43", and the total prints as the parts do.
  */
 function cardFormat(values: readonly InteractionValue[], locale?: string): (value: InteractionValue) => string {
-  const plain = (value: InteractionValue) => value.state === 'value' && typeof value.raw === 'number' && !value.format && value.derived !== 'percent';
+  const numeric = (value: InteractionValue) => value.state === 'value' && typeof value.raw === 'number' && value.derived !== 'percent';
+  // Values in one authored format, or in one unit without a format, share a card format.
+  const keyOf = (value: InteractionValue) => value.format ? `format\u0000${value.format}\u0000${value.unit ?? ''}` : `unit\u0000${value.unit ?? ''}`;
   const specs = new Map<string, NumberFormatSpec | null>();
-  const specFor = (unit: string | undefined): NumberFormatSpec | null => {
-    const key = unit ?? '';
+  const specFor = (value: InteractionValue): NumberFormatSpec | null => {
+    const key = keyOf(value);
     let spec = specs.get(key);
     if (spec === undefined) {
       let largest: { raw: number; text: string } | undefined;
-      for (const value of values) {
-        const text = plain(value) && (value.unit ?? '') === key ? shownValueText(value) : undefined;
-        if (text !== undefined && (!largest || Math.abs(value.raw as number) > Math.abs(largest.raw))) largest = { raw: value.raw as number, text };
+      for (const other of values) {
+        const text = numeric(other) && keyOf(other) === key ? shownValueText(other) : undefined;
+        if (text !== undefined && (!largest || Math.abs(other.raw as number) > Math.abs(largest.raw))) largest = { raw: other.raw as number, text };
       }
-      spec = largest ? exampleFormat(largest.text, locale, unit) : null;
+      spec = largest ? exampleFormat(largest.text, locale, value.unit) : value.format ? exampleFormat(value.format, locale, value.unit) : null;
       // A format that does not print its own example back (a unit that holds the scale, "$m") is no card format.
-      if (spec && specText(largest!.raw, spec) !== largest!.text) spec = null;
+      if (spec && largest && specText(largest.raw, spec) !== largest.text) spec = null;
       specs.set(key, spec);
     }
     return spec;
   };
   return value => {
-    const spec = plain(value) ? specFor(value.unit) : null;
+    const spec = numeric(value) ? specFor(value) : null;
     return spec ? specText(value.raw as number, spec) : cardValueText(value, locale);
   };
 }
@@ -424,11 +439,12 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       // through its format when it declares one, else at its own precision
       // with the unit joined as the marks join it ("10.9%", "186.825 EUR k").
       if (members.has(field.key)) continue;
-      const row = fieldRow(field, locale);
+      const name = field.key === 'reference' ? referenceName(record) : field.key === 'conversion' ? options?.conversionName : undefined;
+      const row = fieldRow(name ? { ...field, label: name } : field, locale);
       // Without a headline, the current value is the pointed row.
       rows.push(!headline && field.key === 'current' ? { ...row, kind: 'value', pointed: true } : row);
     }
-    const reference = record.fields.find(field => field.key === 'reference')?.label;
+    const reference = referenceName(record);
     pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale, reference) ?? []));
     if (record.share && share) {
       const base = record.share.denominator;
@@ -491,9 +507,19 @@ function seriesSwatch(record: InteractionRecord, scene: readonly SceneNode[]): P
   }
   const seriesId = record.target.owner.seriesId;
   if (seriesId === undefined) return undefined;
-  const path = scene.find(node => node.t === 'path' && node.part === 'line' && node.owner.seriesId === seriesId
+  // A mark with no node of its own here (a line point, a missing value) takes its series' paint: its line, else any mark or key entry of it.
+  const own = scene.filter(node => node.owner?.seriesId === seriesId && node.owner.annotationId === undefined
     && node.origin?.panels.join('/') === record.target.panel);
-  return path?.t === 'path' ? path.stroke : undefined;
+  const path = own.find(node => node.t === 'path' && (node.part === 'line' || node.part === 'series') && node.stroke);
+  if (path?.t === 'path') return path.stroke;
+  for (const node of own) {
+    if (node.t === 'line' && node.stroke) return node.stroke;
+    if (node.t === 'rect' || node.t === 'circle' || node.t === 'path') {
+      const paint = node.fill ?? node.stroke;
+      if (paint) return paint;
+    }
+  }
+  return undefined;
 }
 
 /** A series of a panel, for `LabelCardOptions.stackSeries`. */
@@ -503,7 +529,25 @@ export function stackKey(record: InteractionRecord): string {
 
 /** The parts of a stack: records whose share of a category total the card can print. */
 function stackPart(record: InteractionRecord): boolean {
-  return record.share !== undefined && record.share.percent.state === 'value' && record.value.state !== 'suppressed';
+  return record.share !== undefined && record.value.state === 'value' && typeof record.value.raw === 'number';
+}
+
+/**
+ * The stack's total as the chart draws it: the sum of its parts, at the
+ * precision of the largest drawn part ("478" beside "412", "35.0" beside
+ * "12.0"). Where that sum is the share's base, the base keeps its own text.
+ */
+function stackTotal(parts: readonly InteractionRecord[], locale?: string): InteractionValue {
+  const base = parts[0]!.share!.denominator;
+  const sum = parts.reduce((total, record) => total + (record.value.raw as number), 0);
+  const same = base.state === 'value' && typeof base.raw === 'number' && Math.abs(base.raw - sum) <= 1e-9 * Math.max(1, Math.abs(sum));
+  const { displayed: _part, ...value } = parts[0]!.value;
+  const total: InteractionValue = same ? base : { ...value, raw: sum };
+  if (total.displayed || total.format) return total;
+  const largest = parts.reduce((top, record) => Math.abs(record.value.raw as number) > Math.abs(top.value.raw as number) ? record : top);
+  const example = largest.value.displayed?.trim();
+  const spec = example && /^[-−]?\d[\d.,\s\u00a0\u202f]*$/u.test(example) ? exampleFormat(example, locale, undefined) : null;
+  return spec && specText(largest.value.raw as number, spec) === example ? { ...total, displayed: specText(sum, spec) } : total;
 }
 
 /**
@@ -533,35 +577,38 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
   const order = options?.order;
   const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
   const parts = sorted.filter(stackPart);
+  // A part with no value here keeps its place in the key among the parts.
+  const missing = (record: InteractionRecord) => record.value.state === 'missing' && options?.stackSeries?.has(stackKey(record)) === true;
+  const members = parts.length ? sorted.filter(record => parts.includes(record) || missing(record)) : [];
   // A stack of two parts or more, or one part of an authored total that is not all of it.
-  const stacked = parts.length > 1 || (parts.length === 1 && !sameNumber(parts[0]!.share!.numerator, parts[0]!.share!.denominator));
-  // A part with no value here (a series that is a part in another category) keeps its place in the key.
-  const members = stacked ? sorted.filter(record => parts.includes(record)
-    || (record.value.state === 'missing' && !record.share && options?.stackSeries?.has(stackKey(record)) === true)) : [];
+  const stacked = members.length > 1 || (parts.length === 1 && !sameNumber(parts[0]!.share!.numerator, parts[0]!.share!.denominator));
   const listed = stacked ? [...members, ...sorted.filter(record => !members.includes(record))] : sorted;
-  const base = stacked ? parts[0]!.share!.denominator : undefined;
+  const total = stacked ? stackTotal(parts, locale) : undefined;
   // The parts and their total share one format; other series (a line on its own axis) keep theirs.
-  const stackFormat = cardFormat([...parts.map(record => record.value), ...base ? [base] : []], locale);
+  const stackFormat = cardFormat([...parts.map(record => record.value), ...total ? [total] : []], locale);
   const format = (record: InteractionRecord) => stacked && parts.includes(record) ? stackFormat(record.value) : cardValueText(record.value, locale);
-  const share = shareFormat(parts.map(record => record.share!.percent), locale);
-  const whole = !base || options?.hundredPercent === true || (base.state === 'value' && base.raw === 100 && base.unit === '%');
+  const shown = parts.filter(record => record.share!.percent.state === 'value');
+  const share = shareFormat(shown.map(record => record.share!.percent), locale);
+  // Parts that sum to 100 on a 100 % chart, or to 100 %, are their axis; one part alone is its own total.
+  const hundred = total?.state === 'value' && typeof total.raw === 'number' && Math.abs(total.raw - 100) < 1e-9;
+  const whole = !total || members.length < 2 || (hundred && (options?.hundredPercent === true || total.unit === '%'));
   listed.forEach((record, index) => {
     const name = record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
     const content = labelCardContent({ ...record, fields: record.fields.filter(field => field.key !== 'date' || headingNamesDate(record, field.value)) },
-      locale, { hundredPercent: options?.hundredPercent }, false).rows.slice(1);
+      locale, { hundredPercent: options?.hundredPercent, conversionName: options?.conversionName }, false).rows.slice(1);
     const at = content.findIndex(row => row.kind === 'value');
     if (at < 0) return;
     const number = format(record);
     const value = `${record.valueLabel ? `${record.valueLabel}: ` : ''}${number}`;
-    const part = stacked && parts.includes(record) ? share(record.share!.percent) : undefined;
+    const part = stacked && shown.includes(record) ? share(record.share!.percent) : undefined;
     rows.push({ ...content[at]!, label: `${name}:`, value, text: `${name}: ${value}${part ? `, ${part}` : ''}`,
       series: true, swatch: seriesSwatch(record, scene), pointed: record === pointed, ...part ? { share: part } : {} });
     pushAll(rows, content.filter((_, row) => row !== at));
-    if (stacked && !whole && index === members.length - 1 && base) {
+    if (stacked && !whole && index === members.length - 1 && total) {
       const label = chartString({ locale: { language: locale } }, 'totalLabel');
       // A stack with a missing part adds the known parts only, as the drawn total says.
-      const total = `${stackFormat(base)}${members.length > parts.length ? ` ${localeStrings(locale).incomplete}` : ''}`;
-      rows.push({ kind: 'total', label: `${label}:`, value: total, text: `${label}: ${total}`, values: [safeValue(base, locale)] });
+      const text = `${stackFormat(total)}${members.length > parts.length ? ` ${localeStrings(locale).incomplete}` : ''}`;
+      rows.push({ kind: 'total', label: `${label}:`, value: text, text: `${label}: ${text}`, values: [safeValue(total, locale)] });
     }
   });
   const content = cardContent(rows);

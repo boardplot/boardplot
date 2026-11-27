@@ -30,7 +30,8 @@ import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlig
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
   layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
-import { cardTitle, keyOrder, metricName } from './cardRows';
+import { cardTitle, keyOrder, metricName, stackSeries } from './cardRows';
+import { chartString as funnelString } from '../../core/strings/funnel';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
 import { interactionTokens } from '../../core/a11y/theme';
@@ -281,8 +282,22 @@ export function cardOptions(model: HoverModel, request: ResolvedChartRequest, fi
   // A panel projects the option keys this question needs, so a panel's card
   // words its share exactly as the same chart would on its own.
   return { hundredPercent: hundredPercentComposition(panel?.type ?? request.type, panel ? panel.composition : request.options as CompositionOptions),
-    title: cardTitle(request, first), name: metricName(request, first.target.panel), order: model.order ??= keyOrder(request, model.records, model.legend),
-    stackSeries: model.stackSeries ??= new Set(model.records.filter(record => record.share).map(stackKey)) };
+    title: cardTitle(request, first, model.records), name: metricName(request, first.target.panel, first.target.owner.seriesId),
+    order: model.order ??= keyOrder(request, model.records, model.legend),
+    stackSeries: model.stackSeries ??= new Set([...model.records.filter(record => record.share).map(stackKey),
+      ...stackSeries(request, [undefined, ...model.placement?.panels?.map(entry => entry.panel) ?? []])]),
+    ...(panel?.type ?? request.type) === 'funnel' ? { conversionName: conversionName(request, first.target.panel) } : {} };
+}
+
+/** A funnel's word for its stage conversion, as its labels print it ("12% advance" names "Advance"). */
+function conversionName(request: ResolvedChartRequest, panel: string | undefined): string | undefined {
+  let options: object = request.options;
+  for (const id of panel?.split('/') ?? []) {
+    const child = ((options === request.options ? request.data : undefined) as { panels?: { id?: unknown; options?: object }[] } | undefined)?.panels?.find(entry => entry.id === id);
+    if (child?.options) options = { ...child.options, locale: request.options.locale };
+  }
+  const word = funnelString(options as Parameters<typeof funnelString>[0], 'stageAdvance', { v1: '\u0000' }).replace('\u0000', '').trim();
+  return word ? word.replace(/^\p{L}/u, letter => letter.toLocaleUpperCase()) : undefined;
 }
 
 /** Filled-mark ownership depends on the drawn scene, not the active card. */
