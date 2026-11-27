@@ -2890,4 +2890,15 @@ fixtures.push({
     { kind: 'arrow', id: 'step-up', from: { annotationId: 'launch-note' }, to: { categoryId: 'apr', value: 65 } },
   ],
 });
+// One series name with its CAGR at card width, the key on top: the narrow stack
+// reaches the staircase name and height searches that the wide example skips.
+fixtures.push({
+  ...seriesCagr,
+  id: 'stacked-series-cagr-card',
+  title: 'One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top',
+  kind: 'torture',
+  tags: ['coverage'],
+  options: { ...seriesCagr.options, seriesLabels: { at: 'right-edge', cagr: true, only: ['b'] }, size: { width: 400 }, legend: 'top' },
+});
+
 registerFixtures('column', fixtures);

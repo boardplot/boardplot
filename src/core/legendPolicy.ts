@@ -203,12 +203,12 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
 ): FitLayout<O, M, DV> {
   const baseline = prepareFitLayout(definition, data, origins);
   const candidate = prepareFitLayout(definition, data, origins);
-  const unitBaseline = prepareFitLayout(definition, data, origins);
-  const unitCandidate = prepareFitLayout(definition, data, origins);
+  let unitBaseline: FitLayout<O, M, DV> | undefined;
+  let unitCandidate: FitLayout<O, M, DV> | undefined;
   const compactLayouts = new Map<number, FitLayout<O, M, DV>>();
   const series = (data as { series?: { id: string; label?: string }[] } | undefined)?.series;
   const names = new Map(Array.isArray(series) ? series.map(item => [item.id, item.label ?? item.id]) : []);
-  const refs = footnoteRefs(data);
+  let refs: Set<number> | undefined;
   const draw = (options?: O): LayoutResult<M, DV> => {
     const automatic = names.size > 0 && !contentSized(definition.type, options) && panelTypeClass(options) === undefined
       && (options?.legend === undefined || options.legend === 'auto');
@@ -217,6 +217,8 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
     }
     let result = layoutWithKeys(definition, data, options, baseline, candidate);
     if (!result.refused && panelTypeClass(options) === undefined && unitMissing(options as Record<string, unknown>, result)) {
+      unitBaseline ??= prepareFitLayout(definition, data, origins);
+      unitCandidate ??= prepareFitLayout(definition, data, origins);
       const withLine = layoutWithKeys(definition, data, Object.assign({} as O, options, { [UNIT_LINE]: unitLineMeasure(data, options) }), unitBaseline, unitCandidate);
       if (!withLine.refused) result = withLine;
     }
@@ -264,7 +266,7 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
   const run = ((options?: O) => {
     // An authored note nothing points at prints unnumbered.
     if (Array.isArray(options?.footnotes) && options.footnotes.length > 0) {
-      options = Object.assign({} as O, options, { [FOOTNOTE_REFS]: refs });
+      options = Object.assign({} as O, options, { [FOOTNOTE_REFS]: refs ??= footnoteRefs(data) });
     }
     // Grouped columns ignore seriesLabels (series-labels-ignored), so legend 'none' there
     // leaves the series unnamed: the key policy decides as it does for an unset legend.
@@ -288,7 +290,7 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
     return draw(options);
   }) as FitLayout<O, M, DV>;
   run.finish = () => {
-    baseline.finish(); candidate.finish(); unitBaseline.finish(); unitCandidate.finish();
+    baseline.finish(); candidate.finish(); unitBaseline?.finish(); unitCandidate?.finish();
     for (const draw of compactLayouts.values()) draw.finish();
     compactLayouts.clear();
   };

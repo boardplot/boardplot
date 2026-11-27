@@ -141,6 +141,7 @@ export function targetFloorsPx(target: RenderTarget, textScale = 1): Readonly<Re
 }
 
 function mapColumn(values: TypeColumn, unit: LengthUnit): Record<TypeRoleName, number> {
+  if (unit === 'px') return { ...values };
   return Object.fromEntries(Object.entries(values).map(([role, size]) => [role, toLayoutPx(size, unit)])) as Record<TypeRoleName, number>;
 }
 

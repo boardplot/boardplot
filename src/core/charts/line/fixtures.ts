@@ -1810,6 +1810,39 @@ function longDailySeries() {
   return { categories, series: [{ id: 'visits', label: 'Visits', values }] };
 }
 
+/** Invented daily values from 2025 on: a slow rise under two waves, one decimal. */
+export function wavyDays(days: number) {
+  const start = Date.UTC(2025, 0, 1);
+  const categories = Array.from({ length: days }, (_, i) => {
+    const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10);
+    return { id: date, date };
+  });
+  const values = (base: number) => categories.map((_, i) => Math.round((base + 0.04 * i + 8 * Math.sin(0.7 * i) + 3 * Math.cos(0.17 * i)) * 10) / 10);
+  return { categories, values };
+}
+
+// Every value label on many daily points: the fixed height and the phone card
+// reach the label and height searches that the shorter series never reach.
+const wideDays = wavyDays(2000), cardDays = wavyDays(60);
+fixtures.push(
+  {
+    id: 'daily-labels-wide',
+    title: 'Every value label on 2,000 daily points in the shortest wide frame that draws',
+    kind: 'torture',
+    tags: ['coverage'],
+    data: { categories: wideDays.categories, series: [{ id: 'value', label: 'Value', values: wideDays.values(100) }] },
+    options: { title: 'Invented daily values', valueLabels: 'all', size: { width: 960, height: 180 } },
+  },
+  {
+    id: 'daily-labels-phone-card',
+    title: 'Every value label on 60 undecimated daily points in a phone dashboard card',
+    kind: 'torture',
+    tags: ['coverage'],
+    data: { categories: cardDays.categories, series: [{ id: 'line0', label: 'Rate 0', values: cardDays.values(30) }] },
+    options: { title: 'Invented daily values', valueLabels: 'all', window: { decimate: 'none' }, target: 'dashboard', size: { width: 375 } },
+  },
+);
+
 // a theme's single area. marks.areaTint fills it in a pale tint of
 // color.focus under a 1.5 px ink line, the forecast keeps its hatch, and
 // marks.lineMarkers 'none' drops the point markers.

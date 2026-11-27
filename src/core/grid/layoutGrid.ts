@@ -1,4 +1,5 @@
 import { alignCategoryPanels, alignValuePanels, type PanelAnchoring } from './panelAlignment';
+import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from './lineKeyTrial';
 import { CATEGORY_INSET, panelAnchoring, type CategoryInset } from './categoryInset';
 import { chartString } from '../strings/layoutGrid';
 /**
@@ -360,7 +361,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     slot: Rect,
     marginLR?: { left?: number; right?: number; bottom?: number },
     inset?: CategoryInset,
-  ) => {
+    keyTrial?: 'check' | GridChild,
+  ): GridChild => {
     const def = getChart(panel.type);
     if (!def) {
       throw new NormalizeError('unknown-type', `panels[${panel.id}].type`, `unknown chart type '${panel.type}'`);
@@ -406,8 +408,17 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       measure,
       typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width),
     };
+    if (keyTrial && keyTrial !== 'check') {
+      // Keep the caption margin from the equivalent draw. Build the options in their usual order.
+      const { margin } = keyTrial.recordOptions as { margin?: object };
+      const recorded = margin ? { ...opts, margin } : opts;
+      return { ...keyTrial, recordOptions: recordedPanelOptions(recorded) };
+    }
+    const check: GridLineKeyTrial | undefined = keyTrial === 'check' && measure === defaultMeasurer && !uniformLineEndpointLegend
+      && !keepEndNames && def.type === 'line' && slot.w <= INLINE_FALLBACK_MAX_WIDTH && captionSizedPanelLayouts.has(def.layout)
+      ? { calls: 0, same: true } : undefined;
     const draw = (next: object) => {
-      const child = layoutChildChart(panel.data, next, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
+      const child = layoutChildChart(panel.data, check ? { ...next, [GRID_LINE_KEY_TRIAL]: check } : next, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
       if (child.refused) throw new GridChildRefusal(panel.id, child);
       return child;
     };
@@ -452,6 +463,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       def,
       geo,
       recordOptions: recordedPanelOptions(finalOptions),
+      ...(check?.calls && check.same ? { sameGridKey: true } : {}),
       tierCaption,
       ...(tierDetail ? { tierDetail } : {}),
     };
@@ -466,6 +478,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     def: ReturnType<typeof getChart>;
     geo: Geometry;
     recordOptions: object;
+    sameGridKey?: boolean;
     tierCaption?: string;
     tierDetail?: string;
     /** The category inset the alignment settled; both relayouts below read the same holder. */
@@ -482,8 +495,14 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     );
   const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
     const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options) : {};
+    const columnOptions = child.recordOptions as { annotations?: unknown[]; ratioTier?: unknown; labels?: { category?: boolean; point?: boolean; segment?: boolean } };
     return {
       geometry: child.geo, slot: slots[i]!,
+      // With the category row off and no ratio tier, the column only subtracts room from its frame.
+      columnPlotFloor: child.def?.type === 'column' && captionSizedPanelLayouts.has(child.def.layout)
+        && measure === defaultMeasurer && child.geo.labels.length === 0 && child.geo.warnings.length === 0
+        && !columnOptions.ratioTier && !columnOptions.annotations?.length && columnOptions.labels?.category === false
+        && columnOptions.labels.point === false && columnOptions.labels.segment === false,
       margin: (child.recordOptions as { margin?: { left?: number; right?: number; bottom?: number } }).margin ?? {},
       anchored,
       relayout: (margin: { left?: number; right?: number; bottom?: number }) => {
@@ -509,11 +528,11 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   const reusePanels = isCachedTextMeasurer(measure);
   const layoutChildren = (): GridChild[] => {
     if (share === 'category' && n > 1) {
-      let pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i]));
+      let pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i], undefined, 'check'));
       if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(pass1)) {
         uniformLineEndpointLegend = true;
         pass1 = pass1.map((child, i) => reusePanels && child.def?.type !== 'line'
-          ? child : layoutPanel(data.panels[i]!, i, slots[i]!, baseMargins[i]));
+          ? child : layoutPanel(data.panels[i]!, i, slots[i]!, baseMargins[i], undefined, child.sameGridKey ? child : undefined));
       }
       sharedX = maxOf(pass1.map((c) => c.geo.plot.x));
       const sharedR = minOf(pass1.map((c) => c.geo.plot.x + c.geo.plot.w));

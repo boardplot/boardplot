@@ -378,6 +378,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | live-window-preserves-source | torture | Sampled live periods retain the source mean |
 | auto-decimated-days | torture | Eight years of daily values sample to the width of the plot |
 | decimate-none-days | torture | decimate: 'none' draws every one of the daily values |
+| daily-labels-wide | torture | Every value label on 2,000 daily points in the shortest wide frame that draws |
+| daily-labels-phone-card | torture | Every value label on 60 undecimated daily points in a phone dashboard card |
 | area-focus-tint | example | A single area in a pale tint of the focus under an ink line, the forecast hatched |
 | option-lower-ratio | example | Defects fall relative to inspected units |
 | option-lower-bump | torture | Delivery-time ranks reward shorter waits |

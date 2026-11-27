@@ -228,7 +228,11 @@ type Authored = { [LOCALE_STRINGS]?: Record<string, string> };
 /** Caller wording wins per key. Authored labels never enter this table. The caller's own keys stay under a symbol for `chartWording`. */
 export function withLocaleStrings<O extends Pick<BaseOptions, 'locale' | 'strings'>>(options: O): O {
   if ((options as O & Authored)[LOCALE_STRINGS]) return options;
-  const custom = Object.fromEntries(Object.entries(options.strings ?? {}).filter(([, value]) => value !== undefined)) as Record<string, string>;
+  // Copy once in key order. Overrides whose value is undefined use the locale default.
+  const source = options.strings ?? {};
+  const custom: Record<string, string> = Object.getOwnPropertySymbols(source).length
+    ? Object.fromEntries(Object.entries(source)) : { ...source } as Record<string, string>;
+  for (const key of Object.keys(custom)) if (custom[key] === undefined) delete custom[key];
   return { ...options, [LOCALE_STRINGS]: custom, strings: { ...localeStrings(options.locale?.language), ...custom } };
 }
 

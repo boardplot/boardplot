@@ -8,6 +8,7 @@
  */
 
 import { registerFixtures } from '../../../fixtures/registry';
+import { wavyDays } from '../line/fixtures';
 import { EVENT_GROUPS, EVENT_GROUPS_ALL, WEEKLY_EVENTS, WEEKLY_EVENTS_MORE, WEEKLY_REVENUE, WEEKLY_REVENUE_PY, weeklyEventCategories } from '../eventSample';
 import type { Fixture } from '../../registry';
 import type { ChartData } from '../../types/data';
@@ -1208,5 +1209,26 @@ fixtures.push(
     options: { title: 'Column values near the base', labelPosition: 'insideBase' },
   },
 );
+
+// Two column series and three lines on 60 days with every value label: the dense
+// phone-width combo reaches the label and height searches of many marks.
+const comboDays = wavyDays(60);
+fixtures.push({
+  id: 'daily-columns-lines-labels',
+  title: 'Two column series and three lines on 60 days with every value label at phone width',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    categories: comboDays.categories,
+    series: [
+      { id: 'columns', label: 'Count', values: comboDays.values(100) },
+      { id: 'columns2', label: 'Second count', values: comboDays.values(70) },
+      { id: 'line0', label: 'Rate 0', kind: 'line', values: comboDays.values(30) },
+      { id: 'line1', label: 'Rate 1', kind: 'line', values: comboDays.values(60) },
+      { id: 'line2', label: 'Rate 2', kind: 'line', values: comboDays.values(90) },
+    ],
+  },
+  options: { title: 'Invented daily measures', secondaryAxis: { acknowledge: true }, valueLabels: 'all', size: { width: 400 } },
+});
 
 registerFixtures('combo', fixtures);
