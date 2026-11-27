@@ -10,13 +10,16 @@ import { chartString } from '../../core/strings/hover';
 import { calendarPoint, dayUnit } from '../../core/calendarLabels';
 import { dateNames } from '../../core/dateNames';
 import { wordLanguage } from '../../core/numberMarks';
-import { saysToDate } from '../../core/partialPeriod';
+import { runningPeriodIds, saysToDate } from '../../core/partialPeriod';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { StringsSpec } from '../../core/types/options';
+import type { Category } from '../../core/types/data';
 
-interface SourceCategory { id: string; label?: string; date?: string; partial?: boolean }
-interface SourceChart { data?: { categories?: unknown[]; series?: unknown[]; panels?: unknown[] }; options?: { strings?: StringsSpec; subtitle?: unknown; title?: unknown } }
+interface SourceCategory { id: string; label?: string; date?: string; partial?: boolean; role?: string }
+interface SourceSeries { id?: unknown; role?: unknown; values?: unknown }
+interface SourceChart { data?: { categories?: unknown[]; series?: unknown[]; panels?: unknown[] };
+  options?: { strings?: StringsSpec; subtitle?: unknown; title?: unknown; legend?: { order?: unknown } } }
 
 const DAY = 86400000;
 
@@ -25,7 +28,9 @@ function sourceChart(request: ResolvedChartRequest, panel: string | undefined): 
   let chart = request as unknown as SourceChart;
   for (const id of panel?.split('/') ?? []) {
     const child = chart.data?.panels?.find(entry => (entry as { id?: unknown })?.id === id) as SourceChart | undefined;
-    if (child) chart = child;
+    // A metric stack's panels hold no data of their own: the stack's categories name the period.
+    if (!child?.data) break;
+    chart = child;
   }
   return chart;
 }
@@ -76,16 +81,26 @@ function periodName(categories: readonly SourceCategory[], index: number, locale
 export function cardTitle(request: ResolvedChartRequest, record: InteractionRecord): string | undefined {
   const categoryId = record.target.owner.categoryId;
   if (categoryId === undefined || record.target.owner.annotationId !== undefined || record.event) return undefined;
+  // A record that names its series only in its label (a waffle of several series) keeps that label.
+  if (record.target.owner.seriesId !== undefined && !record.seriesLabel && !record.valueLabel && record.label !== record.categoryLabel) return undefined;
   const chart = sourceChart(request, record.target.panel);
   const categories = categoriesOf(chart);
   const index = categories?.findIndex(category => category.id === categoryId) ?? -1;
   if (index < 0) return undefined;
   const locale = request.locale?.language;
   const period = periodName(categories!, index, locale);
-  if (!categories![index]!.partial) return period;
+  if (!categories![index]!.partial || !running(chart, categories!).has(categoryId)) return period;
   const heading = period ?? record.categoryLabel ?? categories![index]!.label ?? categoryId;
   const toDate = chartString({ locale: { language: locale }, strings: chart.options?.strings ?? request.options.strings }, 'toDate');
   return toDate === '' || saysToDate(heading, toDate) ? heading : `${heading} ${toDate}`;
+}
+
+/** The categories that run now: a partial period with no actual after it. An earlier partial period has closed. */
+function running(chart: SourceChart, categories: readonly SourceCategory[]): Set<string> {
+  const series = (Array.isArray(chart.data?.series) ? chart.data!.series : []) as SourceSeries[];
+  const actual = series.filter(entry => entry?.role !== 'reference' && Array.isArray(entry?.values));
+  return runningPeriodIds(categories as readonly Category[], index => actual.length === 0
+    || actual.some(entry => { const value = (entry.values as unknown[])[index]; return value !== null && value !== undefined; }));
 }
 
 /** A sparkline's metric where its data names none: the subtitle's measure, else a title short enough to be a name. */
@@ -99,19 +114,25 @@ export function metricName(request: ResolvedChartRequest): string | undefined {
 }
 
 /**
- * The place of each record's series in the key: its place in the spec's
- * series list, else (a series the engine adds) after them in record order.
+ * The place of each record's series in the key: its place in the legend's
+ * authored order, else in the spec's series list, else (a series the engine
+ * adds) after them in record order.
  */
 export function keyOrder(request: ResolvedChartRequest, records: readonly InteractionRecord[]): Map<InteractionRecord, number> {
   const ranks = new Map<string | undefined, Map<string, number>>();
   const rankOf = (panel: string | undefined) => {
     let rank = ranks.get(panel);
     if (!rank) {
-      const series = sourceChart(request, panel).data?.series;
-      ranks.set(panel, rank = new Map((Array.isArray(series) ? series : []).flatMap((entry, index) => {
+      const chart = sourceChart(request, panel);
+      const series = chart.data?.series;
+      const ids = (Array.isArray(series) ? series : []).flatMap(entry => {
         const id = (entry as { id?: unknown } | undefined)?.id;
-        return typeof id === 'string' ? [[id, index] as const] : [];
-      })));
+        return typeof id === 'string' ? [id] : [];
+      });
+      // An authored legend order leads; series it leaves out follow in data order.
+      const authored = (chart === (request as unknown as SourceChart) ? request.options : chart.options) as SourceChart['options'];
+      const order = Array.isArray(authored?.legend?.order) ? (authored!.legend!.order as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+      ranks.set(panel, rank = new Map([...order, ...ids.filter(id => !order.includes(id))].map((id, index) => [id, index] as const)));
     }
     return rank;
   };

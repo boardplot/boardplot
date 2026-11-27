@@ -215,16 +215,15 @@ function cardValueText(value: InteractionValue, locale?: string): string {
   return value.state === 'missing' || value.state === 'unavailable' ? NO_VALUE : displayedValueText(value, locale);
 }
 
-/** A printed number with no nonzero digit, in Latin, Arabic-Indic or Persian digits. */
-const NONZERO_DIGIT = /[1-9١-٩۱-۹]/u;
-
 /**
  * A number through one card format: the format's text, or its bound ("<$1k",
  * "<0.1%") where the format prints a nonzero value as zero.
  */
 function specText(raw: number, spec: NumberFormatSpec): string {
   const text = formatWithSpec(raw, spec);
-  if (raw === 0 || NONZERO_DIGIT.test(text)) return text;
+  // Zero's own text, signs aside: a unit's digits ("t CO2") do not make a number nonzero.
+  const unsigned = (printed: string) => printed.replace(/[-−+()]/gu, '');
+  if (raw === 0 || unsigned(text) !== unsigned(formatWithSpec(0, spec))) return text;
   const step = 10 ** -spec.decimals * MAGNITUDE_DIVISOR[spec.magnitude];
   return `${raw > 0 ? '<' : '>'}${formatWithSpec(Math.sign(raw) * step, spec)}`;
 }
@@ -250,7 +249,7 @@ function cardFormat(values: readonly InteractionValue[], locale?: string): (valu
         const text = plain(value) && (value.unit ?? '') === key ? shownValueText(value) : undefined;
         if (text !== undefined && (!largest || Math.abs(value.raw as number) > Math.abs(largest.raw))) largest = { raw: value.raw as number, text };
       }
-      spec = largest ? { ...exampleSpec(largest.text, locale, unit), rollMagnitude: false } : null;
+      spec = largest ? exampleFormat(largest.text, locale, unit) : null;
       // A format that does not print its own example back (a unit that holds the scale, "$m") is no card format.
       if (spec && specText(largest!.raw, spec) !== largest!.text) spec = null;
       specs.set(key, spec);
@@ -263,13 +262,27 @@ function cardFormat(values: readonly InteractionValue[], locale?: string): (valu
   };
 }
 
+/**
+ * A card format from a printed example. It rounds a sliver to the bound
+ * ("<$1k") instead of lifting its decimals ("$0.04k"). A free-form unit the
+ * example parser refuses ("USD (est") gives no card format.
+ */
+function exampleFormat(example: string, locale: string | undefined, unit: string | undefined): NumberFormatSpec | null {
+  try {
+    const { nonzero: _lifted, ...spec } = exampleSpec(example, locale, unit);
+    return { ...spec, rollMagnitude: false };
+  } catch {
+    return null;
+  }
+}
+
 /** The shares of a card in one format: a drawn share's, else the shares' format, else one decimal. */
 function shareFormat(percents: readonly InteractionValue[], locale?: string): (percent: InteractionValue) => string {
   const drawn = percents.find(percent => percent.displayed && shownValueText(percent) !== undefined);
   const example = drawn ? drawn.displayed!.trim() : percents.find(percent => percent.format)?.format ?? SHARE_EXAMPLE;
-  const spec = { ...exampleSpec(example, locale, '%'), rollMagnitude: false as const };
+  const spec = exampleFormat(example, locale, '%');
   return percent => percent.state === 'value' && typeof percent.raw === 'number'
-    ? drawn?.displayed && percent.displayed ? displayedValueText(percent, locale) : specText(percent.raw, spec)
+    ? drawn?.displayed && percent.displayed ? displayedValueText(percent, locale) : spec ? specText(percent.raw, spec) : cardValueText(percent, locale)
     : cardValueText(percent, locale);
 }
 
@@ -367,7 +380,9 @@ function sameNumber(a: InteractionValue, b: InteractionValue): boolean {
  */
 function repeatedHeadline(record: InteractionRecord): boolean {
   if (record.seriesLabel || record.valueLabel) return false;
-  return record.fields.some(field => field.key === 'current' && sameNumber(field.value, record.value))
+  const current = record.fields.find(field => field.key === 'current');
+  if (!current) return false;
+  return sameNumber(current.value, record.value)
     || record.comparisons.some(comparison => sameNumber(comparison.delta, record.value) || sameNumber(comparison.percent, record.value));
 }
 
@@ -376,9 +391,9 @@ function repeatedHeadline(record: InteractionRecord): boolean {
  * strings. The value row, the field rows, the change and the share print the
  * text the chart draws for each (their shown texts, `displayedValueText`), so
  * a card beside a bar labelled "$213k" says "$213k" and not "212.8"; `values`
- * keeps the source number. No number stands twice: a field the engine derived
- * that repeats the value (a funnel's stage total), and a headline that a named
- * field repeats, leave the card; a fact the record cannot give (a first
+ * keeps the source number. No number stands twice: a funnel's stage total
+ * that repeats the value, and a variance headline that its current value or
+ * its change repeats, leave the card; a fact the record cannot give (a first
  * stage's conversion) has no row, and a value not observed prints a dash.
  */
 export function labelCardContent(record: InteractionRecord, locale?: string, options?: LabelCardOptions, share = true): LabelCardContent {
@@ -399,7 +414,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
     // a bare id the author gave no label (and that is not the date) keeps it.
     for (const field of record.fields) {
       if (field.key === 'date' && (options?.title !== undefined || headingNamesDate(record, field.value))) continue;
-      if (field.value.state === 'unavailable' || (field.value.derived && sameNumber(field.value, record.value))) continue;
+      if (field.value.state === 'unavailable' || (field.key === 'stageTotal' && sameNumber(field.value, record.value))) continue;
       // Aggregate cards show the mark's statistics. Individual observations stay
       // in the typed record for data tables and custom host content.
       // A field prints the text the chart draws for it (its shown text), else
@@ -490,7 +505,7 @@ function stackPart(record: InteractionRecord): boolean {
  * key, the pointed one in bold. The parts of a stack come first, each with
  * its share in a column of its own, then one Total row, then the other
  * series (a combo's lines). A share of one part alone (100 %) is not
- * printed. Every row prints its number in one format.
+ * printed. The parts and their total print in one format.
  * Every member is listed. `cache` keeps the content per set of records.
  */
 export function sharedLabelCardContent(records: readonly InteractionRecord[], locale?: string, options?: LabelCardOptions,
@@ -510,10 +525,16 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
   const order = options?.order;
   const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
   const parts = sorted.filter(stackPart);
-  const stacked = parts.length > 1;
-  const listed = stacked ? [...parts, ...sorted.filter(record => !parts.includes(record))] : sorted;
+  // A stack of two parts or more, or one part of an authored total that is not all of it.
+  const stacked = parts.length > 1 || (parts.length === 1 && !sameNumber(parts[0]!.share!.numerator, parts[0]!.share!.denominator));
+  // A part with no value keeps its place in the key among the parts it stands between.
+  const last = stacked ? sorted.indexOf(parts.at(-1)!) : -1;
+  const members = sorted.filter((record, index) => parts.includes(record) || (index < last && record.value.state === 'missing' && !record.share));
+  const listed = stacked ? [...members, ...sorted.filter(record => !members.includes(record))] : sorted;
   const base = stacked ? parts[0]!.share!.denominator : undefined;
-  const format = cardFormat([...records.map(record => record.value), ...base ? [base] : []], locale);
+  // The parts and their total share one format; other series (a line on its own axis) keep theirs.
+  const stackFormat = cardFormat([...parts.map(record => record.value), ...base ? [base] : []], locale);
+  const format = (record: InteractionRecord) => stacked && parts.includes(record) ? stackFormat(record.value) : cardValueText(record.value, locale);
   const share = shareFormat(parts.map(record => record.share!.percent), locale);
   const whole = !base || options?.hundredPercent === true || (base.state === 'value' && base.raw === 100 && base.unit === '%');
   listed.forEach((record, index) => {
@@ -522,15 +543,15 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
       locale, { hundredPercent: options?.hundredPercent }, false).rows.slice(1);
     const at = content.findIndex(row => row.kind === 'value');
     if (at < 0) return;
-    const number = format(record.value);
+    const number = format(record);
     const value = `${record.valueLabel ? `${record.valueLabel}: ` : ''}${number}`;
     const part = stacked && parts.includes(record) ? share(record.share!.percent) : undefined;
     rows.push({ ...content[at]!, label: `${name}:`, value, text: `${name}: ${value}${part ? `, ${part}` : ''}`,
       series: true, swatch: seriesSwatch(record, scene), pointed: record === pointed, ...part ? { share: part } : {} });
     pushAll(rows, content.filter((_, row) => row !== at));
-    if (stacked && !whole && index === parts.length - 1 && base) {
+    if (stacked && !whole && index === members.length - 1 && base) {
       const label = chartString({ locale: { language: locale } }, 'totalLabel');
-      const total = format(base);
+      const total = stackFormat(base);
       rows.push({ kind: 'total', label: `${label}:`, value: total, text: `${label}: ${total}`, values: [safeValue(base, locale)] });
     }
   });
@@ -1007,14 +1028,24 @@ function rowsWithinHeight(
   const cut = rows.findIndex(row => row.series && ++series > 8);
   // The Total row closes the parts it sums: a card that cuts them leaves it out.
   const maximum = cut < 0 ? rows.length : cut;
-  const limited = cut < 0 ? [...rows] : [...rows.slice(0, maximum), moreRow(rows.length - maximum, locale)];
+  // The hovered series stays on a card that cuts rows: it takes the last kept series row.
+  const pointedAt = rows.findIndex(row => row.series && row.pointed);
+  const first = (count: number) => {
+    const kept = rows.slice(0, count);
+    if (pointedAt < count) return kept;
+    let at = kept.length - 1;
+    while (at > 0 && !kept[at]!.series) at--;
+    if (at > 0) kept[at] = rows[pointedAt]!;
+    return kept;
+  };
+  const limited = cut < 0 ? [...rows] : [...first(maximum), moreRow(rows.length - maximum, locale)];
   const measured = measureRows(limited, theme, maxWidth, measure);
   const fits = (sizes: MeasuredRow[]) => cardHeight(sizes) <= maxHeight;
   if (fits(measured)) return { rows: limited, measured };
   const firstValue = rows.findIndex(row => row.kind === 'value');
   const floor = firstValue < 0 ? Math.min(rows.length, 2) : firstValue + 1;
   for (let kept = maximum - 1; kept >= floor; kept--) {
-    const visible = [...rows.slice(0, kept), moreRow(rows.length - kept, locale)];
+    const visible = [...first(kept), moreRow(rows.length - kept, locale)];
     const sizes = measureRows(visible, theme, maxWidth, measure);
     if (fits(sizes)) return { rows: visible, measured: sizes };
   }
