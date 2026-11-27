@@ -606,6 +606,15 @@ function netTotalTicks(domain: ColumnDomain, area: ColumnArea, nodes: SceneNode[
   });
 }
 
+/** Each drawn stack part in category order, and after a category's parts its net when it falls inside (series `__netTotal`). */
+export function eachStackRect(domain: ColumnDomain, area: ColumnArea, visit: (rect: Rect, categoryId: Id, seriesId: Id) => void, nets = true): void {
+  domain.stacks.forEach((stack, ci) => {
+    const id = domain.cats[ci]!.id, x = area.band.position(ci), w = area.band.bandwidth;
+    stack.segments.forEach((seg, si) => { if (seg && seg.value !== 0) visit(stackSegmentRect(x, w, area.y, seg.start, seg.end), id, domain.dataSeries[si]!.id); });
+    if (nets && netInsideStack(domain, ci)) visit(netTotalBounds(x, w, area.y(domain.stackTotals[id]!)), id, '__netTotal');
+  });
+}
+
 /**
  * A highlighted category of several series keeps each series'
  * fill, so every column matches its key; a light focus band behind the

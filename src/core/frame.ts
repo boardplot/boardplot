@@ -1309,6 +1309,15 @@ const NOTE_CONTEXT = Symbol('noteContext');
 /** Which noted ids the note line leaves to its count ("and 236 more"). */
 const NOTE_COUNTED = Symbol('noteCounted');
 
+/** Options for comparing a chart body before and after withHiddenLabelNote.
+ * The new frame still consumes every note field, including its reference numbers. */
+export function hiddenNoteBodyOptions(options: BaseOptions): object {
+  const { footnotes, authoredFootnotes, [NOTED_LABELS]: _ids, [NOTE_ITEMS]: _items,
+    [NOTE_CONTEXT]: _context, [NOTE_LINE]: _line, [NOTE_COUNTED]: _counted, [FOOTNOTE_REFS]: _refs,
+    ...body } = options as BaseOptions & InternalFootnoteOptions & Record<symbol, unknown>;
+  return { ...body, authoredFootnotes: authoredFootnotes ?? footnotes ?? [] };
+}
+
 /** What the note needs to order its items: the data, the authored annotations and the labels the ids name. */
 interface NoteContext { data: unknown; labels: readonly PlacedLabel[]; annotations?: unknown }
 

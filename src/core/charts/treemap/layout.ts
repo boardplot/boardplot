@@ -19,6 +19,7 @@ import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, valueNoteLine, type LegendItemInput } from '../../frame';
 import { disclosureNote } from '../../notes';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, seriesRasterFormatter } from '../../formatSpec';
 import { withUnit } from '../../unitJoin';
@@ -354,7 +355,12 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     const before = usualPlan.filter((t) => t.noted).length;
     if (before === 0) return { ...usual, plan: usualPlan };
     const other = rects(NEAR_SQUARE);
-    const otherPlan = planText(other.cells);
+    // The same item keeps its text fit when the alternative row leaves its corners in place.
+    const reuseText = hasCompleteTextWidths(measure);
+    const otherPlan = other.cells.map((cell, i) => {
+      if (reuseText && sameCorners(cell, usual.cells[i]!)) return usualPlan[i]!;
+      return planCellText(ordered[i]!, cell);
+    });
     return otherPlan.filter((t) => t.noted).length < before ? { ...other, plan: otherPlan } : { ...usual, plan: usualPlan };
   };
 
@@ -372,8 +378,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     return wrapText(label, outFont, Math.max(columnW, widest), 8, measure).lines;
   };
   const flatSide = { left: false, right: false };
-  const planText = (cells: Polygon[], c?: Pt): CellText[] => ordered.map((item, k) => {
-    const poly = cells[k]!;
+  const planCellText = (item: Item, poly: Polygon, c?: Pt): CellText => {
     const value = valueText(item);
     const valueW = measure(value, valueFont).width;
     const at = polygonCentroid(poly);
@@ -407,7 +412,8 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     if (flatSide[side]) return { outside: { nameLines: [item.label], side, anchor: at, w: measure(`${item.label} `, outFont).width + outValueW, h: outLineH, oneLine: true } };
     const nameLines = columnLines(item.label);
     return { outside: { nameLines, side, anchor: at, w: Math.max(textW(nameLines, outFont), outValueW), h: outLineH * (nameLines.length + 1) } };
-  });
+  };
+  const planText = (cells: Polygon[], c?: Pt): CellText[] => ordered.map((item, i) => planCellText(item, cells[i]!, c));
 
   const need = (list: CellText[], side: 'left' | 'right'): number => {
     const w = Math.max(0, maxOf(list.flatMap((t) => (t.outside?.side === side ? [t.outside.w] : []))));
@@ -917,6 +923,10 @@ function circleUnitCells(groups: Group[], total: number, byValue: boolean): Circ
 
 function rectPoly(r: Rect): Polygon {
   return [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+}
+
+function sameCorners(a: Polygon, b: Polygon): boolean {
+  return a.length === b.length && a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y);
 }
 
 function pathOf(poly: Polygon): string {

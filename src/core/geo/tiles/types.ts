@@ -9,12 +9,12 @@ export interface TileRegionRecord {
   col: number;
 }
 
-interface TileAdjacency {
+export interface TileAdjacency {
   a: string;
   b: string;
 }
 
-interface TileAdjacencyException extends TileAdjacency {
+export interface TileAdjacencyException extends TileAdjacency {
   kind: 'missing' | 'extra';
 }
 
