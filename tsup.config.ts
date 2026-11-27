@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 import { writeFileSync } from 'node:fs';
 import { distributionIdentity } from './scripts/build-identity.mjs';
 import { thirdPartyNoticesPlugin } from './scripts/third-party-notices.mjs';
+import { schemaDescriptionsPlugin } from './scripts/schema-descriptions.mjs';
 import { stripBareChunkImports } from './scripts/strip-bare-chunk-imports.mjs';
 
 // Entry paths and build inputs share tsup's working directory, even when its config is bundled.
@@ -89,7 +90,7 @@ export default defineConfig({
     stripBareChunkImports('dist');
   },
   format: ['esm'],
-  esbuildPlugins: [thirdPartyNoticesPlugin(process.cwd())],
+  esbuildPlugins: [thirdPartyNoticesPlugin(process.cwd()), schemaDescriptionsPlugin(process.cwd())],
   // Declarations come from one `tsc -p tsconfig.build.json` pass into
   // dist/types/ (see `build:types`). tsup's declaration worker rebuilt the
   // whole options type graph once per entry and needed more than the default

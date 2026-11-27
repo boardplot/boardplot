@@ -70,11 +70,11 @@ const calcSchema: z.ZodType = z.lazy(() =>
 
 // ---------- columns ----------
 
-const FORMAT_DOC =
+const FORMAT_DOC = /* @schemaText */
   "Number format example. Examples: '€1.2m', '1,234', '+1.2%', '1.2pp', '$1.2bn', '(1.0)'. " + MAGNITUDE_WORDS_DOC + " A table holds an authored magnitude: under '$1.2k', 2,496,000 prints as 2,496.0 thousand, not as $2.5M. Percent values are authored in POINTS: 6.2 with format '1.2%' renders '6.2%'. A difference of two percent levels uses 'pp', not '%'. A separator followed by exactly three digits after a nonzero integer part is a thousands mark: '1.000' groups thousands with a dot and prints decimals with a comma; write '0.000' for three decimals.";
 
 /** A value or computed column's format, with where its unit prints. */
-const COLUMN_FORMAT_DOC = FORMAT_DOC + " The format's unit, $M for '$1.2m', prints once beside subtitle.measure when every value column shares it; without a measure, or with mixed units, each value head carries it, as 'Q1 ($M)'. unitShown true drops it from the heads too.";
+const COLUMN_FORMAT_DOC = FORMAT_DOC + /* @schemaText */ " The format's unit, $M for '$1.2m', prints once beside subtitle.measure when every value column shares it; without a measure, or with mixed units, each value head carries it, as 'Q1 ($M)'. unitShown true drops it from the heads too.";
 
 const columnBase = {
   id: idSchema,

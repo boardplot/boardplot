@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { generatedIdList, type GeneratedColumnType, type GeneratedIdKey } from './generatedColumns';
 import { idRecord } from './shared';
 
-const id = (what: string) => z.string().min(1).describe(what);
+const id = (/** @schemaText */ what: string) => z.string().min(1).describe(what);
 const idsOf = (type: GeneratedColumnType, key: GeneratedIdKey) => ` Ids: ${generatedIdList(type, key)}.`;
 const alignment = z.enum(['left', 'right', 'center']);
 
@@ -30,12 +30,12 @@ export function columnVisibilityOption(type: GeneratedColumnType | 'table') {
 export function columnOverridesOption(type: GeneratedColumnType, fields: readonly ColumnOverrideField[]) {
   const shape = Object.fromEntries(fields.map((field) => [field, overrideFields[field]]));
   return idRecord(id('Column id.'), z.strictObject(shape).describe('Settings of one column.')).optional()
-    .describe(`Settings per generated column.${idsOf(type, 'columnOverrides')}`);
+    .describe(/* @validationHint */ `Settings per generated column.${idsOf(type, 'columnOverrides')}`);
 }
 
 export function columnOrderOption(type: GeneratedColumnType) {
   return z.array(id('Block id.')).optional()
-    .describe(`Order of whole blocks; blocks left out follow in default order.${idsOf(type, 'columnOrder')}`);
+    .describe(/* @validationHint */ `Order of whole blocks; blocks left out follow in default order.${idsOf(type, 'columnOrder')}`);
 }
 
 export function rowVisibilityOption(type: GeneratedColumnType) {

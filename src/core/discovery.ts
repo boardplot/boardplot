@@ -5,6 +5,7 @@ import { getFixtures } from '../fixtures';
 import { BARE_CHART_NAME, NAME_RULE } from './doc/document';
 import { getChartDefinition } from './registry';
 import { schemaReference, type SchemaFieldReference } from './schema/reference';
+import { linkSchemaDescriptions } from './schema/linkDescriptions';
 import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotations';
 import { ANCHOR_FORM, CELL_CONTRACT, fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
@@ -386,6 +387,7 @@ export function typeOptions(type: string): { own: SchemaFieldReference[]; shared
 }
 
 function fields(schema: z.ZodType, defaults?: unknown): SchemaFieldReference[] {
+  linkSchemaDescriptions();
   return schemaReference(z.toJSONSchema(schema, { io: 'input' }) as Record<string, unknown>, defaults);
 }
 
@@ -517,6 +519,7 @@ export function matchingFieldPaths(type: string, leaf: string) {
 export function describeSchema(type: string, part: 'data' | 'options') {
   const definition = getChartDefinition(type);
   if (!definition) throw new Error(`unknown chart type '${type}'`);
+  linkSchemaDescriptions();
   return {
     type: definition.type,
     part,

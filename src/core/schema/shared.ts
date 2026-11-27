@@ -54,7 +54,7 @@ const annotationIconSchema = z
     }
   })
   .describe('Registered icon name for a note or callout glyph; mutually exclusive with status.');
-z.globalRegistry.add(annotationIconSchema, { enum: annotationIconNames, description: annotationIconSchema.description });
+z.globalRegistry.add(annotationIconSchema, /* @schemaSnapshot */ { enum: annotationIconNames, description: annotationIconSchema.description });
 
 export const idSchema = z.string().min(1).describe('Nonempty stable identifier used to match data, labels and annotation anchors.');
 
@@ -146,11 +146,11 @@ export const comparisonDirectionSchema = z.enum(['higherIsBetter', 'lowerIsBette
 
 const COLOR_ROLE_PATTERN =
   /^(?:good|bad|warn|neutral|neutralLight|highlight|total|others|series-[1-9]\d{0,14}|status-[A-Za-z0-9][A-Za-z0-9_-]*)$/;
-const COLOR_ROLE_VALUES =
+const COLOR_ROLE_VALUES = /* @schemaText */
   'One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill.';
 
 /** `colorRole` field with a type-specific lead sentence and the shared value list. */
-export function colorRoleField(lead: string) {
+export function colorRoleField(/** @schemaText */ lead: string) {
   return z
     .string()
     .regex(COLOR_ROLE_PATTERN, {
@@ -355,17 +355,17 @@ export const valueKindSchema = z.literal('fraction').optional()
 export const dataValueKindSchema = valueKindSchema.describe('Default valueKind for all series.');
 
 /** The percent convention every format-by-example follows. */
-const PERCENT_FORMAT_UNITS = 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
+const PERCENT_FORMAT_UNITS = /* @schemaText */ 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
 
 /** Every magnitude word parseFormatExample reads (formatSpec.ts MAGNITUDE_SUFFIXES). */
-export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale when glued to the number or spaced beside a currency ('$1.2 k'); '12 m/s' and '50 B' keep their unit. A scale inside a currency affix ('USDm 1.2', '1.2 €m') holds that divisor. The example's scale word and decimals hold for every value, totals included: '$1.2M' prints 4 as $0.0M and warns format-hides-values with a finer example. A German or French chart prints the scale in its own words (Mrd., Bio.; Md, Bn). Axis ticks take their digits from their spacing, and a statistic such as a mean takes up to one decimal more. A unit alone ('$M', '€bn', '%', 'x') states the prefix, the suffix and any scale word: the default number rule fills the decimals, and the scale words where the unit names none ('$M' prints 15,060,000 and 14,800,000 as $15.06M and $14.80M). A table column moves the unit into its head and picks the cell precision from the data. Spreadsheet number codes translate to examples with warning format-spreadsheet-code; percent values stay percent points. Direction glyphs (▲/▼, ↑/↓) at the start or end of the example carry a sign. A glyph inside the prefix or unit stays literal text. ± carries a sign. A trailing minus marks negatives, '1st' prints English ordinals, and '1.2E+06' prints scientific notation. With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M.";
+export const MAGNITUDE_WORDS_DOC = /* @schemaText */ "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale when glued to the number or spaced beside a currency ('$1.2 k'); '12 m/s' and '50 B' keep their unit. A scale inside a currency affix ('USDm 1.2', '1.2 €m') holds that divisor. The example's scale word and decimals hold for every value, totals included: '$1.2M' prints 4 as $0.0M and warns format-hides-values with a finer example. A German or French chart prints the scale in its own words (Mrd., Bio.; Md, Bn). Axis ticks take their digits from their spacing, and a statistic such as a mean takes up to one decimal more. A unit alone ('$M', '€bn', '%', 'x') states the prefix, the suffix and any scale word: the default number rule fills the decimals, and the scale words where the unit names none ('$M' prints 15,060,000 and 14,800,000 as $15.06M and $14.80M). A table column moves the unit into its head and picks the cell precision from the data. Spreadsheet number codes translate to examples with warning format-spreadsheet-code; percent values stay percent points. Direction glyphs (▲/▼, ↑/↓) at the start or end of the example carry a sign. A glyph inside the prefix or unit stays literal text. ± carries a sign. A trailing minus marks negatives, '1st' prints English ordinals, and '1.2E+06' prints scientific notation. With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M.";
 
 /**
  * A scenario field: the codes normalizeScenario accepts lead every field's
  * description, in its first clause, so even compact describe rows show them. The parse keeps the
  * string: codes and aliases match in any case.
  */
-export const scenarioField = (meaning: string) =>
+export const scenarioField = (/** @schemaText */ meaning: string) =>
   z.string().superRefine((value, ctx) => {
     if (/^ly$/i.test(value)) ctx.addIssue({ code: 'custom', message: 'LY is drawn as PY', params: { scenarioAlias: true } });
   }).optional().describe(`AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case.${meaning ? ` ${meaning}` : ''}`);
@@ -1201,7 +1201,7 @@ const marginSchema = z.object({
  * `axisTitles` on a type with one value axis and no theme-derived title (box,
  * mekko, variance, bullet): drawn only when authored and the axis is drawn.
  */
-export function primaryAxisTitleSchema(where: string) {
+export function primaryAxisTitleSchema(/** @schemaText */ where: string) {
   return z.strictObject({
     primary: z.string().trim().min(1).optional().describe("'Measure, unit' title of the value axis, e.g. 'Margin, %'."),
   }).optional().describe(`Title of the value axis when it is drawn: ${where}. Drawn only when authored.`);
@@ -1613,7 +1613,7 @@ export const anomalyOptionSchema = z
   ]);
 
 /** A key removed from one chart type: refused by the published schema, dropped with a warning from an old spec. */
-export const retiredKey = (error: string, why: string) => z.never({ error }).optional().describe(`Retired: ${why} An old spec still draws and warns option-deprecated.`);
+export const retiredKey = (error: string, /** @schemaText */ why: string) => z.never({ error }).optional().describe(`Retired: ${why} An old spec still draws and warns option-deprecated.`);
 
 /** topN where only the rank cut applies: dot. */
 export const topNRankCutOnly = optionShapeSchema('topN', z.object({
