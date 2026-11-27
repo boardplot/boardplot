@@ -1,5 +1,5 @@
 import { comboLineMarkers, inkLeadLine, netInsideStack } from './plot';
-import { netTotalTick } from '../column/marks';
+import { netTotalTick } from '../column/netTick';
 import { sk } from '../band/stacks';
 import type { Theme } from '../../types/theme';
 import { strokeToken, dashToken, secondaryFont } from '../../theme';

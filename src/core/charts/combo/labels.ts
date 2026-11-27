@@ -26,7 +26,7 @@ import { anchorComboAxisTitles } from './axisTitles';
 import { clearLift, clearOfStrokes, comboEndpointRequest, comboValueLabels, FIRST_END_BELOW_TOTALS, nearerOwnLine, withinOneFill } from './endpoints';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
 import { composeParts, composeWithShows, contentOf, growthLine, netInsideStack, toDateOnTotals } from './plot';
-import { NET_TICK_REACH } from '../column/marks';
+import { NET_TICK_REACH } from '../column/netTick';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
