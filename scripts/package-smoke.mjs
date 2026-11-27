@@ -733,18 +733,28 @@ function checkRowsEntry(installRoot, packageRoot) {
  * theme. Rolldown drops a chunk body whose only effect is a module-scope
  * call when `sideEffects` does not list it, and a chart then stays on the
  * busy placeholder (0.52.5: rows never drew). Node and esbuild run every
- * chunk body, so no other check here sees it.
+ * chunk body, so no other check here sees it. The same build calls
+ * `exportSvg` and `prepareChart`, whose engines load at the first call,
+ * with an annotation and a patched theme: both need the engine to link the
+ * annotation and theme code it loads.
  */
 function checkViteDeferredChunks(installRoot) {
   const consumer = join(installRoot, 'vite-deferred-consumer.mjs');
   writeFileSync(consumer,
     `import { createElement } from 'react';\n` +
     `import { LineChart } from 'boardplot/react/line';\n` +
+    `import { exportSvg } from 'boardplot/react/export';\n` +
+    `import { prepareChart } from 'boardplot/react/prepare';\n` +
     `const data = { categories: ['2022', '2023', '2024'], series: [{ id: 'revenue', name: 'Revenue', values: [10, 12, 15] }] };\n` +
     `export const charts = {\n` +
     `  rows: createElement(LineChart, { rows: [{ year: '2022', channel: 'Search', revenue: 10 }, { year: '2023', channel: 'Search', revenue: 12 }], columns: { category: 'year', series: 'channel', value: 'revenue' } }),\n` +
     `  annotate: createElement(LineChart, { data, annotations: [{ kind: 'cagr' }] }),\n` +
     `  'theme-rules': createElement(LineChart, { data, theme: { preset: 'boardroom', overrides: { color: { ink: '#1A2B3C' } } } }),\n` +
+    `};\n` +
+    `const linked = { type: 'line', data: { ...data, series: [{ id: 'revenue', label: 'Revenue', values: [10, 12, 15] }] }, annotations: [{ kind: 'cagr' }], theme: { preset: 'boardroom', overrides: { color: { ink: '#1A2B3C' } } } };\n` +
+    `export const late = {\n` +
+    `  exportSvg: () => exportSvg({ spec: linked }).then((result) => result.ok && result.artifact.text.includes('#1A2B3C') && result.artifact.text.includes('cagr') ? '' : JSON.stringify(result).slice(0, 300)),\n` +
+    `  prepareChart: () => prepareChart({ ...linked, size: { width: 640, height: 360 } }).then((result) => result.kind === 'svg' && !result.result.refused && JSON.stringify(result).includes('cagr') ? '' : JSON.stringify(result).slice(0, 300)),\n` +
     `};\n` +
     `export { createRoot } from 'react-dom/client';\n`);
   const viteBuild = join(installRoot, 'deferred-vite.mjs');
@@ -758,8 +768,12 @@ function checkViteDeferredChunks(installRoot) {
     `import { JSDOM } from ${JSON.stringify(import.meta.resolve('jsdom'))};\n` +
     `const dom = new JSDOM('<!doctype html><body></body>', { pretendToBeVisual: true });\n` +
     `Object.assign(globalThis, { window: dom.window, document: dom.window.document, Node: dom.window.Node, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement });\n` +
-    `const { charts, createRoot } = await import('./deferred-vite/app.mjs');\n` +
+    `const { charts, late, createRoot } = await import('./deferred-vite/app.mjs');\n` +
     `const stuck = [];\n` +
+    `for (const [name, call] of Object.entries(late)) {\n` +
+    `  const failed = await call().catch((error) => String(error));\n` +
+    `  if (failed) stuck.push(name + ' (' + failed + ')');\n` +
+    `}\n` +
     `for (const [name, chart] of Object.entries(charts)) {\n` +
     `  const host = document.body.appendChild(document.createElement('div'));\n` +
     `  createRoot(host).render(chart);\n` +
@@ -772,8 +786,8 @@ function checkViteDeferredChunks(installRoot) {
     `}\n` +
     `process.stdout.write(JSON.stringify(stuck), () => process.exit(0));\n`);
   const stuck = JSON.parse(run(process.execPath, [probe], { cwd: installRoot, timeout: 60_000 }));
-  if (stuck.length) return [`a Vite production build of boardplot/react/line does not draw the chart that fetches: ${stuck.join(', ')}`];
-  console.log('Vite production build of boardplot/react/line draws charts with rows, an annotation and a patched theme');
+  if (stuck.length) return [`a Vite production build of boardplot/react/line, boardplot/react/export and boardplot/react/prepare does not draw: ${stuck.join(', ')}`];
+  console.log('Vite production build of boardplot/react/line draws charts with rows, an annotation and a patched theme; exportSvg and prepareChart draw both too');
   return [];
 }
 
