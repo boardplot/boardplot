@@ -1123,8 +1123,9 @@ function roadmapMilestoneX({ plot, data, u }: PresetContext, laneW: number, mile
     const before = xs.at(-1);
     const after = milestones[end] && pin(milestones[end]!);
     const run = milestones.slice(at, end);
-    const spread = (nodes: readonly DiagramNode[], from: number, to: number) =>
-      nodes.map((_, index) => from + ((index + 1) / (nodes.length + 1)) * (to - from));
+    // An open end at the plot edge takes a milestone itself; an end at a pin or a lane edge does not.
+    const spread = (nodes: readonly DiagramNode[], from: number, to: number, open = 0) =>
+      nodes.map((_, index) => from + ((index + 1 - (open & 1)) / (nodes.length + 1 - (open & 1) - (open >> 1))) * (to - from));
     const inLane: number[] = [];
     for (let index = 0, stop; index < run.length; index = stop) {
       for (stop = index + 1; run[stop] && run[stop]!.laneId === run[index]!.laneId; stop++);
@@ -1139,7 +1140,7 @@ function roadmapMilestoneX({ plot, data, u }: PresetContext, laneW: number, mile
     // Slots keep their old test. A spread inside the lanes must leave a circle's width between
     // milestones, else the stretch spreads across lanes.
     const choices: [number[], number][] = before === undefined && after === undefined ? [[slots, 0.5]]
-      : [[slots, 0.5], [inLane, 4 * u], [spread(run, before ?? first, after ?? last), 0.5]];
+      : [[slots, 0.5], [inLane, 4 * u], [spread(run, before ?? first, after ?? last, (before === undefined ? 1 : 0) | (after === undefined ? 2 : 0)), 0.5]];
     xs.push(...(choices.find(([choice, gap]) => [before ?? -Infinity, ...choice, after ?? Infinity]
       .every((x, index, all) => !index || q(x) - q(all[index - 1]!) >= gap)) ?? choices.at(-1)!)[0]);
     if (after !== undefined) xs.push(after);
