@@ -3,7 +3,7 @@ import { isRecord } from '../../lint/shared';
 import { ownedDocumentCopy } from '../../doc/ownedDocumentCopy';
 import { NormalizeError, resolveHighlight, substitute } from '../../normalize/shared';
 import type { GridOptions } from '../../types/options';
-import { otherLineId } from '../slope/fold';
+import { otherLineId } from '../slope/otherLine';
 
 export type GridTrackScope = 'row' | 'column' | 'all';
 export type GridRepeatFacet = 'series' | 'category';

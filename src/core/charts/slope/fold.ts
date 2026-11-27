@@ -24,6 +24,7 @@ import { formatAutomaticPercent } from '../../format';
 import type { Id, Scenario } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import { disclosureNote } from '../../notes';
+import { otherLineId } from './otherLine';
 
 /** One endpoint of a slope series. */
 export interface EndVal {
@@ -175,13 +176,6 @@ function endpointTotal(series: readonly NormSer[], end: 'a' | 'b'): number {
 /** A share of a total only reads as a share when nothing is negative. */
 function negativeMember(series: readonly NormSer[]): NormSer | undefined {
   return series.find((s) => (s.a.v ?? 0) < 0 || (s.b.v ?? 0) < 0);
-}
-
-/** The id of the fold's 'Other' line: 'other', prefixed until no series takes it. */
-export function otherLineId(taken: readonly { id: Id }[]): Id {
-  let id: Id = 'other';
-  while (taken.some((s) => s.id === id)) id = `_${id}`;
-  return id;
 }
 
 function foldNote(
