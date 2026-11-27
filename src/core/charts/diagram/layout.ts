@@ -505,7 +505,7 @@ function layoutDiagramPass(
       plot,
       org?.fills?.get(node.id) ?? nodeFillPaint(node, diagramPalette, theme),
       boldLeads,
-      options.variant === 'roadmap' ? preset.lanes.find(lane => lane.id === node.laneId)?.bounds : undefined,
+      options.variant === 'roadmap' ? roadmapLabelLane(preset.lanes, node, rect.x + rect.w / 2) : undefined,
       org !== undefined && !org.centred,
       emphasisWeight(theme),
       org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) }
@@ -1074,6 +1074,13 @@ function circularSide(rect: Rect, plot: Rect): 'left' | 'right' | 'above' | 'bel
   const dx = rect.x + rect.w / 2 - (plot.x + plot.w / 2);
   const dy = rect.y + rect.h / 2 - (plot.y + plot.h / 2);
   return Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'above' : 'below';
+}
+
+/** A milestone pinned into another phase keeps its name in the phase where its circle stands. */
+function roadmapLabelLane(lanes: readonly { id: string; bounds: Rect }[], node: DiagramNode, x: number): Rect | undefined {
+  const own = lanes.find((lane) => lane.id === node.laneId)?.bounds;
+  // Rounded lane edges may miss the drawn partition by half a pixel.
+  return own && Math.abs(x - own.x - own.w / 2) <= own.w / 2 + 1 ? own : lanes.filter((lane) => lane.bounds.x <= x).pop()?.bounds ?? own;
 }
 
 function externalCandidates(

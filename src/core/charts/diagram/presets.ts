@@ -1106,6 +1106,47 @@ function layoutStrategyHouse(context: PresetContext): PresetLayout {
   return result;
 }
 
+/**
+ * The x of each roadmap milestone, in reading order. An unpinned milestone takes
+ * its slot in its lane. Where a pin stands at or beyond such a slot, the curve
+ * would run back, so the unpinned milestones between two pins spread between
+ * them: inside their lanes where the lanes leave room, else across lanes.
+ */
+function roadmapMilestoneX({ plot, data, u }: PresetContext, laneW: number, milestones: readonly DiagramNode[]): number[] {
+  const lane = (node: DiagramNode) => data.lanes.findIndex((each) => each.id === node.laneId);
+  const pin = (node: DiagramNode) => plot.x + node.position!.x * plot.w;
+  // A circle stays inside the plot.
+  const [first, last] = [plot.x + 2 * u, plot.x + plot.w - 2 * u];
+  const xs: number[] = [];
+  for (let at = 0, end = 0; at < milestones.length; at = ++end) {
+    while (milestones[end] && !milestones[end]!.position) end++;
+    const before = xs.at(-1);
+    const after = milestones[end] && pin(milestones[end]!);
+    const run = milestones.slice(at, end);
+    const spread = (nodes: readonly DiagramNode[], from: number, to: number) =>
+      nodes.map((_, index) => from + ((index + 1) / (nodes.length + 1)) * (to - from));
+    const inLane: number[] = [];
+    for (let index = 0, stop; index < run.length; index = stop) {
+      for (stop = index + 1; run[stop] && run[stop]!.laneId === run[index]!.laneId; stop++);
+      const left = plot.x + lane(run[index]!) * laneW;
+      inLane.push(...spread(run.slice(index, stop), Math.max(left, first, inLane.at(-1) ?? before ?? left),
+        Math.min(left + laneW, last, after ?? last)));
+    }
+    const slots = run.map((node) => {
+      const mates = milestones.filter((other) => other.laneId === node.laneId);
+      return plot.x + lane(node) * laneW + ((mates.indexOf(node) + 1) / (mates.length + 1)) * laneW;
+    });
+    // Slots keep their old test. A spread inside the lanes must leave a circle's width between
+    // milestones, else the stretch spreads across lanes.
+    const choices: [number[], number][] = before === undefined && after === undefined ? [[slots, 0.5]]
+      : [[slots, 0.5], [inLane, 4 * u], [spread(run, before ?? first, after ?? last), 0.5]];
+    xs.push(...(choices.find(([choice, gap]) => [before ?? -Infinity, ...choice, after ?? Infinity]
+      .every((x, index, all) => !index || q(x) - q(all[index - 1]!) >= gap)) ?? choices.at(-1)!)[0]);
+    if (after !== undefined) xs.push(after);
+  }
+  return xs;
+}
+
 function layoutRoadmap(theme: Theme, context: PresetContext): PresetLayout {
   const result = emptyResult(context.data);
   const lanes = context.data.lanes;
@@ -1116,6 +1157,7 @@ function layoutRoadmap(theme: Theme, context: PresetContext): PresetLayout {
   const milestones = lanes.flatMap((lane) =>
     context.data.nodes.filter((node) => node.laneId === lane.id && node.kind === 'milestone').sort(nodeOrder),
   );
+  const milestoneX = roadmapMilestoneX(context, laneW, milestones);
   let ordinal = 0;
   const points: Point[] = [];
   lanes.forEach((lane, laneIndex) => {
@@ -1124,11 +1166,9 @@ function layoutRoadmap(theme: Theme, context: PresetContext): PresetLayout {
     const headerBox = qRect({ x, y: context.plot.y, w: laneW, h: headerH });
     const members = context.data.nodes.filter((node) => node.laneId === lane.id).sort(nodeOrder);
     const laneMilestones = members.filter((node) => node.kind === 'milestone');
-    laneMilestones.forEach((node, localIndex) => {
+    laneMilestones.forEach((node) => {
       const authored = node.position;
-      const px = authored
-        ? context.plot.x + authored.x * context.plot.w
-        : x + ((localIndex + 1) / (laneMilestones.length + 1)) * laneW;
+      const px = milestoneX[ordinal]!;
       const progress = milestones.length === 1 ? 0.5 : ordinal / (milestones.length - 1);
       const py = authored
         ? context.plot.y + authored.y * context.plot.h
@@ -1176,11 +1216,15 @@ function layoutRoadmap(theme: Theme, context: PresetContext): PresetLayout {
     }
   });
   result.trajectory = points;
+  // Where milestones tie or run back (pins half a pixel apart, no room between pins), the circles stay
+  // where they are, overlap and refuse the size; the curve steps on so that it can still be drawn.
+  const curve = points.map((point) => ({ ...point }));
+  curve.forEach((point, index) => { if (index && point.x <= curve[index - 1]!.x) point.x = curve[index - 1]!.x + 0.5; });
   if (points.length > 0) {
     const d =
       points.length === 1
         ? `M${q(points[0]!.x - 2 * context.u)} ${q(points[0]!.y)}L${q(points[0]!.x + 2 * context.u)} ${q(points[0]!.y)}`
-        : monotonePath(points);
+        : monotonePath(curve);
     result.decorationScene.push({
       t: 'path',
       id: diagramSceneId('roadmap', 'trajectory'),
@@ -1197,7 +1241,7 @@ function layoutRoadmap(theme: Theme, context: PresetContext): PresetLayout {
             { x: q(points[0]!.x - 2 * context.u), y: q(points[0]!.y) },
             { x: q(points[0]!.x + 2 * context.u), y: q(points[0]!.y) },
           ]
-        : monotoneSegments(points).flatMap((segment, segmentIndex) =>
+        : monotoneSegments(curve).flatMap((segment, segmentIndex) =>
             sampleCubic(segment.from, segment.c1, segment.c2, segment.to).slice(
               segmentIndex === 0 ? 0 : 1,
             ),
