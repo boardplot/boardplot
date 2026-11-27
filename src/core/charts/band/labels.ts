@@ -23,6 +23,7 @@ import type { LintWarning, PlacedLabel, ShownTexts } from '../../types/scene';
 import type { OccupiedIndex } from '../../label/occupied';
 import { solidMutedPlan, strokeToken } from '../../theme';
 import type { Theme } from '../../types/theme';
+import { INSIDE_MIN_H, INSIDE_MIN_W } from './insideMin';
 
 export type BandOrientation = 'vertical' | 'horizontal';
 
@@ -92,9 +93,7 @@ const TIGHT_OUTSIDE_GAP = 3;
 const TICK_CLEAR = 2;
 /** Air between a tick through a segment (its stroke included) and the value's line box. */
 const TICK_AIR = 1.5;
-/** The smallest segment that holds a label inside. */
-export const INSIDE_MIN_W = 28;
-export const INSIDE_MIN_H = 14;
+export { INSIDE_MIN_H, INSIDE_MIN_W };
 
 /**
  * Whether a label of `text` size fits inside `rect` with its padding and the
