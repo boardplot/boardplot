@@ -1,5 +1,4 @@
 import { chartString } from '../../strings/line';
-import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { planLineStyle } from '../../planLineStyle';
 import { PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from '../../themeRules';
 import { forecastStroke } from './forecast';
@@ -27,9 +26,8 @@ import { buildFanPaints } from './fan';
 import type { FontSpec } from '../../text';
 import type { LineBandRule, LineDomain, LineEnv, LinePaints, LineText } from './model';
 import { pushAll } from '../../arrays';
+import { MARKER_MAX_CATS } from './shared';
 
-/** Default marker cutoff: more categories than this ⇒ markers off. */
-export const MARKER_MAX_CATS = DENSE_CATEGORY_COUNT;
 const BUMP_SHAPES: MarkerShape[] = ['circle', 'square', 'triangle', 'diamond'];
 const BUMP_DASH_ROLES = [undefined, 'reference', 'dotted'] as const;
 /**

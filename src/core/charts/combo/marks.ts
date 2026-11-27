@@ -22,7 +22,7 @@ import { markOutlineOff, segmentSeparationStroke } from '../../markVisibility';
 import { defaultAnnotationId } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { AxisGeometry, Paint } from '../../types/scene';
-import { markerPath, pathFor as linePathFor } from '../line/marks';
+import { markerPath, pathFor as linePathFor } from '../line/shared';
 import { REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
 import { primaryLineMean, SECONDARY_FULL_DOMAIN } from './domain';
 import type { ComboMarks } from './layout';

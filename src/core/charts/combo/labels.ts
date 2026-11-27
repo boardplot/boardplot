@@ -14,7 +14,7 @@ import { sideAwayFrom, type Rect } from '../../geometry';
 import { preparePolyline, type PolylineQueries } from '../../polyline';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import { seatValuesOnGround } from '../../label/areaGround';
-import { shadesFills } from '../line/marks';
+import { shadesFills } from '../line/shared';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { LintWarning, Paint, PlacedLabel, ShownTexts } from '../../types/scene';
 import { isIncomplete } from '../../dataGaps';

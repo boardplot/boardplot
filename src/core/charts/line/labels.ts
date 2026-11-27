@@ -1,7 +1,7 @@
 import { spread1D, spread1DResult, sweepHide, warnSpreadOverflow } from '../../collide';
 import { warnSliverLabels } from '../band/sliverLabels';
 import { fitText } from '../../label/fitText';
-import { lastActualIndex } from './marks';
+import { lastActualIndex } from './shared';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET } from '../../target';
 import { unitPrinted } from '../../frame';
