@@ -12,9 +12,12 @@ export interface PreparedContext {
  */
 export function preparedInputKey(chart: Record<string, unknown>, host: Record<string, unknown>, context: PreparedContext = {}): string | undefined {
   const { theme, target, locale, strings, textScale, textSize, density } = context;
+  // A request with no options and one with empty options lay out the same.
+  const { options, ...rest } = chart;
+  if (options !== undefined && !(options && typeof options === 'object' && Object.keys(options).length === 0)) rest.options = options;
   try {
     return fnv64(canonicalJson({
-      chart, host,
+      chart: rest, host,
       context: { theme, target, locale, textScale, textSize, density, strings: strings && Object.keys(strings).length ? strings : undefined },
     }));
   } catch { return undefined; }

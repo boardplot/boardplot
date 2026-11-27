@@ -9,6 +9,7 @@ import type { Geometry } from '../src/core/types/scene';
 import { prepareChart } from '../src/react/prepare';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { BoardplotChart } from '../src/react/spec';
+import { ScaleGroup } from '../src/react/ScaleGroup';
 import { parseChartSpec } from '../src/react/parseChartSpec';
 import { mount, mountedMarkup, settle } from './helpers/spec-chunks';
 import spec from './fixtures/spec-document.json';
@@ -199,4 +200,14 @@ it('replaces the prepared picture of a container chart without the busy placehol
   vi.unstubAllGlobals();
   expect(host.querySelector('[data-bp-container]')).not.toBeNull();
   expect(busy).toBe(0);
+});
+
+// The first frame drew a prepared chart for a spec with a key validation refuses, and inside a ScaleGroup, whose shared scale the prepared value does not hold.
+it('draws no prepared chart for a spec it does not match or inside a ScaleGroup', async () => {
+  const regions = only('regions');
+  const prepared = await prepareChart((await parseChartSpec(regions, 'regions')).request);
+  expect(renderToString(<BoardplotChart spec={regions} prepared={prepared} />)).toContain('<svg');
+  const stray = { ...regions, charts: [{ ...regions.charts[0]!, unit: '%' }] };
+  expect(renderToString(<BoardplotChart spec={stray} prepared={prepared} />)).toContain('data-bp-loading');
+  expect(renderToString(<ScaleGroup group="g" members={[]}><BoardplotChart spec={regions} prepared={prepared} /></ScaleGroup>)).toContain('data-bp-loading');
 });

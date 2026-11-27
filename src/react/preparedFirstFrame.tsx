@@ -10,26 +10,30 @@ import { preparedInputKey } from './preparedInput';
 import { SceneRenderer } from './SceneRenderer';
 import { LayoutRefusal, SizePlaceholder, type PlaceholderFrame } from './SizePlaceholder';
 import { BoardplotThemeContext } from './themeContext';
+import { ScaleGroupContext } from './scaleGroupContext';
 import type { BoardplotChartProps } from './spec';
 
 /**
  * The request that `parseChartSpec` makes of a spec with one chart, in its shape and without validation: the root's
- * theme and language tag join the chart's options, and the chart's name drops. `prepareChart` keyed that request, so a
- * chart prepared from `parseChartSpec(spec).request` matches its spec. Undefined for a document of several charts.
+ * theme and language tag join the chart's options, a language tag in the options becomes a locale, and the chart's
+ * name drops. `prepareChart` keyed that request, so a chart prepared from `parseChartSpec(spec).request` matches its
+ * spec. Any other key of the chart stays, so a spec that validation would refuse matches no prepared chart. Undefined
+ * for a document of several charts.
  */
 function specRequest(spec: unknown): Record<string, unknown> | undefined {
   if (!spec || typeof spec !== 'object') return undefined;
   const root = spec as { theme?: unknown; locale?: unknown; charts?: unknown };
   const chart = (Array.isArray(root.charts) ? root.charts.length === 1 ? root.charts[0] : undefined : root) as Record<string, unknown> | undefined;
   if (!chart || typeof chart !== 'object') return undefined;
+  const { name: _name, options, ...rest } = chart as { name?: unknown; options?: { locale?: unknown } };
   return {
-    type: chart.type, data: chart.data,
+    ...rest,
     options: {
       ...(root.theme === undefined ? {} : { theme: root.theme }),
       ...(Array.isArray(root.charts) && typeof root.locale === 'string' ? { locale: { language: root.locale } } : {}),
-      ...chart.options as object,
+      ...options,
+      ...(typeof options?.locale === 'string' ? { locale: { language: options.locale } } : {}),
     },
-    ...(chart.annotations === undefined ? {} : { annotations: chart.annotations }),
   };
 }
 
@@ -41,12 +45,15 @@ const quiet = () => {};
  * server pass, in the pass that hydrates it and until the chunks of the chart type have loaded; the chart of the type
  * then takes its place with the same drawing. Undefined when this pass cannot draw it: no prepared SVG chart, a value
  * of another engine revision, an input key that is not the key of these props (the prepared chart belongs to another
- * spec or other settings), a dimswitch (it draws as a table), or a theme that needs a module the page has not loaded.
+ * spec or other settings), a dimswitch (it draws as a table), a chart in a `ScaleGroup` (the group's shared scale is
+ * not in the prepared value), a story (its step is not either), or a theme that needs a module the page has not loaded.
  */
 export function usePreparedFirstFrame(spec: unknown, props: BoardplotChartProps, frame: PlaceholderFrame & { theme?: Theme | ThemeRef }): ReactElement | undefined {
   const { prepared, size, fit, fallbackSize, rows, columns, theme: hostTheme, target: hostTarget, fixedSize, idPrefix } = props;
   const context = useContext(BoardplotThemeContext);
-  const candidate = prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.inputKey !== undefined && prepared.result.type !== 'dimswitch' ? prepared : undefined;
+  const grouped = useContext(ScaleGroupContext) !== undefined;
+  const story = (props as { storyLink?: unknown }).storyLink !== undefined;
+  const candidate = !grouped && !story && prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.inputKey !== undefined && prepared.result.type !== 'dimswitch' ? prepared : undefined;
   const matches = useMemo(() => {
     if (!candidate) return false;
     const chart = specRequest(spec);
