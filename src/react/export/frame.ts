@@ -24,9 +24,7 @@ import { withAuthoredUnits } from '../../core/formatSpec';
 import type { ArtifactBytesReceipt, ExportFailed, ExportInput, ExportUnsupported } from './types';
 import type { DrawnChart } from '../exportLink';
 
-/** Set by `useExport` when a chart holds the handle: what that chart drew. */
-export const DRAWN: unique symbol = Symbol('drawn') as never;
-export type DrawnExportInput = ExportInput & { [DRAWN]?: DrawnChart };
+import { DRAWN, type DrawnExportInput } from './drawn';
 
 interface PreparedExport {
   name: string;

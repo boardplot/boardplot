@@ -1,20 +1,10 @@
 "use client";
 
-import { linkStoryLayer } from '../../core/storyLayer';
-import { linkAnnotateEngine } from '../../core/annotateEngine';
-import { linkThemeShapeRules } from '../../core/themeShapeRules';
-
-// Linked by value, so this entry resolves a patched theme and lays out
-// annotations synchronously (see core/deferred) in a host bundle too.
-linkThemeShapeRules();
-linkAnnotateEngine();
-linkStoryLayer();
-
+// The export engine loads at the first export call (see ./lazy). It links the theme checks, the annotation engine
+// and the story layer, so an export lays out a patched theme and annotations synchronously.
 export { useExport } from './useExport';
 export type { UseExport } from './useExport';
-export { exportSvg } from './svg';
-export { exportCsv } from './csv';
-export { exportPng } from './png';
+export { exportSvg, exportCsv, exportPng } from './lazy';
 export { copyImage, copyData } from './clipboard';
 export { downloadArtifact } from './download';
 export type {

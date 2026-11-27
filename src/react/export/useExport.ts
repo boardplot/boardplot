@@ -4,11 +4,9 @@ import { useMemo, useRef } from 'react';
 import { useBoardplotTheme } from '../themeContext';
 import { EXPORT_LINK, type DrawnChart, type ExportLink } from '../exportLink';
 import { copyData, copyImage } from './clipboard';
-import { exportCsv } from './csv';
 import { downloadExport } from './download';
-import { DRAWN, type DrawnExportInput } from './frame';
-import { exportPng } from './png';
-import { exportSvg } from './svg';
+import { DRAWN, type DrawnExportInput } from './drawn';
+import { exportCsv, exportPng, exportSvg } from './lazy';
 import type { ExportFailed, ExportInput, ExportResult } from './types';
 
 export interface UseExport extends ExportLink {

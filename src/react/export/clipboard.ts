@@ -1,6 +1,5 @@
-import { exportCsv } from './csv';
-import { rasterizerFor, renderPng } from './png';
-import { exportSvg } from './svg';
+import { exportCsv, exportSvg, renderPng } from './lazy';
+import { rasterizerFor } from './raster';
 import type { ExportInput, ExportOk, ExportResult } from './types';
 
 function clipboardError(error: unknown): string {
