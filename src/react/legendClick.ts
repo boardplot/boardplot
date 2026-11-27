@@ -70,6 +70,7 @@ export const useLegendClick: ZoomHook = (input) => {
     const old = new Map(Array.from(keys!.children as HTMLCollectionOf<HTMLButtonElement>, (button) => [button.dataset.bpLegendKey!, button]));
     // Buttons of series that left go first, so moving a staying button never passes the focus through the body.
     old.forEach((button, id) => { if (!labels.has(id)) button.remove(); });
+    const focused = document.activeElement;
     let at = 0;
     labels.forEach((node, id) => {
       let button = old.get(id);
@@ -94,6 +95,8 @@ export const useLegendClick: ZoomHook = (input) => {
       if (keys!.children[at] !== button) keys!.insertBefore(button, keys!.children[at] ?? null);
       at++;
     });
+    // Moving a button drops its focus, so the button that had it gets it back.
+    if (focused instanceof HTMLElement && focused.isConnected && focused !== document.activeElement) focused.focus({ preventScroll: true });
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
     seen: (geometry) => { refused = geometry !== undefined && !chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).every(isSizeDependentRefusal); } };

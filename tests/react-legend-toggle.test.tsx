@@ -115,6 +115,10 @@ it('follows new data and leaves no button behind', async () => {
   const reference = { ...data, series: [{ ...data.series[0]!, role: 'reference' as const }, ...data.series.slice(1)] };
   await render(<ColumnChart data={reference} legend="top" size={size} />);
   expect(document.activeElement).toBe(key('South'));
+  // A new order moves the focused button, and it keeps the focus.
+  (key('West') as HTMLElement).focus();
+  await render(<ColumnChart data={{ ...reference, series: [...reference.series].reverse() }} legend="top" size={size} />);
+  expect(document.activeElement).toBe(key('West'));
   await render(<ColumnChart data={data} legend="top" size={size} />);
   await render(<ColumnChart data={data} legend="top" size={size} onSeriesClick={vi.fn()} />);
   expect(host.querySelector('[aria-pressed]')).toBeNull();
