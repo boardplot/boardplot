@@ -635,6 +635,40 @@ describe('default card rows', () => {
       ['Total:', '$300'], ['Plan:', '$290', true]]);
   });
 
+  // A grid's card showed only the hovered panel, so the reader hovered each panel in turn to read one week.
+  it('lists the hovered category of every grid panel, in panel order, each with its unit', () => {
+    const panel = (id: string, type: string, label: string, unit: string, values: number[]) => ({ id, type, options: { title: label, unit },
+      data: { categories: weeks.map((date, index) => ({ id: `w${index}`, date })), series: [{ id: 's', label, values }] } });
+    expect(card({ type: 'grid', data: { panels: [panel('visits', 'column', 'Visits', 'visits', [122034, 118200, 131500]),
+      panel('rate', 'line', 'Conversion rate', '%', [2.1, 2.3, 2.2]), panel('cost', 'line', 'Cost per visit', '$', [0.42, 0.45, 0.41])] },
+    options: { columns: 3, size: { width: 900, height: 360 } } }, 'w1')).toEqual([['Week of 14 Sep 2026'],
+      ['Visits:', '118,200', true], ['Conversion rate:', '2.3%', false], ['Cost per visit:', '$0.45', false]]);
+  });
+
+  // The grid card named panels by their ids, read a tier stack bottom up, gave every panel the hovered panel's 100 % rule,
+  // and mixed panels that list one record per category with panels that list a series each.
+  it('reads a grid in drawn order, by panel headings, each panel by its own rules', () => {
+    const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const panel = (id: string, extra: object, series: object[]) => ({ id, type: 'column', ...extra, data: { categories: cats, series } });
+    const one = (values: number[]) => [{ id: 'v', label: 'Value', values }];
+    const size = { size: { width: 900, height: 500 } };
+    expect(card({ type: 'grid', data: { panels: [panel('p1', { title: 'North' }, one([12, 20])), panel('p2', { title: 'South' }, one([16, 25]))] },
+      options: { columns: 2, ...size } }, 'q1').map(row => row[0])).toEqual(['Q1', 'North · Value:', 'South · Value:']);
+    expect(card({ type: 'grid', data: { panels: [panel('rev', {}, [{ id: 'r', label: 'Revenue', values: [52, 61] }]),
+      { ...panel('basket', {}, [{ id: 'b', label: 'Basket', values: [31, 32] }]), type: 'line' }] },
+    options: { sharedAxis: 'category', sharedScale: false, ...size } }, 'q1', 'r').map(row => row[0])).toEqual(['Q1', 'Basket:', 'Revenue:']);
+    const mixed = { type: 'grid', data: { panels: [
+      panel('rev', { options: { variant: 'stacked' } }, [{ id: 'n', label: 'North', values: [60, 70] }, { id: 's', label: 'South', values: [40, 30] }]),
+      panel('mix', { options: { variant: 'stacked100' } }, [{ id: 'w', label: 'Web', values: [60, 70] }, { id: 'st', label: 'Store', values: [40, 30] }])] },
+    options: { columns: 2, sharedScale: false, ...size } };
+    for (const series of ['n', 'w']) expect(card(mixed, 'q1', series).map(row => row[0])).toEqual(['Q1', 'North:', 'South:', 'Total:', 'Web:', 'Store:']);
+    // A grid's shared key sets the order of the series in every panel.
+    const shared = { type: 'grid', data: { panels: ['p1', 'p2'].map(id => panel(id, { title: id === 'p1' ? 'North' : 'South', options: { variant: 'stacked' } },
+      [{ id: 'web', label: 'Web', values: [60, 70] }, { id: 'store', label: 'Store', values: [40, 30] }])) },
+    options: { columns: 2, legend: { position: 'top', order: ['store', 'web'] }, ...size } };
+    expect(card(shared, 'q1', 'web').map(row => row[0])).toEqual(['Q1', 'North · Store:', 'North · Web:', 'Total:', 'South · Store:', 'South · Web:', 'Total:']);
+  });
+
   // A funnel card printed the stage total twice and "No preceding stage"; a variance card printed its Actual twice.
   it('prints each number once, with no engine words, on a funnel and a variance card', () => {
     const funnel = { type: 'funnel', data: { categories: [{ id: 'v', label: 'Visits' }, { id: 'o', label: 'Orders' }],
