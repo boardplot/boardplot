@@ -13,30 +13,6 @@ import { BoardplotThemeContext } from './themeContext';
 import { ScaleGroupContext } from './scaleGroupContext';
 import type { BoardplotChartProps } from './spec';
 
-/**
- * The request that `parseChartSpec` makes of a spec with one chart, in its shape and without validation: the root's
- * theme and language tag join the chart's options, a language tag in the options becomes a locale, and the chart's
- * name drops. `prepareChart` keyed that request, so a chart prepared from `parseChartSpec(spec).request` matches its
- * spec. Any other key of the chart stays, so a spec that validation would refuse matches no prepared chart. Undefined
- * for a document of several charts.
- */
-function specRequest(spec: unknown): Record<string, unknown> | undefined {
-  if (!spec || typeof spec !== 'object') return undefined;
-  const root = spec as { theme?: unknown; locale?: unknown; charts?: unknown };
-  const chart = (Array.isArray(root.charts) ? root.charts.length === 1 ? root.charts[0] : undefined : root) as Record<string, unknown> | undefined;
-  if (!chart || typeof chart !== 'object') return undefined;
-  const { name: _name, options, ...rest } = chart as { name?: unknown; options?: { locale?: unknown } };
-  return {
-    ...rest,
-    options: {
-      ...(root.theme === undefined ? {} : { theme: root.theme }),
-      ...(Array.isArray(root.charts) && typeof root.locale === 'string' ? { locale: { language: root.locale } } : {}),
-      ...options,
-      ...(typeof options?.locale === 'string' ? { locale: { language: options.locale } } : {}),
-    },
-  };
-}
-
 /** The first frame reports nothing: the chart that replaces it calls the host's onRefused once. */
 const quiet = () => {};
 
@@ -56,9 +32,7 @@ export function usePreparedFirstFrame(spec: unknown, props: BoardplotChartProps,
   const candidate = !grouped && !story && prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.inputKey !== undefined && prepared.result.type !== 'dimswitch' ? prepared : undefined;
   const matches = useMemo(() => {
     if (!candidate) return false;
-    const chart = specRequest(spec);
-    return chart !== undefined && preparedInputKey({ ...chart, ...(hostTheme === undefined ? {} : { theme: hostTheme }), ...(hostTarget === undefined ? {} : { target: hostTarget }) },
-      { size, fit, fallbackSize, rows, columns }, context) === candidate.inputKey;
+    return preparedInputKey(spec, { size, fit, fallbackSize, rows, columns }, context, { theme: hostTheme, target: hostTarget }) === candidate.inputKey;
   }, [candidate, spec, hostTheme, hostTarget, size, fit, fallbackSize, rows, columns, context]);
   const chart = matches ? candidate : undefined;
   const target = frame.options?.target as RenderTarget;
