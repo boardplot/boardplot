@@ -4,7 +4,7 @@ import type { ChartDefinition } from '../../registry';
 import { parseData } from '../../schema/shared';
 import type { SparklineData } from '../../types/data';
 import type { SparklineOptions } from '../../types/options';
-import type { SparklineDerived, SparklineMarks } from './layout';
+import type { SparklineDerived, SparklineMarks } from './chart';
 import { sparklineCore } from './core';
 import { sparklineDataSchema, sparklineOptionsSchema } from './schema';
 

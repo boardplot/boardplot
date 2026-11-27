@@ -19,7 +19,7 @@ import { bumpNamesMuted, defaultValueContent, fanEdgeInKey, flaggedPoints, lineF
 import { placeXTickLabels } from './xTicks';
 import { outerFanEdge } from './fan';
 import { restValuesHidden } from '../../restLabels';
-import { forecastBoundaryX, shadesFills } from './marks';
+import { forecastBoundaryX, shadesFills } from './shared';
 import { chartString } from '../../strings';
 import { disclosuresShown } from '../../notes';
 import { saysToDate } from '../../partialPeriod';

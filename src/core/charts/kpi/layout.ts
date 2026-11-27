@@ -41,7 +41,8 @@ import {
 } from '../../theme';
 import { cellMeta, type Id } from '../../types/cell';
 import type { KpiData } from '../../types/data';
-import { cardSize, emitKpiSpark, kpiSparkPeriodRowHeight, kpiSparkSeries, lastObservedIndex, lastObservedLabel, lastObservedPriority } from '../sparkline/layout';
+import { cardSize } from '../sparkline/card';
+import { emitKpiSpark, kpiSparkPeriodRowHeight, kpiSparkSeries, lastObservedIndex, lastObservedLabel, lastObservedPriority } from '../sparkline/layout';
 import { bandFor } from '../../bandSelect';
 import { sparkLabelsRefusal } from './sparkLabels';
 import type { KpiOptions, LabelKind } from '../../types/options';

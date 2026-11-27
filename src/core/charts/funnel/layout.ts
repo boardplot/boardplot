@@ -76,7 +76,7 @@ import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../c
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
 import { funnelComparisonLayout } from './comparisons';
 import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
-import { INSIDE_MIN_H, INSIDE_MIN_W } from '../band/labels';
+import { INSIDE_MIN_H, INSIDE_MIN_W } from '../band/insideMin';
 import { barWidthForOutsideValues, OUTSIDE_GAP, outsideStart, outsideWidth } from './outsideValues';
 import { belowCalloutCandidates, dropCallout, fitText, type FittedText, LABEL_PAD, laneY, LANE_PAD, lineHeight, rowGapFraction, type DropCallout } from './rowsText';
 import { composedTextRole } from '../../textRole';
