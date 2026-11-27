@@ -656,6 +656,9 @@ describe('default card rows', () => {
     expect(total({ variant: 'stacked' }, two([50, 55], [-20, -25]))).toBe('30');
     expect(total({ variant: 'stacked100' }, two([30, 35], [45, 40]))).toBe('75');
     expect(total({ variant: 'stacked100' }, two([60, 55], [40, 45]))).toBeUndefined();
+    // With a part missing and no authored whole, the known part is no 100 % share.
+    expect(card({ type: 'column', data: { categories: cats, series: [...two([10, 12], [5, 6]), { id: 'c', label: 'C', values: [null, null] }] },
+      options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'a').slice(1)).toEqual([['A:', '12', true], ['B:', '6', false], ['C:', '–', false], ['Total:', '18 (partial)']]);
   });
 
   // The rules against repeated numbers dropped a value that only matched by chance: a KPI's value, a funnel's conversion, a variance total.

@@ -289,14 +289,20 @@ export function cardOptions(model: HoverModel, request: ResolvedChartRequest, fi
     ...(panel?.type ?? request.type) === 'funnel' ? { conversionName: conversionName(request, first.target.panel) } : {} };
 }
 
-/** A funnel's word for its stage conversion, as its labels print it ("12% advance" names "Advance"). */
+/**
+ * A funnel's word for its stage conversion, as the chart prints it: a
+ * centered funnel's column head ("Step conversion"), else the word of its
+ * labels ("12% advance" names "Advance").
+ */
 function conversionName(request: ResolvedChartRequest, panel: string | undefined): string | undefined {
   let options: object = request.options;
   for (const id of panel?.split('/') ?? []) {
     const child = ((options === request.options ? request.data : undefined) as { panels?: { id?: unknown; options?: object }[] } | undefined)?.panels?.find(entry => entry.id === id);
     if (child?.options) options = { ...child.options, locale: request.options.locale };
   }
-  const word = funnelString(options as Parameters<typeof funnelString>[0], 'stageAdvance', { v1: '\u0000' }).replace('\u0000', '').trim();
+  const wording = options as Parameters<typeof funnelString>[0];
+  if ((options as { variant?: unknown }).variant === 'centered') return funnelString(wording, 'stepCvr');
+  const word = funnelString(wording, 'stageAdvance', { v1: '\u0000' }).replace('\u0000', '').trim();
   return word ? word.replace(/^\p{L}/u, letter => letter.toLocaleUpperCase()) : undefined;
 }
 

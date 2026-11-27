@@ -588,7 +588,10 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
   // The parts and their total share one format; other series (a line on its own axis) keep theirs.
   const stackFormat = cardFormat([...parts.map(record => record.value), ...total ? [total] : []], locale);
   const format = (record: InteractionRecord) => stacked && parts.includes(record) ? stackFormat(record.value) : cardValueText(record.value, locale);
-  const shown = parts.filter(record => record.share!.percent.state === 'value');
+  // With a part missing and no whole of its own, the base is only the known parts: their shares of it say nothing.
+  const base = parts[0]?.share?.denominator;
+  const knownOnly = members.length > parts.length && total !== undefined && base !== undefined && sameNumber(base, total);
+  const shown = knownOnly ? [] : parts.filter(record => record.share!.percent.state === 'value');
   const share = shareFormat(shown.map(record => record.share!.percent), locale);
   // Parts that sum to 100 on a 100 % chart, or to 100 %, are their axis; one part alone is its own total.
   const hundred = total?.state === 'value' && typeof total.raw === 'number' && Math.abs(total.raw - 100) < 1e-9;
