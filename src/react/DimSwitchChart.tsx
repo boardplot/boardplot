@@ -106,7 +106,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;
  }
  function DrawnDimSwitch(props: NormalizedProps): ReactElement {
-  return useCard(drawDimSwitch, props);
+  return useCard(drawDimSwitch, props, 'dimswitch');
  }
  function drawDimSwitch(props: NormalizedProps): ReactElement {
   const {data,variant:controlledVariant,defaultVariant='by-measure',depth:controlledDepth,defaultDepth=1,splits:controlledSplits,defaultSplits=false,collapsed:controlledCollapsed,defaultCollapsed,onViewChange,inlineVisibility,defaultInlineVisibility,onInlineVisibilityChange,size,fit,fallbackSize,measureWidths,hover,onWarnings,onRefused,renderRefused,scope,fontMetrics,styleNonce,idPrefix,handleRef,onContentWidth,onScrollChange,fillHeight,rowLabelLead,portalContainer,onRowSelect,isRowSelectable,toolbar=false,interactions,defaultColumnVisibility,onColumnVisibilityChange,sortable,defaultSort,onSortChange,rootsHidden,onEmpty,onFormatsFit,exporter,...options}=props;

@@ -14,6 +14,7 @@ import { resolveTheme } from '../src/core/theme';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
 import { BarChart } from '../src/react/charts/bar';
+import { BarTableChart } from '../src/react/charts/bartable';
 import { CohortChart } from '../src/react/charts/cohort';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
 import { ColumnChart } from '../src/react/charts/column';
@@ -151,6 +152,30 @@ describe('React adapter boundary', () => {
     root = createRoot(container);
     act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
     expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
+  });
+
+  // A per-type entry checks no option values: a value the engine cannot use threw and unmounted the host's React root.
+  // A host that stores the refusal in state must not loop, and only a throw the API documents reaches the host.
+  it('draws the failure card and reports it as a refusal when the engine throws', () => {
+    const onRefused = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fixture = getFixtures('table')[0]!;
+    const props = { data: fixture.data, variant: 'line' } as never;
+    expect(renderToStaticMarkup(createElement(TableChart, props))).toContain('chart-failed');
+    function Host() {
+      const [, set] = useState<object>();
+      return createElement(TableChart, { ...(props as object), onRefused: (result: object) => { onRefused(result); set(result); } } as never);
+    }
+    act(() => { root.render(createElement(Host)); });
+    expect(container.innerHTML).toContain('The table chart could not be drawn');
+    expect(onRefused).toHaveBeenCalledTimes(1);
+    expect(onRefused.mock.calls[0]![0].warnings[0].code).toBe('chart-failed');
+    // A plain Error of the engine draws the card too; only a throw the API documents reaches the host.
+    expect(renderToStaticMarkup(createElement(ColumnChart, { data: DATA, size: 'container', fallbackSize: { width: 400, height: 300 }, fit: 'stretch' } as never))).toContain('chart-failed');
+    expect(() => renderToStaticMarkup(createElement(ColumnChart, { data: DATA, idPrefix: 'bad id!' }))).toThrow(/idPrefix/);
+    expect(() => renderToStaticMarkup(createElement(ColumnChart, { data: DATA, prepared: { kind: 'table' } } as never))).toThrow(/Expected a prepared svg chart/);
+    // A bar table given column-chart data took the same path in the chart components.
+    expect(renderToStaticMarkup(createElement(BarTableChart, { data: DATA } as never))).toContain('chart-failed');
   });
 
   it('runs semantic normalization before range-family layout', () => {

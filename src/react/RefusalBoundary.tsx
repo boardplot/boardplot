@@ -7,9 +7,11 @@ import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import type { RefusalFinding } from '../core/schema/refusals';
 import { BoardplotThemeContext } from './themeContext';
-import type { ContainerSizeOptions } from './useContainerSize';
+import { noSubscription, type ContainerSizeOptions } from './useContainerSize';
 import { LayoutRefusal } from './SizePlaceholder';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
+import { layoutRefusal } from '../core/emptyData';
+import type { RefusedLayout } from '../core/types/scene';
 
 /** Per-type components also accept a width in pixels as a number. */
 export type PerTypeSizeOptions = Omit<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
@@ -42,13 +44,24 @@ function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: Render
  * the host's React root. Any other error keeps travelling up to the host. The card
  * goes when the chart gets new props or inherited settings.
  */
+type BoundaryProps = { watch: unknown; inherited: unknown; fallback: Fallback; size?: Size; children: ReactNode };
 class Boundary extends Component<
-  { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
+  BoundaryProps,
   { watch: unknown; inherited: unknown; failed?: { error: unknown } }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
   /** Raised when a hydrated card hands over: the chart mounts afresh after it. */
   mount = 0;
+  /** The engine fault the host last heard of. */
+  declare told?: string;
+
+  /**
+   * The host hears of an engine fault (`chart-failed`) as of a refusal, once: new props draw the chart again, and the
+   * same fault again stays quiet, so a host that stores the refusal in state does not loop.
+   */
+  override componentDidCatch(error: unknown) {
+    (error as { tell?: (boundary: Boundary) => void }).tell?.(this);
+  }
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -71,33 +84,47 @@ class Boundary extends Component<
 type Fallback = (finding: RefusalFinding) => ReactNode;
 const BoundaryContext = createContext<Boundary>(undefined!);
 
-const subscribeNever = () => () => {};
-const zero = () => 0;
 
 /**
  * Draws a chart. On the server, where React has no error boundary, and in the hydration of that markup, an engine
  * refusal (a NormalizeError) the chart throws draws its card instead. In the browser it goes to the boundary, as it
- * always did. Any other error goes on up to the host.
+ * always did. Any other error of the engine becomes one card that names the chart type, `chart-failed`: it can come
+ * from a value the type's schema refuses or from a fault of the engine, so the card does not say which. The error
+ * stays its cause, which the console shows.
  */
-export function useCard<P>(draw: (props: P) => ReactElement, props: P): ReactElement {
-  // React reads the server snapshot only on the server and in hydration. Both snapshots are 0, so a chart renders no
+export function useCard<P>(draw: (props: P) => ReactElement, props: P, type: string): ReactElement {
+  // React reads the server snapshot only on the server and in hydration. Both snapshots are false, so a chart renders no
   // extra time after hydration.
   let server = false;
-  useSyncExternalStore(subscribeNever, zero, () => (server = true, 0));
+  useSyncExternalStore(noSubscription, () => false, () => (server = true, false));
   try {
     return draw(props);
   } catch (error) {
+    // A throw the API documents (a prepared result that does not match, an idPrefix that breaks an id) carries `host`:
+    // it goes on up to the host.
+    if ((error as { host?: 1 })?.host) throw error;
     // A render that threw is dropped in the browser. This one mounts (a server pass or hydration), so it may call
     // hooks past the ones the chart called before it threw.
-    if (!server || !(error instanceof NormalizeError)) throw error;
+    const refused: NormalizeError = error instanceof NormalizeError ? error
+      : Object.assign(new NormalizeError('chart-failed', '', `The ${type} chart could not be drawn.`), {
+        cause: error,
+        tell(boundary: Boundary) {
+          const { watch, size = { width: 0, height: 0 } } = boundary.props;
+          if (boundary.told !== (boundary.told = String(error))) (watch as { onRefused?: (result: RefusedLayout) => void }).onRefused?.(layoutRefusal(type, type, size, refused));
+        },
+      });
+    if (!server) throw refused;
     const boundary = useContext(BoundaryContext);
     // Once hydrated, the boundary holds the card, as if the chart had thrown in the browser: the chart mounts afresh
     // after it, also when new props reach the boundary in the same update.
     useIsomorphicLayoutEffect(() => {
+      // React logs an error the boundary caught; a card from the server it never saw.
+      if (refused !== error) console.error(refused);
       boundary.mount++;
-      boundary.setState({ failed: { error } });
+      boundary.setState({ failed: { error: refused } });
+      boundary.componentDidCatch(refused);
     }, []);
-    return boundary.props.fallback(findingOf(error)) as ReactElement;
+    return boundary.props.fallback(findingOf(refused)) as ReactElement;
   }
 }
 
@@ -139,5 +166,5 @@ export function RefusalBoundary({ watch, children, size, fallbackSize, target, t
   // The card takes the asked size, or the default when the size itself is the bad prop.
   const frame = { fixedSize, theme, size: frameSize(size === 'container' ? fallbackSize : size, target), options: typeof title === 'string' ? { title } : {} };
   const fallback: Fallback = (finding) => <LayoutRefusal {...frame} refusals={[finding]} />;
-  return finding ? fallback(finding) : <Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary>;
+  return finding ? fallback(finding) : <Boundary watch={watch} fallback={fallback} size={frame.size} inherited={inherited}>{children}</Boundary>;
 }

@@ -529,7 +529,7 @@ export const TableChart = createTableChart();
 
 type DrawnTableProps = { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined };
 function DrawnTable(props: DrawnTableProps): ReactElement {
-  return useCard(drawTable, props);
+  return useCard(drawTable, props, 'table');
 }
 function drawTable({ table: props, checkKeys, linked }: DrawnTableProps): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
