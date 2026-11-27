@@ -669,6 +669,9 @@ function renderSchemaLoaders(types, aliases, aliasDefaults) {
     '};',
     '',
     ...renderAliasTable(types, aliases),
+    '/** alias -> the type it names, built once for the spec path. */',
+    'export const aliasOwners: ReadonlyMap<string, string> = new Map(Object.entries(chartTypeAliases).flatMap(([type, names]) => names.map((alias) => [alias, type])));',
+    '',
   ].join('\n');
 }
 

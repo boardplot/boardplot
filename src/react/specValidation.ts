@@ -16,7 +16,7 @@ import { ownedDocumentCopy } from '../core/doc/ownedDocumentCopy';
 import { bareFinding, DocumentSchemaError, isBareChart, parseDocumentInput,
   type DocChart, type DocumentEnvelope, type BoardplotDoc } from '../core/doc/document';
 import { referencedChartTypes, validateChartInput } from '../core/doc/chartValidation';
-import { chartTypeAliases, schemaLoaders } from './schemaLoaders';
+import { aliasOwners, schemaLoaders } from './schemaLoaders';
 import { adoptThemeObject, isThemeObject, rootContextErrors } from '../core/doc/themeObject';
 import { completeDiagnostic } from '../core/doc/diagnostics';
 import { schemaDiagnostic } from '../core/diagnostics/describe';
@@ -76,11 +76,6 @@ export function specSettings(settings: BoardplotSpecSettings): BoardplotSpecSett
  * refuse with the same diagnostics the one-pass parse produced, pointed back
  * into the bare spec when the caller sent one.
  */
-/** Alias -> type from the generated table, so a grid named `facets` is a grid before any schema has loaded. */
-const aliasOwners = new Map<string, string>();
-for (const [type, aliases] of Object.entries(chartTypeAliases)) {
-  for (const alias of aliases) aliasOwners.set(alias, type);
-}
 const staticCanonical = (name: string): string | undefined => {
   const matched = caseInsensitiveValue(name, [...Object.keys(schemaLoaders), ...aliasOwners.keys()]) ?? name;
   return Object.hasOwn(schemaLoaders, matched) ? matched : aliasOwners.get(matched);

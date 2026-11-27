@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore, type ComponentType, t
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ZoomOption } from './useZoom';
 import { chartLoaders } from './chartLoaders';
-import { chartTypeAliases, schemaLoaders } from './schemaLoaders';
+import { aliasOwners, chartTypeAliases, schemaLoaders } from './schemaLoaders';
 import { getChart, getChartSchemas, registerChartSchemas } from '../core/registry';
 import type { Id } from '../core/types/cell';
 import type { Annotation } from '../core/types/annotations';
@@ -201,11 +201,6 @@ function useDataTable(wanted: boolean): { module?: DataTableModule; waiting: boo
 
 const NO_TYPES: readonly string[] = [];
 
-/** alias -> the type it names, built once from the generated table. */
-const aliasOwners = new Map<string, string>();
-for (const [type, aliases] of Object.entries(chartTypeAliases)) {
-  for (const alias of aliases) aliasOwners.set(alias, type);
-}
 
 /** The type a spec's name stands for, or undefined for a name Boardplot does not draw. */
 function knownType(name: string): string | undefined {

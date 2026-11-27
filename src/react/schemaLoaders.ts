@@ -107,3 +107,6 @@ export const chartTypeAliases: Readonly<Record<string, readonly string[]>> = {
   variance: ['deviation'],
   waterfall: ['bridge'],
 };
+
+/** alias -> the type it names, built once for the spec path. */
+export const aliasOwners: ReadonlyMap<string, string> = new Map(Object.entries(chartTypeAliases).flatMap(([type, names]) => names.map((alias) => [alias, type])));
