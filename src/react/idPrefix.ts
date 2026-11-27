@@ -9,7 +9,8 @@ export const IdPrefixContext = createContext<string | undefined>(undefined);
 /** The prop, refused before it reaches an id when it could break one. */
 export function checkedIdPrefix(idPrefix: string | undefined): string | undefined {
   if (idPrefix !== undefined && !ID_PREFIX_PATTERN.test(idPrefix)) {
-    throw new Error(`idPrefix '${idPrefix}' must match ${ID_PREFIX_PATTERN.source} (it is pasted into an id)`);
+    // `host`: a documented throw, which the chart's failure card lets through to the host.
+    throw Object.assign(new Error(`idPrefix '${idPrefix}' must match ${ID_PREFIX_PATTERN.source} (it is pasted into an id)`), { host: 1 });
   }
   return idPrefix;
 }

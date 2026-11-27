@@ -7,7 +7,7 @@ import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import type { RefusalFinding } from '../core/schema/refusals';
 import { BoardplotThemeContext } from './themeContext';
-import type { ContainerSizeOptions } from './useContainerSize';
+import { noSubscription, type ContainerSizeOptions } from './useContainerSize';
 import { LayoutRefusal } from './SizePlaceholder';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 import { layoutRefusal } from '../core/emptyData';
@@ -53,7 +53,7 @@ class Boundary extends Component<
   /** Raised when a hydrated card hands over: the chart mounts afresh after it. */
   mount = 0;
   /** The engine fault the host last heard of. */
-  told?: string;
+  declare told?: string;
 
   /**
    * The host hears of an engine fault (`chart-failed`) as of a refusal, once: new props draw the chart again, and the
@@ -84,8 +84,6 @@ class Boundary extends Component<
 type Fallback = (finding: RefusalFinding) => ReactNode;
 const BoundaryContext = createContext<Boundary>(undefined!);
 
-const subscribeNever = () => () => {};
-const zero = () => 0;
 
 /**
  * Draws a chart. On the server, where React has no error boundary, and in the hydration of that markup, an engine
@@ -95,16 +93,16 @@ const zero = () => 0;
  * stays its cause, which the console shows.
  */
 export function useCard<P>(draw: (props: P) => ReactElement, props: P, type: string): ReactElement {
-  // React reads the server snapshot only on the server and in hydration. Both snapshots are 0, so a chart renders no
+  // React reads the server snapshot only on the server and in hydration. Both snapshots are false, so a chart renders no
   // extra time after hydration.
   let server = false;
-  useSyncExternalStore(subscribeNever, zero, () => (server = true, 0));
+  useSyncExternalStore(noSubscription, () => false, () => (server = true, false));
   try {
     return draw(props);
   } catch (error) {
-    // A plain Error is a throw the API documents (a prepared result that does not match, an idPrefix that breaks an id):
+    // A throw the API documents (a prepared result that does not match, an idPrefix that breaks an id) carries `host`:
     // it goes on up to the host.
-    if ((error as Error)?.constructor === Error) throw error;
+    if ((error as { host?: 1 })?.host) throw error;
     // A render that threw is dropped in the browser. This one mounts (a server pass or hydration), so it may call
     // hooks past the ones the chart called before it threw.
     const refused: NormalizeError = error instanceof NormalizeError ? error

@@ -37,7 +37,7 @@ interface Measurement {
   printed?: number;
 }
 
-const noSubscription = () => () => {};
+export const noSubscription = () => () => {};
 
 /** The drawn chart: its SVG and the HTML footer, which takes the place of the footer the layout drew (footer rule). */
 function chartHeight(content: Element | null): number | undefined {

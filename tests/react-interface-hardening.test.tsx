@@ -155,7 +155,7 @@ describe('React adapter boundary', () => {
   });
 
   // A per-type entry checks no option values: a value the engine cannot use threw and unmounted the host's React root.
-  // A host that stores the refusal in state must not loop, and a throw the API documents still reaches the host.
+  // A host that stores the refusal in state must not loop, and only a throw the API documents reaches the host.
   it('draws the failure card and reports it as a refusal when the engine throws', () => {
     const onRefused = vi.fn();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -170,7 +170,10 @@ describe('React adapter boundary', () => {
     expect(container.innerHTML).toContain('The table chart could not be drawn');
     expect(onRefused).toHaveBeenCalledTimes(1);
     expect(onRefused.mock.calls[0]![0].warnings[0].code).toBe('chart-failed');
+    // A plain Error of the engine draws the card too; only a throw the API documents reaches the host.
+    expect(renderToStaticMarkup(createElement(ColumnChart, { data: DATA, size: 'container', fallbackSize: { width: 400, height: 300 }, fit: 'stretch' } as never))).toContain('chart-failed');
     expect(() => renderToStaticMarkup(createElement(ColumnChart, { data: DATA, idPrefix: 'bad id!' }))).toThrow(/idPrefix/);
+    expect(() => renderToStaticMarkup(createElement(ColumnChart, { data: DATA, prepared: { kind: 'table' } } as never))).toThrow(/Expected a prepared svg chart/);
     // A bar table given column-chart data took the same path in the chart components.
     expect(renderToStaticMarkup(createElement(BarTableChart, { data: DATA } as never))).toContain('chart-failed');
   });

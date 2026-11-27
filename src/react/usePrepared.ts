@@ -22,7 +22,7 @@ export function usePrepared<T extends PreparedHeader & { kind: string }>(
   const initial = useRef<{ prepared: T; request: ResolvedChartRequest; fit?: PreparedHeader['fit'] } | undefined>(undefined);
   if (!prepared) initial.current = undefined;
   else if (!request) return undefined;
-  else if (prepared !== initial.current?.prepared) {
+  else if (prepared !== initial.current?.prepared) try {
     if (prepared.kind !== kind) throw new Error(`Expected a prepared ${kind} chart.`);
     // A host as wide as the fallback with no height has the fallback size but not its fixed flags or options.size,
     // so compare the keys, not the pixels. The request itself stays when the frame is the same request.
@@ -32,6 +32,10 @@ export function usePrepared<T extends PreparedHeader & { kind: string }>(
     assertPreparedRequest(prepared, framed);
     if (prepared.fit !== fit) throw new Error('Prepared chart container fit does not match.');
     initial.current = { prepared, request: framed, fit };
+  } catch (error) {
+    // A prepared result that does not match throws to the host, as documented; `host` lets it through the chart's
+    // failure card.
+    throw Object.assign(error as Error, { host: 1 });
   }
   return initial.current?.request === request && initial.current?.fit === fit ? prepared : undefined;
 }
