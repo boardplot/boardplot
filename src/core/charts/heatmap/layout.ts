@@ -22,7 +22,7 @@ import { lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultSetSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { tickFormatter } from '../../axis';
 import { ruleFormatter } from '../../numberSets';
-import { cleanFloat, round2, type Margin, type Rect } from '../../geometry';
+import { cleanFloat, round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
@@ -80,6 +80,7 @@ import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 import { emptyIdRecord } from '../../idRecords';
+import { bareGridPlot } from './bareGrid';
 import { matrixTracks, nameTrackRefusals, overrideIgnored, widthCapped, widthFloored } from './columnTracks';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 
@@ -2227,16 +2228,4 @@ function measureRowLabels(
     if (stopAtMiss && !fits) break;
   }
   return values;
-}
-
-/**
- * A grid of filled cells with nothing under it keeps the side margin below it too. The 10 px
- * bottom margin is the air under a footer line, and without one the last row of cells ran to
- * the canvas edge. An authored bottom margin stands, and a grid panel takes its grid's spacing.
- */
-export function bareGridPlot(plot: Rect, height: number, margin: Margin, options: { margin?: Partial<Margin> }): Rect {
-  if (options.margin?.bottom !== undefined || panelTypeClass(options) !== undefined
-    || Math.abs(plot.y + plot.h - (height - margin.bottom)) > 0.5) return plot;
-  const extra = Math.max(0, margin.left - margin.bottom);
-  return extra === 0 ? plot : { ...plot, h: Math.max(10, plot.h - extra) };
 }

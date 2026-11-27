@@ -13,7 +13,7 @@ import { defaultSetSpec, formatterFromExample, formatWithSpec, seriesRasterForma
  */
 
 import { sweepHide } from '../../collide';
-import { bareGridPlot } from '../heatmap/layout';
+import { bareGridPlot } from '../heatmap/bareGrid';
 import { matrixTracks, nameTrackRefusals, widthCapped, widthFloored } from '../heatmap/columnTracks';
 import { generatedIdWarnings, type ColumnOverride } from '../../schema/generatedColumns';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
