@@ -71,6 +71,13 @@ it('draws the card for an unknown target', async () => {
   expect(host.querySelector('[data-bp-error-path="/options/target"]') === null).toBe(false);
 });
 
+// A dashboard provider with a target that does not exist crashed every chart under it before its card.
+it('draws the card under a provider with an unknown target', async () => {
+  const data = { categories: ['Week 1'], series: [{ id: 'orders', values: [24] }] };
+  root = await mount(<BoardplotTheme target={'not-a-value' as never}><BoardplotChart spec={{ type: 'column', data }} /></BoardplotTheme>, host);
+  expect(host.querySelector('[data-bp-spec-error]')?.getAttribute('data-bp-diagnostics')).toContain('invalid-target');
+});
+
 // A text-only console capture printed the findings array as [Object].
 it('logs a readable line naming the code and path before the findings', async () => {
   const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);

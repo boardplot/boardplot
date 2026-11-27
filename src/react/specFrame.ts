@@ -1,4 +1,4 @@
-import { resolveTargetSize } from '../core/target';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_TYPE_TABLES } from '../core/target';
 import type { BaseOptions, LegendOptions, RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { BoardplotChartProps } from './spec';
@@ -67,7 +67,8 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
       }
     }
   }
-  catch { size = resolveTargetSize(settings.target ?? 'report').sizePx; }
+  // A provider target that does not exist is the card's finding; the card takes the default.
+  catch { size = resolveTargetSize(Object.hasOwn(TARGET_TYPE_TABLES, settings.target!) ? settings.target! : DEFAULT_TARGET).sizePx; }
   const language = record(raw.locale).language ?? root.locale;
   const options = {
     target: target as RenderTarget,
