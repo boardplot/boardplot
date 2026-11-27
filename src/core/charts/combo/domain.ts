@@ -8,6 +8,8 @@ import type { StringsSpec } from '../../types/options';
 import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
+import { requestMemo } from '../../layoutPlan';
+import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { tickFormatter } from '../../axis';
 import { cleanSum } from '../../geometry';
 import { formatAutomaticPercent, formatShare } from '../../format';
@@ -54,13 +56,6 @@ export function resolveComboEnv(options: ComboOptions, warnings: LintWarning[]):
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
   };
-}
-
-/** The column whose cell speaks for a stack's total: the only populated one, else the only drawn (non-zero) one. */
-export function totalColumn(domain: Pick<ComboDomain, 'columns'>, ci: number): NormSer | undefined {
-  const populated = domain.columns.filter((column) => column.vals[ci]!.v !== null);
-  const drawn = populated.filter((column) => column.vals[ci]!.v !== 0);
-  return populated.length === 1 ? populated[0] : drawn.length === 1 ? drawn[0] : undefined;
 }
 
 /** A null breaks a line by default, as on line. */
@@ -239,26 +234,35 @@ function comboStacks(cats: Category[], columnSeries: NormSer[]) {
   const posTop: number[] = [];
   const negBot: number[] = [];
   const anyByCat: boolean[] = [];
+  const totalColumns: (NormSer | undefined)[] = [];
   let lo = 0;
   let hi = 0;
   cats.forEach((c, ci) => {
     let p = 0;
     let n = 0;
+    let populated = 0;
+    let drawn = 0;
+    let lastPopulated: NormSer | undefined;
+    let lastDrawn: NormSer | undefined;
     for (const s of columnSeries) {
       const v = s.vals[ci]!.v;
       if (v === null) continue;
+      populated++;
+      lastPopulated = s;
+      if (v !== 0) { drawn++; lastDrawn = s; }
       if (v >= 0) p += v;
       else n += v;
     }
     posTop[ci] = p;
     negBot[ci] = n;
-    anyByCat[ci] = columnSeries.some((s) => s.vals[ci]!.v !== null);
+    anyByCat[ci] = populated > 0;
+    totalColumns[ci] = populated === 1 ? lastPopulated : drawn === 1 ? lastDrawn : undefined;
     // Exact: the total label and the description round once, at print time.
     if (columnSeries.length > 0) stackTotals[c.id] = cleanSum([p, n]);
     lo = Math.min(lo, n);
     hi = Math.max(hi, p);
   });
-  return { stackTotals, posTop, negBot, anyByCat, lo, hi };
+  return { stackTotals, posTop, negBot, anyByCat, totalColumns, lo, hi };
 }
 
 /**
@@ -807,7 +811,15 @@ export function comboBandFraction(options: ComboOptions, count: number): number 
 }
 
 export function resolveComboDomain(data: ChartData, options: ComboOptions, warnings: LintWarning[], theme?: Theme): ComboDomain {
-  const { cats, seriesNorm } = normalizeComboData(data);
+  // The axis gate can demote a secondary series in place. Only a primary-only
+  // data model stays identical across the axis, key and height trials.
+  const share = (options.measure ?? defaultMeasurer) === defaultMeasurer
+    && !options.window && !options.viewDomain
+    && Array.isArray(data?.categories) && data.categories.length > DENSE_CATEGORY_COUNT
+    && Array.isArray(data.series) && data.series.every(series => series && series.axis !== 'secondary');
+  const { cats, seriesNorm } = share
+    ? requestMemo(data, 'combo-primary-series', () => normalizeComboData(data))
+    : normalizeComboData(data);
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
   const running = runningPeriodIds(cats, ci => hasActualCategoryValue(dataSeries, ci));
   const refs = seriesNorm.filter((s) => s.role === 'reference');
@@ -884,7 +896,9 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : marker ? { ...options, annotations } : options;
 
   // Stack totals (column part), then the primary and secondary extents.
-  const { stackTotals, posTop, negBot, anyByCat, lo: stackLo, hi: stackHi } = comboStacks(cats, columns);
+  const { stackTotals, posTop, negBot, anyByCat, totalColumns, lo: stackLo, hi: stackHi } = share
+    ? requestMemo(data, 'combo-primary-stacks', () => comboStacks(cats, columns))
+    : comboStacks(cats, columns);
   const incompleteCats = new Set(cats.filter((_, ci) => anyByCat[ci] && columns.some(s => s.vals[ci]!.v === null)).map(c => c.id));
   if (columnsAdd) warnIncompleteStacks('stacked', cats, incompleteCats,
     options.labels !== false && options.labels?.grandTotal !== false, false, 'columns', warnings, disclosuresShown(options));
@@ -1005,7 +1019,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     return value?.isPct ? pctFmt : scaleFmtOf(s);
   };
   const totalFmtOf = (ci: number): ((v: number) => string) => {
-    const single = totalColumn({ columns }, ci);
+    const single = totalColumns[ci];
     return single ? valueFmtOf(single, single.vals[ci]) : fmt;
   };
   const beforeCorridor = warnings.slice();
@@ -1078,6 +1092,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     posTop,
     negBot,
     anyByCat,
+    totalColumns,
     ...primary,
     secondaryDomain: right.secondaryDomain,
     rightTicks: ticksFromLabels ? [] : right.rightTicks,

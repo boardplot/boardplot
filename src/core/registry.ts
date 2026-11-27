@@ -1,3 +1,4 @@
+import type { ParetoDerived } from './charts/pareto/layout';
 import { PLAN_ONLY } from './layoutPlan';
 import { defaultMeasurer } from './text';
 /**
@@ -119,11 +120,13 @@ export interface ChartCore<
   layout: LayoutFn<D, O, M, DV>;
   /** Prepares private chart data once for all size and note trials in this request. */
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
+  /** Height-search inputs shared by every possible label outcome of a discarded opening. */
+  openingPlot?(data: D, options: O, size: { width: number; height: number }): { plot: number; freed: number; part: number } | undefined;
   /** Returns the slope reference plot height when the chart can measure it without drawing. */
   referencePlotHeight?(data: D, options?: O): number | undefined;
   /** The full one-row key when every automatic candidate can only omit its entries. */
   coveringKey?(data: D, options: O, baseline: Geometry<M, DV>): Pick<Geometry, 'scene' | 'legend'> | undefined;
-  /** True when every label in the note still needs it at any taller full-mode layout of this width. */
+  /** True when every label in the note still needs it at any taller layout with this width and mode. */
   notesBoundByWidth?(data: D, options: O, geometry: Geometry<M, DV>, noted: Geometry<M, DV>['labels']): boolean;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
   finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;
@@ -782,14 +785,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const removed = (options as { [REMOVED_NAMES]?: LintWarning[] } | undefined)?.[REMOVED_NAMES] ?? removedNameWarnings(options);
     return removed.length ? { ...geo, warnings: [...geo.warnings, ...removed] } : geo;
   };
-  const layoutPlain = (data: D, options: O | undefined, layoutOnce: RegistryFitLayout<O, M, DV>, probe = false) => {
+  const layoutPlain = (data: D, options: O | undefined, layoutOnce: RegistryFitLayout<O, M, DV>, probe = false,
+    clearer?: (first: Geometry<M, DV>, owed: ReadonlyMap<Id, string>) => LayoutResult<M, DV> | undefined) => {
     const noteData = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
     return withDensityNotes(noteData, (options ?? {}) as BaseOptions, next => {
       if (!(DENSITY_VALUES in next)) return layoutBaseline(data, next as O, layoutOnce, probe);
       const notedLayout = prepareLayout(data, next as O);
       try { return layoutBaseline(data, next as O, notedLayout, probe); } finally { notedLayout.finish(); }
-    });
+    }, clearer);
   };
   // Preparation and the full/compact policy belong to one call, including its size probes.
   const createLayout = (data: D, authored?: O, fitOnly: DiscardRepair = false): LayoutCall<O, M, DV> => {
@@ -820,18 +824,36 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       const fullProbe = (runOptions as { [FULL_LAYOUT_PROBE]?: boolean } | undefined)?.[FULL_LAYOUT_PROBE] === true;
       // Density-note retries must keep this call's wider-card cache.
       const callOptions = { ...runOptions, [CARD_HEIGHT_MEMO]: memo } as unknown as O;
-      let geo = layoutPlain(labelled, callOptions, layoutOnce, fullProbe);
-      // A narrow card keeps the 0.4 plot share only when no value moves into a note
-      // because of it. Only a layout that hides something pays for the 0.5 layout, which wins
-      // when it hides less.
-      const lost = !fullProbe && narrowShareApplies(def, runOptions) ? hiddenForSpace(geo) : 0;
-      if (lost > 0) {
+      const narrow = !fullProbe && narrowShareApplies(def, runOptions);
+      let wide: LayoutResult<M, DV> | undefined;
+      const widerPlot = () => {
+        if (wide) return wide;
         const share = { [PLOT_SHARE]: PLOT_FLOOR_SHARE };
         const wideOnce = prepareLayout(labelled, { ...options, ...share, [CARD_HEIGHT_MEMO]: memo } as unknown as O);
         try {
-          const wide = layoutPlain(labelled, { ...callOptions, ...share } as unknown as O, wideOnce);
-          if (hiddenForSpace(wide) < lost) geo = wide;
+          return wide = layoutPlain(labelled, { ...callOptions, ...share } as unknown as O, wideOnce);
         } finally { wideOnce.finish(); }
+      };
+      // The first cumulative point remains a label request at every height. A Pareto
+      // density note fixes it as hidden. A wider plot that seats every label therefore
+      // wins before the narrower plot has measured and drawn its note.
+      const clearer = narrow && builtIn && def.type === 'pareto' && !options?.labels && !options?.labelPlacements
+        && !staticFrame.live && !staticFrame.pinned && (options?.measure ?? defaultMeasurer) === defaultMeasurer
+        ? (first: Geometry<M, DV>, owed: ReadonlyMap<Id, string>) => {
+          const drawn = first.derived as unknown as ParetoDerived;
+          if (first.mode !== 'full' || drawn.order.length < 2 || drawn.highlighted.at(-1) === drawn.order[0]
+            || !owed.has(`point:pareto:cumulative:${drawn.order[0]}`)) return;
+          const alternative = widerPlot();
+          if (hiddenForSpace(alternative) === 0) return alternative;
+        } : undefined;
+      let geo = layoutPlain(labelled, callOptions, layoutOnce, fullProbe, clearer);
+      // A narrow card keeps the 0.4 plot share only when no value moves into a note
+      // because of it. Only a layout that hides something pays for the 0.5 layout, which wins
+      // when it hides less.
+      const lost = narrow ? hiddenForSpace(geo) : 0;
+      if (lost > 0) {
+        const alternative = widerPlot();
+        if (hiddenForSpace(alternative) < lost) geo = alternative;
       }
       if (memo.active && !(runOptions as { story?: unknown } | undefined)?.story) probes.set(key, geo);
       if (!(runOptions as { story?: unknown } | undefined)?.story || isRefused(geo)) return geo;

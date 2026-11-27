@@ -45,7 +45,7 @@ import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import type { RoundingAdjustment } from '../../shareRounding';
 import type { Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { solveLabels, type SolveCtx, type SolveResult } from '../../label/solver';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
@@ -279,12 +279,6 @@ function assembleMekkoGeometry(input: {
       decisions: [...solved.decisions, ...annotated.decisions],
     },
   };
-}
-
-/** Replays a phase's claims, in claim order, into the run's index. */
-function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
-  for (const c of phase.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part);
-  if (phase.tickColumns) occupied.tickColumns = phase.tickColumns;
 }
 
 /**

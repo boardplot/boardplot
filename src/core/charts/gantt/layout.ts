@@ -39,7 +39,7 @@ import { staticFrame } from '../../footer';
  */
 
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { leaderPieces, solveLabels, type SolveResult } from '../../label/solver';
 import { authoredFootnoteCount, type FrameResult, type InternalFootnoteOptions } from '../../frame';
 import { disclosureNote, disclosuresShown } from '../../notes';
@@ -322,11 +322,6 @@ function gridAroundLabels(nodes: readonly SceneNode[], placed: SolveResult['plac
     const pieces = ruleNodes(id, x1, Math.min(y1, y2), Math.max(y1, y2), near.map(rect => ({ ...rect, x: rect.x - gap + 2, w: rect.w + 2 * (gap - 2) })), style);
     return node.part === 'grid' ? pieces : pieces.map((piece, index) => index ? { ...piece, id: `${id}:label:${index}` } : piece);
   });
-}
-
-/** Replays a phase's claims, in claim order, into the run's index. */
-function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
-  for (const c of phase.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part);
 }
 
 // The registry tries full before compact. Keep that full context so a wider

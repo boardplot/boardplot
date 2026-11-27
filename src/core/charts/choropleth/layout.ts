@@ -1377,6 +1377,7 @@ function withoutRegionMarks(occupied: OccupiedIndex): OccupiedIndex {
     claim: (rect, kind, owner, part) => occupied.claim(rect, kind, owner, part),
     hits: (rect, pad = 0) => occupied.hits(rect, pad, regionMark),
     hitsWhich: (rect, pad = 0) => occupied.hitsWhich(rect, pad, regionMark),
+    some: (rect, pad, test) => occupied.some(rect, pad, (claim) => !regionMark(claim) && test(claim)),
     snapshot: () => occupied.snapshot(),
   };
 }
@@ -2988,7 +2989,6 @@ function calloutCandidates(
     if (claim.kind === 'mark' && claim.part === 'noDataHatch') hatchBlocked = true;
     return true;
   };
-  const skip = (claim: OccupiedClaim) => !taken(claim);
   // Skip leaders before the index checks their geometry. Crowding concerns labels only.
   const skipUncrowdedLabel = (claim: OccupiedClaim) => !(claim.kind === 'label' &&
     Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2 && boxGap(rect, claim.rect) < 8);
@@ -3006,7 +3006,7 @@ function calloutCandidates(
       rect.y = from[1] + dy * (d + reach) - h / 2;
       if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
-      if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
+      if (occupied.some(rect, 2, taken)) continue;
       if (labelOccupied.hits(rect, 8, skipUncrowdedLabel)) continue;
       const to = calloutTerminus(from, rect);
       const fits = outsideFits(region.id, rect, from, to);

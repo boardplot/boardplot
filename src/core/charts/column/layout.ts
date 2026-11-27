@@ -42,7 +42,7 @@ import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedClaim, OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, sameContent, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
+import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, copyFitDrawing, plotFloorRows, sameContent, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
@@ -1200,10 +1200,7 @@ interface KeyedColumnBody {
 
 /** The caller can mark labels as noted and change the selected geometry during sizing. */
 function copyColumnBody(pass: ColumnPass, area: ColumnArea): ColumnPass {
-  const g = pass.geometry;
-  return { ...pass, geometry: { ...g, frame: area.frame.frame, legend: area.frame.legend,
-    labels: g.labels.map(label => ({ ...label })), scene: g.scene.map(node => ({ ...node })),
-    warnings: [...g.warnings], a11y: { ...g.a11y } } };
+  return { ...pass, geometry: { ...copyFitDrawing(pass.geometry), frame: area.frame.frame, legend: area.frame.legend } };
 }
 
 function layoutColumnPass(

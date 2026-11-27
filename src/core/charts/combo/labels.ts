@@ -8,6 +8,7 @@ import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
  */
 
 import { drawnStroke } from '../../curve';
+import { linePlans } from './marks';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { sideAwayFrom, type Rect } from '../../geometry';
@@ -18,10 +19,9 @@ import { shadesFills } from '../line/shared';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { LintWarning, Paint, PlacedLabel, ShownTexts } from '../../types/scene';
 import { isIncomplete } from '../../dataGaps';
-import { linesSize, valueRowCrowded, valueShareLines, warnShareParts } from '../band/labels';
+import { fitsInside, segmentLabelCandidates, linesSize, valueRowCrowded, valueShareLines, warnShareParts } from '../band/labels';
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
-import { stackSegmentCandidates } from '../../label/slots';
 import { anchorComboAxisTitles } from './axisTitles';
 import { clearLift, clearOfStrokes, comboEndpointRequest, comboValueLabels, FIRST_END_BELOW_TOTALS, nearerOwnLine, withinOneFill } from './endpoints';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
@@ -30,7 +30,6 @@ import { NET_TICK_REACH } from '../column/netTick';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
-import { totalColumn } from './domain';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { rankValueLabels } from '../band/valueDensity';
 import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
@@ -38,7 +37,6 @@ import { DENSITY_VALUES } from '../../frame';
 import { noteName } from '../../calendarData';
 import { chartString } from '../../strings';
 import { disclosuresShown } from '../../notes';
-import { onePartDrawn } from '../band/stacks';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Every drawn line run as the path it takes, for the stroke test. */
@@ -94,7 +92,7 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
     // An authored text prints the values where it says `${value}`.
     const shows = val.labelOverride === false || (typeof val.labelOverride === 'string' && !val.labelOverride.includes('${value}')) ? undefined : composed.shows;
     // The drawn part itself: a zero cell beside it is not the stack's one part.
-    const single = v !== 0 && onePartDrawn(domain.columns.map(column => column.vals[ci]!.v));
+    const single = v !== 0 && domain.totalColumns[ci] === s;
     const printed = val.isPct || share !== null ? content : content.filter((part) => part !== 'percent');
     if (typeof val.labelOverride === 'string') {
       text = val.labelOverride.replace(/\$\{value\}/g, text);
@@ -113,7 +111,7 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
       ...namesOnly(printed, val.labelOverride),
       // A label that prints more than the value (a name, a share) keeps its seat. An authored text
       // yields only to a total that carries it: one that prints the value alone, for this column's cell.
-      ...(single && printed.length === 1 && printed[0] === 'absolute' && (typeof val.labelOverride !== 'string' || (totalValueAlone && totalColumn(domain, ci) === s))
+      ...(single && printed.length === 1 && printed[0] === 'absolute' && (typeof val.labelOverride !== 'string' || totalValueAlone)
         ? { printedIn: `grandTotal:${c.id}` } : {}),
       owner: { seriesId: s.id, categoryId: c.id },
       text,
@@ -131,8 +129,10 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
       // is named in the note line (layout.ts), and so is a value that fits its
       // segment but loses its seat to another label.
       ...(val.labelOverride !== false ? { noteText: `${s.label} ${text} (${noteName(c)})` } : {}),
-      candidates: insideSeats(stackSegmentCandidates(rect, tsize, fits, paints.inside(s, val, c, si), { baselineY: y0 }), rect, tsize.height)
-        .map(candidate => ({ ...candidate, insidePaint: paints.cell(s, val, c, si), insidePattern: paints.pattern(s, val, c) })),
+      candidates: fits || fitsInside(rect, tsize, 0)
+        ? insideSeats(segmentLabelCandidates('vertical', rect, tsize, paints.inside(s, val, c, si), { fits, baseline: y0, insideOnly: true }), rect, tsize.height)
+          .map(candidate => ({ ...candidate, insidePaint: paints.cell(s, val, c, si), insidePattern: paints.pattern(s, val, c) }))
+        : [],
     });
   }
   if (tooWide) for (const request of requests.slice(first)) {
@@ -151,8 +151,7 @@ const SEGMENT_EDGE_AIR = 3;
  * the same seat against its top and its foot, for a centre a line or a total
  * crosses.
  */
-function insideSeats(candidates: SlotCandidate[], rect: Rect, labelH: number): SlotCandidate[] {
-  const inside = candidates.filter((candidate) => candidate.slot.startsWith('inside'));
+function insideSeats(inside: SlotCandidate[], rect: Rect, labelH: number): SlotCandidate[] {
   const centre = inside.find((candidate) => candidate.slot === 'insideCenter');
   if (!centre) return inside;
   const edges = [
@@ -162,33 +161,22 @@ function insideSeats(candidates: SlotCandidate[], rect: Rect, labelH: number): S
   return [...inside, ...edges];
 }
 
-/** Grand totals, signed: above a positive top, below a negative bottom. */
-function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, paints: ComboPaints, requests: LabelRequest[], lineYs: (ci: number) => number[], strokes: readonly PolylineQueries[] = []): void {
-  const gtContent = domain.columns.length > 0 && domain.columnsAdd ? contentOf(domain, 'grandTotal', ['absolute']) : null;
-  if (!gtContent) return;
+function grandTotalRow(env: ComboEnv, domain: ComboDomain, area: ComboArea, gtContent: NonNullable<ReturnType<typeof contentOf>>) {
   const { posTop, negBot } = domain;
   const { y, band, strongFont } = area;
   const authored = new Set<string>();
   const bare = new Set<string>();
-  // A one-part stack's segment names its total (printedIn). A total that prints the value alone
-  // names the segment back, so a pinned segment placed first takes the value whatever its format.
-  const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
-  const valueAlone = gtContent.join() === 'absolute';
-  const shares = (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true;
-  const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
-  // A reference rule does not move a total: it crosses the rule on a halo, as on column.
-  const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   // Each total's composed text and the values it prints: the stack's total, which is a single column's own value.
   const totals = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
-    const cell = totalColumn(domain, ci)?.vals[ci];
+    const cell = domain.totalColumns[ci]?.vals[ci];
     return composeWithShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
   });
   const totalShows = totals.map((total) => total?.shows);
   const nets = new Set(domain.cats.flatMap((_, ci) => netInsideStack(domain, ci) ? [ci] : []));
   const texts = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
-    const single = totalColumn(domain, ci);
+    const single = domain.totalColumns[ci];
     const cell = single?.vals[ci];
     const composed = totals[ci]!.text;
     // A single column's total is its value: an authored cell label speaks for it.
@@ -238,6 +226,34 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)));
   const thinned = crowded && domain.columns.length > 1;
   const skips = (ci: number) => thinned && !nets.has(ci) && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(domain.cats[ci]!.id);
+  return { texts, totalShows, skips, nets, authored, bare, wordsAt, insideFont, outerFont, rowFont, crowded, thinned, toDateIds };
+}
+
+/** The existing total-row rule omits alternating crowded stack totals. When no
+ * single segment can print an omitted total, a hidden axis must come back. */
+export function stackNeedsTotalsAxis(env: ComboEnv, domain: ComboDomain, area: ComboArea): boolean {
+  const content = domain.columnsAdd && contentOf(domain, 'grandTotal', ['absolute']);
+  if (!content || domain.columns.length < 2) return false;
+  const { texts, skips } = grandTotalRow(env, domain, area, content);
+  return texts.some((text, ci) => text !== null && skips(ci) && (domain.totalColumns[ci]?.vals[ci]?.v ?? 0) === 0);
+}
+
+/** Grand totals, signed: above a positive top, below a negative bottom. */
+function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, paints: ComboPaints, requests: LabelRequest[], lineYs: (ci: number) => number[], strokes: readonly PolylineQueries[] = []): void {
+  const gtContent = domain.columns.length > 0 && domain.columnsAdd ? contentOf(domain, 'grandTotal', ['absolute']) : null;
+  if (!gtContent) return;
+  const { posTop, negBot } = domain;
+  const { y, band } = area;
+  const { texts, totalShows, skips, nets, authored, bare, wordsAt, insideFont, outerFont, rowFont, crowded, thinned, toDateIds } =
+    grandTotalRow(env, domain, area, gtContent);
+  // A one-part stack's segment names its total (printedIn). A total that prints the value alone
+  // names the segment back, so a pinned segment placed first takes the value whatever its format.
+  const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
+  const valueAlone = gtContent.join() === 'absolute';
+  const shares = (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true;
+  const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
+  // A reference rule does not move a total: it crosses the rule on a halo, as on column.
+  const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const idAt = (ci: number) => `grandTotal:${domain.cats[ci]!.id}`;
   const latest = thinned ? texts.reduce((last, text, ci) => text === null ? last : ci, -1) : -1;
   const locked = (domain.options as { [DENSITY_VALUES]?: ReadonlySet<string> })[DENSITY_VALUES];
@@ -245,7 +261,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     const c = domain.cats[ci]!;
     return ci === latest || texts[ci] == null || nets.has(ci) || negBot[ci]! < 0 || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
       || c.partial === true || toDateIds.has(c.id) || authored.has(c.id) || domain.options.labelPlacements?.[idAt(ci)] !== undefined
-      || onePartDrawn(domain.columns.map(series => series.vals[ci]!.v));
+      || (domain.totalColumns[ci]?.vals[ci]?.v ?? 0) !== 0;
   };
   const peak = thinned && canTryRowPeak(domain.options) && texts.filter((text, ci) => text && skips(ci)).length > 1
     ? planCrowdedRow(texts.map((text, ci) => text ? posTop[ci] : null), area.plot,
@@ -522,6 +538,39 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
   pushAll(requests, yearRowRequests(catPlan, area.catRowY + 6));
 }
 
+function appendEndpointRequests(
+  env: ComboEnv, domain: ComboDomain, area: ComboArea, plans: ComboMarkGeometry['plans'], requests: LabelRequest[],
+  strokes: readonly PolylineQueries[], fills: readonly Rect[], segmentSeats: readonly Rect[], totalSeats: readonly Rect[],
+): void {
+  const { frame, labelFont, band } = area;
+  const rightAxisActive = domain.rightTicks.length > 0;
+  for (const { s, pts } of plans) {
+    for (const endpoint of [
+      { point: pts[pts.length - 1]!, end: area.last.get(s.id), first: false },
+      { point: pts[0]!, end: area.first.get(s.id), first: true },
+    ]) {
+      if (endpoint.end === undefined) continue;
+      requests.push(comboEndpointRequest({ s, last: endpoint.point, lastCat: domain.cats[endpoint.point.ci]!,
+        text: endpoint.end.text, ...(endpoint.end.shows ? { shows: endpoint.end.shows } : {}), labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
+        adjacentAxisActive: endpoint.first ? domain.showPrimaryAxis : rightAxisActive, highlights: env.highlights, first: endpoint.first, firstBelowTotals: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
+        sharesOnColumns: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
+        allowOnColumn: !domain.lineBand,
+        bounds: s.kind === 'line' && (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] !== true ? { x0: area.plot.x, x1: area.plot.x + area.plot.w, y0: area.plot.y, y1: area.plot.y + area.plot.h } : { x0: frame.plot.x, x1: frame.plot.x + frame.plot.w }, strokes, fills, segmentSeats, totalSeats, anatomy: domain.anatomy }));
+    }
+  }
+}
+
+/** Without marks or occupied seats, the Pareto's possible curve seats include every seat the final solver can use. */
+export function paretoCurveFitsWithoutGutters(env: ComboEnv, domain: ComboDomain, area: ComboArea): boolean {
+  const plans = linePlans(domain, area);
+  const requests: LabelRequest[] = [];
+  appendEndpointRequests(env, domain, area, plans, requests, [], [], [], []);
+  linePointLabels(env, domain, area, { plans }, requests, [], []);
+  return requests.every(request => request.candidates.every(({ rect }) =>
+    (!area.gutters.first || rect.x >= area.plot.x - 0.5)
+    && (!area.gutters.last || rect.x + rect.w <= area.plot.x + area.plot.w + 0.5)));
+}
+
 /**
  * A combo line's interior points. An authored `label` string is drawn
  * where it was written in every mode; `valueLabels: 'all'` adds the value of
@@ -531,7 +580,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
  * where the other lines leave more air there, and never nearer
  * another line than its own.
  */
-function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: ComboMarkGeometry, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
+function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: Pick<ComboMarkGeometry, 'plans'>, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
   const { labelFont, frame } = area;
   const labelH = env.measure('0', labelFont).height;
   const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
@@ -677,7 +726,7 @@ export function planComboLabels(
   warnings: LintWarning[],
   probeEndpoints?: (requests: LabelRequest[]) => boolean,
 ): LabelRequest[] | undefined {
-  const { frame, labelFont, band } = area;
+  const { frame, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
   // Each authored title sits over its own tick column.
   const anchored = anchorComboAxisTitles(area.axisTitles, {
@@ -719,7 +768,7 @@ export function planComboLabels(
     if (!first || !/^(segment|grandTotal):/.test(request.id)) continue;
     const ci = domain.cats.findIndex(cat => cat.id === request.owner.categoryId);
     const total = request.id.startsWith('grandTotal:');
-    const single = total ? totalColumn(domain, ci) : undefined;
+    const single = total ? domain.totalColumns[ci] : undefined;
     const place = geometry.segments.find(segment => segment.ci === ci && segment.s.id === (total ? single?.id : request.owner.seriesId));
     if (!place) continue;
     const { s, si, v, rect } = place;
@@ -739,23 +788,11 @@ export function planComboLabels(
   // End labels leave the total's first seat clear before the solver ranks them.
   const totalSeats = requests.flatMap((r) =>
     r.kind === 'grandTotal' && !r.redundant && r.candidates[0] ? [r.candidates[0].rect] : []);
-  // first and last drawable line labels
-  for (const { s, pts } of geometry.plans) {
-    for (const endpoint of [
-      { point: pts[pts.length - 1]!, end: area.last.get(s.id), first: false },
-      { point: pts[0]!, end: area.first.get(s.id), first: true },
-    ]) {
-      if (endpoint.end === undefined) continue;
-      requests.push(comboEndpointRequest({ s, last: endpoint.point, lastCat: domain.cats[endpoint.point.ci]!,
-        text: endpoint.end.text, ...(endpoint.end.shows ? { shows: endpoint.end.shows } : {}), labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
-        adjacentAxisActive: endpoint.first ? domain.showPrimaryAxis : rightAxisActive, highlights: env.highlights, first: endpoint.first, firstBelowTotals: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
-        sharesOnColumns: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
-        allowOnColumn: !domain.lineBand,
-        bounds: s.kind === 'line' && (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] !== true ? { x0: area.plot.x, x1: area.plot.x + area.plot.w, y0: area.plot.y, y1: area.plot.y + area.plot.h } : { x0: frame.plot.x, x1: frame.plot.x + frame.plot.w }, strokes, fills, segmentSeats, totalSeats, anatomy: domain.anatomy }));
-    }
-  }
+  appendEndpointRequests(env, domain, area, geometry.plans, requests, strokes, fills, segmentSeats, totalSeats);
   const interiorAt = requests.length;
-  if (!probeEndpoints) linePointLabels(env, domain, area, geometry, requests, strokes, fills);
+  // Compact density can promote an interior point before an endpoint.
+  const deferInterior = probeEndpoints !== undefined && domain.options.mode !== 'compact';
+  if (!deferInterior) linePointLabels(env, domain, area, geometry, requests, strokes, fills);
   // A value may sit on an area where it clears that fill's edges by the solver's pad; another series' value keeps off a shaded one.
   seatValuesOnGround(requests, geometry.areaGrounds, 2, (ground) => paints.css(ground.paint), !shadesFills(domain.options.annotations ?? []), ['point', 'grandTotal']);
   referenceLabels(env, domain, area, requests);
@@ -766,7 +803,7 @@ export function planComboLabels(
     { categories: domain.cats.length, last: domain.options.mode === 'compact' ? domain.cats.at(-1)?.id : undefined, pitch: band.step, orientation: 'vertical', measure: env.measure });
   // The endpoint probe runs in full mode without area grounds. Its interior points have
   // no density rank or fill treatment, so they can rejoin at their original position.
-  if (probeEndpoints && !probeEndpoints(requests)) {
+  if (probeEndpoints && !probeEndpoints(requests) && deferInterior) {
     const interior: LabelRequest[] = [];
     linePointLabels(env, domain, area, geometry, interior, strokes, fills);
     return [...requests.slice(0, interiorAt), ...interior, ...requests.slice(interiorAt)];

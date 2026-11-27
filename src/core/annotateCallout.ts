@@ -178,7 +178,7 @@ export function leaderCrossesLabel(d: string, occupied: OccupiedIndex): boolean 
   return leaderPieces(d, 32).some(([a, b]) => {
     const rect = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
     const crosses = (claim: OccupiedClaim) => claim.kind === 'label' && segmentHitsRect(a, b, claim.rect);
-    return occupied.some ? occupied.some(rect, 0, crosses) : occupied.hitsWhich(rect, 0).some(crosses);
+    return occupied.some(rect, 0, crosses);
   });
 }
 

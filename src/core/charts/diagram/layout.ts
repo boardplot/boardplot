@@ -4,7 +4,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { optionKey, requestMemo } from '../../layoutPlan';
 import { structureCount, type StructureCount } from '../../structureCounts';
-import { rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
+import { rectContains, rectsOverlap, sameRect, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
 import { frameTextOptions, solveFrame, type LegendItemInput } from '../../frame';
 import { labelsToNodes } from '../../label/emit';
@@ -1063,10 +1063,6 @@ function settleJoinedLabels(
     if (node) node.secondaryPrinted = true;
   }
   return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
-}
-
-function sameRect(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The side of the plot centre a ring node sits on: where its label goes. */

@@ -37,7 +37,7 @@ import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
 import { DeferredShownMarks } from '../../shownMarks';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { TickBandDerived } from '../../label/tickRow';
 import { labelCtx, leaderPieces, seatLeader, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { accessibleTitle } from '../../normalize/shared';
@@ -271,12 +271,6 @@ export interface LineDerived {
   seriesValueStats: Record<Id, { range: number; mean: number; relativeRange: number }>;
   /** Marker that a sibling pair justifies its shared explicit y bounds; the space lint then skips its ink-envelope headroom check. */
   comparisonPinnedYDomain?: true;
-}
-
-/** Replays a phase's claims, in claim order, into the run's index. */
-function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
-  for (const c of phase.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
-  if (phase.tickColumns) occupied.tickColumns = phase.tickColumns;
 }
 
 /** After the solver: hidden target labels, the leader paths, the ratio tier. */
@@ -1217,7 +1211,7 @@ function layoutLinePass(
     return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
   }
   const framed = settled.framed;
-  commitClaims(occupied, framed.claims);
+  commitClaims(occupied, framed.claims, true);
   const area = settled.area;
   const scene = layoutLineMarks(env, domain, area, paints, text, reserves, warnings);
   // Every inline name must fit entirely inside the plot. When even one line of type is
@@ -1228,7 +1222,7 @@ function layoutLinePass(
     return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
   }
   const anomalyMarks = domain.anomaly ? lineAnomalyMarks(theme, domain, domain.anomaly, area, text, scene, measure) : undefined;
-  commitClaims(occupied, scene.claims);
+  commitClaims(occupied, scene.claims, true);
   let plan = planLineLabels(env, domain, area, paints, text, reserves, scene, warnings);
   if (plan.endpointWiden) return layoutLinePass(data, { ...options, [END_LABEL_WIDE]: true } as LineOptions);
   if (plan.endpointFallback && !usesEndLabelKey(options)) return endNameFallback(data, options, domain, env, gridKey, reserves.endpoint.endpointLabelEconomy?.strategy);
@@ -1304,8 +1298,8 @@ function layoutLinePass(
   if (fallback) {
     // The second solve starts from the frame and the marks again.
     occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-    commitClaims(occupied, framed.claims);
-    commitClaims(occupied, scene.claims);
+    commitClaims(occupied, framed.claims, true);
+    commitClaims(occupied, scene.claims, true);
     plan = { ...plan, labelRequests: fallback };
     solved = solve(fallback);
   }

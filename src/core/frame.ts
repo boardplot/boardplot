@@ -1219,6 +1219,7 @@ export function dataOrder(data: unknown, labels: readonly PlacedLabel[], annotat
  */
 export function withDensityNotes<O extends BaseOptions, M extends object, D extends object>(
   data: unknown, options: O, layout: (options: O) => LayoutResult<M, D>,
+  clearer?: (first: Geometry<M, D>, owed: ReadonlyMap<Id, string>) => LayoutResult<M, D> | undefined,
 ): LayoutResult<M, D> {
   const first = layout({ ...options, [VALUE_SELECTION]: true });
   if (first.refused || !(first as Geometry & { [DEFER_DENSITY_NOTES]?: boolean })[DEFER_DENSITY_NOTES]
@@ -1228,6 +1229,8 @@ export function withDensityNotes<O extends BaseOptions, M extends object, D exte
   const density = new Map(labels.flatMap(label => label.hidden === 'density' && ['point', 'grandTotal'].includes(label.kind)
     && owed.has(label.id) ? [[label.id, owed.get(label.id)!] as const] : []));
   if (density.size === 0) return first;
+  const alternative = clearer?.(first, density);
+  if (alternative) return alternative;
   // Merge earlier collision notes and deferred density values before the one cap.
   for (const [id, text] of owed) density.set(id, text);
   const fixed = resolveTargetSize(options.target ?? 'report', options.size).fixed.height;
@@ -1311,6 +1314,15 @@ const NOTE_COUNTED = Symbol('noteCounted');
 
 /** Options for comparing a chart body before and after withHiddenLabelNote.
  * The new frame still consumes every note field, including its reference numbers. */
+/** Options as plain data for a sameContent key: without the given markers, and with the legend budget's names as a list. */
+export function comparableOptions(options: object, ...drop: symbol[]): Record<PropertyKey, unknown> {
+  const copy: Record<PropertyKey, unknown> = { ...options };
+  for (const key of drop) delete copy[key];
+  const budget = copy[LEGEND_HEIGHT] as LegendBudget | undefined;
+  if (budget) copy[LEGEND_HEIGHT] = { ...budget, names: [...budget.names] };
+  return copy;
+}
+
 export function hiddenNoteBodyOptions(options: BaseOptions): object {
   const { footnotes, authoredFootnotes, [NOTED_LABELS]: _ids, [NOTE_ITEMS]: _items,
     [NOTE_CONTEXT]: _context, [NOTE_LINE]: _line, [NOTE_COUNTED]: _counted, [FOOTNOTE_REFS]: _refs,
@@ -1363,6 +1375,20 @@ export function withHiddenLabelNote<T extends object>(options: T, noted: Readonl
     [NOTE_LINE]: plan.line,
     [NOTE_COUNTED]: plan.counted,
   };
+}
+
+/** A registry note that the default static footer keeps outside the frame.
+ * Remove only the fields withHiddenLabelNote and the legend policy added. */
+export function beforeUnprintedLabelNote<T extends Pick<BaseOptions, 'footnotes'>>(options: T): T | undefined {
+  const { footnotes, authoredFootnotes, [FOOTNOTE_REFS]: refs, [NOTED_LABELS]: labels,
+    [NOTE_ITEMS]: items, [NOTE_CONTEXT]: context, [NOTE_LINE]: line, [NOTE_COUNTED]: counted, ...rest } =
+    options as T & InternalFootnoteOptions & Record<symbol, unknown>;
+  if (footnotes === undefined) return authoredFootnotes === undefined && !refs && !items && !context && !line && !labels && !counted
+    ? rest as unknown as T : undefined;
+  if (!Array.isArray(footnotes) || footnotes.length !== 1 || footnotes[0] !== line || typeof line !== 'string'
+    || engineNoteMeta(line)?.kind !== 'disclosure' || !Array.isArray(authoredFootnotes) || authoredFootnotes.length !== 0
+    || !(items instanceof Map) || !(labels instanceof Set)) return;
+  return rest as unknown as T;
 }
 
 /**

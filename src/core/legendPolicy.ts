@@ -8,7 +8,7 @@ import { FOOTNOTE_REFS, LEGEND_HEIGHT, UNIT_LINE, unitMissing, unitPrinted, type
 import { furnitureBudget } from './aspect';
 import { resolveSubtitle } from './normalize/shared';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
-import { CARD_CLASS_WIDTH, FORCE_COMPACT, contentSized, declaredSizing, hostlessHeight, prepareFitLayout, type FitLayout } from './sizing';
+import { CARD_CLASS_WIDTH, FORCE_COMPACT, contentSized, declaredSizing, fitsSize, hostlessHeight, prepareFitLayout, requestFloor, type FitLayout } from './sizing';
 import { EARLIER_PARTIAL_LEGEND_ID } from './partialPeriod';
 import { panelTypeClass, resolveTheme } from './theme';
 import type { LabelKind } from './types/options';
@@ -312,19 +312,26 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   const baselineOptions = requested ? { ...options, legend: undefined } as O : options;
   const size = baselineOptions?.size;
   const bound = keylessFitBounds.get(definition);
-  let fullCandidate: LayoutResult<M, DV> | undefined;
+  let firstCandidate: LayoutResult<M, DV> | undefined;
+  let firstMode: 'full' | 'compact' = 'full';
   if (bound && baselineOptions && size && typeof size === 'object'
-    && size.unit === undefined && size.width >= CARD_CLASS_WIDTH && hasCompleteTextWidths(baselineOptions.measure ?? defaultMeasurer)
+    && size.unit === undefined && (size.width >= CARD_CLASS_WIDTH || definition.type === 'combo' && size.height === undefined) && hasCompleteTextWidths(baselineOptions.measure ?? defaultMeasurer)
     && baselineOptions.legend === undefined && !definition.requiredKey && baselineOptions.mode !== 'compact'
     && !(FORCE_COMPACT in baselineOptions) && panelTypeClass(options) === undefined) {
     const policy = declaredSizing(definition, baselineOptions);
     const opening = size.height ?? hostlessHeight(policy, size.width, policy.minHeight, true);
-    if (size.width >= policy.minWidth && opening >= policy.minHeight) {
-      const drawsKey = bound(definition.type, data, baselineOptions, opening);
+    const floor = requestFloor(policy);
+    // A width-only combo below its full width stays compact at every height.
+    const compact = definition.type === 'combo' && size.height === undefined && !fitsSize({ width: size.width, height: Infinity }, policy)
+      && size.width >= floor.width && baselineOptions.belowMinimum !== 'refuse';
+    if ((compact || size.width >= policy.minWidth) && opening >= policy.minHeight) {
+      firstMode = compact ? 'compact' : 'full';
+      const measuredOptions = compact ? compactOptions(definition.type, baselineOptions, floor, size.width) : baselineOptions;
+      const drawsKey = bound(definition.type, data, measuredOptions, opening);
       if (drawsKey && (requested || resolveTheme(options?.theme).legend?.auto === true || needsSeriesKey(definition.type, data, baselineOptions))) {
         // A speculative failure cannot precede a refusal the normal policy would return.
         try {
-          const keyed = fullCandidate = fitCandidate(topKeyOptions(definition.type, baselineOptions, 'full'));
+          const keyed = firstCandidate = fitCandidate(topKeyOptions(definition.type, baselineOptions, firstMode));
           if (!keyed.refused && drawsKey(keyed)) return keyed;
         } catch { /* The ordinary path below owns the exception if it reaches this fit. */ }
       }
@@ -344,7 +351,7 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   const candidateOptions = topKeyOptions(definition.type, baselineOptions, baseline.mode);
   const covering = definition.coveringKey?.(data, candidateOptions, baseline);
   if (covering && legendIsCovered(baseline, covering, data, baselineOptions)) return baseline;
-  const candidate = fullCandidate && (baseline.mode === 'full' || definition.type === 'mekko') ? fullCandidate : fitCandidate(candidateOptions);
+  const candidate = firstCandidate && (baseline.mode === firstMode || definition.type === 'mekko') ? firstCandidate : fitCandidate(candidateOptions);
   if (candidate.refused) {
     // A refused probe supplies keys only. It never reaches claims or serialization.
     const probe = definition.layout(data, baseline.mode === 'compact'

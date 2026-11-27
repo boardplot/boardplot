@@ -1,17 +1,15 @@
 import { keylessFitBounds } from '../../legendPolicy';
-import { bandKeyFirst, keylessAreaFits } from '../band/keylessFit';
+import { bandKeyFirst, keylessAreaFits, speculate } from '../band/keylessFit';
 import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { CARD_CLASS_WIDTH, chartSizing } from '../../sizing';
 import { staticFrame } from '../../footer';
-import { withEngineNotes } from '../../notes';
 import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
 import { COLUMN_FRACTION_MAX, columnPlotArea, solveColumnFrame } from './plot';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { keylessFrame, LEGEND_HEIGHT } from '../../frame';
-import { zeroLifts } from '../../formatPrecision';
 import { withLocaleStrings } from '../../strings';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
@@ -75,25 +73,19 @@ export const columnCore: ChartCore<
     // Use the full key at the widest possible gutters. The value axis can only narrow those gutters.
     const margin = { ...canvasMargin(chartTheme({ ...options, size: baseline.size }), size.width), ...options.margin };
     if (!(margin.left >= 0 && margin.right >= 0)) return;
-    const counted = staticFrame.countable;
-    const lifts = zeroLifts.count;
-    try {
+    // A failure specific to the speculative frame belongs to the ordinary key decision.
+    return speculate(() => {
       const forced = { ...withLocaleStrings(options), size: baseline.size, margin, [KEY_EDGE_SERIES]: true, [LEGEND_HEIGHT]: undefined };
-      const key = withEngineNotes(() => {
-        const domain = resolveColumnDomain(data, forced, []);
-        if (domain.variant !== 'stacked' || domain.annList.some(annotation => annotation.kind !== 'cagr')) return;
-        return solveColumnFrame(domain, columnPaints(domain, []), []).frame;
-      }, true);
-      if (key?.legend?.items.length !== data.series.length) return;
+      const domain = resolveColumnDomain(data, forced, []);
+      if (domain.variant !== 'stacked' || domain.annList.some(annotation => annotation.kind !== 'cagr')) return;
+      const key = solveColumnFrame(domain, columnPaints(domain, []), []).frame;
+      if (key.legend?.items.length !== data.series.length) return;
       const names = key.legend.items.map(item => key.nodes.find(node => node.id === item.labelId));
       const first = names[0];
       // With one full row, the height budget cannot shorten a key: it only cuts above one row.
       if (first?.t === 'text' && names.every(node => node?.t === 'text' && node.y === first.y
         && node.lines.length === 1 && node.title === undefined)) return { legend: key.legend, scene: key.nodes };
-    } catch {
-      // A failure specific to the speculative frame belongs to the ordinary key decision.
-      return;
-    } finally { staticFrame.countable = counted; zeroLifts.count = lifts; }
+    }, undefined);
   },
   notesBoundByWidth(data, options, geometry, noted) {
     const measure = options.measure ?? defaultMeasurer;
@@ -135,7 +127,7 @@ captionSizedPanelLayouts.add(columnCore.layout);
 export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
   const size = { width: (options.size as { width: number }).width, height: opening };
   if (options.valueAxis?.break || options.variant === 'stacked100' || options.valueAxis?.percent
-    || options.topN || options.window || options.viewDomain || options.netLine || options.categoryLabels === 'staircase') return false;
+    || options.topN || options.window || options.viewDomain || options.netLine) return false;
   const base = withValueLabelDefaults(withLocaleStrings({ ...options, size }), 'column', options.variant, []);
   const prepared = prepareFractionData(data);
   const mayStep = barDrawsAlike(prepared, base);
