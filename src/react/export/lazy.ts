@@ -8,13 +8,14 @@ const loaded = () => engine ??= import('./engine').then((module) => ready = modu
 
 /**
  * Runs one export on the engine. Once it has loaded, the engine reads the input at the call, as before. The first call
- * keeps its own copy of the spec while the engine loads, so a page that changes its spec right after the call still
+ * keeps its own copy of the spec and the request while the engine loads, so a page that changes its spec right after the call still
  * exports the chart it asked for. A failed download answers `invalid`, as any other failed export does.
  */
 function run<T>(input: ExportInput, call: (engine: Engine, input: ExportInput) => Promise<T>, failed: (result: ExportResult) => T): Promise<T> {
   if (ready) return call(ready, input);
-  let owned = input;
-  try { owned = { ...input, spec: structuredClone(input.spec) }; } catch { owned = { ...input }; }
+  // The request keeps its measurer, so it is copied one level deep, as the engine copies it at the call.
+  let owned: ExportInput = { ...input, ...(input.request && { request: { ...input.request } }) };
+  try { owned = { ...owned, spec: structuredClone(input.spec) }; } catch { /* a spec that cannot be cloned is read as the engine loads */ }
   return loaded().then((linked) => call(linked, owned),
     (error: unknown) => failed({ ok: false, code: 'invalid', message: error instanceof Error ? error.message : String(error) }));
 }
