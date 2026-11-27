@@ -879,7 +879,7 @@ function unknownKeyText(
     return { message, suggest, ...(fix ? { fix } : {}) };
   }
   const switched = switchedOption(schema, path.slice(0, -1), key, known, valueAtPath(authored, path));
-  const orientation = switched || optionsType === undefined || optionsType === 'waterfall' ? undefined : orientationOptionAdvice(path);
+  const orientation = switched || optionsType === 'waterfall' ? undefined : orientationOptionAdvice(path);
   if (orientation) return orientation;
   if (switched) {
     const parent = source?.same ? source.parent : undefined;
