@@ -47,10 +47,12 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import { zeroLifts } from '../../formatPrecision';
+import { currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
+import { requestMemo } from '../../layoutPlan';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { isCachedTextMeasurer, type FontSpec } from '../../text';
-import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
+import { colorblindPaint, joinHatchPeers, layoutStepKey, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -59,10 +61,10 @@ import { bandValueLabelUniformity, compactValueLabelFont, groupedValueLabelPolic
 import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
-import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
+import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, rightEdgeSeriesLabels, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackPaddingProbe } from './marks';
-import { stackedStaircaseSeatsFit } from './staircaseSeats';
+import { compactStaircaseNamesFit, stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
 import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo } from './plot';
@@ -70,7 +72,7 @@ import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
-import { dataOrder, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
+import { dataOrder, hiddenNoteBodyOptions, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
 import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
@@ -648,7 +650,7 @@ export function layoutColumn(
 }
 
 /** Whether the value axis was turned on for columns left with no number: decided once per chart. */
-interface AxisFallback { on: boolean }
+interface AxisFallback { on: boolean; noteParent?: ColumnPass }
 
 const AXIS_FALLBACK = Symbol('columnAxisFallback');
 const SHORT_WITHOUT_AXIS = Symbol('shortWithoutAxis');
@@ -786,7 +788,7 @@ function layoutColumnWithNotes(
     }
     axis.on = true;
   }
-  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe, undefined, heightAxes)!;
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe, undefined, heightAxes, axis)!;
 }
 
 /** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
@@ -797,6 +799,7 @@ function layoutColumnSettled(
   probe: AxisProbe,
   stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
   heightAxes?: 'auto' | 'fixed',
+  axis?: AxisFallback,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
@@ -840,7 +843,10 @@ function layoutColumnSettled(
     }
     return next;
   };
-  options = run(options, stopAfterFirst !== undefined);
+  const noteParent = axis && NOTED_LABELS in options ? axis.noteParent : undefined;
+  if (axis) axis.noteParent = undefined;
+  options = run(options, stopAfterFirst !== undefined, noteParent);
+  const firstBody = pass;
   if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
@@ -922,6 +928,13 @@ function layoutColumnSettled(
   // Extra label notes can disappear at a taller frame; the first note-free bound still applies.
   if (Number.isFinite(minimumChrome)) plotChromeFloor.set(pass.geometry.frame, minimumChrome);
   else plotChromeFloor.delete(pass.geometry.frame);
+  if (axis && !noteParent && pass.noteFrame
+    && pass.geometry.labels.some(label => label.kind === 'grandTotal' && label.hidden === 'collision')) {
+    if (pass.noteFrame.area.stairTop !== undefined) axis.noteParent = pass;
+    // The band note starts again before the segment note. If the column kept its first
+    // drawing through every note and reserve, compare that original body to the new frame.
+    else if (options.categoryLabels !== 'staircase' && firstBody.geometry.labels === pass.geometry.labels) axis.noteParent = firstBody;
+  }
   return pass.geometry;
 }
 
@@ -937,16 +950,20 @@ const axisTests = new WeakMap<object, Map<boolean, AxisHeightTest>>();
 function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?: ColumnStaircaseMemo): void {
   const { options, size } = domain;
   const floor = options.size && typeof options.size === 'object' && columnMidpointFloor.get(options.size);
-  if ((!floor && !memo?.heightAxes && !memo?.growthTrial) || !staircaseShortOnHeight(options) || !memo?.plotAtPad
-    || !area.showCatRow || options.mode === 'compact' || panelTypeClass(options) !== undefined
+  const compact = options.mode === 'compact';
+  // A compact size can use a different theme or content at another height.
+  // Only reject its current midpoint after measuring the actual frame and row.
+  if ((compact ? !floor || !hasCompleteTextWidths(domain.measure) : !floor && !memo?.heightAxes && !memo?.growthTrial)
+    || !staircaseShortOnHeight(options) || !memo?.plotAtPad
+    || !area.showCatRow || panelTypeClass(options) !== undefined
     || domain.variant !== 'stacked' || domain.activeBreak || domain.anomaly || domain.annList.length
     || domain.refSeries.length || domain.netLineOn || domain.ribbonsOn || domain.connectorsOn || area.tier
     || domain.cats.some(c => c.partial || c.footnote !== undefined) || domain.dataSeries.some(s => s.vals.some(v => v.range))
     || options.seriesLabels !== undefined || kindSetting(options, 'segment') !== false
-    || options.notes !== undefined || options.footnotes !== undefined || staticFrame.pinned || staticFrame.live
-    || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
+    || options.notes !== undefined || (options.footnotes !== undefined && !(compact && Array.isArray(options.footnotes) && options.footnotes.length === 0))
+    || staticFrame.pinned || staticFrame.live || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
     || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
-  if (memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
+  if (!compact && memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
     const search = columnHeightSearch.get(options.size);
     if (search) {
       if (!options.valueAxis?.show && memo.upperTrial) search.upperTrial = memo.upperTrial;
@@ -968,7 +985,7 @@ function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?
   }
   // Plain fallback rows keep this plot when the label solver hides a value. The
   // non-live default frame lists generated disclosures outside the source footer.
-  if (memo.growthTrial && memo.plotHeightAt && !staticFrame.live && !domain.averageMarker && !domain.pyRef
+  if (!compact && memo.growthTrial && memo.plotHeightAt && !staticFrame.live && !domain.averageMarker && !domain.pyRef
     && !domain.incompleteCats.size && !area.frame.deficit && !options.labelOffsets && !options.labelPlacements
     && !plotChromeFloor.has(area.frame.frame)) {
     const frame = area.frame.frame;
@@ -993,6 +1010,43 @@ function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?
   if (floor && Math.ceil(size.height - area.plot.h + floor - 1e-6) > size.height) {
     throw options.valueAxis?.show === undefined ? SHORT_WITHOUT_AXIS : COLUMN_MIDPOINT_SHORT;
   }
+}
+
+/** A compact trial can use the real shown-axis plot before making its scene.
+ * The hidden-axis draw has already chosen the value axis. Generated disclosures
+ * stay outside the frame on this path. A winning height is always drawn normally. */
+function measureCompactTrial(domain: ColumnDomain, area: ColumnArea, occupied: OccupiedIndex,
+  memo: ColumnStaircaseMemo | undefined, input: ReturnType<typeof staircaseInput>): void {
+  const { options, size } = domain;
+  const search = typeof options.size === 'object' ? columnHeightSearch.get(options.size) : undefined;
+  const binary = search?.compactMidpoint === size.height;
+  const shortOpening = search?.growthHeight === size.height && area.showCatRow && area.plot.h < (search?.growthPlotNeed ?? 0);
+  if ((!binary && !shortOpening) || !hasCompleteTextWidths(domain.measure) || !domain.va.show
+    || domain.size.width < 280 || staticFrame.live || staticFrame.pinned || area.frame.deficit
+    || plotChromeFloor.has(area.frame.frame) || domain.averageMarker || domain.activeBreak
+    || domain.incompleteCats.size || domain.netLineOn || domain.refSeries.length || domain.pyRef || domain.ribbonsOn
+    || domain.connectorsOn || domain.anomaly || area.axisTitle || area.ruleH || domain.variant !== 'stacked'
+    || options.categoryLabels !== 'staircase' || options.seriesLabels !== undefined || options.notes || options.labelOffsets
+    || options.labelPlacements || options.labelPosition || options.shareLabels || options.valueLabels || options.ratioTier || options.events
+    || options.viewDomain || options.window || HOST_CLAIMS in options || domain.density === 'minimal'
+    || domain.cats.some(c => c.partial || c.breakAfter || c.role || c.date || c.footnote !== undefined)
+    || domain.dataSeries.some(s => s.vals.some(v => v.range || v.labelOverride !== undefined))
+    || kindSetting(options, 'segment') !== false || area.frame.frame.notePlacement !== 'frame'
+    || area.frame.frame.noteList?.some(n => n.inFrame && n.kind !== 'source')) return;
+  const frame = area.frame.frame;
+  // The narrow card retains the ordinary compact 80 px plot and frame floors.
+  const minimum = Math.max(frame.minHeight ?? 0, frame.plotMinHeight ?? 0, Math.ceil(size.height + 80 - area.plot.h));
+  if (minimum > size.height || partNeedOf(frame) > size.height || area.band.bandwidth < 3) return;
+  if (area.showCatRow) {
+    if (!staircaseShortOnHeight(options) || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
+  } else {
+    const tops = input && stackPaddingProbe(domain, area, memo)?.();
+    if (!input || !tops) return;
+    const plan = staircaseNameSeats(input, tops.map(top => top - input.above));
+    if ('failed' in plan || plan.deficit > 0.5 || staircaseState(options).pad + plan.deficit > input.cap
+      || !compactStaircaseNamesFit(domain, area, occupied, plan.names)) return;
+  }
+  throw new ColumnHeightTrial(minimum, area.plot.h, freedChromeOf(frame), partNeedOf(frame));
 }
 
 function staircaseInput(domain: ColumnDomain, area: ColumnArea) {
@@ -1139,6 +1193,19 @@ interface ColumnPass {
   noteFrame?: { options: AnomalyColumnOptions; prepared?: AxisProbe['prepared']; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
 }
 
+interface KeyedColumnBody {
+  options: object;
+  pass: ColumnPass;
+}
+
+/** The caller can mark labels as noted and change the selected geometry during sizing. */
+function copyColumnBody(pass: ColumnPass, area: ColumnArea): ColumnPass {
+  const g = pass.geometry;
+  return { ...pass, geometry: { ...g, frame: area.frame.frame, legend: area.frame.legend,
+    labels: g.labels.map(label => ({ ...label })), scene: g.scene.map(node => ({ ...node })),
+    warnings: [...g.warnings], a11y: { ...g.a11y } } };
+}
+
 function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
@@ -1236,21 +1303,42 @@ function layoutColumnPass(
   rejectShortColumnMidpoint(domain, area, staircaseMemo);
   // A segment note can live outside the drawing. Make its actual frame first.
   // Only this direct retry owns the previous body, and only if its drawing space is unchanged.
-  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && hasCompleteTextWidths(domain.measure)
+  const staircaseNote = area.stairTop !== undefined && options.mode === 'compact' && domain.va.show === true
+    && kindSetting(options, 'segment') === false && !area.ruleH && !domain.pyRef
+    && !domain.dataSeries.some(s => s.vals.some(v => v.range || v.labelOverride !== undefined));
+  // A registry note can repeat the entire height search. Keep separate bodies for each
+  // fixed size and internal note pass when the legend already names every series.
+  const keyed = domain.variant === 'stacked' && options.seriesLabels?.at === 'right-edge'
+    && options.categoryLabels !== 'staircase' && !options.window && !options.viewDomain
+    && !options.seriesLabels.cagr && !domain.seriesCagr.size && panelTypeClass(options) === undefined
+    && !(COLLECT_IDENTITIES in options) && area.frame.legend !== undefined
+    && domain.dataSeries.every(series => area.frame.legend!.items.some(item => item.id === series.id))
+    && !rightEdgeSeriesLabels(domain).length;
+  const noteFrame = domain.variant === 'stacked' && (keyed || domain.cats.length > 12 && !options.seriesLabels) && hasCompleteTextWidths(domain.measure)
     && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
     && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
-    && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
+    && !options.shareLabels && !area.tier
+    && (staircaseNote || options.categoryLabels !== 'staircase' && !(typeof options.size === 'object' && measureColumnHeight.has(options.size)))
     && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
-    && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
+    && !domain.uniformScenario.size
     ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice(),
       prepared: reusablePreparation ? { domain, paints, warnings: warnings.slice(0, preparedWarnings) } : undefined } : undefined;
-  const before = noteParent?.noteFrame;
-  if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
+  const bodies = keyed && noteFrame && !noteParent && reusablePreparation
+    ? requestMemo<KeyedColumnBody[]>(data, `column-note:${size.width}:${size.height}:${keepEachValue}:${probeAxis}:${layoutStepKey()}:${currentSmallValues()}:${formatScopeKey(options)}`, () => []) : undefined;
+  const bodyOptions = bodies && hiddenNoteBodyOptions(options);
+  const saved = bodyOptions && NOTED_LABELS in options ? bodies?.find(entry => sameContent(entry.options, bodyOptions)) : undefined;
+  const parent = noteParent ?? saved?.pass;
+  const before = parent?.noteFrame;
+  if (before && noteFrame && (!staircaseNote || sameContent(staircaseState(before.options), staircaseState(options)))
+    && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
     && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
     && sameContent(before.claims, noteFrame.claims) && sameContent(before.warnings, warnings)
     && area.band.step === before.area.band.step && area.band.bandwidth === before.area.band.bandwidth
     && sameContent(before.area.y.domain, area.y.domain) && sameContent(before.area.y.range, area.y.range)) {
-    return { ...noteParent, geometry: { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend }, noteFrame };
+    const geometry = saved ? copyColumnBody(saved.pass, area).geometry
+      : { ...parent.geometry, frame: area.frame.frame, legend: area.frame.legend };
+    if (measuredColumnHeights.has(parent.geometry)) measuredColumnHeights.add(geometry);
+    return { ...parent, geometry, noteFrame };
   }
   const testingAxis = PROBE_COLUMN_AXIS in options;
   if (testingAxis && area.stairTop === undefined) throw AXIS_PROBE_INCONCLUSIVE;
@@ -1271,6 +1359,7 @@ function layoutColumnPass(
     }
     return { retry: retryStair };
   }
+  if (measuring && options.mode === 'compact') measureCompactTrial(domain, area, occupied, staircaseMemo, stairInput);
   const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area), measureSegments, ready);
   // the value-axis title is a label in the head band, solved first.
   const requests: LabelRequest[] = area.axisTitle && domain.va.show
@@ -1303,13 +1392,13 @@ function layoutColumnPass(
   const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
     && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
     && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
-    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && (options.categoryLabels !== 'staircase' || area.showCatRow) && !domain.cats.some(c => c.partial)
     && !options.labelPlacements && !options.labelOffsets;
   // At the smallest font one wide value hides the entire segment row. When
   // every stack has multiple parts and no authored value label, no total can
   // inherit a segment and no digit seat survives. Test the totals immediately.
   const needAxis = () => {
-    if (reusablePreparation) fallback();
+    if (axisProbe && reusablePreparation) fallback();
     throw AXIS_FALLBACK;
   };
   const testTotals = probeStack ? () => {
@@ -1436,5 +1525,10 @@ function layoutColumnPass(
       ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
     : [];
   const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  const pass: ColumnPass = { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  if (bodies && bodyOptions && !(NOTED_LABELS in options) && zeroLifts.count === lifts
+    && geometry.labels.some(label => label.hidden && !label.noted)) {
+    bodies.push({ options: bodyOptions, pass: copyColumnBody(pass, area) });
+  }
+  return pass;
 }
