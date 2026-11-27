@@ -12,9 +12,11 @@ export type PrepareChartRequest<D = unknown, O extends object = RequestInputOpti
    | (Omit<ChartRequest<D, O>, 'size' | 'data'> & { data?: Partial<D>; rows: NonNullable<RowsProps['rows']>; columns: RowsColumns }))
   & ContainerSizeOptions & { window?: LiveWindowOptions };
 
-let planner: Promise<ReturnType<typeof import('./prepareEngine').linkedPlanner>> | undefined;
+type Planner = ReturnType<typeof import('./prepareEngine').linkedPlanner>;
+let planner: Promise<Planner> | undefined;
+let ready: Planner | undefined;
 /** The planner, loaded once, at the first call: a page or server that only parses specs does not load layout. */
-const loaded = () => planner ??= import('./prepareEngine').then((module) => module.linkedPlanner(), (error: unknown) => { planner = undefined; throw error; });
+const loaded = () => planner ??= import('./prepareEngine').then((module) => ready = module.linkedPlanner(), (error: unknown) => { planner = undefined; throw error; });
 
 /**
  * Prepare once on the server and pass this JSON value with the same React props.
@@ -23,7 +25,10 @@ const loaded = () => planner ??= import('./prepareEngine').then((module) => modu
 export async function prepareChart(input: PrepareChartRequest & { type: 'table' }, context?: BoardplotThemeOptions): Promise<PreparedTable>;
 export async function prepareChart(input: PrepareChartRequest, context?: BoardplotThemeOptions): Promise<PreparedChart>;
 export async function prepareChart(input: PrepareChartRequest, context?: BoardplotThemeOptions): Promise<PreparedChart | PreparedTable> {
-  return (await loaded()).prepareChart(input, context);
+  if (ready) return ready.prepareChart(input, context);
+  // The first call reads the request as the planner would at the call, so a later change to it prepares nothing else.
+  const own = { ...input }, theme = context && { ...context };
+  return (await loaded()).prepareChart(own, theme);
 }
 
 /** @internal Host planner. Load only the requested types before synchronous size calculations. */
