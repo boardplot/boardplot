@@ -420,7 +420,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
 
     // An input the engine threw on draws its card in place of the chart.
     const failed = first.failed ?? full.failed ?? wide.failed ?? wider.failed;
-    const card = useChartFailure(failed);
+    const card = useChartFailure(failed, type);
     if (card) return card;
     // The busy box takes the refusal's size: a host without a height
     // would otherwise swap heights, show or hide its scrollbar and restart the settle.

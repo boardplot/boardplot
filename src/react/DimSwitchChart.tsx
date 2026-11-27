@@ -251,7 +251,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     reported.current=key;
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
-  const card=useChartFailure(depthFailure ?? (compilation instanceof NormalizeError && !failedCompile ? compilation : undefined));
+  const card=useChartFailure(depthFailure ?? (compilation instanceof NormalizeError && !failedCompile ? compilation : undefined),'dimswitch');
   if(card) return card;
   if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;

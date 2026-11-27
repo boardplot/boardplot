@@ -1665,7 +1665,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   } : undefined, [exporter, drew, request, data, table, collapsedSet, rootsHidden, columnVisibility, inlineVisibility, contentWidth, originalFloorRequest]);
   useExportLink(exporter, exported);
   // An input the engine threw on draws its card in place of the table.
-  const card = useChartFailure(failed ?? resolution.failed);
+  const card = useChartFailure(failed ?? resolution.failed, 'table');
   if (card) return card;
   if (refusedOptions.length && request?.theme) return wrap(<LayoutRefusal refusals={refusedOptions} theme={request.theme} options={request.options} size={request.size} />);
   if (floorAttempt.deferred || !resolved || !table || !theme || !tableOptions || stylesheet === undefined) {

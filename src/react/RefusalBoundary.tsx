@@ -11,6 +11,8 @@ import { BoardplotThemeContext } from './themeContext';
 import type { ContainerSizeOptions } from './useContainerSize';
 import { LayoutRefusal } from './SizePlaceholder';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
+import { layoutRefusal } from '../core/emptyData';
+import type { RefusedLayout } from '../core/types/scene';
 
 /** Per-type components also accept a width in pixels as a number. */
 export type PerTypeSizeOptions = Omit<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
@@ -44,10 +46,22 @@ function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: Render
  * goes when the chart gets new props or inherited settings.
  */
 class Boundary extends Component<
-  { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
+  { watch: unknown; inherited: unknown; fallback: Fallback; size?: Size; children: ReactNode },
   { watch: unknown; inherited: unknown; failed?: { error: unknown }; mount: number }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown }; mount: number } = { watch: this.props.watch, inherited: this.props.inherited, mount: 0 };
+
+  /** An engine fault (`chart-failed`): the console keeps the error, and the host hears of it as of a refusal. */
+  report(error: unknown) {
+    if (!(error instanceof NormalizeError) || error.code !== 'chart-failed') return;
+    const { cause, type } = error as NormalizeError & { cause: unknown; type: string };
+    console.error(cause);
+    (this.props.watch as { onRefused?: (result: RefusedLayout) => void }).onRefused?.(layoutRefusal(type, type, this.props.size ?? { width: 0, height: 0 }, error));
+  }
+
+  override componentDidCatch(error: unknown) {
+    this.report(error);
+  }
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -76,7 +90,7 @@ const FallbackContext = createContext<Boundary>(undefined!);
  */
 function ChartFailure({ error }: { error: NormalizeError }): ReactNode {
   const boundary = useContext(FallbackContext);
-  useIsomorphicLayoutEffect(() => boundary.setState(({ mount }) => ({ failed: { error }, mount: mount + 1 })), [error]);
+  useIsomorphicLayoutEffect(() => { boundary.setState(({ mount }) => ({ failed: { error }, mount: mount + 1 })); boundary.report(error); }, [error]);
   return boundary.props.fallback([findingOf(error)]);
 }
 
@@ -86,13 +100,16 @@ const inBrowser = () => false;
 /**
  * What a chart draws when its engine refused its input (a NormalizeError) on the server, where React has no error
  * boundary, and in the hydration of that markup: the card. In the browser the error is thrown to the boundary, as
- * it always was. Any other error goes on up to the host.
+ * it always was. Any other error of the engine becomes one card that names the chart type, `chart-failed`: it can
+ * come from a value the type's schema refuses or from a fault of the engine, so the card does not say which.
  */
-export function useChartFailure(failed: unknown): ReactElement | null {
+export function useChartFailure(failed: unknown, type: string): ReactElement | null {
   const serverPass = useSyncExternalStore(subscribeNever, inBrowser, () => failed !== undefined);
   if (failed === undefined) return null;
-  if (!serverPass || !(failed instanceof NormalizeError)) throw failed;
-  return <ChartFailure error={failed} />;
+  const refused = failed instanceof NormalizeError ? failed
+    : Object.assign(new NormalizeError('chart-failed', '', `The ${type} chart could not be drawn.`), { cause: failed, type });
+  if (!serverPass) throw refused;
+  return <ChartFailure error={refused} />;
 }
 
 export function RefusalBoundary({ watch, children, size, fallbackSize, target, theme, background, title, fixedSize }: {
@@ -133,5 +150,5 @@ export function RefusalBoundary({ watch, children, size, fallbackSize, target, t
   // The card takes the asked size, or the default when the size itself is the bad prop.
   const frame = { fixedSize, theme, size: frameSize(size === 'container' ? fallbackSize : size, target), options: typeof title === 'string' ? { title } : {} };
   const fallback: Fallback = (findings) => <LayoutRefusal {...frame} refusals={findings} />;
-  return finding ? fallback([finding]) : <Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary>;
+  return finding ? fallback([finding]) : <Boundary watch={watch} fallback={fallback} size={frame.size} inherited={inherited}>{children}</Boundary>;
 }

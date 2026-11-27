@@ -149,6 +149,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `category-stride` | info, warn |  | core/label/categoryRow.ts |
 | `cell-column-unknown` | warn | yes | table |
 | `cell-label-unsupported` | warn |  | scatter |
+| `chart-failed` | error |  | react/RefusalBoundary.tsx |
 | `chart-not-found` | not stated at the site |  | react/specValidation.ts |
 | `chart-selection-required` | not stated at the site |  | react/specValidation.ts |
 | `check-value-rounded` | info |  | waterfall |
