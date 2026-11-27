@@ -112,7 +112,7 @@ export function fillDirection(value: number | null): -1 | 0 | 1 {
   return value > 0 ? 1 : -1;
 }
 
-export const CONNECTOR_STYLE_DESCRIPTION =
+export const CONNECTOR_STYLE_DESCRIPTION = /* @schemaText */
   "Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash.";
 
 /**

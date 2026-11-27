@@ -344,14 +344,8 @@ console.log(JSON.stringify([...requested]));
   }
 }
 
-/**
- * What `react/spec` links, chunk by chunk: no chart engine before a spec
- * names its type, no schema chunk carrying its type's engine, and map
- * geometry only where a map is drawn. It reads the source entry rather than
- * the built one, because shipped chunks carry no module names.
- */
-function checkSpecChunks(types) {
-  const entry = join(ROOT, 'src/react/spec.tsx');
+/** One graph supplies the module names for the source checks or the bytes for the installed package. */
+function specGraph(entry) {
   const build = buildSync({
     absWorkingDir: ROOT, entryPoints: [entry], bundle: true, format: 'esm', splitting: true,
     outdir: '/react-entry', metafile: true, minify: true, write: false, logLevel: 'silent',
@@ -387,8 +381,33 @@ function checkSpecChunks(types) {
   const without = (keys, ...counted) => new Set([...keys].filter((key) => !counted.some((set) => set.has(key))));
   const bytes = (keys) => gzipBytes(Buffer.concat([...keys].map((key) => Buffer.from(contents.get(basename(key))))));
   const modulesOf = (keys) => new Set([...keys].flatMap((key) => Object.keys(outputs[key].inputs)));
-  const mounted = mountImports(build, types);
+  return { build, chunkFor, reach, without, bytes, modulesOf };
+}
 
+/** Measure the files a browser receives from the installed package. */
+function packedSpecSizes(packageRoot, types) {
+  const entry = join(packageRoot, 'dist/react/spec.js');
+  const { build, chunkFor, reach, without, bytes } = specGraph(entry);
+  const chunks = Object.entries(build.metafile.outputs);
+  const validationKey = chunks.find(([, chunk]) => chunk.entryPoint && chunk.exports.includes('beginSpecParse'))?.[0];
+  if (!validationKey) fail('the packed spec loader has no validation chunk');
+  const initial = reach(chunkFor(entry));
+  const validation = without(reach(validationKey), initial);
+  const entries = { 'react/spec initial': bytes(initial), 'react/spec validation': bytes(validation) };
+  const mounted = mountImports(build, types);
+  const firstChart = {};
+  for (const type of types) {
+    const downloaded = new Set([...initial, ...validation]);
+    for (const key of mounted.get(type)) for (const dependency of reach(key)) downloaded.add(dependency);
+    firstChart[type] = bytes(downloaded);
+    console.log(`  ${type}: ${firstChart[type]} gzip bytes on first mount from the installed package`);
+  }
+  return { entries, firstChart };
+}
+
+/** Source chunks retain the module names needed to check which engines and schemas can load. */
+function checkSpecChunks(packageRoot, types) {
+  const { chunkFor, reach, without, modulesOf } = specGraph(join(ROOT, 'src/react/spec.tsx'));
   const initial = reach(chunkFor('src/react/spec.tsx'));
   const validation = without(reach(chunkFor('src/react/specValidation.ts')), initial);
   const failures = [];
@@ -426,18 +445,9 @@ function checkSpecChunks(types) {
     console.log('hover and data table chunks: no creative layout');
   }
 
-  const initialBytes = bytes(initial);
-  const validationBytes = bytes(validation);
-  const entries = { 'react/spec initial': initialBytes, 'react/spec validation': validationBytes };
-  const firstChart = {};
-  const lines = [`First chart through react/spec, gzip -9 bytes (initial ${initialBytes} + shared validation ${validationBytes} + schema + engine + mount imports):`];
   for (const type of types) {
     const schema = without(reach(chunkFor(`src/core/charts/${type}/schema.ts`)), initial, validation);
     const engine = without(reach(chunkFor(`src/react/charts/${type}.ts`)), initial, validation);
-    const mount = without(new Set(mounted.get(type).flatMap(key => [...reach(key)])), initial, validation, schema, engine);
-    const total = bytes(new Set([...initial, ...validation, ...schema, ...engine, ...mount]));
-    firstChart[type] = total;
-    lines.push(`  ${type}: ${bytes(schema)} schema + ${bytes(without(engine, schema))} engine; first chart ${total}`);
     const engineInSchema = [...modulesOf(schema)].filter((module) =>
       new RegExp(`^src/core/charts/${type}/(layout|marks|domain|core)\\.ts$`).test(module));
     if (engineInSchema.length > 0) {
@@ -448,8 +458,7 @@ function checkSpecChunks(types) {
       failures.push(`the ${type} engine chunk carries map geometry: ${geo.sort().join(', ')}`);
     }
   }
-  console.log(lines.join('\n'));
-  return { entries, firstChart, failures };
+  return { ...packedSpecSizes(packageRoot, types), failures };
 }
 
 /**
@@ -1165,7 +1174,7 @@ try {
   assertConsumerTypes(installRoot);
   checkReactBundles(installedPackageRoot, installedManifest);
   const types = listReactTypes(installedManifest).sort();
-  const specChunks = checkSpecChunks(types);
+  const specChunks = checkSpecChunks(installedPackageRoot, types);
   const measured = [
     specChunks,
     checkThemeEntry(installedPackageRoot),
