@@ -34,7 +34,7 @@ import { asColumnHeads, columnHeadFont, fitHead, HEAD_PREFIX, headRequest } from
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../../sizing';
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
-import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
+import { averageMarkerLine, averageMarkerScope } from '../band/averageMarker';
 import { overValueLines } from '../band/labels';
 import { rowLabelX, type Rect } from '../../geometry';
 import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
