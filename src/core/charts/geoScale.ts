@@ -271,6 +271,10 @@ export function buildGeoScale(
   const kind = options.scale?.kind ?? 'sequential';
   const declaredMidpoint =
     options.scale?.kind === 'diverging' ? options.scale.midpoint : null;
+  // The schema asks for it; an entry that does not run the schema would paint every region NaN.
+  if (declaredMidpoint !== null && !Number.isFinite(declaredMidpoint)) {
+    throw new NormalizeError('invalid-options', 'options.scale.midpoint', 'a diverging scale needs a number as its midpoint');
+  }
   const polarity: Direction | null =
     options.scale?.kind === 'diverging' ? options.scale.polarity ?? 'higherIsBetter' : null;
   const lowIsGood = polarity === 'lowerIsBetter';

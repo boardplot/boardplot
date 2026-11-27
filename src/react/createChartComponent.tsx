@@ -48,7 +48,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard, type PerTypeSizeOptions } from './RefusalBoundary';
 import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -204,6 +204,9 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[], useZoom: ZoomHook = noZoom): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
+    return useCard(draw, props);
+  }
+  function draw(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover = true, onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, zoom, styleNonce, idPrefix,
       background, storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
@@ -464,9 +467,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const { target, fixedSize, title, theme, background } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
     const normalizedSize = useMemo(() => asSize(size), [size]);
     const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
-    const chart = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} background={background}
-      fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
-        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+    const chart = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} background={background} title={title} fixedSize={fixedSize}>
       <DrawnChart {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
     </RefusalBoundary>;
     return className !== undefined || style !== undefined ? <div className={className} style={style}>{chart}</div> : chart;

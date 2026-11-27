@@ -37,7 +37,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -510,9 +510,7 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
     const { target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
     const normalizedSize = useMemo(() => asSize(size), [size]);
     const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
-    const table = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme}
-      fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
-        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+    const table = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} title={title}>
       <GatedTable {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
     </RefusalBoundary>;
     return className !== undefined || style !== undefined ? <div className={className} style={style}>{table}</div> : table;
@@ -529,7 +527,11 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
 /** The table without the unknown-key check, for code that links this module directly. */
 export const TableChart = createTableChart();
 
-function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
+type DrawnTableProps = { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined };
+function DrawnTable(props: DrawnTableProps): ReactElement {
+  return useCard(drawTable, props);
+}
+function drawTable({ table: props, checkKeys, linked }: DrawnTableProps): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
   const originalFloorRequest = compiledRequest?.request;
   const {

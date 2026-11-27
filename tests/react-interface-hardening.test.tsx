@@ -2,15 +2,14 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement, useState, type ReactElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { act, createElement, useLayoutEffect, useState, type ReactElement } from 'react';
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup, renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadedDeferred } from '../src/core/deferred';
 import { getChart } from '../src/core/registry';
 import { invertedRangeTorture } from '../src/core/charts/dot/fixtures';
 import { getFixtures } from '../src/fixtures';
-import { NormalizeError } from '../src/core/normalize/shared';
 import { resolveTheme } from '../src/core/theme';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
@@ -105,28 +104,58 @@ describe('React adapter boundary', () => {
   it('runs the data schema before layout', () => {
     const definition = getChart('column')!;
     const layout = vi.spyOn(definition, 'layout');
-    expect(() =>
-      renderToStaticMarkup(
-        createElement(ColumnChart, {
-          data: { categories: [{ id: 'a' }], series: [{ id: 's', values: [{ range: { low: 9, high: 1 } }] }] } as never,
-        }),
-      ),
-    ).toThrow();
+    const html = renderToStaticMarkup(
+      createElement(ColumnChart, {
+        data: { categories: [{ id: 'a' }], series: [{ id: 's', values: [{ range: { low: 9, high: 1 } }] }] } as never,
+      }),
+    );
+    expect(html).toContain('data-bp-spec-error');
     expect(layout).not.toHaveBeenCalled();
+  });
+
+  // A chart that drew its refusal card kept its state: a dimswitch that refused empty facts opened every row once its data came.
+  it('mounts a chart afresh after its refusal card', () => {
+    act(() => { root.render(createElement(DimSwitchChart, { data: { ...dimSwitchData, facts: [] } } as never)); });
+    expect(container.innerHTML).toContain('empty-data');
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    const rows = container.querySelectorAll('[role="row"]').length;
+    act(() => { root.unmount(); });
+    root = createRoot(container);
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
+  });
+
+  // The server draws a refused chart's card; its hydration must keep that card without a mismatch or an error.
+  it('hydrates the refusal card of the server', () => {
+    const chart = createElement(ColumnChart, { data: { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] }, locale: { language: 'x-invalid-tag-' } } as never);
+    act(() => root.unmount());
+    container.innerHTML = renderToString(chart);
+    expect(container.innerHTML).toContain('data-bp-spec-error');
+    const errors = vi.fn();
+    const logged = vi.spyOn(console, 'error');
+    act(() => { root = hydrateRoot(container, chart, { onRecoverableError: errors, onCaughtError: errors }); });
+    expect(container.innerHTML).toContain('data-bp-spec-error');
+    expect(errors).not.toHaveBeenCalled();
+    expect(logged).not.toHaveBeenCalled();
+    // Data that arrives in the host's first layout effect meets a fresh chart, not the state of the refused one.
+    function Host() {
+      const [facts, setFacts] = useState<unknown[]>([]);
+      useLayoutEffect(() => setFacts(dimSwitchData.facts as unknown[]), []);
+      return createElement(DimSwitchChart, { data: { ...dimSwitchData, facts } } as never);
+    }
+    act(() => root.unmount());
+    container.innerHTML = renderToString(createElement(Host));
+    act(() => { root = hydrateRoot(container, createElement(Host)); });
+    const rows = container.querySelectorAll('[role="row"]').length;
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
   });
 
   it('runs semantic normalization before range-family layout', () => {
     for (const Component of [BarChart, ColumnChart, DotChart]) {
-      let caught: unknown;
-      try {
-        renderToStaticMarkup(
-          createElement(Component as typeof DotChart, { data: invertedRangeTorture }),
-        );
-      } catch (error) {
-        caught = error;
-      }
-      expect(caught).toBeInstanceOf(NormalizeError);
-      expect((caught as NormalizeError).code).toBe('range-inverted');
+      expect(renderToStaticMarkup(createElement(Component as typeof DotChart, { data: invertedRangeTorture }))).toContain('range-inverted');
     }
   });
 

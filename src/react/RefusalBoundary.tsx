@@ -1,4 +1,4 @@
-import { Component, useContext, useMemo, type ReactNode } from 'react';
+import { Component, createContext, useContext, useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
 import { NormalizeError } from '../core/normalize/shared';
 import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
@@ -8,6 +8,8 @@ import type { ThemeRef } from '../core/types/theme';
 import type { RefusalFinding } from '../core/schema/refusals';
 import { BoardplotThemeContext } from './themeContext';
 import type { ContainerSizeOptions } from './useContainerSize';
+import { LayoutRefusal } from './SizePlaceholder';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 /** Per-type components also accept a width in pixels as a number. */
 export type PerTypeSizeOptions = Omit<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
@@ -28,7 +30,7 @@ function findingOf(error: NormalizeError): RefusalFinding {
 }
 
 /** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
-export function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: RenderTarget | undefined): Size | undefined {
+function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: RenderTarget | undefined): Size | undefined {
   try { return resolveTargetSize(target ?? DEFAULT_TARGET, size).sizePx; } catch { return undefined; }
 }
 
@@ -41,10 +43,12 @@ export function frameSize(size: Parameters<typeof resolveTargetSize>[1], target:
  * goes when the chart gets new props or inherited settings.
  */
 class Boundary extends Component<
-  { watch: unknown; inherited: unknown; fallback: (finding: RefusalFinding) => ReactNode; children: ReactNode },
+  { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
   { watch: unknown; inherited: unknown; failed?: { error: unknown } }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
+  /** Raised when a hydrated card hands over: the chart mounts afresh after it. */
+  mount = 0;
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -56,17 +60,52 @@ class Boundary extends Component<
 
   override render(): ReactNode {
     const { failed } = this.state;
-    if (!failed) return this.props.children;
+    if (!failed) return <BoundaryContext.Provider key={this.mount} value={this}>{this.props.children}</BoundaryContext.Provider>;
     const { error } = failed;
     if (!(error instanceof NormalizeError)) throw error;
     return this.props.fallback(findingOf(error));
   }
 }
 
-export function RefusalBoundary({ watch, fallback, children, size, fallbackSize, target, theme, background }: {
+/** The refusal card with this finding. */
+type Fallback = (finding: RefusalFinding) => ReactNode;
+const BoundaryContext = createContext<Boundary>(undefined!);
+
+const subscribeNever = () => () => {};
+const zero = () => 0;
+
+/**
+ * Draws a chart. On the server, where React has no error boundary, and in the hydration of that markup, an engine
+ * refusal (a NormalizeError) the chart throws draws its card instead. In the browser it goes to the boundary, as it
+ * always did. Any other error goes on up to the host.
+ */
+export function useCard<P>(draw: (props: P) => ReactElement, props: P): ReactElement {
+  // React reads the server snapshot only on the server and in hydration. Both snapshots are 0, so a chart renders no
+  // extra time after hydration.
+  let server = false;
+  useSyncExternalStore(subscribeNever, zero, () => (server = true, 0));
+  try {
+    return draw(props);
+  } catch (error) {
+    // A render that threw is dropped in the browser. This one mounts (a server pass or hydration), so it may call
+    // hooks past the ones the chart called before it threw.
+    if (!server || !(error instanceof NormalizeError)) throw error;
+    const boundary = useContext(BoundaryContext);
+    // Once hydrated, the boundary holds the card, as if the chart had thrown in the browser: the chart mounts afresh
+    // after it, also when new props reach the boundary in the same update.
+    useIsomorphicLayoutEffect(() => {
+      boundary.mount++;
+      boundary.setState({ failed: { error } });
+    }, []);
+    return boundary.props.fallback(findingOf(error)) as ReactElement;
+  }
+}
+
+export function RefusalBoundary({ watch, children, size, fallbackSize, target, theme, background, title, fixedSize }: {
   watch: unknown;
-  fallback: (finding: RefusalFinding) => ReactNode;
   children: ReactNode;
+  title?: unknown;
+  fixedSize?: boolean;
   size?: ContainerSizeOptions['size'];
   fallbackSize?: ContainerSizeOptions['fallbackSize'];
   target?: RenderTarget;
@@ -97,5 +136,8 @@ export function RefusalBoundary({ watch, fallback, children, size, fallbackSize,
     }
     return undefined;
   }, [size, fallbackSize, target, inherited?.target, theme, background]);
+  // The card takes the asked size, or the default when the size itself is the bad prop.
+  const frame = { fixedSize, theme, size: frameSize(size === 'container' ? fallbackSize : size, target), options: typeof title === 'string' ? { title } : {} };
+  const fallback: Fallback = (finding) => <LayoutRefusal {...frame} refusals={[finding]} />;
   return finding ? fallback(finding) : <Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary>;
 }

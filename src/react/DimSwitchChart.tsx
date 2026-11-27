@@ -27,7 +27,7 @@ import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
 import type { ContainerSizeOptions } from './useContainerSize';
@@ -100,13 +100,15 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const {className,style,size,fallbackSize,...rest}=props;
   const normalizedSize=useMemo(()=>asSize(size),[size]);
   const normalizedFallback=useMemo(()=>asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'],[fallbackSize]);
-  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme}
-   fallback={finding=><LayoutRefusal refusals={[finding]} theme={props.theme} size={frameSize(normalizedSize==='container'?normalizedFallback:normalizedSize,props.target)} options={typeof props.title==='string'?{title:props.title}:{}}/>}>
+  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme} title={props.title}>
    <GatedDimSwitch {...rest} size={normalizedSize} fallbackSize={normalizedFallback}/>
   </RefusalBoundary>;
   return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;
  }
  function DrawnDimSwitch(props: NormalizedProps): ReactElement {
+  return useCard(drawDimSwitch, props);
+ }
+ function drawDimSwitch(props: NormalizedProps): ReactElement {
   const {data,variant:controlledVariant,defaultVariant='by-measure',depth:controlledDepth,defaultDepth=1,splits:controlledSplits,defaultSplits=false,collapsed:controlledCollapsed,defaultCollapsed,onViewChange,inlineVisibility,defaultInlineVisibility,onInlineVisibilityChange,size,fit,fallbackSize,measureWidths,hover,onWarnings,onRefused,renderRefused,scope,fontMetrics,styleNonce,idPrefix,handleRef,onContentWidth,onScrollChange,fillHeight,rowLabelLead,portalContainer,onRowSelect,isRowSelectable,toolbar=false,interactions,defaultColumnVisibility,onColumnVisibilityChange,sortable,defaultSort,onSortChange,rootsHidden,onEmpty,onFormatsFit,exporter,...options}=props;
   const refusals=optionRefusals({...options,variant:controlledVariant,depth:controlledDepth,splits:controlledSplits},'dimswitch',checkKeys);
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
