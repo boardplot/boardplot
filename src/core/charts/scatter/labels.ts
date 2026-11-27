@@ -12,7 +12,7 @@ import type { Rect } from '../../geometry';
 import { rectContains, rectsOverlap } from '../../geometry';
 import { ruleFormatter } from '../../numberSets';
 import { wrapText } from '../../text';
-import { labelCtx, leaderPieces, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
+import { labelCtx, leaderPieces, PRIORITY, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
 import type { Id } from '../../types/cell';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
@@ -101,6 +101,24 @@ function dividerTagCandidates(
   return out;
 }
 
+const diag = Math.SQRT1_2;
+// [slot base name, ux, uy] — label rect placed beyond the marker edge
+const directions: [string, number, number][] = [
+  ['right', 1, 0],
+  ['left', -1, 0],
+  ['above', 0, -1],
+  ['below', 0, 1],
+  ['aboveRight', diag, -diag],
+  ['aboveLeft', -diag, -diag],
+  ['belowRight', diag, diag],
+  ['belowLeft', -diag, diag],
+];
+const farDirections = directions.filter(([, ux]) => ux !== 0);
+const fineX = Math.cos(Math.PI / 8), fineY = Math.sin(Math.PI / 8);
+const fineDirections: typeof directions = [
+  ...farDirections, ['rightHigh', fineX, -fineY], ['rightLow', fineX, fineY], ['leftHigh', -fineX, -fineY], ['leftLow', -fineX, fineY],
+];
+
 /**
  * Spiral point labeler: insideCenter for bubbles the
  * text fits into, then 8 directions at ring 1 (adjacent), then the same 8
@@ -128,18 +146,6 @@ function spiralCandidates(
       insideFill,
     });
   }
-  const diag = Math.SQRT1_2;
-  // [slot base name, ux, uy] — label rect placed beyond the marker edge
-  const dirs: [string, number, number][] = [
-    ['right', 1, 0],
-    ['left', -1, 0],
-    ['above', 0, -1],
-    ['below', 0, 1],
-    ['aboveRight', diag, -diag],
-    ['aboveLeft', -diag, -diag],
-    ['belowRight', diag, diag],
-    ['belowLeft', -diag, diag],
-  ];
   const rectFor = (ux: number, uy: number, dist: number): Rect => {
     const ax = cx + ux * dist;
     const ay = cy + uy * dist;
@@ -148,7 +154,7 @@ function spiralCandidates(
     const ry = uy > 0.01 ? ay : uy < -0.01 ? ay - h : ay - h / 2;
     return { x: rx, y: ry, w, h };
   };
-  for (const [slot, ux, uy] of dirs) {
+  for (const [slot, ux, uy] of directions) {
     out.push({ slot, rect: rectFor(ux, uy, r + RING1_GAP), penalty: penalty++ });
   }
   // Bubbles: a name over or under its point may slide sideways until its
@@ -164,15 +170,11 @@ function spiralCandidates(
   }
   // A bubble's value has no adjacent seat to fall back on, so its far rings
   // add four directions 22.5 degrees off the sides.
-  const [c, s] = [Math.cos(Math.PI / 8), Math.sin(Math.PI / 8)];
-  const fineDirs: [string, number, number][] = fine
-    ? [['rightHigh', c, -s], ['rightLow', c, s], ['leftHigh', -c, -s], ['leftLow', -c, s]]
-    : [];
   for (const [ring, baseGap] of [['Far', RING2_GAP], ['Far3', RING3_GAP], ['Far4', RING4_GAP]] as const) {
     // Every far seat is a displaced name, so it stands to a side where its
     // leader can reach it from the marker's edge; the solver draws no
     // leader straight up or down.
-    for (const [slot, ux, uy] of [...dirs.filter(([, ux]) => ux !== 0), ...fineDirs]) {
+    for (const [slot, ux, uy] of fine ? fineDirections : farDirections) {
       // the leader's gutter and minimum drawn length total one text height.
       const gap = Math.max(baseGap, (h + 1) / Math.abs(ux));
       out.push({
@@ -526,8 +528,14 @@ function pointLabelRequests(
     const ownMark = { id: p.id, cx, cy, r: ringReach };
     // Marks drawn on top of this one read as one clump with it (nameReading.ts):
     // the names stand around the whole clump, clear of its other marks.
-    const reach = placed.reduce((most, o) => o.p.id === p.id || o.r <= 0 || Math.hypot(o.cx - cx, o.cy - cy) >= Math.min(ringReach, o.r)
-      ? most : Math.max(most, Math.hypot(o.cx - cx, o.cy - cy) + o.r), ringReach);
+    let reach = ringReach;
+    for (const other of placed) {
+      const limit = Math.min(ringReach, other.r);
+      const dx = other.cx - cx, dy = other.cy - cy;
+      if (other.p.id === p.id || other.r <= 0 || (Math.abs(dx) >= limit && Number.isFinite(dy)) || (Math.abs(dy) >= limit && Number.isFinite(dx))) continue;
+      const distance = Math.hypot(dx, dy);
+      if (!(distance >= limit)) reach = Math.max(reach, distance + other.r);
+    }
     // The point's paints, worked out once per point and run (a seat list holds dozens of seats).
     let pointPaint = paintMemo.get(p.id);
     if (!pointPaint) paintMemo.set(p.id, pointPaint = {});
@@ -554,14 +562,17 @@ function pointLabelRequests(
       const lo = (onRight && qx !== undefined ? qx + RULE_GAP : area.plot.x + RULE_GAP);
       const hi = (!onRight && qx !== undefined ? qx - RULE_GAP : area.plot.x + area.plot.w - RULE_GAP);
       const own = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
-      return raw.flatMap((c) => {
+      const boxed: SlotCandidate[] = [];
+      for (const c of raw) {
+        boxed.push(c);
         const { rect } = c;
-        if (c.insideFill !== undefined || c.leaderFrom !== undefined || rect.w > hi - lo || (rect.x >= lo && rect.x + rect.w <= hi)) return [c];
+        if (c.insideFill !== undefined || c.leaderFrom !== undefined || rect.w > hi - lo || (rect.x >= lo && rect.x + rect.w <= hi)) continue;
         const x = Math.min(Math.max(rect.x, lo), hi - rect.w);
         const moved = { ...rect, x };
-        if (Math.abs(x - rect.x) > rect.w / 2 || rectsOverlap(moved, own)) return [c];
-        return [c, { ...c, slot: `${c.slot}Boxed`, rect: moved }];
-      });
+        if (Math.abs(x - rect.x) > rect.w / 2 || rectsOverlap(moved, own)) continue;
+        boxed.push({ ...c, slot: `${c.slot}Boxed`, rect: moved });
+      }
+      return boxed;
     };
     const seats = (text: string, insideFill: string | undefined, fine = false, font = area.fonts.label, block?: { width: number; height: number }, name = false): SlotCandidate[] => {
       const key = `${String(p.id)}\u0000${text}\u0000${insideFill}\u0000${fine}\u0000${font.size}/${font.weight}\u0000${block ? `${block.width}x${block.height}` : ''}\u0000${name}`;
@@ -570,14 +581,18 @@ function pointLabelRequests(
       const built = buildSeats(text, insideFill, fine, font, block)
         // A name takes only seats where it reads as this point's
         // name (nameReading.ts); with none left, the note names the point.
-        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode));
+        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom, ownMark, marks, font.size, bubbleMode));
       // A bubble name over, under or slanted off its bubble with its middle
       // nearer a neighbour stands between the two: such a seat comes after
       // every other seat, so the name takes it only where it would be hidden.
       const between = (c: SlotCandidate) => name && bubbleMode && !c.leaderFrom && !/^(left|right)/.test(c.slot) && middleNearerOther(c.rect, ownMark, marks, font.size);
-      const ordered = name && bubbleMode
-        ? [...built.filter((c) => !between(c)), ...built.filter(between).map((c) => ({ ...c, penalty: BETWEEN_TIER }))]
-        : built;
+      const ordered: SlotCandidate[] = [];
+      const ambiguous: SlotCandidate[] = [];
+      for (const candidate of built) {
+        if (between(candidate)) ambiguous.push({ ...candidate, penalty: BETWEEN_TIER });
+        else ordered.push(candidate);
+      }
+      for (const candidate of ambiguous) ordered.push(candidate);
       seatMemo.set(key, ordered);
       return [...ordered];
     };
@@ -600,12 +615,10 @@ function pointLabelRequests(
           ? [{ ...c, slot: `${c.slot}Stacked`, rect: { ...c.rect, y: c.rect.y + (c.slot === 'above' ? -1 : 1) * (size.height + NAME_GAP) } }]
           : [])
         : [];
-      const ring = spiral.findIndex((c) => c.leaderFrom !== undefined);
+      const ring = stacked.length ? spiral.findIndex((c) => c.leaderFrom !== undefined) : -1;
       const seatsAround = stacked.length === 0 ? spiral : ring < 0 ? [...spiral, ...stacked] : [...spiral.slice(0, ring), ...stacked, ...spiral.slice(ring)];
-      const candidates = boxedSeats([...onPoint, ...seatsAround].map(plotSlid))
-        .filter((candidate) => rectContains(area.inner, candidate.rect) &&
-          candidate.rect.y + candidate.rect.h <= area.plot.y + area.plot.h && candidate.rect.x >= area.plot.x)
-        .map(candidate => ({ ...candidate, insidePaint: insidePaint() }));
+      const raw = onPoint.length ? onPoint.concat(seatsAround) : seatsAround;
+      const candidates = boxedSeats(bubbleMode ? raw.map(plotSlid) : raw);
       // A seat across a rule from its point (a zero line, a value line) reads
       // as a label of the other side. A rule through the mark itself leaves
       // both sides open. A seat on or just short of a rule gets a copy slid to
@@ -615,58 +628,57 @@ function pointLabelRequests(
       const across = (rect: Rect) =>
         rules.x.some((rx) => Math.abs(cx - rx) > r && (cx < rx ? rect.x + rect.w > rx : rect.x < rx)) ||
         rules.y.some((ry) => Math.abs(cy - ry) > r && (cy < ry ? rect.y + rect.h > ry : rect.y < ry));
-      const slid = (c: SlotCandidate): SlotCandidate[] => {
+      const slid = (c: SlotCandidate): SlotCandidate | undefined => {
         const { rect } = c;
         for (const rx of rules.x) {
           if (Math.abs(cx - rx) <= r || rect.x >= rx + RULE_GAP || rect.x + rect.w <= rx - RULE_GAP) continue;
           const x = cx < rx ? rx - RULE_GAP - rect.w : rx + RULE_GAP;
-          if (Math.abs(x - rect.x) <= rect.w / 2) return [{ ...c, slot: `${c.slot}Slid`, rect: { ...rect, x } }];
+          if (Math.abs(x - rect.x) <= rect.w / 2) return { ...c, slot: `${c.slot}Slid`, rect: { ...rect, x } };
         }
         for (const ry of rules.y) {
           if (Math.abs(cy - ry) <= r || rect.y >= ry + RULE_GAP || rect.y + rect.h <= ry - RULE_GAP) continue;
           const y = cy < ry ? ry - RULE_GAP - rect.h : ry + RULE_GAP;
-          if (Math.abs(y - rect.y) <= rect.h / 2) return [{ ...c, slot: `${c.slot}Slid`, rect: { ...rect, y } }];
+          if (Math.abs(y - rect.y) <= rect.h / 2) return { ...c, slot: `${c.slot}Slid`, rect: { ...rect, y } };
         }
-        return [];
+        return undefined;
       };
       // A slid copy never lands on its own marker: the solver lets a label touch its own mark, and dark text across a bubble is unreadable.
       const own = { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
-      let kept = candidates.flatMap((c) => [c, ...slid(c).filter((s) => rectContains(area.inner, s.rect) && !rectsOverlap(s.rect, own))]);
-      if (q.derived) {
-        // A name must not sit in a box its unit is not in. On a 2x2 the box IS
-        // the finding, so a label that drifted across a divider reclassifies
-        // the company for the reader — worse than no label. Candidates are
-        // filtered to the point's own side of every DRAWN divider; a point that
-        // loses all of them loses its label out loud (label-hidden), not
-        // quietly. A seat across a divider first gets its copy slid to the
-        // point's side (slid, above), so a point just off a divider keeps a seat.
-        const box = q.derived.assignment[p.id]!;
-        const onRight = box === 'tr' || box === 'br';
-        const onTop = box === 'tl' || box === 'tr';
-        const qx = area.x(q.derived.x);
-        const qy = area.y(q.derived.y);
-        kept = kept.filter((c) => {
-          if (q.drawX && (onRight ? c.rect.x < qx : c.rect.x + c.rect.w > qx)) return false;
-          if (q.drawY && (onTop ? c.rect.y + c.rect.h > qy : c.rect.y < qy)) return false;
-          return true;
-        });
+      const box = q.derived?.assignment[p.id];
+      const onRight = box === 'tr' || box === 'br';
+      const onTop = box === 'tl' || box === 'tr';
+      const qx = q.drawX && q.derived ? area.x(q.derived.x) : undefined;
+      const qy = q.drawY && q.derived ? area.y(q.derived.y) : undefined;
+      const ownLines = zeroRules.y.concat(valueLineYs.filter(ry => Math.abs(cy - ry) <= r));
+      const tiers: SlotCandidate[][] = [[], [], [], [], [], [], []];
+      // Insert accepted seats in their original order within each penalty tier.
+      // A slid copy can belong to the right quadrant even when its original does not.
+      const add = (candidate: SlotCandidate) => {
+        const { rect } = candidate;
+        if (qx !== undefined && (onRight ? rect.x < qx : rect.x + rect.w > qx)) return;
+        if (qy !== undefined && (onTop ? rect.y + rect.h > qy : rect.y < qy)) return;
+        const penalty = candidate.slot === 'onPoint' ? 0
+          : onPoint.length + (candidate.leaderFrom ? 3 : 0) + (across(rect) ? 1 : 0);
+        candidate.insidePaint = insidePaint();
+        candidate.penalty = penalty;
+        tiers[penalty]!.push(candidate);
+        // The line may run under the label with a halo as a lower-ranked choice.
+        if (candidate.insideFill === undefined && (zeroRules.x.some(rx => rx > rect.x && rx < rect.x + rect.w)
+          || ownLines.some(ry => ry > rect.y && ry < rect.y + rect.h))) {
+          const over = onPoint.length + (candidate.leaderFrom ? 5 : 2);
+          tiers[over]!.push({ ...candidate, slot: `${candidate.slot}Over`, overRules: true, penalty: over });
+        }
+      };
+      for (const candidate of candidates) {
+        const { rect } = candidate;
+        if (!rectContains(area.inner, rect) || rect.y + rect.h > area.plot.y + area.plot.h || rect.x < area.plot.x) continue;
+        add(candidate);
+        if (rules.x.length || rules.y.length) {
+          const moved = slid(candidate);
+          if (moved && rectContains(area.inner, moved.rect) && !rectsOverlap(moved.rect, own)) add(moved);
+        }
       }
-      // A seat that a zero line runs through may still take the name, in
-      // front of the line with a halo,
-      // after every seat clear of it.
-      // A value line too, where it runs through the point's own mark (AeroFreight on the average).
-      const ownLines = valueLineYs.filter((ry) => Math.abs(cy - ry) <= r);
-      const onZero = (rect: Rect) => zeroRules.x.some((rx) => rx > rect.x && rx < rect.x + rect.w)
-        || [...zeroRules.y, ...ownLines].some((ry) => ry > rect.y && ry < rect.y + rect.h);
-      const over = kept.filter((c) => c.insideFill === undefined && onZero(c.rect)).map((c) => ({ ...c, slot: `${c.slot}Over`, overRules: true }));
-      const all = [...kept, ...over];
-      // The tier is the penalty, so the solver's name gap reorders seats
-      // within a tier and never takes a seat across a rule first.
-      // A label-only point's seat on the point comes before every other seat.
-      const shift = onPoint.length;
-      const tier = (c: SlotCandidate) => c.slot === 'onPoint' ? 0 : shift + (c.overRules ? (c.leaderFrom ? 5 : 2) : (c.leaderFrom ? 3 : 0) + (across(c.rect) ? 1 : 0));
-      return [0, 1, 2, 3, 4, 5, 6].flatMap((t) => all.filter((c) => tier(c) === t))
-        .map((candidate) => ({ ...candidate, penalty: tier(candidate) }));
+      return tiers.flat();
     };
     // A point's name and value stay together: a value that fits
     // inside its bubble sits there, beside the name's seat; any other value

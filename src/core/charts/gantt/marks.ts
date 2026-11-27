@@ -411,6 +411,23 @@ export function cadenceRowPaint(env: GanttEnv, r: NormRow): Paint {
   return { token: role ? markRoleToken(role) : env.highlights.has(r.id) ? 'focus' : 'status-gantt-cadence', tint: 0.4 };
 }
 
+function barHeight(env: GanttEnv, rowH: number): number {
+  return Math.min(rowH, GANTT_ROW_PITCH) * Math.min(0.9, Math.max(0.2, env.options.bandFraction ?? 0.6));
+}
+
+function diamondRadius(rowH: number): number {
+  return Math.max(3, Math.min(rowH * 0.32, 8));
+}
+
+/** The flag planner reads only mark height and the centre of each diamond. */
+export function flagRowItems(env: GanttEnv, band: GanttBand, body: GanttBody, row: NormRow) {
+  const barH = barHeight(env, band.rowH);
+  const diamondH = 2 * diamondRadius(band.rowH);
+  return row.items.map(it => it.kind === 'milestone'
+    ? { it, cx: body.x(it.startDay + 0.5), rect: { h: diamondH } }
+    : { it, cx: 0, rect: { h: barH } });
+}
+
 /** One row: cadence markers, then its items in authored order: bar, chevron, milestone, bracket or shade. */
 function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId: Id; rect: Rect }>, marks: GanttMarks): RowPlace {
   const { env, nodes, claims } = ctx;
@@ -421,7 +438,7 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
   // A row the milestone lane makes taller than its natural pitch keeps the
   // bar height of that pitch, centred in the row; a squeezed row
   // still scales its bars down.
-  const barH = Math.min(rowH, GANTT_ROW_PITCH) * Math.min(0.9, Math.max(0.2, env.options.bandFraction ?? 0.6));
+  const barH = barHeight(env, rowH);
   const itemNodes: RowMarks['itemNodes'] = [];
   const cadenceNodes: RowMarks['cadenceNodes'] = [];
   const cadence = r.cadence;
@@ -484,7 +501,7 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
       nodes.push({ t: 'path', id: nodeId, d, fill, separation: { fill, backing: ctx.paints.rowBackingPaint(r.id), surface: true, grounds: barSurfaces(ctx.env) }, owner, part: 'chevron', display });
     } else if (it.kind === 'milestone') {
       place.cx = x(it.startDay + 0.5);
-      place.rr = Math.max(3, Math.min(rowH * 0.32, 8));
+      place.rr = diamondRadius(rowH);
       place.rect = { x: place.cx - place.rr, y: cy - place.rr, w: 2 * place.rr, h: 2 * place.rr };
       nodes.push(milestoneMark(ctx, r, place, cy, nodeId));
     } else {

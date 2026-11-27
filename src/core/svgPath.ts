@@ -36,6 +36,11 @@ export function withLeaderPathNumbers<T>(draw: () => T): T {
   try { return draw(); } finally { leaderNumber = fmt; }
 }
 
+/** A side leader stays straight when either axis is within the alignment threshold. */
+export function straightLeader(dx: number, dy: number, threshold = 8): boolean {
+  return Math.abs(dx) <= threshold || Math.abs(dy) <= threshold;
+}
+
 /**
  * Leader line from a displaced label to its owning element. Straight when
  * nearly aligned; a gentle S-bezier when displaced further (consulting-chart look).
@@ -43,7 +48,7 @@ export function withLeaderPathNumbers<T>(draw: () => T): T {
 export function leaderPath(from: Point, to: Point, straightThreshold = 8): string {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  if (Math.abs(dx) <= straightThreshold || Math.abs(dy) <= straightThreshold) {
+  if (straightLeader(dx, dy, straightThreshold)) {
     return `M${leaderNumber(from.x)} ${leaderNumber(from.y)}L${leaderNumber(to.x)} ${leaderNumber(to.y)}`;
   }
   const mx = leaderNumber(from.x + dx / 2), fromY = leaderNumber(from.y), toY = leaderNumber(to.y);

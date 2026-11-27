@@ -54,23 +54,44 @@ function segmentEntersRect(a: { x: number; y: number }, b: { x: number; y: numbe
   return false;
 }
 
+/** The samples used to check leader ownership. A side leader's two controls share
+ * the middle x, with the first at the start y and the second at the end y. */
+export const ownershipLeaderSamples = Array.from({ length: 17 }, (_, i) => {
+  const t = i / 16, u = 1 - t;
+  const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, e = t * t * t;
+  return { a, b, c, e, x: (b + c) / 2 + e, y: c + e };
+});
+
 /** Whether any straight piece of a line or sampled cubic passes the predicate. */
-function somePathPiece(d: string, steps: number, hit: (a: Point, b: Point) => boolean): boolean {
+function somePathPiece(d: string, hit: (a: Point, b: Point) => boolean): boolean {
   const n = d.trim().split(/[\s,A-Za-z]+/).filter(Boolean).map(Number);
   if (n.length < 8) return hit({ x: n[0]!, y: n[1]! }, { x: n[2]!, y: n[3]! });
-  const at = (t: number) => {
-    const u = 1 - t;
-    const [a, b, c, e] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
-    return { x: a * n[0]! + b * n[2]! + c * n[4]! + e * n[6]!, y: a * n[1]! + b * n[3]! + c * n[5]! + e * n[7]! };
-  };
-  for (let i = 0; i < steps; i++) if (hit(at(i / steps), at((i + 1) / steps))) return true;
+  const at = ({ a, b, c, e }: typeof ownershipLeaderSamples[number]) => ({
+    x: a * n[0]! + b * n[2]! + c * n[4]! + e * n[6]!,
+    y: a * n[1]! + b * n[3]! + c * n[5]! + e * n[7]!,
+  });
+  let from = at(ownershipLeaderSamples[0]!);
+  for (let i = 1; i < ownershipLeaderSamples.length; i++) {
+    const to = at(ownershipLeaderSamples[i]!);
+    if (hit(from, to)) return true;
+    from = to;
+  }
   return false;
 }
 
 /** Whether a name box with no leader is nearer its own mark than any other mark. */
 export function nearestIsOwn(rect: Rect, own: NameMark, marks: readonly NameMark[]): boolean {
   const mine = circleGap(rect, own);
-  return marks.every((m) => m.id === own.id || circleGap(rect, m) > mine);
+  for (const mark of marks) {
+    if (mark.id === own.id) continue;
+    // The distance along either axis is a lower bound for the distance to the box.
+    const dx = Math.max(rect.x - mark.cx, 0, mark.cx - rect.x - rect.w);
+    if (dx - mark.r > mine) continue;
+    const dy = Math.max(rect.y - mark.cy, 0, mark.cy - rect.y - rect.h);
+    if (dy - mark.r > mine) continue;
+    if (!(Math.max(0, Math.hypot(dx, dy) - mark.r) > mine)) return false;
+  }
+  return true;
 }
 
 /** Whether a leader path crosses another point's mark or one of the given text boxes. */
@@ -86,7 +107,7 @@ export function leaderCrosses(d: string, own: NameMark, marks: readonly NameMark
   const near = marks.filter((m) => m.id !== own.id && m.r > 0 && m.cx + m.r > x0 && m.cx - m.r < x1 && m.cy + m.r > y0 && m.cy - m.r < y1);
   const nearTexts = texts.filter((t) => t.x < x1 && t.x + t.w > x0 && t.y < y1 && t.y + t.h > y0);
   if (near.length === 0 && nearTexts.length === 0) return false;
-  return somePathPiece(d, 16, (a, b) =>
+  return somePathPiece(d, (a, b) =>
     near.some((m) => segmentDistance(a, b, m.cx, m.cy) < m.r)
     || nearTexts.some((t) => segmentEntersRect(a, b, t)));
 }

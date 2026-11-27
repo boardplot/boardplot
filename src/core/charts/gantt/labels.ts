@@ -364,7 +364,7 @@ const FLAG_GAP = 4;
  * next to the bar, stays free for the bar's name. A flag with no clear level
  * gets no seat. Pitch and label placement read the same plan.
  */
-export function planRowFlags(domain: GanttDomain, body: GanttBody, row: RowPlace): {
+export function planRowFlags(domain: GanttDomain, body: GanttBody, row: { items: ReadonlyArray<{ it: NormItem; cx: number; rect: { h: number } }> }): {
   seats: Map<string, { above: boolean; level: number; x: number; cx: number }>; flagHalf: number; lineH: number; textH: number;
 } {
   const right = body.timelineRight;
@@ -546,16 +546,19 @@ export function planGanttLabels(
   flagRows: ReadonlySet<string> = new Set(),
   spanClearance?: Rect[],
   crossRules = false,
+  repairItems?: ReadonlySet<string>,
 ): LabelRequest[] {
   const obstacles = [
     ...geometry.claims.snapshot().map((claim) => claim.rect),
     ...body.ruleClaims.map((rule) => ({ x: rule.x - rule.halfWidth, y: body.plot.y, w: 2 * rule.halfWidth, h: body.plot.h })),
   ];
-  const ctx: LabelCtx = { env, domain, band, body, paints, requests: env.labelOn('activity') ? [...body.columns.headerRequests] : [], obstacles, keyed, flagRows, spanClearance, crossRules };
+  const ctx: LabelCtx = { env, domain, band, body, paints, requests: !repairItems && env.labelOn('activity') ? [...body.columns.headerRequests] : [], obstacles, keyed, flagRows, spanClearance, crossRules };
   const itemsOn = env.labelOn('item');
   for (const place of geometry.rows) {
     for (const item of place.items) {
       const { it } = item;
+      // The repair only consumes requests for the span names that lost a seat.
+      if (repairItems && !repairItems.has(`item:${it.rowId}:${it.id}`)) continue;
       if (it.kind === 'milestone') {
         if (itemsOn && domain.milestones.byId.has(it.id)) milestoneLabel(ctx, place, item);
       } else if (itemsOn && ganttItemLabel(it, env).text) {
@@ -564,7 +567,7 @@ export function planGanttLabels(
         else spanLabel(ctx, place, item);
       }
     }
-    if (env.labelOn('activity')) activityLabels(ctx, place);
+    if (!repairItems && env.labelOn('activity')) activityLabels(ctx, place);
   }
   for (const request of ctx.requests) {
     if (request.kind !== 'item') continue;

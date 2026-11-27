@@ -9,7 +9,7 @@ import { tickFormatter } from '../../axis';
 import type { Rect } from '../../geometry';
 import { rectsOverlap } from '../../geometry';
 import type { OccupiedIndex } from '../../label/occupied';
-import { strokeToken } from '../../theme';
+import { canvasMargin, strokeToken } from '../../theme';
 import type { LintWarning, SceneNode } from '../../types/scene';
 import type { ScatterEnv, ScatterPlotArea } from './model';
 
@@ -39,7 +39,7 @@ function sizeKeyValues(env: ScatterEnv, sizeMin: number, sizeMax: number, fits: 
       `key sizes up to ${sizeMax}, or drop sizeLegend.values for the default`);
   }
   if (tooLarge.length) {
-    const largestFit = roundBelow(sizeMax).find(fits);
+    const largestFit = firstRoundSize(sizeMax, fits);
     warn('warn', `sizeLegend.values ${are(tooLarge)} larger than the key row can draw at scale${largestFit === undefined ? '' : `; the largest round size it draws is ${largestFit}`}, so the key leaves ${tooLarge.length === 1 ? 'it' : 'them'} out${kept.length ? '' : ' and shows its default sizes'}`,
       largestFit === undefined ? 'drop sizeLegend.values for the default' : `key sizes up to ${largestFit}, or drop sizeLegend.values for the default`);
   }
@@ -48,11 +48,10 @@ function sizeKeyValues(env: ScatterEnv, sizeMin: number, sizeMax: number, fits: 
       `key sizes from ${sizeMin} to ${sizeMax} to show the bubbles' own range`);
   }
   if (kept.length) return [...kept].sort((a, b) => b - a);
-  const inRange = roundBelow(sizeMax).filter((value) => value >= sizeMin);
   // A narrow range can contain no round size. The key then keys the
   // largest bubble itself.
-  const large = inRange.find(fits) ?? sizeMax;
-  const small = roundBelow(large / (nested ? 4 : 2)).find((value) => value >= sizeMin);
+  const large = firstRoundSize(sizeMax, value => value >= sizeMin && fits(value)) ?? sizeMax;
+  const small = firstRoundSize(large / (nested ? 4 : 2), value => value >= sizeMin);
   return small !== undefined && small < large ? [large, small] : [large];
 }
 
@@ -61,12 +60,17 @@ function sizeKeyValues(env: ScatterEnv, sizeMin: number, sizeMax: number, fits: 
  * `v`, largest first. A narrow range such as 30 to 70 still holds two of
  * them (70 and 30).
  */
-function roundBelow(v: number): number[] {
-  const out: number[] = [];
+function firstRoundSize(v: number, accepts: (value: number) => boolean): number | undefined {
   for (let power = 10 ** Math.floor(Math.log10(v)), k = 0; k < 8; k++, power /= 10) {
-    for (let digit = 9; digit >= 1; digit--) if (digit * power <= v * (1 + 1e-9)) out.push(Number((digit * power).toPrecision(1)));
+    for (let digit = 9; digit >= 1; digit--) {
+      const candidate = digit * power;
+      if (candidate <= v * (1 + 1e-9)) {
+        const round = Number(candidate.toPrecision(1));
+        if (accepts(round)) return round;
+      }
+    }
   }
-  return out;
+  return undefined;
 }
 
 /** The key entries: one ring per keyed size, the size measure named on the first. */
@@ -102,6 +106,16 @@ const KEY_INSET = 4;
 /** A tick runs from the ring's top this far past the large ring, then the value. */
 const KEY_TICK_PAST = 8;
 const KEY_TEXT_GAP = 3;
+
+/** The key title alone must fit in half the plot. Axes and a side legend only narrow it. */
+export function sizeKeyTitleExceedsPlot(env: ScatterEnv): boolean {
+  const title = typeof env.options.sizeLegend === 'object' ? env.options.sizeLegend.label : undefined;
+  if (!title) return false;
+  const margin = { ...canvasMargin(env.theme, env.size.width), ...env.options.margin };
+  const maxPlotW = Math.max(10, env.size.width - margin.left - margin.right);
+  const font = { family: env.theme.type.family, ...env.theme.type.axis };
+  return env.measure(title, font).width + 2 * KEY_INSET > maxPlotW / 2;
+}
 
 /** The nested size key drawn inside the plot: its nodes and the rects it takes (the rings, the measure). */
 export interface PlotSizeKey {
