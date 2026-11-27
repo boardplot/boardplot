@@ -54,7 +54,8 @@ import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
-import { drawnWithoutBreak, drawsNetLine, shownSeries } from '../../hiddenSeries';
+import { shownSeries } from '../../hiddenSeries';
+import { drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {

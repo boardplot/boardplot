@@ -1,5 +1,6 @@
 import { applyAxisBounds } from '../../scale';
-import { drawsNetLine, shownSeries } from '../../hiddenSeries';
+import { shownSeries } from '../../hiddenSeries';
+import { drawsNetLine } from '../../columnBarChecks';
 import { cleanSum } from '../../geometry';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
