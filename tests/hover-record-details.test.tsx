@@ -691,6 +691,9 @@ describe('default card rows', () => {
     expect(card(spec('thousand per month'), 'q1')[1]).toEqual(['Revenue:', '1.8k per month', true]);
     expect(card(spec('€ million'), 'q1')[1]).toEqual(['Revenue:', '€1.8M', true]);
     expect(card(spec('% of plan'), 'q1')[1]).toEqual(['Revenue:', '1.8% of plan', true]);
+    // A percent unit without a series name stays on the number, not in front of it ("% of workloads: 92").
+    expect(card({ type: 'pie', data: { categories: [{ id: 'a', label: 'Cloud' }, { id: 'b', label: 'Other' }], series: [{ id: 's', values: [92, 8] }] },
+      options: { unit: '% of workloads', size: { width: 480, height: 360 } } }, 'a')[1]?.[1]).toBe('92% of workloads');
     expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
   });
 

@@ -359,15 +359,16 @@ function shortUnit(text: string, value: InteractionValue, locale?: string): stri
 const UNIT_WORD = /(?<!\p{L})\p{L}\p{Ll}{3,}(?!\p{L})/u;
 
 /**
- * A unit that is a phrase in words ("cases per month", "% of started cases",
- * "orders") names the number on the hover card. A sign, a code or a scale
- * stays with the number: "$", "%", "pp", "kg", "ms", "USD", "EUR k", "$bn",
- * "k orders" and "thousand per month" (the scale belongs to the number),
- * "$ per share" (the sign goes in front of the number).
+ * A unit that is a phrase in words ("cases per month", "orders") names the
+ * number on the hover card. A sign, a code or a scale stays with the number:
+ * "$", "%", "pp", "kg", "ms", "USD", "EUR k", "$bn", "k orders" and
+ * "thousand per month" (the scale belongs to the number), "$ per share" (the
+ * sign goes in front of the number), "% of started cases" (the percent sign
+ * joins the number: "92% of started cases").
  */
 export function unitPhrase(unit: string | undefined): boolean {
   const text = unit?.trim();
-  return Boolean(text) && !/^\p{Sc}/u.test(text!) && unitMagnitude(text) === undefined && !SCALE_FIRST.test(text!) && UNIT_WORD.test(text!);
+  return Boolean(text) && !/^[\p{Sc}%]/u.test(text!) && unitMagnitude(text) === undefined && !SCALE_FIRST.test(text!) && UNIT_WORD.test(text!);
 }
 
 /** A unit that opens with a scale ("thousand per month", "M users"): the number is in that scale, so the unit stays on it. */
