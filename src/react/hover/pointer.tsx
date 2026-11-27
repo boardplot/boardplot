@@ -12,7 +12,7 @@ import type { HoverGroupStore, HoverLink } from '../hoverGroupContext';
 import { SceneRenderer } from '../SceneRenderer';
 import type { HoverContext, HoverRefs, RenderHoverContent } from '../useHover';
 import { useIsomorphicLayoutEffect } from '../useIsomorphicLayoutEffect';
-import { ChartCard, CustomCard, activates, cardFollower, clickedRecord, framedHosts, hoverSelection, hoverViewport, inCardCorridor, type HoverModel, type HoverSelection, type HoverView } from './engine';
+import { ChartCard, CustomCard, activates, cardFollower, clickedRecord, framedHosts, hoverSelection, hoverViewport, inCardCorridor, pooled, type HoverModel, type HoverSelection, type HoverView } from './engine';
 import { keyboardOrder, keyboardReading, keyboardSelection, keyboardStep } from './keyboard';
 import { labelCardGeometry } from './labelCard';
 
@@ -41,12 +41,6 @@ function linkedIds(model: HoverModel, link: HoverLink): string[] {
     && record.target.owner.annotationId === undefined && !pooled(record) && record.cardFields?.length !== 0);
   const series = records.filter(record => record.target.owner.seriesId === link.seriesId);
   return (series.length ? series : records).map(record => record.id);
-}
-
-function pooled({ members, target: { owner } }: InteractionRecord): boolean {
-  // A category record lists its series as members; only a series record whose members are other series is pooled.
-  return members?.some(member => member.categoryId !== owner.categoryId
-    || (owner.seriesId !== undefined && member.seriesId !== undefined && member.seriesId !== owner.seriesId)) === true;
 }
 
 /**

@@ -9,7 +9,7 @@ import type { ResolvedChartRequest } from '../../core/request';
 import { withChartFormats } from '../../core/formatSpec';
 import { minOf } from '../../core/arrays';
 import type { RenderGeometry } from '../prepared';
-import { bandTypes, cardOptions, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
+import { bandTypes, cardOptions, cardRecords, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
 import { labelCardContent, sharedLabelCardContent } from './labelCard';
 
 /** Matrix charts read row by row: a row is a series, its cells run along the categories. */
@@ -201,7 +201,7 @@ export function keyboardSelection(model: HoverModel, request: ResolvedChartReque
  * is read in full here: the reader cannot see the printed label.
  */
 export function keyboardReading(model: HoverModel, request: ResolvedChartRequest, record: InteractionRecord): string {
-  const active = keyboardTargets(model, request, record);
+  const active = cardRecords(model, keyboardTargets(model, request, record));
   const options = cardOptions(model, request, record);
   const locale = request.locale?.language;
   return withChartFormats(request.options, () => active.length > 1

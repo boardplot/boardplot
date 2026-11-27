@@ -30,7 +30,7 @@ import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlig
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
   layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
-import { cardTitle, keyOrder, metricName, stackSeries } from './cardRows';
+import { cardTitle, keyOrder, metricName, panelNames, stackSeries } from './cardRows';
 import { chartString as funnelString } from '../../core/strings/funnel';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
@@ -51,6 +51,14 @@ export interface HoverModel {
   stackSeries?: Set<string>;
   /** Each record's place in the key, which a card with several series follows (`keyOrder`). */
   order?: Map<InteractionRecord, number>;
+  /** A grid's records by category, for the card that lists a category across its panels (`cardRecords`). */
+  panelPeers?: Map<string, InteractionRecord[]>;
+  /** A grid's panel paths in drawn order (`panelPaths`). */
+  panelPaths?: string[];
+  /** Whether each grid panel draws a 100 % composition, by panel path. */
+  panelHundred?: Map<string, boolean>;
+  /** A grid's panel titles by panel path (`panelNames`). */
+  panelNames?: Map<string, string>;
   markBounds?: Map<InteractionRecord, Rect | undefined>;
 }
 
@@ -281,11 +289,16 @@ export function cardOptions(model: HoverModel, request: ResolvedChartRequest, fi
   const panel = first.target.panel === undefined ? undefined : model.placement?.panels?.find(entry => entry.panel === first.target.panel);
   // A panel projects the option keys this question needs, so a panel's card
   // words its share exactly as the same chart would on its own.
+  const panels = panelPaths(model);
   return { hundredPercent: hundredPercentComposition(panel?.type ?? request.type, panel ? panel.composition : request.options as CompositionOptions),
     title: cardTitle(request, first, model.records), name: metricName(request, first.target.panel, first.target.owner.seriesId),
-    order: model.order ??= keyOrder(request, model.records, model.legend),
+    order: model.order ??= keyOrder(request, model.records, model.legend, panels),
     stackSeries: model.stackSeries ??= new Set([...model.records.filter(record => record.share).map(stackKey),
       ...stackSeries(request, [undefined, ...model.placement?.panels?.map(entry => entry.panel) ?? []])]),
+    panelNames: model.panelNames ??= panelNames(request, panels),
+    // Each panel words its own shares: parts that sum to 100 print no Total on a 100 % panel, a stacked panel prints it.
+    ...model.placement?.panels ? { panelHundred: model.panelHundred ??= new Map(model.placement.panels.map(entry =>
+      [entry.panel, hundredPercentComposition(entry.type, entry.composition)])) } : {},
     ...(panel?.type ?? request.type) === 'funnel' ? { conversionName: conversionName(request, first.target.panel) } : {} };
 }
 
@@ -304,6 +317,79 @@ function conversionName(request: ResolvedChartRequest, panel: string | undefined
   if ((options as { variant?: unknown }).variant === 'centered') return funnelString(wording, 'stepCvr');
   const word = funnelString(wording, 'stageAdvance', { v1: '\u0000' }).replace('\u0000', '').trim();
   return word ? word.replace(/^\p{L}/u, letter => letter.toLocaleUpperCase()) : undefined;
+}
+
+/**
+ * A grid's panel paths in the order a reader takes them: row by row from the
+ * top, left to right in a row (a tier drawn above its first panel comes
+ * first). A metric stack, whose panels the placement does not list, in record order.
+ */
+function panelPaths(model: HoverModel): string[] {
+  if (model.panelPaths) return model.panelPaths;
+  const placed = model.placement?.panels;
+  if (!placed) return model.panelPaths = [...new Set(model.records.flatMap(record => record.target.panel ?? []))];
+  const byTop = [...placed].sort((a, b) => a.plot.y - b.plot.y || a.plot.x - b.plot.x);
+  const rows: (typeof placed)[number][][] = [];
+  for (const entry of byTop) {
+    const row = rows.at(-1);
+    // Panels whose plots overlap by half the shorter height stand in one row.
+    if (row && entry.plot.y < Math.min(...row.map(other => other.plot.y + other.plot.h / 2))) row.push(entry); else rows.push([entry]);
+  }
+  return model.panelPaths = rows.flatMap(row => row.sort((a, b) => a.plot.x - b.plot.x).map(entry => entry.panel));
+}
+
+/** A record that stands for other categories or series (a generated Others bucket): two panels give it one id for different members. */
+export function pooled({ members, target: { owner } }: InteractionRecord): boolean {
+  // A category record lists its series as members; only a series record whose members are other series is pooled.
+  return members?.some(member => member.categoryId !== owner.categoryId
+    || (owner.seriesId !== undefined && member.seriesId !== undefined && member.seriesId !== owner.seriesId)) === true;
+}
+
+/**
+ * The records the card lists: the hovered ones, and on a grid of several
+ * panels that band their categories (columns, bars, lines, combos) the
+ * hovered category in every other such panel, all its series as the
+ * panel's own card lists them, so one card reads the week across the
+ * panels. Only the card lists them: the highlight, `onHoverChange` and a
+ * host's `context.records` keep the hovered records. Only numbers are
+ * listed across panels, and never a generated Others bucket.
+ */
+export function cardRecords(model: HoverModel, active: InteractionRecord[]): InteractionRecord[] {
+  const first = active[0];
+  const categoryId = first?.target.owner.categoryId;
+  const panels = panelPaths(model);
+  if (!first || categoryId === undefined || first.target.panel === undefined || first.target.owner.annotationId !== undefined
+    || first.target.owner.seriesId === undefined || first.value.kind !== 'number' || panels.length < 2 || pooled(first)) return active;
+  const typeOf = (panel: string) => model.placement?.panels?.find(entry => entry.panel === panel)?.type;
+  // A metric stack's panels hold one measure each; the placement lists none of them.
+  const banded = (panel: string) => !model.placement?.panels || bandTypes[typeOf(panel) ?? ''] !== undefined;
+  if (!banded(first.target.panel)) return active;
+  let byCategory = model.panelPeers;
+  if (!byCategory) {
+    byCategory = model.panelPeers = new Map();
+    for (const record of model.records) {
+      const { owner } = record.target;
+      if (owner.categoryId === undefined || owner.seriesId === undefined || owner.pointId !== undefined || owner.rowId !== undefined
+        || owner.annotationId !== undefined || record.target.panel === undefined || record.cardFields?.length === 0
+        // A panel of states (a status grid) has no value to read across the panels.
+        || record.value.kind !== 'number' || pooled(record)) continue;
+      const list = byCategory.get(owner.categoryId);
+      if (list) list.push(record); else byCategory.set(owner.categoryId, [record]);
+    }
+  }
+  const shown = new Set(active);
+  const peers: InteractionRecord[] = [];
+  for (const panel of panels) {
+    if (panel === first.target.panel || !banded(panel)) continue;
+    const candidates = (byCategory.get(categoryId) ?? []).filter(record => record.target.chart === first.target.chart && record.target.panel === panel);
+    const hit = candidates.find(record => record.value.state === 'value') ?? candidates[0];
+    if (!hit) continue;
+    // The panel's series as its own card lists them: a line that has ended stays out.
+    for (const record of [hit, ...categorySiblings(model.records, hit, true, typeOf(panel) === 'line')]) {
+      if (!shown.has(record) && candidates.includes(record)) { shown.add(record); peers.push(record); }
+    }
+  }
+  return peers.length ? [...active, ...peers] : active;
 }
 
 /** Filled-mark ownership depends on the drawn scene, not the active card. */
@@ -493,8 +579,9 @@ export function hoverView(
       mark: marks[0] && cssRect(marks[0]) };
   })();
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
-  const layout = !flags.card ? undefined : withChartFormats(request.options, () => active.length > 1
-    ? layoutLabelCardContent(input, sharedLabelCardContent(active, locale, card, geometry.scene, model.cardRows)) : layoutLabelCard(input));
+  const listed = flags.card ? cardRecords(model, active) : active;
+  const layout = !flags.card ? undefined : withChartFormats(request.options, () => listed.length > 1
+    ? layoutLabelCardContent(input, sharedLabelCardContent(listed, locale, card, geometry.scene, model.cardRows)) : layoutLabelCard(input));
   const scene = flags.highlight ? highlightScene(geometry.scene, model.records, active, theme)
     : flags.keyboard ? outlineScene(geometry.scene, model.records, active, theme) : geometry.scene;
   // Keep the chart's description fallback alongside the tooltip's reading.

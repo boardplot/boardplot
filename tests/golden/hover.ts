@@ -8,7 +8,7 @@ import { interactionRecords } from '../../src/core/a11y/records';
 import { describedWithCard, layoutLabelCard, layoutLabelCardContent, sharedLabelCardContent } from '../../src/react/hover/labelCard';
 import { overlayInputs, panelOverlayTheme } from '../../src/react/hover/placement';
 import { highlightScene, recordBounds } from '../../src/react/hover/highlight';
-import { bandTypes, cardOptions, categorySiblings } from '../../src/react/hover/engine';
+import { bandTypes, cardOptions, cardRecords, categorySiblings } from '../../src/react/hover/engine';
 import { targetId } from '../../src/core/a11y/recordsShared';
 import { listCharts, type Fixture } from '../../src/core/registry';
 import { layoutResolvedRequest, resolveChartRequest } from '../../src/core/request';
@@ -71,8 +71,8 @@ function preview(type: string, family: string, fixture: Fixture<any, any>): Hove
       frame, card: null, svg: renderSvg(geometry, request.theme) };
   }
   // The preview shows what a pointer on the demo mark shows: on a banded
-  // chart the whole category, the pointed series first.
-  const active = [record, ...categorySiblings(records, record, bandTypes[panel?.type ?? type] !== undefined)];
+  // chart the whole category, the pointed series first, and on a grid the category in every panel.
+  const active = cardRecords({ records, placement }, [record, ...categorySiblings(records, record, bandTypes[panel?.type ?? type] !== undefined)]);
   // The card words its rows as the hover engine does: its period title and the key's order.
   const card = cardOptions({ records, placement }, request, record);
   const input = { record, plot: panel?.plot ?? geometry.plot, canvas: frame,

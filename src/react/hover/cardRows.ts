@@ -169,7 +169,8 @@ export function stackSeries(request: ResolvedChartRequest, panels: readonly (str
  * panel's), else in the spec's series list, else (a series the engine
  * adds) after them in record order.
  */
-export function keyOrder(request: ResolvedChartRequest, records: readonly InteractionRecord[], legend?: readonly string[]): Map<InteractionRecord, number> {
+export function keyOrder(request: ResolvedChartRequest, records: readonly InteractionRecord[], legend?: readonly string[], panels: readonly string[] = []): Map<InteractionRecord, number> {
+  const panelRank = new Map(panels.map((panel, index) => [panel, index]));
   const ranks = new Map<string | undefined, Map<string, number>>();
   const rankOf = (panel: string | undefined) => {
     let rank = ranks.get(panel);
@@ -180,10 +181,12 @@ export function keyOrder(request: ResolvedChartRequest, records: readonly Intera
         const id = (entry as { id?: unknown } | undefined)?.id;
         return typeof id === 'string' ? [id] : [];
       });
-      // An authored legend order leads; series it leaves out follow in data order.
+      // The drawn key leads (a grid's shared key for each of its panels), then
+      // an authored legend order; series they leave out follow in data order.
       const authored = (chart === (request as unknown as SourceChart) ? request.options : chart.options) as SourceChart['options'];
-      const order = panel === undefined && legend?.length ? [...legend]
-        : Array.isArray(authored?.legend?.order) ? (authored!.legend!.order as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+      const own = Array.isArray(authored?.legend?.order) ? (authored!.legend!.order as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+      const drawn = legend?.filter(id => panel === undefined || ids.includes(id)) ?? [];
+      const order = drawn.length ? [...drawn, ...own.filter(id => !drawn.includes(id))] : own;
       ranks.set(panel, rank = new Map([...order, ...ids.filter(id => !order.includes(id))].map((id, index) => [id, index] as const)));
     }
     return rank;
@@ -191,6 +194,21 @@ export function keyOrder(request: ResolvedChartRequest, records: readonly Intera
   return new Map(records.map((record, index) => {
     const { seriesId } = record.target.owner;
     const rank = seriesId === undefined ? undefined : rankOf(record.target.panel).get(seriesId);
-    return [record, rank ?? records.length + index];
+    // A grid lists its panels in the order they are drawn, each panel's series in its key's order.
+    return [record, (panelRank.get(record.target.panel ?? '') ?? 0) * 2 * records.length + (rank ?? records.length + index)];
   }));
+}
+
+/** Each panel's title by its path, for a card row whose series name another panel's row repeats. */
+export function panelNames(request: ResolvedChartRequest, panels: readonly string[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const panel of panels) {
+    const chart = sourceChart(request, panel);
+    // The panel's heading (`title` on the panel), else its chart's title.
+    const own = chart === (request as unknown as SourceChart) ? undefined : chart as SourceChart & { title?: unknown };
+    const title = typeof own?.title === 'string' && own.title.trim() ? own.title : own?.options?.title;
+    const text = typeof title === 'string' ? title : (title as { text?: unknown } | undefined)?.text;
+    names.set(panel, typeof text === 'string' && text.trim() ? text.trim() : panel.split('/').at(-1)!);
+  }
+  return names;
 }

@@ -84,6 +84,10 @@ export interface LabelCardOptions {
   conversionName?: string;
   /** The series that stand in a stack (`stackKey`): a missing value of one stands among the parts. */
   stackSeries?: ReadonlySet<string>;
+  /** Whether each grid panel draws a 100 % composition, by path; a panel not listed takes `hundredPercent`. */
+  panelHundred?: ReadonlyMap<string, boolean>;
+  /** A grid's panel titles by path: they name a row whose series name another panel's row repeats. */
+  panelNames?: ReadonlyMap<string, string>;
 }
 
 /** The options that say a chart draws its categories as 100 %. */
@@ -497,12 +501,18 @@ function eventCardContent(event: NonNullable<InteractionRecord['event']>): Label
 }
 
 /** Hollow markers carry the series ink in their stroke; unmarked points use their series path. */
+/** A paint that shows on the card: not the background a mark is cut out of. */
+function inked(paint: Paint | undefined): paint is Paint {
+  return paint !== undefined && !(typeof paint === 'object' && 'token' in paint && paint.token === 'background');
+}
+
 function seriesSwatch(record: InteractionRecord, scene: readonly SceneNode[]): Paint | undefined {
   for (const node of scene) {
     if (!record.nodeIds.includes(node.id)) continue;
     if (node.t === 'line') return node.stroke;
     if (node.t === 'rect' || node.t === 'circle' || node.t === 'path') {
-      const paint = node.part === 'marker' ? node.stroke ?? node.fill : node.fill ?? node.stroke;
+      // A marker's ring is the background around a filled dot, or the series around a hollow one.
+      const paint = [...node.part === 'marker' ? [node.stroke, node.fill] : [node.fill, node.stroke]].find(inked);
       if (paint) return paint;
     }
   }
@@ -552,31 +562,13 @@ function stackTotal(parts: readonly InteractionRecord[], locale?: string): Inter
 }
 
 /**
- * One card for several records at one category or one mark, such as the
- * series of a week or the shared end label of series that all end on one
- * printed value: the category heading, then each series in the order of the
- * key, the pointed one in bold. The parts of a stack come first, each with
- * its share in a column of its own, then one Total row, then the other
- * series (a combo's lines). A share of one part alone (100 %) is not
- * printed. The parts and their total print in one format.
- * Every member is listed. `cache` keeps the content per set of records.
+ * The rows of one panel's records, in key order: the parts of a stack first,
+ * each with its share in a column of its own, then one Total row, then the
+ * other series. The parts and their total print in one number format.
  */
-export function sharedLabelCardContent(records: readonly InteractionRecord[], locale?: string, options?: LabelCardOptions,
-  scene: readonly SceneNode[] = [], cache?: Map<string, LabelCardContent>): LabelCardContent {
-  const key = cache && records.map(record => record.id).join('\u0000');
-  const cached = key === undefined ? undefined : cache!.get(key);
-  if (cached) return cached;
+function groupRows(sorted: readonly InteractionRecord[], pointed: InteractionRecord | undefined, rowName: (record: InteractionRecord) => string,
+  locale: string | undefined, options: LabelCardOptions | undefined, scene: readonly SceneNode[]): LabelCardRow[] {
   const rows: LabelCardRow[] = [];
-  const pointed = records[0];
-  if (pointed) {
-    // The records share one category, so they share its date: it joins the
-    // heading once instead of repeating under every series.
-    const date = options?.title === undefined && pointed.fields.find(field => field.key === 'date' && !headingNamesDate(pointed, field.value));
-    const heading = options?.title ?? pointed.categoryLabel ?? pointed.target.owner.categoryId ?? pointed.label;
-    rows.push({ kind: 'title', text: date ? `${heading}, ${displayedValueText(date.value, locale)}` : heading });
-  }
-  const order = options?.order;
-  const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
   const parts = sorted.filter(stackPart);
   // A part with no value here keeps its place in the key among the parts.
   const missing = (record: InteractionRecord) => record.value.state === 'missing' && options?.stackSeries?.has(stackKey(record)) === true;
@@ -595,14 +587,16 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
   const share = shareFormat(shown.map(record => record.share!.percent), locale);
   // Parts that sum to 100 on a 100 % chart, or to 100 %, are their axis; one part alone is its own total.
   const hundred = total?.state === 'value' && typeof total.raw === 'number' && Math.abs(total.raw - 100) < 1e-9;
-  const whole = !total || members.length < 2 || (hundred && (options?.hundredPercent === true || total.unit === '%'));
+  const panel = sorted[0]?.target.panel;
+  const hundredChart = (panel === undefined ? undefined : options?.panelHundred?.get(panel)) ?? options?.hundredPercent;
+  const whole = !total || members.length < 2 || (hundred && (hundredChart === true || total.unit === '%'));
   listed.forEach((record, index) => {
-    const name = record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
+    const name = rowName(record);
     const content = labelCardContent({ ...record, fields: record.fields.filter(field => field.key !== 'date' || headingNamesDate(record, field.value)) },
-      locale, { hundredPercent: options?.hundredPercent, conversionName: options?.conversionName }, false).rows.slice(1);
+      locale, { hundredPercent: hundredChart, conversionName: options?.conversionName }, false).rows.slice(1);
     const at = content.findIndex(row => row.kind === 'value');
     if (at < 0) return;
-    const number = format(record);
+    const number = namedNumber(name, format(record), record.value.unit);
     const value = `${record.valueLabel ? `${record.valueLabel}: ` : ''}${number}`;
     const part = stacked && shown.includes(record) ? share(record.share!.percent) : undefined;
     rows.push({ ...content[at]!, label: `${name}:`, value, text: `${name}: ${value}${part ? `, ${part}` : ''}`,
@@ -615,6 +609,51 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
       rows.push({ kind: 'total', label: `${label}:`, value: text, text: `${label}: ${text}`, values: [safeValue(total, locale)] });
     }
   });
+  return rows;
+}
+
+/**
+ * One card for several records at one category or one mark, such as the
+ * series of a week or the shared end label of series that all end on one
+ * printed value: the category heading, then each series in the order of the
+ * key, the pointed one in bold. The parts of a stack come first, each with
+ * its share in a column of its own, then one Total row, then the other
+ * series (a combo's lines). A share of one part alone (100 %) is not
+ * printed. The parts and their total print in one format. A grid's card
+ * lists the hovered category in every panel, panel by panel in drawn order.
+ * Every member is listed. `cache` keeps the content per set of records.
+ */
+export function sharedLabelCardContent(records: readonly InteractionRecord[], locale?: string, options?: LabelCardOptions,
+  scene: readonly SceneNode[] = [], cache?: Map<string, LabelCardContent>): LabelCardContent {
+  const key = cache && records.map(record => record.id).join('\u0000');
+  const cached = key === undefined ? undefined : cache!.get(key);
+  if (cached) return cached;
+  const rows: LabelCardRow[] = [];
+  const pointed = records[0];
+  if (pointed) {
+    // The records share one category, so they share its date: it joins the
+    // heading once instead of repeating under every series.
+    const date = options?.title === undefined && pointed.fields.find(field => field.key === 'date' && !headingNamesDate(pointed, field.value));
+    const heading = options?.title ?? pointed.categoryLabel ?? pointed.target.owner.categoryId ?? pointed.label;
+    rows.push({ kind: 'title', text: date ? `${heading}, ${displayedValueText(date.value, locale)}` : heading });
+  }
+  const order = options?.order;
+  const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
+  // A grid's card lists each panel in turn; a series name two panels share takes its panel's title.
+  const names = new Map<string, number>();
+  const seriesName = (record: InteractionRecord) => record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
+  for (const record of sorted) names.set(seriesName(record), (names.get(seriesName(record)) ?? 0) + 1);
+  const rowName = (record: InteractionRecord) => {
+    const name = seriesName(record);
+    const panel = record.target.panel === undefined ? undefined : options?.panelNames?.get(record.target.panel);
+    return names.get(name)! > 1 && panel && !sameName(panel, name) ? `${panel} · ${name}` : name;
+  };
+  const groups: InteractionRecord[][] = [];
+  for (const record of sorted) {
+    const last = groups.at(-1);
+    if (last && last[0]!.target.panel === record.target.panel) last.push(record); else groups.push([record]);
+  }
+  for (const group of groups) pushAll(rows, groupRows(group, pointed, rowName, locale, options, scene));
   const content = cardContent(rows);
   if (key !== undefined) cache!.set(key, content);
   return content;
@@ -1084,8 +1123,9 @@ function rowsWithinHeight(
   locale?: string,
 ): { rows: LabelCardRow[]; measured: MeasuredRow[] } {
   // Apply both limits to the source rows, so a summary never counts as data.
+  // Up to eight series, or nine: a counting row in place of one series would only hide it.
   let series = 0;
-  const cut = rows.findIndex(row => row.series && ++series > 8);
+  const cut = rows.filter(row => row.series).length <= 9 ? -1 : rows.findIndex(row => row.series && ++series > 8);
   // The Total row closes the parts it sums: a card that cuts them leaves it out.
   const maximum = cut < 0 ? rows.length : cut;
   // The hovered series stays on a card that cuts rows: its row and the detail
