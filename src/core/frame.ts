@@ -1365,6 +1365,20 @@ export function withHiddenLabelNote<T extends object>(options: T, noted: Readonl
   };
 }
 
+/** A registry note that the default static footer keeps outside the frame.
+ * Remove only the fields withHiddenLabelNote and the legend policy added. */
+export function beforeUnprintedLabelNote<T extends Pick<BaseOptions, 'footnotes'>>(options: T): T | undefined {
+  const { footnotes, authoredFootnotes, [FOOTNOTE_REFS]: refs, [NOTED_LABELS]: labels,
+    [NOTE_ITEMS]: items, [NOTE_CONTEXT]: context, [NOTE_LINE]: line, [NOTE_COUNTED]: counted, ...rest } =
+    options as T & InternalFootnoteOptions & Record<symbol, unknown>;
+  if (footnotes === undefined) return authoredFootnotes === undefined && !refs && !items && !context && !line && !labels && !counted
+    ? rest as unknown as T : undefined;
+  if (!Array.isArray(footnotes) || footnotes.length !== 1 || footnotes[0] !== line || typeof line !== 'string'
+    || engineNoteMeta(line)?.kind !== 'disclosure' || !Array.isArray(authoredFootnotes) || authoredFootnotes.length !== 0
+    || !(items instanceof Map) || !(labels instanceof Set)) return;
+  return rest as unknown as T;
+}
+
 /**
  * The hidden-label note line. Compact framing keeps it on the
  * canvas: whatever the chart could not draw (an annotation, a value, a name)
