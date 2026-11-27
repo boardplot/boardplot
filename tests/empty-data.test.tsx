@@ -2,7 +2,8 @@ import { settle } from './helpers/spec-chunks';
 // @vitest-environment jsdom
 
 import { act, createElement, StrictMode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
@@ -190,4 +191,28 @@ it('gives table and tbl the same canDraw answer for empty, totals-only and popul
       expect(geometry).toEqual(getChart('table')!.layout({ columns, rows } as never, {} as never));
     }
   }
+});
+
+// The server pass waited for the card's chunk, so the server HTML of an empty or refused chart made React report error 419 while it hydrated.
+it('hydrates the server HTML of an empty chart without a hydration error', async () => {
+  // A fresh copy of the component: the card's chunk has not loaded, as in a server process that draws its first card.
+  vi.resetModules();
+  const fresh = await import('../src/react/charts/column');
+  const chart = createElement(fresh.ColumnChart as never, { data: none, size: { width: 600, height: 300 } });
+  // A server has no document.
+  vi.stubGlobal('document', undefined);
+  const html = renderToString(chart);
+  vi.unstubAllGlobals();
+  expect(html).toContain('data-bp-empty');
+  expect(html).not.toContain('<!--$!-->');
+  const host = document.createElement('div');
+  document.body.append(host);
+  host.innerHTML = html;
+  const errors = vi.fn();
+  let root: Root;
+  await act(async () => { root = hydrateRoot(host, chart, { onRecoverableError: errors }); });
+  await vi.waitFor(() => expect(host.querySelector('[data-bp-empty]:not([data-bp-loading])')?.textContent).toContain('No data to show.'));
+  expect(errors).not.toHaveBeenCalled();
+  act(() => root.unmount());
+  host.remove();
 });

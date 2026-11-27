@@ -511,7 +511,7 @@ function sharedKeyTrees(optionKeys) {
 /** The types that zoom (core/zoom.ts `zoomAxis`): their entries pass the zoom hook to the component. */
 const ZOOM_TYPES = new Set(['line']);
 
-function renderModule(type, binding, keys, keyTrees) {
+function renderModule(type, binding, keys, keyTrees, rowsShapes) {
   const lines = [HEADER, `// Single-chart React entry for '${type}'.`];
   const shared = new Set();
   const renderedKeys = keyTrees.render(keys, shared);
@@ -590,7 +590,10 @@ function renderModule(type, binding, keys, keyTrees) {
     addTypeImport('OptionsInput', '../../core/types/optionInput');
     addTypeImport('ChartComponentProps', '../createChartComponent');
   }
-  if (binding.loose) lines.push("import type { ReactElement } from 'react';");
+  // A type without a rows mapping takes `data` only: `rows` and `columns` are type errors on its component.
+  const dataOnly = !binding.loose && !rowsShapes[type];
+  if (dataOnly) addTypeImport('ChartProps', '../createChartComponent');
+  if (binding.loose || dataOnly) lines.push("import type { ReactElement } from 'react';");
   for (const from of [...typeImports.keys()].sort()) {
     const names = [...typeImports.get(from)].sort().join(', ');
     lines.push(`import type { ${names} } from ${quoted(from)};`);
@@ -620,7 +623,7 @@ function renderModule(type, binding, keys, keyTrees) {
     );
   } else {
     lines.push(
-      `export const ${binding.component} = createChartComponent<${dataName}, ${optionsName}>(${registered}, checkOptionKeys${linkedArg});`,
+      `export const ${binding.component}${dataOnly ? `: (props: ChartProps<${dataName}, ${optionsName}, false>) => ReactElement` : ''} = createChartComponent<${dataName}, ${optionsName}>(${registered}, checkOptionKeys${linkedArg});`,
     );
   }
   lines.push('');
@@ -784,7 +787,7 @@ if (missing.length > 0 || extra.length > 0) {
 }
 
 const keyTrees = sharedKeyTrees(optionKeys);
-const modules = new Map(types.map((type) => [`${type}.ts`, renderModule(type, BINDINGS[type], optionKeys[type], keyTrees)]));
+const modules = new Map(types.map((type) => [`${type}.ts`, renderModule(type, BINDINGS[type], optionKeys[type], keyTrees, rowsShapes)]));
 const keyTreesFile = join(repositoryRoot, 'src/react/optionKeyTrees.ts');
 const loadersFile = join(repositoryRoot, 'src/react/chartLoaders.ts');
 const loadersSource = renderLoaders(types);

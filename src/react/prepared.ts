@@ -50,6 +50,8 @@ export interface PreparedChart extends PreparedHeader {
   matrices?: Paint[][];
   /** The data `prepareChart` mapped from `rows`: the chart draws it until the rows chunk loads. */
   rows?: PreparedRows;
+  /** The key of the input `prepareChart` received, see `preparedInputKey`. */
+  inputKey?: string;
 }
 
 /** Sorted JSON also rejects values that would silently change during transport. */

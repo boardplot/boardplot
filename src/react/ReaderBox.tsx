@@ -10,10 +10,9 @@ import { sourceLine } from '../core/notes';
 import { footerType } from '../core/footer';
 import { checkThemeShape } from '../core/themeShape';
 import { linkThemeShapeRules } from '../core/themeShapeRules';
-import { readerStrings } from '../core/readerStrings';
 import { DEFAULT_LOAD_FAILED_TEXT, placeholderStyle, BoardplotThemeContext } from './themeContext';
 import { fullDiagnostics } from './diagnostics';
-import type { PlaceholderFrame, RefusalProps } from './SizePlaceholder';
+import { readerText, type PlaceholderFrame, type RefusalProps } from './SizePlaceholder';
 import type { RefusedLayout } from '../core/types/scene';
 
 const DiagnosticDetails = lazy(() => import('./DiagnosticDetails').catch(() => ({ default: () => <span>{DEFAULT_LOAD_FAILED_TEXT}</span> })));
@@ -25,16 +24,11 @@ export default function ReaderBox({ theme: ref, options: authored = {}, size: ex
   theme?: Theme | ThemeRef; kind: 'refused' | 'empty' | 'spec-error'; findings?: readonly DocumentFinding[]; children?: ReactNode; spec?: boolean;
 }): ReactElement {
   const options = normalizeOptionShapes('', { options: authored }).chart.options as BaseOptions;
-  const children = kind === 'refused' && result && renderRefused ? renderRefused(result) : suppliedChildren;
   const settings = useContext(BoardplotThemeContext);
   const full = fullDiagnostics(settings?.diagnostics);
   const locale = options.locale ?? settings?.locale;
   const language = typeof locale === 'string' ? locale : locale?.language;
-  const defaults = readerStrings(language);
-  const strings = { ...defaults, ...settings?.strings };
-  const wording = kind === 'refused' ? 'refusal' : kind === 'spec-error' ? 'failure' : kind;
-  const heading = kind === 'refused' && strings.refusalMessage.includes('{') ? defaults.refusalMessage : strings[`${wording}Message`];
-  const hint = strings[`${wording}Hint`];
+  const { strings, heading, hint, content: children } = readerText({ kind, result, renderRefused, children: suppliedChildren }, language, settings?.strings);
   const minimum = findings[0]?.expected?.minimum as Record<string, number> | undefined;
   const legacy = full && kind === 'refused' && settings?.strings?.refusalMessage?.includes('{')
     ? stringFields(settings?.strings?.refusalMessage, minimum ?? {}, language) : undefined;

@@ -1,10 +1,17 @@
 import type { ExportInput, ExportOk, ExportResult } from './types';
+import { withoutZodCodeGeneration } from '../zodSetup';
 
 type Engine = ReturnType<typeof import('./engine').linkedEngine>;
 let engine: Promise<Engine> | undefined;
 let ready: Engine | undefined;
-/** The export engine, loaded once, at the first export call; a failed download is tried again at the next call. */
-const loaded = () => engine ??= import('./engine').then((module) => ready = module.linkedEngine(), (error: unknown) => { engine = undefined; throw error; });
+/**
+ * The export engine, loaded once, at the first export call; a failed download is tried again at the next call. In a
+ * browser zod builds the engine's schemas without code generation, so a strict content security policy sees no eval.
+ */
+function loaded(): Promise<Engine> {
+  if (typeof document !== 'undefined') withoutZodCodeGeneration();
+  return engine ??= import('./engine').then((module) => ready = module.linkedEngine(), (error: unknown) => { engine = undefined; throw error; });
+}
 
 /**
  * Runs one export on the engine. Once it has loaded, the engine reads the input at the call, as before. The first call

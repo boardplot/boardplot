@@ -9,9 +9,12 @@ import type { Geometry } from '../src/core/types/scene';
 import { prepareChart } from '../src/react/prepare';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { BoardplotChart } from '../src/react/spec';
+import { ScaleGroup } from '../src/react/ScaleGroup';
 import { parseChartSpec } from '../src/react/parseChartSpec';
 import { mount, mountedMarkup, settle } from './helpers/spec-chunks';
 import spec from './fixtures/spec-document.json';
+import { exampleData } from '../src/core/charts/dimswitch/example';
+import { defaultMeasurer } from '../src/core/text';
 
 const dataTableLoads = vi.hoisted(() => ({ count: 0 }));
 vi.mock('../src/react/hover/dataTable', async (importOriginal) => { dataTableLoads.count += 1; return importOriginal(); });
@@ -35,11 +38,14 @@ it('attaches a prepared SVG after hydration and switches provider paint without 
   // placeholder and hydration matches it; the prepared scene attaches once
   // the chunks are there, and no layout runs on the way.
   host.innerHTML = renderToString(chart('standard'));
-  expect(host.innerHTML).toContain('data-bp-loading');
+  expect(host.innerHTML).toContain('<svg');
+  expect(host.innerHTML).not.toContain('data-bp-loading');
+  const first = host.querySelector('svg')!;
   const errors = vi.fn();
   await act(async () => { root = hydrateRoot(host, chart('standard'), { onRecoverableError: errors }); });
   expect(errors).not.toHaveBeenCalled();
-  await settle(host);
+  await vi.waitFor(() => expect(host.querySelector('svg')).not.toBe(first));
+  expect(host.querySelector('[data-bp-loading]')).toBeNull();
   const svg = host.querySelector('svg')!;
   const paints = svg.getAttribute('style');
   await act(async () => { root!.render(chart('standard-dark')); });
@@ -145,4 +151,63 @@ it('loads the data table module only for a spec that asks for the table', async 
   root = await mountRoot(<BoardplotChart spec={asked} />);
   expect(dataTableLoads.count).toBe(1);
   expect(host.querySelector('[data-bp-a11y-table]')).not.toBeNull();
+});
+
+// A dimswitch spec drew a static picture through BoardplotChart: the reader could not fold a row, and a row pick never reached the host.
+it('draws a dimswitch spec as the interactive table, in the view the spec sets, and passes row picks', async () => {
+  const select = vi.fn();
+  const chart = (variant: string) => <BoardplotChart spec={{ type: 'dimswitch', data: exampleData, options: { variant } }} onRowSelect={select} />;
+  root = await mountRoot(chart('by-measure'));
+  expect(host.querySelector('.bp-table-grid')).not.toBeNull();
+  expect(host.querySelector('svg[data-bp-chart="dimswitch"]')).toBeNull();
+  const rowIds = () => Array.from(host.querySelectorAll('[data-row-id]'), (row) => row.getAttribute('data-row-id'));
+  const byMeasure = rowIds();
+  act(() => { host.querySelector<HTMLElement>('[data-row-id] [data-bp-column]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  expect(select).toHaveBeenCalledTimes(1);
+  await act(async () => { root!.render(chart('by-member')); });
+  await settle(host);
+  expect(rowIds()).not.toEqual(byMeasure);
+});
+
+// BoardplotChart had no wrapper of its own, so a host class sat on the chart only and the busy placeholder had none, and it took no text measurer.
+it('puts className and style on one wrapper in every state and lays out with the host measurer', async () => {
+  let calls = 0;
+  const measure = Object.assign((...args: Parameters<typeof defaultMeasurer>) => { calls += 1; return defaultMeasurer(...args); }, defaultMeasurer);
+  const chart = <BoardplotChart spec={only('regions')} className="card" style={{ margin: 4 }} measure={measure} />;
+  expect(renderToString(chart)).toMatch(/^<div class="card" style="margin:4px"><div role="status"/);
+  root = await mountRoot(chart);
+  expect(host.children).toHaveLength(1);
+  expect(host.querySelector(':scope > .card svg[data-bp-chart="column"]')).not.toBeNull();
+  expect(host.querySelectorAll('.card')).toHaveLength(1);
+  expect(calls).toBeGreaterThan(0);
+});
+
+// A container chart that mounts without a fallback size waits on the busy placeholder for its first width, so the reader saw the server's chart, then "Loading", then the chart.
+it('replaces the prepared picture of a container chart without the busy placeholder', async () => {
+  // jsdom has no ResizeObserver, and the chart waits for a width only where one exists.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  const regions = only('regions');
+  const prepared = await prepareChart({ ...(await parseChartSpec(regions, 'regions')).request, size: 'container' });
+  const chart = <BoardplotChart spec={regions} size="container" prepared={prepared} />;
+  host.innerHTML = renderToString(chart);
+  const first = host.querySelector('svg')!;
+  let busy = 0;
+  const watcher = new MutationObserver(() => { if (host.querySelector('[data-bp-loading]')) busy += 1; });
+  watcher.observe(host, { childList: true, subtree: true });
+  await act(async () => { root = hydrateRoot(host, chart); });
+  await vi.waitFor(() => expect(host.querySelector('svg')).not.toBe(first));
+  watcher.disconnect();
+  vi.unstubAllGlobals();
+  expect(host.querySelector('[data-bp-container]')).not.toBeNull();
+  expect(busy).toBe(0);
+});
+
+// The first frame drew a prepared chart for a spec with a key validation refuses, and inside a ScaleGroup, whose shared scale the prepared value does not hold.
+it('draws no prepared chart for a spec it does not match or inside a ScaleGroup', async () => {
+  const regions = only('regions');
+  const prepared = await prepareChart((await parseChartSpec(regions, 'regions')).request);
+  expect(renderToString(<BoardplotChart spec={regions} prepared={prepared} />)).toContain('<svg');
+  const stray = { ...regions, charts: [{ ...regions.charts[0]!, unit: '%' }] };
+  expect(renderToString(<BoardplotChart spec={stray} prepared={prepared} />)).toContain('data-bp-loading');
+  expect(renderToString(<ScaleGroup group="g" members={[]}><BoardplotChart spec={regions} prepared={prepared} /></ScaleGroup>)).toContain('data-bp-loading');
 });

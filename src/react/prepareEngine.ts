@@ -20,6 +20,7 @@ import { resolveThemeRequest } from './themeRequest';
 import { LiveDataError } from '../core/live/types';
 import { rowsKey } from './rowsStore';
 import { rowsModule } from './rowsModule';
+import { preparedInputKey } from './preparedInput';
 
 /**
  * The planner of `boardplot/react/prepare`: layout, the renderers and the interaction records. The entry loads it at
@@ -54,7 +55,9 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const geometry = adapted ? { ...laidOut, warnings: rowsModule.rewriteWarningFields(laidOut.warnings, adapted.pathMap) } as typeof laidOut : laidOut;
   const mapped = adapted && { rows: { key: rowsKey({ type: resolved.type, data: input.data }, rows, columns), data: adapted.spec.data,
     reading: { rows: adapted.rows, ignoredColumns: adapted.ignoredColumns, states: adapted.states } } };
-  const prepared = { ...prepareChartRender(resolved, geometry), ...mapped };
+  // The key of the input as the caller wrote it: BoardplotChart compares it before it shows the chart without its engine.
+  const inputKey = preparedInputKey(authored, { size, fit, fallbackSize, rows, columns, window }, context);
+  const prepared = { ...prepareChartRender(resolved, geometry), ...mapped, ...(inputKey === undefined ? {} : { inputKey }) };
   if (geometry.refused) return { ...prepared, fit: activeFit, records: [], ...theme };
   const records = interactionRecords({ request: resolved, geometry, scope: resolved.scope, claims: claimsForChart(resolved.type, geometry) });
   return JSON.parse(canonicalJson({ ...prepared, fit: activeFit, records, ...theme,

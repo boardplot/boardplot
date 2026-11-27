@@ -9,9 +9,9 @@ export default function PreparedCharts({ spec, columnRequest, column, tableData,
     <section aria-label="Weekly orders" data-example="column">
       <ColumnChart data={columnRequest.data} {...columnRequest.options} prepared={column} />
     </section>
-    {/* The spec entry links no chart engine: it requests the one this spec
-        names, draws the busy placeholder in the server pass, and attaches the
-        same prepared output once the chunk is in the browser. */}
+    {/* The spec entry links no chart engine: its server pass draws the
+        prepared output as a picture, and the chart of the type takes its place
+        with the same drawing once the chunk this spec names is in the browser. */}
     <section aria-label="Weekly orders from a spec" data-example="spec">
       <BoardplotChart spec={spec} prepared={column} />
     </section>
