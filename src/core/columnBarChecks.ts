@@ -1,5 +1,6 @@
 import type { Id } from './types/cell';
 import type { LintWarning } from './types/scene';
+import { breakStyleRefusal } from './charts/band/breakOrder';
 
 // The checks column and bar share. Only their layouts import this file, so other chart types load none of it.
 
@@ -49,3 +50,11 @@ export function drawsNetLine<S extends { id: Id; lastVisibleIndex?: number }>(
  */
 export const drawnWithoutBreak = (warning: LintWarning): LintWarning => warning.code === 'axis-break-invalid'
   ? { ...warning, severity: 'warn', message: `${warning.message}; the chart is drawn without the break` } : warning;
+
+/**
+ * The axis break while a reader hides a series. A break that fails only on the values left visible draws without the
+ * break and warns. A break that is wrong in itself (from not below to, a span over zero, an unknown style) still
+ * refuses, as it does with every series shown.
+ */
+export const breakWhileHidden = (warning: LintWarning, { from, to, ...rest }: { from: number; to: number }): LintWarning =>
+  from < to && (from > 0 || to < 0) && !breakStyleRefusal(rest) ? drawnWithoutBreak(warning) : warning;

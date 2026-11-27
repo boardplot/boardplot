@@ -55,7 +55,7 @@ import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
 import { shownSeries } from '../../hiddenSeries';
-import { drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
+import { breakWhileHidden, drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -1097,7 +1097,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const breakChecks: LintWarning[] = [];
   let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, dLo, dHi, breakChecks);
-  warnings.push(...(keySeries === dataSeries ? breakChecks : breakChecks.map(drawnWithoutBreak)));
+  warnings.push(...(keySeries === dataSeries ? breakChecks : breakChecks.map((warning) => breakWhileHidden(warning, options.valueAxis!.break as LinearBreak))));
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
   const stepTicks = axis.ticks;
   const stepAcross = stepFitsAxisBreak(stepTicks, activeBreak, va.tickStep, warnings);

@@ -24,7 +24,7 @@ import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, brokenLinearS
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { hiddenKey } from '../../hiddenSeries';
-import { drawnWithoutBreak } from '../../columnBarChecks';
+import { breakWhileHidden, drawnWithoutBreak } from '../../columnBarChecks';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
 import type { BarOptions, LegendOptions } from '../../types/options';
@@ -288,7 +288,7 @@ function barAxisBreak(domain: BarDomain, dLo: number, dHi: number, warnings: Lin
   const reason = breakStyleRefusal(requestedBreak) ?? invalidLinearBreakReason([dLo, dHi], requestedBreak, domain.rendered);
   if (reason) {
     const invalid = axisBreakInvalid('bar', reason);
-    warnings.push(domain.keySeries === domain.dataSeries ? invalid : drawnWithoutBreak(invalid));
+    warnings.push(domain.keySeries === domain.dataSeries ? invalid : breakWhileHidden(invalid, requestedBreak));
     return undefined;
   }
   return { from: requestedBreak.from, to: requestedBreak.to };

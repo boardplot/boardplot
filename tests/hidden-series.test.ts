@@ -82,5 +82,8 @@ it('draws without the axis break that the visible series cannot hold', () => {
       const findings = laidOut(type, data, options, [hidden]).geometry.warnings.filter((warning) => warning.code === 'axis-break-invalid');
       expect(findings.map((warning) => warning.severity), type).toEqual(['warn']);
     }
+    // A break that is wrong in itself still refuses while a series is hidden.
+    const zero = laidOut(type, outlier, { valueAxis: { break: { from: -10, to: 10 } } }, ['peak']).geometry.warnings;
+    expect(zero.filter((warning) => warning.code === 'axis-break-invalid').map((warning) => warning.severity), type).toEqual(['error']);
   }
 });
