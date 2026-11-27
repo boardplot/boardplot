@@ -31,12 +31,10 @@ export const useLegendClick: ZoomHook = (input) => {
   const options = useMemo(() => (hidden.length ? { ...input.options, [HIDDEN_SERIES]: hidden } : input.options), [input.options, hidden]);
   const [element, setElement] = useState<HTMLElement | null>(null);
   const refused = useRef(false);
-  const marked = useRef(new Set<SVGElement>());
   useEffect(() => {
     // A refusal card has no legend to click a series back, and an offer that ends leaves no control: every series shows.
     if (!offered || refused.current) setList(NONE);
     if (!element) return;
-    // The entry of a data series takes the pointer, and its label is a button that says whether the series shows.
     element.onclick = element.onkeydown = offered ? (event: Event) => {
       const id = (event.target as Element).closest('[data-bp-legend-item]')?.getAttribute('data-bp-legend-item');
       if (!id || !ids.includes(id) || event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
@@ -44,29 +42,20 @@ export const useLegendClick: ZoomHook = (input) => {
       // The last series shown stays.
       setList(hidden.includes(id) ? hidden.filter((other) => other !== id) : ids.every((other) => other === id || hidden.includes(other)) ? hidden : [...hidden, id]);
     } : null;
-    const now = new Set<SVGElement>();
-    if (offered) element.querySelectorAll<SVGElement>('[data-bp-legend-item]').forEach((node) => {
+    // The entry of a data series takes the pointer, and its label is a button that says whether the series shows. Every
+    // other entry loses what this hook set on it: the offer ended, or React reuses the node for another entry. Only the
+    // page's onSeriesClick has React draw a pointer and a button on the legend, and those stay.
+    element.querySelectorAll<SVGElement>('[data-bp-legend-item]').forEach((node) => {
       const id = node.getAttribute('data-bp-legend-item')!;
-      if (!ids.includes(id)) return;
-      now.add(node);
-      node.style.cursor = 'pointer';
-      if (node.dataset.part === 'legendLabel') {
-        node.setAttribute('role', 'button');
-        node.setAttribute('tabindex', '0');
-        node.setAttribute('aria-pressed', String(!hidden.includes(id)));
+      const label = node.dataset.part === 'legendLabel';
+      if (offered && ids.includes(id)) {
+        node.style.cursor = 'pointer';
+        if (label) node.setAttribute('role', 'button'), node.setAttribute('tabindex', '0'), node.setAttribute('aria-pressed', String(!hidden.includes(id)));
+        return;
       }
-    });
-    // An entry that no longer takes the click (the offer ended, or React reuses the node for another entry) loses what
-    // this hook set on it. The page's onSeriesClick has React draw the pointer and the button itself.
-    for (const node of marked.current) if (!now.has(node)) {
       node.removeAttribute('aria-pressed');
-      if (input.onSeriesClick === undefined) {
-        node.removeAttribute('role');
-        node.removeAttribute('tabindex');
-        node.style.cursor = '';
-      }
-    }
-    marked.current = now;
+      if (input.onSeriesClick === undefined) node.removeAttribute('role'), node.removeAttribute('tabindex'), node.style.cursor = '';
+    });
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
     seen: (geometry) => { refused.current = geometry !== undefined && chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).some((warning) => !isSizeDependentRefusal(warning)); } };
