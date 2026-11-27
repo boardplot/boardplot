@@ -54,6 +54,7 @@ import { withBandValueNotes } from '../band/valueNotes';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { refuseRowIntervals, type RowIntervalMode } from './intervalSeries';
 import type { applyBarTopN, barNameTrack, fixedRowWithFraction, drawBarIndicator, positionBarLabels } from './rowOptions';
 
 export interface BarMarks {
@@ -133,8 +134,7 @@ export type BarNaturalMinimum = (width: number, height: number, drawMinimum: () 
 
 export const LABEL_PAD = 2;
 
-export type RowIntervalMode = 'football-field' | 'tornado';
-/** Only native bars supply the interval layout: no other caller accepts the interval variants. */
+/** Native bars supply the interval layout. A column can reach only the interval refusals. */
 type RowIntervalLayout = (data: ChartData, options: BarOptions, mode: RowIntervalMode) => Geometry<BarMarks, BarDerived>;
 
 /** Each caller names every slot, and writes undefined for an option it does not draw, so none is dropped by mistake. */
@@ -250,7 +250,7 @@ function layoutBarVariant(
   features: BarRowFeatures,
 ): Geometry<BarMarks, BarDerived> {
   refuseSignColor(data, options);
-  if (options.variant === 'tornado' || options.variant === 'football-field') return features.intervals!(data, options, options.variant);
+  if (options.variant === 'tornado' || options.variant === 'football-field') return (features.intervals ?? refuseRowIntervals)(data, options, options.variant);
   const geometry = layoutStandardBar(data, options, features, annotationPass, assembleBarGeometry, annotationPass?.footnoteRows);
   if (options.currentValue !== undefined) {
     geometry.warnings.push({

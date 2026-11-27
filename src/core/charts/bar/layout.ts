@@ -40,8 +40,9 @@ import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { ITEM_BUDGET } from '../../itemBudget';
-import { layoutBarRows, barSizing, baseValueIgnored, LABEL_PAD, naturalCategoryHeights, type BarAnnotationPass, type BarNaturalMinimum, type BarDerived, type BarMarks, type RowIntervalMode, type TornadoRowDerived } from './rows';
+import { layoutBarRows, barSizing, baseValueIgnored, LABEL_PAD, naturalCategoryHeights, type BarAnnotationPass, type BarNaturalMinimum, type BarDerived, type BarMarks, type TornadoRowDerived } from './rows';
 import { applyBarTopN, barNameTrack, drawBarIndicator, fixedRowWithFraction, positionBarLabels } from './rowOptions';
+import { footballRangeRequired, intervalSeries, tornadoBaseRequired, type RowIntervalMode } from './intervalSeries';
 
 export type { BarAnnotationPass, BarDerived, BarMarks, BarNaturalMinimum } from './rows';
 
@@ -49,48 +50,6 @@ const barFeatures = {
   intervals: layoutRowIntervals, topN: applyBarTopN, nameTrack: barNameTrack,
   alignRow: rowLabelX, fixedRow: fixedRowWithFraction, indicator: drawBarIndicator, positionLabels: positionBarLabels,
 };
-
-/** The data-role series of a tornado (two cases) or a football field (one), or the refusal. */
-function intervalSeries(data: ChartData, mode: RowIntervalMode): ChartData['series'] {
-  const tornado = mode === 'tornado';
-  if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', tornado ? 'tornado requires at least one driver' : 'football-field requires at least one method', undefined, undefined, ['data', 'categories']);
-  }
-  if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', tornado ? 'tornado requires two case series' : 'football-field requires one data series', undefined, undefined, ['data', 'series']);
-  }
-  const series = data.series.filter((s) => (s.role ?? 'data') === 'data');
-  if (series.length !== (tornado ? 2 : 1)) {
-    throw new NormalizeError(
-      tornado ? 'tornado-two-series' : 'football-field-one-series',
-      'series',
-      tornado
-        ? `tornado requires exactly two data-role series (the low-input case and the high-input case), got ${series.length}`
-        : `football-field requires exactly one data-role series, got ${series.length}`,
-      undefined, undefined, ['data', 'series'],
-    );
-  }
-  return series;
-}
-
-function tornadoBaseRequired(): NormalizeError {
-  return new NormalizeError(
-    'tornado-base-required',
-    'options.baseValue',
-    'tornado requires options.baseValue: the output metric computed with every driver at its base input', undefined, undefined, ['options', 'baseValue'],
-  );
-}
-
-/** No method of the football field has a range; `first` is the first method's index. */
-function footballRangeRequired(data: ChartData, options: BarOptions, series: ChartData['series'][number], first: number): NormalizeError {
-  return new NormalizeError(
-    'football-field-range-required',
-    `series[${series.id}].values[${first}].range`,
-    barString(options, 'footballRangeRequired'),
-    barString(options, 'footballRangeSuggest'),
-    undefined, ['data', 'series', data.series.indexOf(series), 'values'],
-  );
-}
 
 /** All native bar variants share the sizing and label passes used by column and Likert. */
 export function layoutBar(data: ChartData, options: BarOptions = {}, annotationPass?: BarAnnotationPass,
