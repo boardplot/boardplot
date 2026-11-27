@@ -9,7 +9,7 @@ import { GridChart } from '../src/react/charts/grid';
 
 vi.mock('../src/react/coreLoaders', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/react/coreLoaders')>();
-  return { coreLoaders: { ...actual.coreLoaders, column: () => Promise.reject(new Error('column chunk is missing')) } };
+  return { ...actual, coreLoaders: { ...actual.coreLoaders, column: () => Promise.reject(new Error('column chunk is missing')) } };
 });
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

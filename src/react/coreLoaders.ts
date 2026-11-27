@@ -44,3 +44,28 @@ export const coreLoaders: Readonly<Record<string, () => Promise<ChartCore<any, a
   waffle: () => import('../core/charts/waffle/core').then((module) => module.waffleCore),
   waterfall: () => import('../core/charts/waterfall/core').then((module) => module.waterfallCore),
 };
+
+/** type -> the alias names a spec may write instead, so an aliased type finds its chunk. */
+export const chartTypeAliases: Readonly<Record<string, readonly string[]>> = {
+  bartable: ['bar-table', 'table-bars'],
+  box: ['box-and-whisker', 'boxplot'],
+  cohort: ['retention'],
+  dimswitch: ['dim-switch', 'dim-switch-table'],
+  dot: ['cleveland', 'dumbbell', 'lollipop'],
+  gantt: ['timeline'],
+  grid: ['facets'],
+  heatmap: ['matrix'],
+  histogram: ['distribution', 'frequency'],
+  likert: ['diverging-stacked'],
+  line: ['profile'],
+  mekko: ['bar-mekko', 'marimekko'],
+  pareto: ['pareto-chart'],
+  pie: ['donut', 'doughnut'],
+  pvm: ['price-volume-mix'],
+  pyramid: ['age-pyramid', 'population-pyramid'],
+  scatter: ['bubble'],
+  table: ['tbl'],
+  treemap: ['voronoi-treemap'],
+  variance: ['deviation'],
+  waterfall: ['bridge'],
+};
