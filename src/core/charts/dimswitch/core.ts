@@ -347,7 +347,7 @@ function narrowPeriodBracket(data: DimSwitchData, options: DimSwitchOptions, per
   const omitted = new Set(compiled.omissions.map(o => o.labelId));
   if (!withChartFormats(compiled.options, () => data.measures.every(m => {
     if (omitted.has('measure:' + m.id)) return true;
-    if (m.format === undefined || m.scale === 'money' || m.scale === 'perUnit' || !isExactExample(m.format)) return false;
+    if (!m.format || m.scale === 'money' || m.scale === 'perUnit' || !isExactExample(m.format)) return false;
     const spec = parseFormatExample(m.format, true);
     return spec.magnitude === 'none' && unitOfSpec(spec) === null;
   }))) return;
