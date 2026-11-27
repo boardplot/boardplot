@@ -488,7 +488,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-name` | not stated at the site |  | core/doc/document.ts |
 | `invalid-number` | error |  | core/normalize/shared.ts, dimswitch, kpi |
 | `invalid-option` | error |  | butterfly, react/RefusalBoundary.tsx |
-| `invalid-options` | error | yes | bullet, choropleth, cohort, core/doc/chartValidation.ts, core/schema/refusals.ts, diagram, heatmap, react/TableChart.tsx, sparkline, status, table |
+| `invalid-options` | error | yes | bullet, choropleth, cohort, core/charts/geoScale.ts, core/doc/chartValidation.ts, core/schema/refusals.ts, diagram, heatmap, react/TableChart.tsx, sparkline, status, table |
 | `invalid-range` | error |  | core/rangeRules.ts, gantt |
 | `invalid-react-options` | not stated at the site |  | react/specValidation.ts |
 | `invalid-roadmap` | error |  | diagram |

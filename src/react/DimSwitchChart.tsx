@@ -2,6 +2,7 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
+import { NormalizeError } from '../core/normalize/shared';
 import { compileDimSwitch, dimSwitchExpansionIdError, DimSwitchIdError, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { checkDimSwitchData } from '../core/charts/dimswitch/dataChecks';
 import { atPath } from '../core/diagnostics/describe';
@@ -27,7 +28,7 @@ import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { asSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, ChartFailure, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
 import type { ContainerSizeOptions } from './useContainerSize';
@@ -156,19 +157,20 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
         return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
       },true);
     } catch(error) {
-      if(error instanceof DimSwitchIdError) return error;
+      // An unknown row id draws the dimswitch card; any other refusal the boundary's card, on the server too.
+      if(error instanceof NormalizeError) return error;
       throw error;
     }
   },[stableData,compileOptions,variant,splits]);
   const compilation=useMemo(()=>{
-    if (!ordinaryFolds || !expansion || values instanceof DimSwitchIdError) return values;
+    if (!ordinaryFolds || !expansion || values instanceof NormalizeError) return values;
     const folded=new Set(values.depthCollapsed);
     for (const id of expansion.expanded ?? []) folded.delete(id);
     for (const id of expansion.collapsed ?? []) folded.add(id);
     return {...values,options:{...values.options,expansion:{collapsed:[...folded]}}};
   },[values,ordinaryFolds,expansion]);
   const failedCompile=compilation instanceof DimSwitchIdError;
-  const compiled=failedCompile ? undefined : compilation;
+  const compiled=compilation instanceof NormalizeError ? undefined : compilation;
   // Warning objects handed to the host stay editable until the next authored compile.
   // An ordinary fold can keep the cells while giving that view fresh warning objects.
   const warningOptions=hostWarnings.current && expansion!==undefined ? stableOptions : compileOptions;
@@ -246,6 +248,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     reported.current=key;
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
+  if(compilation instanceof NormalizeError && !failedCompile) return <ChartFailure error={compilation}/>;
   if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compilation.options} exporter={exporter} data={compilation.data} collapsed={collapsed} onCollapsedChange={toggle}

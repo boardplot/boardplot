@@ -419,7 +419,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     };
 
     // An input the engine threw on draws its card in place of the chart.
-    if (first.failed !== undefined) return <ChartFailure error={first.failed} />;
+    const failed = first.failed ?? full.failed ?? wide.failed ?? wider.failed;
+    if (failed !== undefined) return <ChartFailure error={failed} />;
     // The busy box takes the refusal's size: a host without a height
     // would otherwise swap heights, show or hide its scrollbar and restart the settle.
     if (settling && resolved.request && geometry) return frame(<LoadingPlaceholder fixedSize={fixedSize} theme={resolved.request.theme} size={geometry.size} options={{ ...stableOptions, target }} />);

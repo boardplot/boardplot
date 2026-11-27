@@ -65,6 +65,8 @@ it('renders the refusal card on the server for an input the engine refuses', () 
   const fixture = getFixtures('table').find(candidate => candidate.id === 'steering-monthly')!;
   expect(renderToStaticMarkup(<LineChart data={data} xAxis={{ type: 'time' }} />)).toContain('data-bp-spec-error');
   expect(renderToStaticMarkup(<TableChart data={fixture.data} sort={{ segments: 'asc' } as never} />)).toContain('data-bp-spec-error');
+  const dimswitch = getFixtures('dimswitch')[0]!;
+  expect(renderToStaticMarkup(<DimSwitchChart data={{ ...(dimswitch.data as object), facts: [] } as never} />)).toContain('empty-data');
 });
 
 // Host props and numeric widths must reach the chart without being refused as options.

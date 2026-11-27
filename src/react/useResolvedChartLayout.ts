@@ -126,14 +126,15 @@ export function useDeferrableChartLayout(
   // shows the failure, as before.
   // Kept after commit: a background pass that React drops never becomes the last drawing.
   const drawn = useRef<{ request: ResolvedChartRequest; geometry: RenderResult }>(undefined);
+  const failed = current.failed ?? attempt.failed;
   useIsomorphicLayoutEffect(() => {
     if (painted && request) drawn.current = { request, geometry: painted };
-    else if (skip) drawn.current = undefined;
+    else if (skip || failed !== undefined) drawn.current = undefined;
   });
   const failure = attempt.deferred === undefined ? undefined : attempt.failure ?? deferredFailure(attempt.deferred);
   const waiting = !painted && attempt.deferred !== undefined && failure === undefined;
   // `pending`: a newer request is still laying out in the background.
   const pending = inputs !== now;
   if (waiting && drawn.current) return { ...drawn.current, deferred: attempt.deferred, pending };
-  return { request, geometry: painted, deferred: attempt.deferred, pending, failed: current.failed ?? attempt.failed, ...(failure === undefined ? {} : { failure }) };
+  return { request, geometry: painted, deferred: attempt.deferred, pending, failed, ...(failure === undefined ? {} : { failure }) };
 }
