@@ -55,7 +55,8 @@ describe('hover card date', () => {
     expect(categorySiblings(records, hit, true).map(record => record.seriesLabel)).toEqual(['Ended', 'Gap']);
   });
   // A single line's gap opened no card, and a stacked area's zero read as a share: the reader could not tell missing from zero.
-  it('opens a card on a gap that says the value is missing, and in a stack that it is drawn as zero', () => {
+  // The card prints a dash for the missing value, never the engine's reason.
+  it('opens a card on a gap that prints a dash for the missing value, in a line and in a stack', () => {
     const gapCard = (variant: string, values: (number | null)[][]) => {
       const { request, geometry } = build({ type: 'line', data: {
         categories: ['a', 'b', 'c'].map(id => ({ id, label: id.toUpperCase() })),
@@ -66,9 +67,9 @@ describe('hover card date', () => {
       const hit = hoverTargets(model, request, { point: gap.anchor as { x: number; y: number } });
       return hit.length > 1 ? sharedLabelCardContent(hit).rows.map(row => row.text) : labelCardContent(hit[0]!).rows.map(row => row.text);
     };
-    expect(gapCard('line', [[1, null, 3]])).toEqual(['B', 'S0: No observation']);
+    expect(gapCard('line', [[1, null, 3]])).toEqual(['B', 'S0: –']);
     const stacked = gapCard('stacked-area', [[1, null, 3], [2, 2, 2]]);
-    expect(stacked).toContain('S0: No observation; drawn as 0 in the stack');
+    expect(stacked).toContain('S0: –');
     expect(stacked.filter(text => text.includes('unavailable'))).toEqual([]);
   });
   const week1 = (labelled: boolean) => {
@@ -300,13 +301,13 @@ it('dims the dense paths of the other groups when a dot of a dense scatter is ho
 });
 
 // A column category with no value in any series had no record, so its empty slot opened no card.
-it('opens a No observation card on an empty column slot', () => {
+it('opens a card with a dash on an empty column slot', () => {
   const { request, geometry } = build({ type: 'column', data: { categories: ['a', 'b', 'c'].map(id => ({ id, label: id.toUpperCase() })),
     series: [{ id: 's', label: 'S', values: [1, null, 3] }] }, options: { size: { width: 640, height: 360 } } });
   const model = hoverModel(request, geometry);
   const tick = geometry.axes.find(axis => axis.axis === 'x')!.ticks.find(entry => entry.at === 'b')!;
   const hit = hoverTargets(model, request, { point: { x: tick.pos, y: 300 } });
-  expect(labelCardContent(hit[0]!).rows.map(row => row.text)).toEqual(['B', 'S: No observation']);
+  expect(labelCardContent(hit[0]!).rows.map(row => row.text)).toEqual(['B', 'S: –']);
 });
 
 // A host's extra facts must reach the card in their declared label, format and order, with no key dropped.
@@ -319,7 +320,7 @@ it('lists cell details in the card through detailFields, then the undeclared key
   const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
   const rows = (categoryId: string) => labelCardContent(records.find(record => record.target.owner.categoryId === categoryId)!).rows
     .filter(row => row.kind === 'field').map(row => row.text);
-  expect(rows('q1')).toEqual(['Deals: 1,234', 'Win rate: 31.5%', 'owner: North team', 'date: No observation']);
+  expect(rows('q1')).toEqual(['Deals: 1,234', 'Win rate: 31.5%', 'owner: North team', 'date: –']);
   expect(rows('q2')).toEqual([]);
 });
 
@@ -576,7 +577,8 @@ it('prints no state row on a metric stack category in the default state, and kee
 });
 
 // A card printed a bare "800 cases per month" or "18" with no name, so the reader could not tell which metric the number was.
-it('names the number on every card: a unit phrase in front, else the series, panel or sparkline name, a symbol unit kept on the number', () => {
+// A unit phrase in front of the number took the place of the series name, which the key prints.
+it('names the number on every card by its series, panel or sparkline name, with the unit as the spec writes it', () => {
   const cards = (spec: object) => {
     const { request, geometry } = build(spec);
     return interactionRecords({ request, geometry, scope: request.scope, claims: [] });
@@ -589,8 +591,8 @@ it('names the number on every card: a unit phrase in front, else the series, pan
       { id: 'rate', type: 'line', title: 'Completion', unit: '% of started cases', measure: { numerator: ['finished'], denominator: 'started' }, readout: 'change' }],
     windows: { base: { from: 'jan', to: 'feb', label: 'Jan–Feb' }, compare: { from: 'mar', to: 'apr', label: 'Mar–Apr' } },
   }, options: { stack: {}, size: { width: 640 } } });
-  expect(texts(stack.find(record => record.label === 'Started / Jan')!)).toEqual(['Started / Jan', 'Cases per month: 800']);
-  expect(texts(stack.find(record => record.label === 'Completion / Jan')!)).toEqual(['Completion / Jan', '% of started cases: 20.0']);
+  expect(texts(stack.find(record => record.label === 'Started / Jan')!)).toEqual(['Jan', 'Started: 800 cases per month']);
+  expect(texts(stack.find(record => record.label === 'Completion / Jan')!)).toEqual(['Jan', 'Completion: 20.0 % of started cases']);
   const spark = cards({ type: 'sparkline', data: { label: 'LTV at M6', values: [182, 196, 189], labels: ['Jan 2026', 'Feb 2026', 'Mar 2026'] }, options: { format: '$1,234' } });
   expect(texts(spark[1]!)).toEqual(['Feb 2026', 'LTV at M6: $196']);
   const line = cards({ type: 'line', data: { categories: ['Jan 26', 'Feb 26'], series: [
@@ -600,4 +602,125 @@ it('names the number on every card: a unit phrase in front, else the series, pan
   expect(sharedLabelCardContent(line).rows.map(row => [row.label, row.value ?? row.text])).toEqual([[undefined, 'Jan 26'], ['North:', '65.8'], ['South:', '52.4']]);
   const margin = cards({ type: 'column', data: { categories: ['Q1'], series: [{ id: 'margin', label: 'Margin', values: [12.5] }] }, options: { unit: '%' } });
   expect(texts(margin[0]!)).toEqual(['Q1', 'Margin: 12.5%']);
+});
+
+describe('default card rows', () => {
+  const card = (spec: object, category?: string, series?: string) => {
+    const { request, geometry } = build(spec);
+    const model = hoverModel(request, geometry);
+    const hit = model.records.find(record => (category === undefined || record.target.owner.categoryId === category)
+      && (series === undefined || record.target.owner.seriesId === series))!;
+    const view = hoverView(model, request, geometry, hoverTargets(model, request, { nodeId: hit.nodeIds[0] }).map(record => record.id), { card: true, highlight: false });
+    return view.card!.rows.map(row => [row.label ?? row.text, row.value, row.share, row.pointed].filter(cell => cell !== undefined));
+  };
+  const weeks = ['2026-09-07', '2026-09-14', '2026-09-21'];
+
+  // The title printed the axis tick ("7", "Jan") or a week as one day, and a running week read as a closed one.
+  it('titles the card with the period, its grain and its year, and a running period to date', () => {
+    const title = (categories: object[], category: string) => card({ type: 'column',
+      data: { categories, series: [{ id: 'r', label: 'Revenue', values: categories.map((_, index) => 10 + index) }] }, options: { size: { width: 640, height: 360 } } }, category)[0]![0];
+    expect(title(weeks.map((date, index) => ({ id: `w${index}`, label: date.slice(8), date })), 'w1')).toBe('Week of 14 Sep 2026');
+    expect(title(weeks.map((date, index) => ({ id: `w${index}`, date, partial: index === 2 })), 'w2')).toBe('Week of 21 Sep 2026 to date');
+    expect(title(['2026-12', '2027-01'].map(id => ({ id })), '2027-01')).toBe('January 2027');
+    expect(title([{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2', partial: true }], 'q2')).toBe('Q2 to date');
+  });
+
+  // A stack repeated "Share: x% of total" under every part, sorted its rows by the hover and printed a sliver at a precision no other row had.
+  it('lists a stack in key order with the share as a column, one Total row, the lines after it, and one format', () => {
+    const rows = card({ type: 'combo', data: { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }], series: [
+      { id: 'north', label: 'North', kind: 'column', values: [132, 140] }, { id: 'south', label: 'South', kind: 'column', values: [0.43, 0.2] },
+      { id: 'east', label: 'East', kind: 'column', values: [168, 171] }, { id: 'plan', label: 'Plan', kind: 'line', values: [290, 300] }] },
+    options: { variant: 'stacked', unit: '$', size: { width: 640, height: 360 } } }, 'q1', 'plan');
+    expect(rows).toEqual([['Q1'], ['North:', '$132', '43.9%', false], ['South:', '<$1', '0.1%', false], ['East:', '$168', '55.9%', false],
+      ['Total:', '$300'], ['Plan:', '$290', true]]);
+  });
+
+  // A funnel card printed the stage total twice and "No preceding stage"; a variance card printed its Actual twice.
+  it('prints each number once, with no engine words, on a funnel and a variance card', () => {
+    const funnel = { type: 'funnel', data: { categories: [{ id: 'v', label: 'Visits' }, { id: 'o', label: 'Orders' }],
+      series: [{ id: 'n', label: 'Visits', values: [5000, 600] }] }, options: { size: { width: 640, height: 360 } } };
+    expect(card(funnel, 'v')).toEqual([['Visits'], ['', '5,000', true]]);
+    expect(card(funnel, 'o')).toEqual([['Orders'], ['Visits:', '600', true], ['Advance:', '12%']]);
+    expect(card({ type: 'variance', data: { categories: [{ id: 'jan', label: 'Jan' }], series: [{ id: 'actual', label: 'Actual', values: [4204] },
+      { id: 'plan', role: 'reference', scenario: 'PL', values: [4000] }] }, options: { variant: 'integrated', variance: { of: 'actual', vs: 'plan' } } }, 'jan'))
+      .toEqual([['Jan'], ['Actual:', '4,204', true], ['PL:', '4,000'], ['vs PL:', '+204 (+5.1%)']]);
+  });
+
+  // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
+  it('prints the total the stack draws', () => {
+    const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const total = (options: object, series: object[], categories: object[] = cats) => card({ type: 'column', data: { categories, series },
+      options: { size: { width: 640, height: 360 }, ...options } }, 'q2', 'a').find(row => row[0] === 'Total:')?.[1];
+    const two = (a: number[], b: number[]) => [{ id: 'a', label: 'A', values: a }, { id: 'b', label: 'B', values: b }];
+    expect(total({ variant: 'stacked' }, two([60, 55], [30, 25]), cats.map(category => ({ ...category, total100: 200 })))).toBe('80');
+    expect(total({ variant: 'stacked' }, two([50, 55], [-20, -25]))).toBe('30');
+    expect(total({ variant: 'stacked100' }, two([30, 35], [45, 40]))).toBe('75');
+    expect(total({ variant: 'stacked100' }, two([60, 55], [40, 45]))).toBeUndefined();
+    // With a part missing and no authored whole, the known part is no 100 % share.
+    expect(card({ type: 'column', data: { categories: cats, series: [...two([10, 12], [5, 6]), { id: 'c', label: 'C', values: [null, null] }] },
+      options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'a').slice(1)).toEqual([['A:', '12', true], ['B:', '6', false], ['C:', '–', false], ['Total:', '18 (partial)']]);
+  });
+
+  // The rules against repeated numbers dropped a value that only matched by chance: a KPI's value, a funnel's conversion, a variance total.
+  it('keeps a value that equals another number by chance', () => {
+    expect(card({ type: 'kpi', data: { label: 'Orders', value: 100, delta: { vs: 50, scenario: 'PY', mode: 'both' } } })
+      .slice(0, 2)).toEqual([['Orders'], ['', '100', true]]);
+    expect(card({ type: 'funnel', data: { categories: [{ id: 'l', label: 'Leads' }, { id: 's', label: 'Calls' }], series: [{ id: 'n', label: 'Deals', values: [100, 50] }] },
+      options: { size: { width: 640, height: 360 } } }, 's')).toEqual([['Calls'], ['Deals:', '50', true], ['Advance:', '50%']]);
+    expect(card({ type: 'variance', data: { categories: [{ id: 'na', label: 'North' }, { id: 'so', label: 'South' }], series: [
+      { id: 'a', label: 'Web', values: [61, 44] }, { id: 'b', label: 'Store', values: [22, 18] },
+      { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, 55] }] },
+    options: { variant: 'integrated', variance: { of: 'total', vs: 'py' }, unit: '$m' } }, 'na')[1]).toEqual(['Current:', '$83m', true]);
+  });
+
+  // The card format crossed axes ("Items per order: 2"), printed a scaled sliver as "$0.04k", and a unit's digit hid a zero.
+  it('formats only the stack parts together, and bounds a sliver in any unit', () => {
+    const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const stack = (unit: string, values: number[][]) => card({ type: 'column', data: { categories: cats,
+      series: values.map((series, index) => ({ id: `s${index}`, label: `S${index}`, values: series })) },
+    options: { variant: 'stacked', unit, size: { width: 640, height: 360 } } }, 'q1', 's0').map(row => row[1]);
+    expect(stack('$', [[120000, 1], [43, 1], [180000, 1]]).slice(1, 5)).toEqual(['$120k', '<$1k', '$180k', '$300k']);
+    expect(stack('t CO2', [[132, 1], [0.43, 1], [168, 1]])[2]).toBe('<1 t CO2');
+    expect(card({ type: 'combo', data: { categories: cats, series: [{ id: 'o', label: 'Orders', kind: 'column', values: [420, 510] },
+      { id: 'r', label: 'Items per order', kind: 'line', axis: 'secondary', values: [1.85, 2.14] }] },
+    options: { secondaryAxis: { acknowledge: true }, size: { width: 640, height: 360 } } }, 'q1', 'o')[2]).toEqual(['Items per order:', '1.85', false]);
+  });
+
+  // A missing part fell below the Total, the legend's order was ignored, and a hovered ninth series fell off its own card.
+  it('keeps the key order with a missing part, the legend order and the hovered series past the row limit', () => {
+    const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const names = (spec: object, series: string) => card(spec, 'q2', series).map(row => row[0]);
+    const parts = [{ id: 'n', label: 'North', values: [100, 120] }, { id: 's', label: 'South', values: [50, null] }, { id: 'e', label: 'East', values: [80, 80] }];
+    expect(names({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'n'))
+      .toEqual(['Q2', 'North:', 'South:', 'East:', 'Total:']);
+    // A line with no value stays after the Total; a stack with a missing part marks its total partial, as the chart does.
+    const combo = card({ type: 'combo', data: { categories: cats, series: [parts[0], { id: 'p', label: 'Plan', kind: 'line', values: [200, null] }, parts[2]] },
+      options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'n');
+    expect(combo.map(row => row[0])).toEqual(['Q2', 'North:', 'East:', 'Total:', 'Plan:']);
+    expect(card({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'n')
+      .find(row => row[0] === 'Total:')?.[1]).toBe('200 (partial)');
+    expect(names({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', legend: { position: 'top', order: ['e', 's', 'n'] },
+      size: { width: 640, height: 360 } } }, 'n')).toEqual(['Q2', 'East:', 'South:', 'North:', 'Total:']);
+    const nine = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
+      values: [10 * index, 10 * index + 1] })) }, options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
+    expect(nine.find(row => row.at(-1) === true)?.[0]).toBe('S9:');
+    // The hovered series takes its own detail rows with it, not those of the row it replaces.
+    const detailed = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
+      values: [1, index >= 7 ? { number: 10 * index, details: { owner: index === 7 ? 'East' : 'West' } } : 10 * index] })) },
+    options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
+    expect(detailed.slice(-3, -1)).toEqual([['S9:', '80', true], ['owner:', 'West']]);
+  });
+
+  // An earlier partial period, closed since, read "to date".
+  it('says "to date" only for the running period', () => {
+    const title = (category: string) => card({ type: 'line', data: { categories: [{ id: '2026-01', partial: true }, { id: '2026-02' }, { id: '2026-03', partial: true }],
+      series: [{ id: 'o', label: 'Orders', values: [10, 25, 30] }] }, options: { size: { width: 640, height: 360 } } }, category)[0]![0];
+    expect([title('2026-01'), title('2026-03')]).toEqual(['January 2026', 'March 2026 to date']);
+    // A forecast after the running month is no actual, and a total category does not hide the other periods.
+    expect(card({ type: 'column', data: { categories: [{ id: '2026-11', partial: true }, { id: '2026-12' }],
+      series: [{ id: 's', label: 'Sales', values: [100, { number: 150, scenario: 'FC' }] }] }, options: { size: { width: 640, height: 360 } } }, '2026-11')[0]![0])
+      .toBe('November 2026 to date');
+    expect(card({ type: 'column', data: { categories: [{ id: '2026-01', label: 'Jan' }, { id: '2027-01', label: 'Jan' }, { id: 'total', role: 'total' }],
+      series: [{ id: 's', label: 'Sales', values: [80, 90, null] }] }, options: { size: { width: 640, height: 360 } } }, '2027-01')[0]![0]).toBe('January 2027');
+  });
 });

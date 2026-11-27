@@ -12,6 +12,8 @@ const EN = {
   "moreRows": "… {count} more {count|row|rows}",
   "comparisonLabel": "vs {label}:",
   "cardTabHint": "Press Tab to reach the card.",
+  "weekOf": "Week of {v1}",
+  "totalLabel": "Total",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -25,6 +27,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "moreRows": "… {count} weitere {count|Zeile|Zeilen}",
   "comparisonLabel": "ggü. {label}:",
   "cardTabHint": "Tab führt in die Karte.",
+  "weekOf": "Woche ab {v1}",
+  "totalLabel": "Summe",
 };
 
 export const { chartString } = chartStrings(EN, DE);

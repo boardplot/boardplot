@@ -29,7 +29,9 @@ import { SceneRenderer } from '../SceneRenderer';
 import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlight';
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
-  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, type CardSide, type CompositionOptions, type LabelCardInput, type LabelCardLayout, type LabelCardRow } from './labelCard';
+  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
+import { cardTitle, keyOrder, metricName, stackSeries } from './cardRows';
+import { chartString as funnelString } from '../../core/strings/funnel';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
 import { interactionTokens } from '../../core/a11y/theme';
@@ -41,8 +43,14 @@ export interface HoverModel {
   records: InteractionRecord[];
   placement?: OverlayInputs;
   occupied?: (OccupiedRect & { filled: boolean })[];
-  /** One drawn model owns the records, locale, composition and scene used to format these rows. */
-  cardRows?: Map<InteractionRecord, LabelCardRow[]>;
+  /** One drawn model owns the records, locale, composition and scene used to format these cards, keyed by their record ids. */
+  cardRows?: Map<string, LabelCardContent>;
+  /** The drawn legend's series ids, in its order. */
+  legend?: string[];
+  /** The series that are parts of a stack in some category (`stackKey`). */
+  stackSeries?: Set<string>;
+  /** Each record's place in the key, which a card with several series follows (`keyOrder`). */
+  order?: Map<InteractionRecord, number>;
   markBounds?: Map<InteractionRecord, Rect | undefined>;
 }
 
@@ -260,7 +268,42 @@ export function hoverModel(request: ResolvedChartRequest, geometry: RenderGeomet
   const model = isFullGeometry(geometry)
     ? { records: interactionRecords({ request, geometry, scope: request.scope, claims: [] }), placement: overlayInputs(request, geometry) }
     : { records: prepared?.records ?? [], placement: prepared?.overlay };
-  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map() };
+  const legend = (geometry as { legend?: { items: { id: unknown }[] } }).legend?.items.map(item => String(item.id));
+  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map(), ...legend?.length ? { legend } : {} };
+}
+
+/**
+ * How the card of `first` words its rows: the composition its chart draws,
+ * the period its category names, the metric a sparkline names, and the key's
+ * order. The pointer's card and the keyboard's reading share it.
+ */
+export function cardOptions(model: HoverModel, request: ResolvedChartRequest, first: InteractionRecord): LabelCardOptions {
+  const panel = first.target.panel === undefined ? undefined : model.placement?.panels?.find(entry => entry.panel === first.target.panel);
+  // A panel projects the option keys this question needs, so a panel's card
+  // words its share exactly as the same chart would on its own.
+  return { hundredPercent: hundredPercentComposition(panel?.type ?? request.type, panel ? panel.composition : request.options as CompositionOptions),
+    title: cardTitle(request, first, model.records), name: metricName(request, first.target.panel, first.target.owner.seriesId),
+    order: model.order ??= keyOrder(request, model.records, model.legend),
+    stackSeries: model.stackSeries ??= new Set([...model.records.filter(record => record.share).map(stackKey),
+      ...stackSeries(request, [undefined, ...model.placement?.panels?.map(entry => entry.panel) ?? []])]),
+    ...(panel?.type ?? request.type) === 'funnel' ? { conversionName: conversionName(request, first.target.panel) } : {} };
+}
+
+/**
+ * A funnel's word for its stage conversion, as the chart prints it: a
+ * centered funnel's column head ("Step conversion"), else the word of its
+ * labels ("12% advance" names "Advance").
+ */
+function conversionName(request: ResolvedChartRequest, panel: string | undefined): string | undefined {
+  let options: object = request.options;
+  for (const id of panel?.split('/') ?? []) {
+    const child = ((options === request.options ? request.data : undefined) as { panels?: { id?: unknown; options?: object }[] } | undefined)?.panels?.find(entry => entry.id === id);
+    if (child?.options) options = { ...child.options, locale: request.options.locale };
+  }
+  const wording = options as Parameters<typeof funnelString>[0];
+  if ((options as { variant?: unknown }).variant === 'centered') return funnelString(wording, 'stepCvr');
+  const word = funnelString(wording, 'stageAdvance', { v1: '\u0000' }).replace('\u0000', '').trim();
+  return word ? word.replace(/^\p{L}/u, letter => letter.toLocaleUpperCase()) : undefined;
 }
 
 /** Filled-mark ownership depends on the drawn scene, not the active card. */
@@ -420,14 +463,11 @@ export function hoverView(
   const scale = position.viewport?.scale ?? 1;
   const cssPoint = (point: Point) => ({ x: point.x * scale, y: point.y * scale });
   const cssRect = (rect: Rect): Rect => ({ ...cssPoint(rect), w: rect.w * scale, h: rect.h * scale });
-  // A panel projects the option keys this question needs, so a panel's card
-  // words its share exactly as the same chart would on its own.
-  const cardOptions = { hundredPercent: hundredPercentComposition(panel?.type ?? request.type,
-    panel ? panel.composition : request.options as CompositionOptions) };
+  const card = cardOptions(model, request, first);
   const pointer = position.viewport?.pointer && cssPoint(position.viewport.pointer);
   const base = { record: first, canvas,
     boundary: position.viewport && cssRect(position.viewport.boundary), chart: cssRect(canvas), pointer,
-    theme, measure: request.fontMetrics, locale, idPrefix: 'hover-card', card: cardOptions };
+    theme, measure: request.fontMetrics, locale, idPrefix: 'hover-card', card };
   // A card that follows the pointer needs no seat beside the mark: skip the marks, labels and path the seat solver reads.
   const input: LabelCardInput = position.follow && pointer ? { ...base, occupied: [], follow: true } : (() => {
     const marks = active.map(record => {
@@ -453,14 +493,14 @@ export function hoverView(
       mark: marks[0] && cssRect(marks[0]) };
   })();
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
-  const card = !flags.card ? undefined : withChartFormats(request.options, () => active.length > 1
-    ? layoutLabelCardContent(input, sharedLabelCardContent(active, locale, cardOptions, geometry.scene, model.cardRows)) : layoutLabelCard(input));
+  const layout = !flags.card ? undefined : withChartFormats(request.options, () => active.length > 1
+    ? layoutLabelCardContent(input, sharedLabelCardContent(active, locale, card, geometry.scene, model.cardRows)) : layoutLabelCard(input));
   const scene = flags.highlight ? highlightScene(geometry.scene, model.records, active, theme)
     : flags.keyboard ? outlineScene(geometry.scene, model.records, active, theme) : geometry.scene;
   // Keep the chart's description fallback alongside the tooltip's reading.
   // The description goes back to its original text when the card closes.
-  const a11y = card ? { ...geometry.a11y, desc: describedWithCard(geometry.a11y.desc, card.accessibleText) } : geometry.a11y;
-  return { ...geometry, a11y, scene, card, cardTheme: theme, ...(card ? { cardInput: input, active } : {}), panel: first.target.panel };
+  const a11y = layout ? { ...geometry.a11y, desc: describedWithCard(geometry.a11y.desc, layout.accessibleText) } : geometry.a11y;
+  return { ...geometry, a11y, scene, card: layout, cardTheme: theme, ...(layout ? { cardInput: input, active } : {}), panel: first.target.panel };
 }
 
 /** The curve of the following card's glide: fast at first, then a soft landing, as the ECharts tooltip moves. */
