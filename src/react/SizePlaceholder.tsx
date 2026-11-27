@@ -6,6 +6,7 @@ import type { OptionsInput } from '../core/types/optionInput';
 import type { BaseOptions } from '../core/types/options';
 import type { Size } from '../core/geometry';
 import type { RefusedLayout } from '../core/types/scene';
+import type { RefusalFinding } from '../core/schema/refusals';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import { EMPTY_DATA } from '../core/emptyData';
@@ -71,7 +72,7 @@ export function SizePlaceholder(props: RefusalProps & EmptyProps & PlaceholderFr
 }
 
 /** Reader failure state; full mode discloses messages and suggestions. Codes, paths and fixes stay in data attributes in both modes. */
-export function LayoutRefusal(props: PlaceholderFrame & { refusals: readonly DocumentFinding[]; theme?: Theme | ThemeRef }): ReactElement {
+export function LayoutRefusal(props: PlaceholderFrame & { refusals: readonly RefusalFinding[]; theme?: Theme | ThemeRef }): ReactElement {
   return <ReaderBox {...props} kind="spec-error" findings={props.refusals} />;
 }
 

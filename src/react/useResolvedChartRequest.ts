@@ -36,15 +36,14 @@ export function useResolvedChartRequest(input: ChartRequest, context: RequestCon
   const request = useStableValue({ ...input, options });
   const inherited = useStableValue({ ...provider, ...context });
   const revision = useDeferredRevision();
-  const attempt = useMemo((): { resolved?: ResolvedChartRequest; deferred?: DeferredName; seeded?: true; failed?: unknown } => {
+  const attempt = useMemo((): { resolved?: ResolvedChartRequest; deferred?: DeferredName; seeded?: true } => {
     if (idle) return {};
     const resolve = provider?.resolve ?? resolveChartRequest;
     try {
       // Revision 0 is the server snapshot: the server pass and the hydrating pass see only the modules the chart's entry links (`asFirstFrame`).
       return { resolved: revision === 0 ? asFirstFrame(linked, () => resolve(request, inherited)) : resolve(request, inherited) };
     } catch (error) {
-      // The caller draws the card for an input the engine cannot resolve (ChartFailure).
-      if (!(error instanceof DeferredCoreError)) return { failed: error };
+      if (!(error instanceof DeferredCoreError)) throw error;
       const seeded = error.module === 'theme-rules' ? preparedThemeRequest(resolve, request, inherited, prepared) : undefined;
       return seeded ? { resolved: seeded, seeded: true } : { deferred: error.module as DeferredName };
     }
@@ -85,7 +84,7 @@ export function useResolvedChartRequest(input: ChartRequest, context: RequestCon
   const layoutRequest = useMemo(() => resolved, [
     request.data, resolved?.type, resolved?.scope.chart, resolved?.scope.panel, stableLayoutOptions, geometryKey, authoredSizes, localeKey, inputWarnings,
   ]);
-  return { request: resolved, layoutRequest, provider, deferred: attempt.deferred, failed: attempt.failed };
+  return { request: resolved, layoutRequest, provider, deferred: attempt.deferred };
 }
 
 type Resolve = (request: ChartRequest, context: RequestContext) => ResolvedChartRequest;

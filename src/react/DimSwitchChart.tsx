@@ -2,7 +2,6 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { NormalizeError } from '../core/normalize/shared';
 import { compileDimSwitch, dimSwitchExpansionIdError, DimSwitchIdError, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { checkDimSwitchData } from '../core/charts/dimswitch/dataChecks';
 import { atPath } from '../core/diagnostics/describe';
@@ -28,7 +27,7 @@ import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { asSize, RefusalBoundary, useChartFailure } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
 import type { ContainerSizeOptions } from './useContainerSize';
@@ -107,6 +106,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;
  }
  function DrawnDimSwitch(props: NormalizedProps): ReactElement {
+  return useCard(drawDimSwitch, props);
+ }
+ function drawDimSwitch(props: NormalizedProps): ReactElement {
   const {data,variant:controlledVariant,defaultVariant='by-measure',depth:controlledDepth,defaultDepth=1,splits:controlledSplits,defaultSplits=false,collapsed:controlledCollapsed,defaultCollapsed,onViewChange,inlineVisibility,defaultInlineVisibility,onInlineVisibilityChange,size,fit,fallbackSize,measureWidths,hover,onWarnings,onRefused,renderRefused,scope,fontMetrics,styleNonce,idPrefix,handleRef,onContentWidth,onScrollChange,fillHeight,rowLabelLead,portalContainer,onRowSelect,isRowSelectable,toolbar=false,interactions,defaultColumnVisibility,onColumnVisibilityChange,sortable,defaultSort,onSortChange,rootsHidden,onEmpty,onFormatsFit,exporter,...options}=props;
   const refusals=optionRefusals({...options,variant:controlledVariant,depth:controlledDepth,splits:controlledSplits},'dimswitch',checkKeys);
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
@@ -157,20 +159,19 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
         return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
       },true);
     } catch(error) {
-      // An unknown row id draws the dimswitch card; any other refusal the boundary's card (useChartFailure).
-      if(error instanceof NormalizeError) return error;
+      if(error instanceof DimSwitchIdError) return error;
       throw error;
     }
   },[stableData,compileOptions,variant,splits]);
   const compilation=useMemo(()=>{
-    if (!ordinaryFolds || !expansion || values instanceof NormalizeError) return values;
+    if (!ordinaryFolds || !expansion || values instanceof DimSwitchIdError) return values;
     const folded=new Set(values.depthCollapsed);
     for (const id of expansion.expanded ?? []) folded.delete(id);
     for (const id of expansion.collapsed ?? []) folded.add(id);
     return {...values,options:{...values.options,expansion:{collapsed:[...folded]}}};
   },[values,ordinaryFolds,expansion]);
   const failedCompile=compilation instanceof DimSwitchIdError;
-  const compiled=compilation instanceof NormalizeError ? undefined : compilation;
+  const compiled=failedCompile ? undefined : compilation;
   // Warning objects handed to the host stay editable until the next authored compile.
   // An ordinary fold can keep the cells while giving that view fresh warning objects.
   const warningOptions=hostWarnings.current && expansion!==undefined ? stableOptions : compileOptions;
@@ -178,16 +179,13 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     [stableData,warningOptions,variant,splits,failedCompile]);
 
   const maxDepth=compiled?.maxDepth;
-  // A depth past the outline levels (a filter can leave fewer) is the compile's own refusal, which draws its card (useChartFailure).
-  let depthFailure: unknown;
+  // A depth past the outline levels (a filter can leave fewer) is the compile's own refusal, which the boundary draws as a card.
   if(maxDepth!==undefined && (!Number.isInteger(depth) || depth<1 || depth>maxDepth)) {
-   try {
-    withEngineNotes(()=>compileDimSwitch(stableData,{...compileOptions,variant,depth,splits},{records:false}),true);
-    depthFailure=new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
-   } catch(error) { depthFailure=error; }
+   withEngineNotes(()=>compileDimSwitch(stableData,{...compileOptions,variant,depth,splits},{records:false}),true);
+   throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
   }
   const foreign=failedCompile ? undefined : foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
-  const refused=failedCompile || foreign!==undefined || depthFailure!==undefined;
+  const refused=failedCompile || foreign!==undefined;
   // Depth only selects folds. Keep the compiled values and table widths.
   const depthDefaults=useMemo(()=>{
     if(!compiled) return [];
@@ -251,11 +249,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     reported.current=key;
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
-  const card=useChartFailure(depthFailure ?? (compilation instanceof NormalizeError && !failedCompile ? compilation : undefined));
-  if(card) return card;
   if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
-  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled!.options} exporter={exporter} data={compiled!.data} collapsed={collapsed} onCollapsedChange={toggle}
+  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compilation.options} exporter={exporter} data={compilation.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}

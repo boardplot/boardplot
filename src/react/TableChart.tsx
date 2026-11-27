@@ -37,7 +37,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { asSize, RefusalBoundary, useChartFailure, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -527,7 +527,11 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
 /** The table without the unknown-key check, for code that links this module directly. */
 export const TableChart = createTableChart();
 
-function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
+type DrawnTableProps = { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined };
+function DrawnTable(props: DrawnTableProps): ReactElement {
+  return useCard(drawTable, props);
+}
+function drawTable({ table: props, checkKeys, linked }: DrawnTableProps): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
   const originalFloorRequest = compiledRequest?.request;
   const {
@@ -627,7 +631,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const registrations = newlyKept ? themeRegistrations() : undefined;
   // The engine owns the compiled values. The viewport changes the grid, not the formats read from those values.
   const measuredFrame = compiledRequest && keepRequest && size === 'container' ? container.size : undefined;
-  const { request: paintRequest, layoutRequest: fullLayoutRequest, provider, deferred, failed } = useResolvedChartRequest({
+  const { request: paintRequest, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({
     type: 'table', data, target, options: measuredFrame === undefined ? requestOptions : { ...requestOptions, size: { width: 1, height: 1 } },
     scope, fontMetrics,
   }, {}, prepared, requestModules, false, registrations, measuredFrame);
@@ -661,16 +665,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // values and skips a copy of every row and cell on each change of view. A host that receives them gets its own
   // copy, so a change it makes never reaches a later drawing. An exporter receives the request, not these values.
   const sharesValues = !onWarnings && !onRowSelect && !isRowSelectable && !rowLabelLead;
-  const resolution = useMemo(() => {
-    try {
-      return { resolved: !layoutRequest || !tableOptions ? undefined : initialPrepared
-        ? { table: { ...initialPrepared.table, provenance: {} }, warnings: initialPrepared.warnings ?? [] }
-        : resolveTable(layoutRequest.data as TableData, tableOptions, undefined, sharesValues) };
-    } catch (error) {
-      return { failed: error };
-    }
-  }, [layoutRequest?.data, resolveKey, initialPrepared, sharesValues]);
-  const { resolved } = resolution;
+  const resolved = useMemo(() => !layoutRequest || !tableOptions ? undefined : initialPrepared
+    ? { table: { ...initialPrepared.table, provenance: {} }, warnings: initialPrepared.warnings ?? [] }
+    : resolveTable(layoutRequest.data as TableData, tableOptions, undefined, sharesValues),
+  [layoutRequest?.data, resolveKey, initialPrepared, sharesValues]);
   // Selection, labels and prepared snapshots expose mutable rows. Re-read those rows wherever
   // a fresh request previously refreshed the width plan, footer and hover records.
   const exposedTable = useRef<ResolvedTable>(undefined);
@@ -1664,9 +1662,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         .filter(([, value]) => value !== undefined)) } }),
   } : undefined, [exporter, drew, request, data, table, collapsedSet, rootsHidden, columnVisibility, inlineVisibility, contentWidth, originalFloorRequest]);
   useExportLink(exporter, exported);
-  // An input the engine threw on draws its card in place of the table.
-  const card = useChartFailure(failed ?? resolution.failed);
-  if (card) return card;
   if (refusedOptions.length && request?.theme) return wrap(<LayoutRefusal refusals={refusedOptions} theme={request.theme} options={request.options} size={request.size} />);
   if (floorAttempt.deferred || !resolved || !table || !theme || !tableOptions || stylesheet === undefined) {
     return wrap(<LoadingPlaceholder theme={stableOptions.theme} failure={failure ?? floorFailure} options={{ ...stableOptions, target }} />);

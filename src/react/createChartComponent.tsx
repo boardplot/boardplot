@@ -48,7 +48,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { asSize, RefusalBoundary, useChartFailure, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useCard, type PerTypeSizeOptions } from './RefusalBoundary';
 import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -204,6 +204,9 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[], useZoom: ZoomHook = noZoom): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
+    return useCard(draw, props);
+  }
+  function draw(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover = true, onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, zoom, styleNonce, idPrefix,
       background, storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
@@ -418,10 +421,6 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       return idPrefix === undefined ? body : <IdPrefixContext.Provider value={checkedIdPrefix(idPrefix)}>{body}</IdPrefixContext.Provider>;
     };
 
-    // An input the engine threw on draws its card in place of the chart.
-    const failed = first.failed ?? full.failed ?? wide.failed ?? wider.failed;
-    const card = useChartFailure(failed);
-    if (card) return card;
     // The busy box takes the refusal's size: a host without a height
     // would otherwise swap heights, show or hide its scrollbar and restart the settle.
     if (settling && resolved.request && geometry) return frame(<LoadingPlaceholder fixedSize={fixedSize} theme={resolved.request.theme} size={geometry.size} options={{ ...stableOptions, target }} />);
