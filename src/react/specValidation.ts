@@ -57,6 +57,8 @@ export interface ParsedChartSpec {
  * unknown type in the spec reads.
  */
 export interface SpecParse {
+  /** The spec as the parse reads it: its JSON form when JSON can carry it. */
+  source: unknown;
   types: readonly string[];
   finish(): ParsedChartSpec;
 }
@@ -81,7 +83,11 @@ const staticCanonical = (name: string): string | undefined => {
   return Object.hasOwn(schemaLoaders, matched) ? matched : aliasOwners.get(matched);
 };
 
-export function beginSpecParse(spec: unknown, chart?: string): SpecParse {
+export function beginSpecParse(input: unknown, chart?: string): SpecParse {
+  // A spec reads as JSON carries it from a server to the browser: a key set to undefined counts as absent, and
+  // undefined, NaN or Infinity in an array reads as null. A value JSON cannot carry at all leaves the spec as written.
+  let spec = input;
+  try { spec = JSON.parse(JSON.stringify(input)); } catch { /* read as written */ }
   // The document parser wraps a bare chart into a one-chart envelope under
   // its `name`, default `chart`; its findings point back into the spec the
   // caller sent.
@@ -107,6 +113,7 @@ export function beginSpecParse(spec: unknown, chart?: string): SpecParse {
   // and double every diagnostic.
   let settled: { value: ParsedChartSpec } | { thrown: unknown } | undefined;
   return {
+    source: spec,
     types: referencedChartTypes(selection.selected.type, selection.selected.data, staticCanonical),
     finish: () => {
       if (!settled) {

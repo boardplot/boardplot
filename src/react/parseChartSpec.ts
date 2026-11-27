@@ -17,7 +17,10 @@ export { specSettings } from './specValidation';
 export async function parseChartSpec(spec: unknown, chart?: string): Promise<ParsedChartSpec> {
   const begun = beginSpecParse(spec, chart);
   await loadChartTypes(begun.types, { schemas: true, cores: false });
-  return begun.finish();
+  const parsed = begun.finish();
+  // prepareChart keys the page of the spec this parse read; a spec JSON would change has no such page.
+  if (begun.source !== spec) (parsed.request as unknown as Record<symbol, unknown>)[Symbol.for('boardplot.specSource')] = [begun.source, chart];
+  return parsed;
 }
 
 /** The chart's own type and, for a grid, its panels' types: the cores a layout of this request reaches. */

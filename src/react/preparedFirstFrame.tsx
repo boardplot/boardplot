@@ -1,12 +1,11 @@
 import { useContext, useMemo, type ReactElement } from 'react';
 import { asFirstFrame } from '../core/deferred';
 import { ENGINE_REV } from '../core/engine';
-import { resolveTargetTheme } from '../core/theme';
+import { resolveTargetTheme, themes } from '../core/theme';
 import type { RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import { checkedIdPrefix, IdPrefixContext } from './idPrefix';
-import { preparedResult } from './prepared';
-import { preparedInputKey } from './preparedInput';
+import { preparedInputKey, preparedResult } from './preparedInput';
 import { SceneRenderer } from './SceneRenderer';
 import { LayoutRefusal, SizePlaceholder, type PlaceholderFrame } from './SizePlaceholder';
 import { BoardplotThemeContext } from './themeContext';
@@ -29,11 +28,11 @@ export function usePreparedFirstFrame(spec: unknown, props: BoardplotChartProps,
   const context = useContext(BoardplotThemeContext);
   const grouped = useContext(ScaleGroupContext) !== undefined;
   const story = (props as { storyLink?: unknown }).storyLink !== undefined;
-  const candidate = !grouped && !story && prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.inputKey !== undefined && prepared.result.type !== 'dimswitch' ? prepared : undefined;
-  const matches = useMemo(() => {
-    if (!candidate) return false;
-    return preparedInputKey(spec, { size, fit, fallbackSize, rows, columns }, context, { theme: hostTheme, target: hostTarget }) === candidate.inputKey;
-  }, [candidate, spec, hostTheme, hostTarget, size, fit, fallbackSize, rows, columns, context]);
+  const candidate = !grouped && !story && prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.result.type !== 'dimswitch' ? prepared : undefined;
+  const host = { theme: hostTheme, target: hostTarget, size, fit, fallbackSize, rows, columns };
+  const matches = useMemo(() => !!candidate?.inputKeys?.includes(preparedInputKey(spec, host, context, themes)!),
+    // The host props count by their values, so a new props object with the same values keeps the result.
+    [candidate, spec, context, ...Object.values(host)]);
   const chart = matches ? candidate : undefined;
   const target = frame.options?.target as RenderTarget;
   const theme = useMemo(() => {

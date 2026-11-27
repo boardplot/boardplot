@@ -20,22 +20,23 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
   const raw = record(chart.options);
   const target = host.target ?? raw.target ?? settings.target;
   const input = host.size === 'container' ? host.fallbackSize : host.size ?? raw.size;
-  const type = typeof chart.type === 'string' ? chart.type : undefined;
+  const svg = host.prepared?.kind === 'svg' ? host.prepared.result : undefined;
+  const type = text(chart.type);
   const policy = chartSizing(type ?? '', raw);
   const theme = host.theme ?? raw.theme ?? chart.theme ?? root.theme ?? settings.theme;
   let size;
   try {
     const resolved = resolveTargetSize(target as RenderTarget, input as BaseOptions['size']);
     size = resolved.sizePx;
-    if (type && !resolved.fixed.height && host.prepared?.kind !== 'svg') {
+    if (type && !resolved.fixed.height && !svg) {
       size.height = hostlessHeight(policy, size.width, size.height, true);
       const data = record(chart.data);
       const rows = [data.categories, data.rows, data.tasks, data.items, data.steps].find(Array.isArray);
       if (rows?.length && contentSized(type, { size: input }, policy.fit)) {
         // A chart that sets textScale or textSize takes neither from the provider.
-        const chartText = raw.textScale !== undefined || raw.textSize !== undefined ? { textScale: raw.textScale, textSize: raw.textSize } : { textScale: settings.textScale, textSize: settings.textSize };
-        const textScale = textScaleOf({ ...chartText, target });
-        const textSize = textSizeOf({ ...chartText, target });
+        const chartText = { ...(raw.textScale !== undefined || raw.textSize !== undefined ? raw : settings), target };
+        const textScale = textScaleOf(chartText);
+        const textSize = textSizeOf(chartText);
         // Keep the first frame independent of lazy validation. Read only bounded, plain geometry data.
         const tokens = themeForWidth(themeForDensity(resolveTargetTheme(undefined, target as RenderTarget, textScale, textSize), settings.density, size.width), size.width);
         const authored = record(theme);
@@ -59,8 +60,7 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
             pitch = Math.max(pitch, Math.ceil(barsH / (typeof raw.bandFraction === 'number' ? raw.bandFraction : 0.7)));
           }
           pitch = tokens.space.barRow?.pitch ?? pitch;
-          if (typeof barRow.pitch === 'number' && barRow.pitch >= 4 && barRow.pitch <= 120
-            && typeof barRow.thickness === 'number' && barRow.thickness >= 2 && barRow.thickness <= 96) pitch = barRow.pitch;
+          if (within(barRow.pitch, 4, 120) && within(barRow.thickness, 2, 96)) pitch = barRow.pitch as number;
         }
         // shortcut: derived notes and chart-specific annotations need prepared geometry for an exact first frame.
         size.height = rowSizing(type, size, { chromeH: size.height - frame.plot.h + (frame.deficit ?? 0) + 8, minimumRowsH: 0, naturalRowsH: rows.length * pitch }).naturalHeight;
@@ -72,15 +72,22 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
   const language = record(raw.locale).language ?? root.locale;
   const options = {
     target: target as RenderTarget,
-    title: typeof raw.title === 'string' ? raw.title : undefined,
-    source: typeof raw.source === 'string' ? raw.source : undefined,
+    title: text(raw.title),
+    source: text(raw.source),
     locale: typeof language === 'string' ? { language } : undefined,
     margin: margin(raw.margin),
     canvas: { margin: margin(record(raw.canvas).margin) },
   };
-  size = host.prepared?.kind === 'svg' ? host.prepared.result.size : size;
-  return { options, size,
+  return { options, size: svg ? svg.size : size,
     fixedSize: host.fixedSize, theme: theme as Theme | ThemeRef | undefined };
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function within(value: unknown, low: number, high: number): boolean {
+  return typeof value === 'number' && value >= low && value <= high;
 }
 
 function record(value: unknown): Record<string, unknown> {
