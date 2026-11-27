@@ -50,7 +50,8 @@ export function stackedOpening(data: ChartData, options: ColumnOptions, size: { 
     || Object.entries(options).some(([key, value]) => value !== undefined && !openingOptions.has(key))) return;
   const plain = beforeUnprintedLabelNote(options);
   if (!plain || Object.getOwnPropertySymbols(plain).some(key => !openingMarkers.has(key))) return;
-  if (!simpleMissingStack(data)) return;
+  // The hidden-value note can carry bold names or texts, which measure the footer in bold.
+  if (!simpleMissingStack(data) || JSON.stringify([data, options.strings]).includes('**')) return;
   // A speculative failure belongs to the ordinary drawing if it reaches that case.
   return speculate(() => {
     const state = [size.width, size.height, layoutStepKey(), currentSmallValues(), formatScopeKey(options), staticFrame.countable].join(':');
