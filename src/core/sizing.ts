@@ -2238,23 +2238,42 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // This marker reaches only the raw card layout, after the standalone size gate.
   const rawOptions = definition.type === 'kpi'
     ? { ...layoutOptions, typeClass: 'M' } as unknown as O : layoutOptions;
-  const probeFrame: FrameFitProbe | undefined = definition.type === 'status' && !nested && !staticFrame.pinned
+  const mapProbe = definition.type === 'choropleth' && (data as { pack?: string } | null)?.pack === 'world'
+    && (options as { labels?: unknown } | undefined)?.labels === 'all' && !nested && !tight && mode === 'full' && !staticFrame.live && !staticFrame.pinned
+    && requested.width < 480 && (options as TargetSizeOptions | undefined)?.[TARGET_SIZE]?.fixed.height === false
+    && (options?.measure ?? defaultMeasurer) === defaultMeasurer;
+  let mapRefusal: RefusedLayout | undefined;
+  const statusProbe = definition.type === 'status' && !nested && !staticFrame.pinned
     && (options as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE]
     && (options as TargetSizeOptions | undefined)?.[TARGET_SIZE]?.fixed.height
-    && hasCompleteTextWidths(options?.measure ?? defaultMeasurer)
+    && hasCompleteTextWidths(options?.measure ?? defaultMeasurer);
+  const probeFrame: FrameFitProbe | undefined = mapProbe || statusProbe
     ? (size, sizing, frame) => {
       const gate = resolveSizing(gatePolicy, size, {
         ...sizing,
         minHeight: frameHeightFloor(sizing.minHeight, frame) - (liveFooterExtra.get(frame) ?? 0),
         measuredMinHeight: frameHeightFloor(sizing.measuredMinHeight, frame),
       });
-      return fitsSize(size, gate) ? undefined : measuredFrameRefusal(definition.type, definition.title, size, gate, frame);
+      if (fitsSize(size, gate)) return;
+      const refusal = measuredFrameRefusal(definition.type, definition.title, size, gate, frame);
+      if (mapProbe) mapRefusal = refusal;
+      return refusal;
     } : undefined;
   const layout = (runOptions: O | undefined) => {
     const clean = withoutCallState(runOptions);
     // Gantt's own content-height rule requests the next wider card. It removes
     // the call marker before retaining its full-mode options.
     const memo = (runOptions as (O & { [CARD_HEIGHT_MEMO]?: CardHeightMemo }) | undefined)?.[CARD_HEIGHT_MEMO];
+    // The raw map API always returns a drawing. Only this private fit can stop a
+    // root map pass with the refusal it just measured at the requested size.
+    if (mapProbe) {
+      try {
+        return definition.layout(data, { ...clean, [FRAME_FIT_PROBE]: probeFrame } as unknown as O);
+      } catch (error) {
+        if (!mapRefusal || error !== mapRefusal) throw error;
+        return mapRefusal;
+      }
+    }
     return definition.layout(data, definition.type === 'table' || definition.type === 'dimswitch' ? { ...clean, [PLAN_ONLY]: true } as unknown as O : definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
       ...((runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE] ? { [ACCEPTANCE_PROBE]: true } : {}),
     } as unknown as O : probeFrame ? { ...clean, [FRAME_FIT_PROBE]: probeFrame } as unknown as O : clean);
