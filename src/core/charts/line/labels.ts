@@ -1,5 +1,5 @@
 import { spread1D, spread1DResult, sweepHide, warnSpreadOverflow } from '../../collide';
-import { warnSliverLabels } from '../band/labels';
+import { warnSliverLabels } from '../band/sliverLabels';
 import { fitText } from '../../label/fitText';
 import { lastActualIndex } from './marks';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
