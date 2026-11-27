@@ -50,6 +50,8 @@ import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
 import { asSize, RefusalBoundary, useCard, type PerTypeSizeOptions } from './RefusalBoundary';
 import { withStackFocus } from '../core/stackFocus';
+import { readsHiddenSeries, withHiddenSeries } from '../core/hiddenSeries';
+import type { SeriesToggle } from './SceneRenderer';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -62,6 +64,7 @@ const DrawnSurface = memo(HoverSurface);
 
 /** Chart types whose width refusal scrolls instead of drawing the refusal card. */
 const SCROLLS_WIDE = new Set(['cohort']);
+const NONE: string[] = [];
 
 /** The print-only layout's input while it has nothing to lay out (`idle`). */
 const IDLE_REQUEST = { type: 'column', data: undefined } as unknown as ChartRequest;
@@ -263,12 +266,20 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // A zoomed view is a new request, so the server's layout no longer matches it and the client lays it out.
     // Once detached it stays detached: after a resize, a reset would no longer match it either.
     const detached = useRef<PreparedChart | undefined>(undefined);
-    if (zoomed.derived && prepared) detached.current = prepared;
+    // A legend click hides a series of a column or bar chart, unless the page takes the click or turns hover off.
+    // One list serves the layouts, the legend, the hover card and the picture; it empties when the offer ends.
+    const offered = hover !== false && onSeriesClick === undefined && readsHiddenSeries(type, stableOptions);
+    const [hiddenSeries, setHidden] = useState(NONE);
+    const hidden = offered ? hiddenSeries : NONE;
+    useEffect(() => { if (!offered) setHidden(NONE); }, [offered]);
+    // A view without a series no longer matches the server's layout either.
+    if ((zoomed.derived || hidden.length) && prepared) detached.current = prepared;
     const attached = zoomed.derived || detached.current === prepared ? undefined : prepared;
     const defer = deferLayout && attached === undefined && !printing;
     // A metric stack's focus look draws the category the pointer or the keyboard rests on as its focus (HoverSurface).
     const [stackFocus, setStackFocus] = useState<string>();
-    const focused = useMemo(() => withStackFocus(zoomed.options, stackFocus), [zoomed.options, stackFocus]);
+    const visible = useMemo(() => withHiddenSeries(zoomed.options, hidden), [zoomed.options, hidden]);
+    const focused = useMemo(() => withStackFocus(visible, stackFocus), [visible, stackFocus]);
     const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...focused as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, fallback: container ? measured.fallback : undefined, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
     // A cohort refused for width alone draws at the width it needs in a horizontal
@@ -295,12 +306,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       : printShort ? printBox(printShort, printShort)
       : short && { width: Math.ceil(short.sizing.minWidth), ...(typeof asked === 'object' && asked.height !== undefined ? { height: asked.height } : {}) };
     useEffect(() => { shownWide.current = wideSize; });
-    const wide = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: wideSize || undefined }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
+    const wide = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...visible as typeof noteOptions, size: wideSize || undefined }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { fit: printShort || measured.printFill ? 'fill' : resolvedFit, skipLayout: !wideSize, idle: noData, errorAsRefusal: true, linked, defer });
     // A story's step panel can raise the minimum at the larger box: print scales once more, from the minimum found there.
     const printShorter = printShort && wide.geometry?.refused && wide.geometry.warnings.some(isSizeDependentRefusal) ? wide.geometry : undefined;
     // Off print it reads nothing: no resolved request and no copy of the data on every render.
-    const wider = useDeferrableChartLayout(printShorter ? { type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: printBox(printShort!, printShorter) }, annotations: zoomed.annotations as Annotation[] | undefined } : IDLE_REQUEST, {},
+    const wider = useDeferrableChartLayout(printShorter ? { type, data: zoomed.data as D, target, options: { ...visible as typeof noteOptions, size: printBox(printShort!, printShorter) }, annotations: zoomed.annotations as Annotation[] | undefined } : IDLE_REQUEST, {},
       { fit: 'fill', skipLayout: !printShorter, idle: !printShorter, errorAsRefusal: true, linked, defer });
     const draws = (layout: typeof wide) => layout.geometry !== undefined && !layout.geometry.refused && isFullGeometry(layout.geometry) && chartRefusals(layout.geometry.warnings).length === 0;
     const scrolls = draws(wide) || (printShorter !== undefined && draws(wider));
@@ -344,6 +355,16 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     }, [displayRef, attachZoom]);
     const refusals = refusedOptions.length ? refusedOptions : !geometry || geometry.refused ? []
       : isFullGeometry(geometry) ? refusalFindings(chartRefusals(geometry.warnings)) : geometry.refusals ?? [];
+    // A refusal card has no legend to click the series back: every series shows again.
+    const refusedHidden = hidden.length > 0 && !layoutRefusals.every(isSizeDependentRefusal);
+    useEffect(() => { if (refusedHidden) setHidden(NONE); }, [refusedHidden]);
+    // The legend click arrives after mount, as the keyboard stop does: the server HTML and the hydrating render have no button.
+    const seriesToggle = useMemo((): SeriesToggle | undefined => {
+      if (!offered || !measured.client) return undefined;
+      const ids = ((zoomed.data as { series?: { id: string; role?: string }[] }).series ?? []).flatMap((s) => (s.role ?? 'data') === 'data' ? [s.id] : []);
+      // The last series shown stays.
+      return { ids, hidden, toggle: (id) => setHidden((list) => list.includes(id) ? list.filter((x) => x !== id) : ids.some((x) => x !== id && !list.includes(x)) ? [...list, id] : list) };
+    }, [offered, measured.client, zoomed.data, hidden]);
 
     // The callbacks sit in refs: an inline one is new on every render and must not fire its effect again.
     const geometryListener = useRef(onGeometry);
@@ -443,8 +464,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={drawnRequest(request, view) === request ? request : asBar!} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} onHoverChange={onHoverChange} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
-        : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} />;
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view) === request ? request : asBar!} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} onHoverChange={onHoverChange} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} seriesToggle={seriesToggle} />
+        : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} seriesToggle={seriesToggle} />;
     };
     const drawn = geometry;
     const chart = (

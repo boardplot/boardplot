@@ -175,6 +175,8 @@ export interface BarDomain {
   cats: NormCat[];
   running: ReadonlySet<Id>;
   dataSeries: NormSeries[];
+  /** Every plotted series, a hidden one included (hiddenSeries.ts): the colours and the legend read these. */
+  keySeries: NormSeries[];
   refSeries: NormSeries[];
   /** The exhibit-wide format raster; `fmt` is its formatter. */
   valueSpec: ReturnType<typeof import('../../formatSpec').seriesRasterFormatter>;
@@ -208,6 +210,8 @@ export interface BarDomain {
   meanValue: number | undefined;
   netLineOn: boolean;
   netLineSeries: NormSeries | undefined;
+  /** The net line's boundary series as authored, which the paints read while a reader hides series. */
+  netKeySeries?: NormSeries;
   /** Vertical valueLines and indicator100, which bar draws itself. */
   localAnns: Annotation[];
   /** Everything else, for the shared annotation pass. */

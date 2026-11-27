@@ -96,6 +96,8 @@ export interface ColumnDomain extends ColumnEnv {
   running: ReadonlySet<Id>;
   seriesNorm: NormSer[];
   dataSeries: NormSer[];
+  /** Every plotted series, a hidden one included (hiddenSeries.ts): the colours, the legend and the share precision read these. */
+  keySeries: NormSer[];
   refSeries: NormSer[];
   othersId: Id | null;
   /** Every authored non-null cell of the plotted series is a percent cell. */

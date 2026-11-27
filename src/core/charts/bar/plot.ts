@@ -22,7 +22,7 @@ import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
-import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { COLLECT_IDENTITIES, hiddenKey } from '../../seriesIdentity';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
 import type { BarOptions, LegendOptions } from '../../types/options';
@@ -82,7 +82,9 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
         label: stringFields(above ? options.strings!.aboveZero! : options.strings!.belowZero!, { series: s.label, meaning: above === (s.direction !== 'lowerIsBetter') ? options.strings!.better! : options.strings!.worse! }),
         paint: signPaint(s, above ? 1 : -1, options.colorblindSafe),
       })))
-    : dataSeries.map((s) => {
+    : domain.keySeries.map((s) => {
+        // A series a reader hid keeps its entry, as a hollow box.
+        if (!dataSeries.includes(s)) return hiddenKey(s.id, s.label);
         // A series whose every drawn bar looks the same is keyed in that look, hatch included.
         const looks = s.cells.flatMap((cell, ci) => (cell.v === null ? [] : [paints.cell(s, cats[ci]!, cell.meta, cell.v)]));
         const first = looks[0];
@@ -116,7 +118,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   const planOutlined = dataSeries.some((s) => s.cells.some((cell, ci) =>
     cell.v !== null && paints.scenario(s, cats[ci]?.id ?? '', cell.meta).outline === true));
   // A key row that only the band brought does not repeat the name of the one series.
-  const seriesKeyed = (options.legend !== undefined && options.legend !== 'auto') || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
+  const seriesKeyed = (options.legend !== undefined && options.legend !== 'auto') || signColor || referenceDrawn || netLineKeyed || domain.keySeries.length > 1;
   let items: LegendItemInput[] = [
     ...(seriesKeyed ? seriesItems : []),
     // In the subtitle's order, AC PY PL FC: the plan row before the forecast hatch.

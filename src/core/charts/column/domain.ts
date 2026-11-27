@@ -54,6 +54,7 @@ import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
+import { shownSeries } from '../../hiddenSeries';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -165,7 +166,7 @@ function normalizeColumnData(data: ChartData, warnings: LintWarning[]): { cats: 
 /**
  * Sort (live reorder), then topN: keep the n largest categories and
  * aggregate the rest into 'Others' (always last). Reorders `seriesNorm`'s
- * values in place.
+ * values in place. The categories rank by the series a reader has not hidden.
  */
 function orderColumnCategories(
   options: AnomalyColumnOptions,
@@ -173,11 +174,11 @@ function orderColumnCategories(
   seriesNorm: NormSer[],
   series: NormSer[],
   warnings: LintWarning[],
-): { cats: Category[]; dataSeries: NormSer[]; othersId: Id | null } {
+): { cats: Category[]; dataSeries: NormSer[]; keySeries: NormSer[]; othersId: Id | null } {
   let cats = categories;
-  let dataSeries = series;
   const anomalySpec = options.anomaly;
-  dataSeries = sortSegments(dataSeries, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
+  const keySeries = sortSegments(series, options.sort?.segments, (s) => s.vals.reduce((a, x) => a + (x.v ?? 0), 0));
+  const dataSeries = shownSeries(options, keySeries);
   const catTotal = (ci: number) => dataSeries.reduce((a, s) => a + (s.vals[ci]!.v ?? 0), 0);
   const applyOrder = (order: number[]): void => {
     cats = order.map((i) => cats[i]!);
@@ -234,7 +235,7 @@ function orderColumnCategories(
       });
     }
   }
-  return { cats, dataSeries, othersId };
+  return { cats, dataSeries, keySeries, othersId };
 }
 
 /** The integrated PY reference and the categories whose stack carries one scenario. */
@@ -998,7 +999,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
   const running = runningPeriodIds(normalized.cats, ci => hasActualCategoryValue(plotted, ci));
-  const { cats, dataSeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
+  const { cats, dataSeries, keySeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
@@ -1057,6 +1058,12 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // A drawn value line is part of the stated range (valueLineDomain.ts).
   const lineExtent = valueLineExtent(options.annotations);
   const { rendered, ...extent } = columnValueDomain(va, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, warnings);
+  // While a reader hides a series, the shares keep the precision of every series, and an authored bound (a scale group's too) its range.
+  const full = keySeries === dataSeries ? basis : columnBasis(variant, cats, keySeries, [], ranked);
+  if (full !== basis && (va.min !== undefined || va.max !== undefined)) {
+    const all = columnValueDomain(va, variant, cats, keySeries, refSeries, full.plottedOf, full.rangeOf, full.stacks, lineExtent, []);
+    extent.dLo = all.dLo; extent.dHi = all.dHi; extent.stepTicks = all.stepTicks;
+  }
   const corridor = anomalyCorridor(anomaly, anomalyValues, extent.dLo, extent.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
   // No total on a 100 % stack unless authored, and none on grouped
   // columns, where the bars stand side by side and add to nothing.
@@ -1079,7 +1086,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
   warnShareFormatIgnored(variant, options.format, shareFormatExample(options), gtContent?.includes('absolute') === true || columnSegmentsPrintAbsolute(options), warnings);
   // Every computed share the chart prints takes one precision.
-  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
+  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => keySeries.flatMap((s) => full.shareOf(s, ci) ?? [])), options.locale?.language);
   // An authored total100 is the author's whole. Percent cells take part, as on bar:
   // shares that add to exactly 100 print so they still do, and others print as given.
   const wholes = sharesOn ? cats.flatMap((c, ci) => {
@@ -1096,7 +1103,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  const shareExample = shareFormatExample(options, dataSeries);
+  const shareExample = shareFormatExample(options, keySeries);
   const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding === 'sum-consistent') {
     for (const { c, parts } of wholes) {
@@ -1138,7 +1145,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
-    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, keySeries, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
@@ -1147,7 +1154,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
     ...(averageMark === undefined ? {} : { averageMarker: { id: averageMarkerId(options.annotations ?? []), fmt: averageFmt } }),
     annList: columnAnnotationList(options, variant, averageMark, averageFmt, averageMarkerSpan(averageRun, meanSpan)),
-    seriesCagr: stackedLike ? seriesCagrs(options, cats, dataSeries, basis.absOf, warnings) : new Map(),
+    seriesCagr: stackedLike ? seriesCagrs(options, cats, keySeries, full.absOf, warnings) : new Map(),
   };
 }
 
@@ -1350,7 +1357,7 @@ function planEdgeNames(domain: ColumnDomain): EdgePlan {
     .map((series) => ({ id: series.id, label: domain.seriesCagr.get(series.id)?.text ?? series.label }));
   const keyed = options.legend !== undefined && options.legend !== 'none' &&
     panelTypeClass(options) === undefined && (options as { [KEY_EDGE_SERIES]?: true })[KEY_EDGE_SERIES] !== true;
-  if (!keyed || names.length === 0 || names.length < domain.dataSeries.length) return { names, replaceKey: false };
+  if (!keyed || names.length === 0 || names.length < domain.keySeries.length) return { names, replaceKey: false };
   // The names take their room from the columns. They stand where that room
   // is at most one column step; on a narrower card the key names the series.
   const { theme, measure, size } = domain;

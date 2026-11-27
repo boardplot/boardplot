@@ -1,4 +1,5 @@
 import { applyAxisBounds } from '../../scale';
+import { shownSeries } from '../../hiddenSeries';
 import { cleanSum } from '../../geometry';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
@@ -304,13 +305,17 @@ function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: No
   return { totals, nmRows, naRows, incompleteRows, shares, plotVal, plotRange, stacks, rowEnds };
 }
 
-/** The net line, with the warnings for the cases it cannot draw. */
+/**
+ * The net line, with the warnings for the cases it cannot draw. The warnings and the paints read the boundary
+ * the author named among every series. A reader who hides series sees the line at the last visible series up to it.
+ */
 function barNetLine(
   options: DomainOptions,
   variant: BarDomain['variant'],
   dataSeries: NormSeries[],
+  shown: NormSeries[],
   warnings: LintWarning[],
-): Pick<BarDomain, 'netLineOn' | 'netLineSeries'> {
+): Pick<BarDomain, 'netLineOn' | 'netLineSeries' | 'netKeySeries'> {
   const netLineRequested = options.netLine !== undefined && options.netLine !== false;
   const netLineSeriesId =
     typeof options.netLine === 'object' ? options.netLine.seriesId : undefined;
@@ -355,7 +360,9 @@ function barNetLine(
       });
     }
   }
-  return { netLineOn, netLineSeries };
+  // null: every series up to the boundary is hidden, so no line is drawn.
+  const drawn = netLineSeries && (dataSeries.slice(0, dataSeries.indexOf(netLineSeries) + 1).filter((s) => shown.includes(s)).at(-1) ?? null);
+  return { netLineOn: netLineOn && drawn !== null, netLineSeries: drawn ?? undefined, ...(netLineOn ? { netKeySeries: netLineSeries } : {}) };
 }
 
 /**
@@ -514,9 +521,12 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const connectorScope =
     typeof options.connectors === 'object' ? (options.connectors.scope ?? 'all') : 'all';
   const { rawCats, normSeries } = normalizeBarSeries(data, warnings);
-  const dataSeries = sortSegments(normSeries.filter(ranksCategories), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
+  // The colours, the legend and the formats read every plotted series. The bars, the totals and the category order read
+  // the series a reader has not hidden (hiddenSeries.ts).
+  const keySeries = sortSegments(normSeries.filter(ranksCategories), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
+  const dataSeries = shownSeries(options, keySeries);
   const refSeries = normSeries.filter((s) => s.role === 'reference');
-  if (dataSeries.length === 0) {
+  if (keySeries.length === 0) {
     throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   if (variant === 'grouped' || variant === 'stacked') {
@@ -543,10 +553,10 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   // inside the exhibit's style — an integer-rastered bar still prints its
   // mean as "Ø 14.9", never "Ø 15" (see formatStatWithSpec; column twin).
   // Under the default rule a percent mean is a statistic of the percent set.
-  const statSpec = !options.format && (variant === 'stacked100' || options.unit === '%' || percentLevels(dataSeries.map(series => ({ vals: series.cells }))))
+  const statSpec = !options.format && (variant === 'stacked100' || options.unit === '%' || percentLevels(keySeries.map(series => ({ vals: series.cells }))))
     ? { ...valueSpec.percentSpec, suffix: '%' } : valueSpec.spec;
   const statFmt = (v: number) => formatStatWithSpec(v, statSpec);
-  if (variant === 'stacked100' && dataSeries.length === 1) {
+  if (variant === 'stacked100' && keySeries.length === 1) {
     warnings.push({
       code: 'stacked100-single-series',
       severity: 'warn',
@@ -554,7 +564,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
         "a 100% composition of a single series is always 100% — use variant:'stacked' or 'grouped' to show the level",
     });
   }
-  const running = runningPeriodIds(rawCats, ci => dataSeries.some(s => {
+  const running = runningPeriodIds(rawCats, ci => keySeries.some(s => {
     const cell = s.cells[ci]!;
     return cell.v !== null && scenarioFillPattern(normalizeScenario(cell.meta?.scenario, `series[${s.id}].values[${ci}].scenario`) ?? s.scenario) === undefined;
   }));
@@ -562,9 +572,9 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const lostDetails = cats.some((c) => c.id === OTHERS_ID) ? restDetailsWarning(data, new Set(cats.map((c) => c.id))) : undefined;
   if (lostDetails) warnings.push(lostDetails);
   const uniformScenario = new Map<Id, Scenario>();
-  if (variant !== 'grouped' && dataSeries.length > 1) {
+  if (variant !== 'grouped' && keySeries.length > 1) {
     cats.forEach((cat, ci) => {
-      const scenarios = dataSeries
+      const scenarios = keySeries
         .filter((s) => s.cells[ci]!.v !== null)
         .map((s) => s.cells[ci]!.meta?.scenario ?? s.scenario);
       const scenario = scenarios[0];
@@ -576,24 +586,26 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const highlights = new Set(resolveHighlight(options.highlight));
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
-  const roles = colorRolePaints(dataSeries);
+  const roles = colorRolePaints(keySeries);
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
   // carry one scenario counts as that scenario. Grouped bars pair in authored order, so sorting the
   // segments never re-pairs a plan. A stack keeps its stack colours: only a plan pairs.
   const stacked = variant !== 'grouped';
   const ownPaint = (x: NormSeries): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
   const scenarioPartner = stacked
-    ? scenarioPartners(dataSeries, (x) => x.scenario, ownPaint, true)
+    ? scenarioPartners(keySeries, (x) => x.scenario, ownPaint, true)
     : scenarioPartners(normSeries.filter((x) => x.role === 'data'), (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
   // A paired scenario series of grouped bars takes no ramp step of its own. One with its own
   // paint keeps it, so it stays in the deal and the plain series step past its colour.
-  const dealt = dataSeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
+  const dealt = keySeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
   const slots = rampSlots(theme, dealt.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined,
   ), paletteRamp ? options.palette : undefined, { labels: dealt.map((s) => s.label), warnings });
   dealt.forEach((s, i) => (s.slot = slots[i]!));
-  dataSeries.forEach((s) => { const partner = scenarioPartner.get(s.id); if (partner && !dealt.includes(s)) s.slot = partner.slot; });
+  keySeries.forEach((s) => { const partner = scenarioPartner.get(s.id); if (partner && !dealt.includes(s)) s.slot = partner.slot; });
   const basis = barBasis(variant, cats, dataSeries, warnings);
+  // While a reader hides a series, the shares keep the precision of every series, and an authored bound (a scale group's too) its range.
+  const full = keySeries === dataSeries ? basis : barBasis(variant, cats, keySeries, []);
   // TWIN of column's `meanValue`. NOT coalesced to 0: with no plotted value
   // there is no mean, and a valueLine drawn at 0 would state a number the
   // data does not support (the shared annotate pass fails this closed with
@@ -640,7 +652,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   // rounding 'sum-consistent': each complete bar's shares print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  const shareExample = shareFormatExample(options, dataSeries);
+  const shareExample = shareFormatExample(options, keySeries);
   const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
   const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
   if (options.rounding === 'sum-consistent') {
@@ -659,7 +671,8 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     // The drift warning sums the shares at the decimals the labels print.
     const labelDecimals = new Map<Id, number>();
     if (!shareExample) for (const { c, parts } of wholes) {
-      const decimals = shareSetDecimals(parts.map((part) => part.share));
+      const ci = cats.indexOf(c);
+      const decimals = shareSetDecimals(keySeries.flatMap((s, si) => (s.cells[ci]!.v === null ? [] : [full.shares[ci]![si]!])));
       labelDecimals.set(c.id, decimals);
       for (const part of parts) shareTexts.set(`${c.id}\0${part.s.id}`, shareText(part.share, decimals, options.locale?.language));
     }
@@ -687,7 +700,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
       : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
         ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
-    cats, running, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
+    cats, running, dataSeries, keySeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
     /**
      * A category highlight on one series makes the named bars the
      * subject. They take `highlight` and every other bar steps back to
@@ -698,10 +711,15 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
      * there. A highlight without a body (null, or zero, drawn as a 0.5px
      * hairline) recedes nothing, or the chart would be all rest and no subject.
      */
-    restRecedes: dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && (dataSeries[0]!.cells[ci]!.v ?? 0) !== 0),
+    restRecedes: keySeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && (keySeries[0]!.cells[ci]!.v ?? 0) !== 0),
     ...basis, meanValue,
-    ...barNetLine(options, variant, dataSeries, warnings),
+    ...barNetLine(options, variant, keySeries, dataSeries, warnings),
     ...barAnnotations(options, variant, averageMarkerValue, statFmt, averageRun?.span),
   };
-  return { ...domain, ...barValueExtent(domain, warnings) };
+  const extent = barValueExtent(domain, warnings);
+  if (full !== basis && (options.valueAxis?.min !== undefined || options.valueAxis?.max !== undefined)) {
+    const all = barValueExtent({ ...domain, ...full, dataSeries: keySeries }, []);
+    extent.lo = all.lo; extent.hi = all.hi;
+  }
+  return { ...domain, ...extent };
 }

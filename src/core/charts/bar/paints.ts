@@ -20,14 +20,15 @@ export interface BarLegendPaints extends BarPaints {
 }
 
 export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegendPaints {
-  const { options, theme, palette, highlights, dataSeries, uniformScenario, restRecedes } = domain;
+  // Every paint decision reads every plotted series, so a series a reader hides leaves each other its colour.
+  const { options, theme, palette, highlights, keySeries: dataSeries, uniformScenario, restRecedes } = domain;
   const signColor = options.signColor === true;
-  if (signColor) signColorOverrides(domain.cats, dataSeries, highlights, OTHERS_ID, (s, ci) => ({ v: s.cells[ci]!.v, fill: s.cells[ci]!.meta?.fill }), warnings);
+  if (signColor) signColorOverrides(domain.cats, domain.dataSeries, highlights, OTHERS_ID, (s, ci) => ({ v: s.cells[ci]!.v, fill: s.cells[ci]!.meta?.fill }), warnings);
   const receding = recedingSeriesId(dataSeries, highlights);
   // A stack's net line marks the sum up to its series. A plain series stacked
   // beyond that tick is outside the marked sum and recedes into the rest tone,
   // so the tick reads against it.
-  const netAt = domain.netLineOn && domain.netLineSeries ? dataSeries.findIndex((s) => s.id === domain.netLineSeries!.id) : -1;
+  const netAt = domain.netKeySeries ? dataSeries.indexOf(domain.netKeySeries) : -1;
   const highlighted = dataSeries.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))));
   const plainParts = dataSeries.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id)).map((s) => s.id);
   const stackGreys = domain.variant !== 'grouped' && highlighted && plainParts.length >= 2 ? plainParts : [];
