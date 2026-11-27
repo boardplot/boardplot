@@ -1,12 +1,11 @@
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
-import { useIsomorphicLayoutEffect } from '../useIsomorphicLayoutEffect';
+import { createContext, useContext, useEffect, useId, useMemo, type CSSProperties, type ReactElement } from 'react';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { A11yTablePlacement } from '../../core/a11y/accessibility';
 import type { Id } from '../../core/types/cell';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { PreparedChart, RenderGeometry } from '../prepared';
 import { SceneRenderer } from '../SceneRenderer';
-import { keyRingStyle } from '../a11ySurface';
+import { a11ySurfaceStyle, keyRingStyle } from '../a11ySurface';
 import { useHover, useOptionalModule, type HoverOption, type KeyCursor, type RecordClickEvent, type RenderHoverContent } from '../useHover';
 
 type DataTableModule = typeof import('./dataTable');
@@ -22,7 +21,7 @@ const loadDataTable = () => import('./dataTable');
  * the two is on, so a static chart's markup is unchanged. The table loads
  * independently of the hover engine.
  */
-export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, renderHoverContent, onStackFocus }: {
+export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, onStackFocus }: {
   geometry: RenderGeometry;
   request: ResolvedChartRequest;
   prepared?: PreparedChart;
@@ -36,63 +35,34 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   extraCss?: string;
   onSeriesClick?: (seriesId: Id) => void;
   onRecordClick?: (record: InteractionRecord, event: RecordClickEvent) => void;
+  onHoverChange?: (records: InteractionRecord[]) => void;
   renderHoverContent?: RenderHoverContent;
   /** A metric stack's focus look: the category the pointer or the keyboard rests on, undefined at rest. The chart lays the stack out with it. */
   onStackFocus?: (category: string | undefined) => void;
 }): ReactElement {
-  const { engine, view, origin, follow, handlers, focusStops, keys, cursor, cardRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick,
+  const { engine, view, origin, follow, handlers, focusStops, keys, scrub, cursor, cardRef, hostRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick, onHoverChange,
     custom: renderHoverContent !== undefined });
-  const { card: shown, fading } = useFadingCard(engine && !renderHoverContent && view.card && origin
-    ? { layout: view.card, theme: view.cardTheme!, origin, follow } : undefined);
   useEffect(() => { onStackFocus?.(focusCategory); }, [onStackFocus, focusCategory]);
   const contentId = `${useId()}-card`;
-  const active = view.active?.[0];
-  const content = renderHoverContent && engine && view.card && view.cardInput && active ? renderHoverContent(active, {
-    records: view.active!, source: cursor?.active ? 'keyboard' : 'pointer',
-    // The keyboard stop's option reads these facts already; the card's description adds only the host's own content.
-    defaultContent: view.card.scene.length ? <div aria-hidden="true"><SceneRenderer geometry={engine.labelCardGeometry(view.card)} theme={view.cardTheme!} responsive={false} /></div> : null,
-  }) : undefined;
+  const content = engine?.hostContent(view, renderHoverContent, cursor?.active === true);
   const custom = content !== undefined && content !== null && content !== false;
   const dataTable = useOptionalModule(useContext(DataTableContext), Boolean(table), loadDataTable);
-  const surface = engine ?? dataTable;
+  // The ring of the keyboard stop is needed before the engine is: the rules ride with the stop.
+  const rules = keys || dataTable !== undefined;
   // A new innerHTML object replaces the stylesheet even when its text is unchanged.
-  const css = useMemo(() => ({ __html: ((surface?.surfaceStyle(request.theme) ?? '') + extraCss).replace(/</g, '\\3c ') }),
-    [surface, request.theme, extraCss]);
-  const style = useMemo(() => keys ? { position: 'relative', ...keyRingStyle(request.theme) } as CSSProperties : { position: 'relative' } as const,
-    [keys, request.theme]);
-  return <div data-bp-hover="" data-bp-keyed={cursor?.active ? '' : undefined} style={style} {...handlers}>
+  const css = useMemo(() => ({ __html: ((rules ? a11ySurfaceStyle(request.theme) : '') + extraCss).replace(/</g, '\\3c ') }),
+    [rules, request.theme, extraCss]);
+  const style = useMemo(() => ({ position: 'relative', ...keys && keyRingStyle(request.theme), ...scrub && { touchAction: 'pan-y pinch-zoom' } }) as CSSProperties,
+    [keys, scrub, request.theme]);
+  return <div ref={hostRef} data-bp-hover="" data-bp-keyed={cursor?.active ? '' : undefined} style={style} {...handlers}>
     {/* Raw text, as the table's: React 18's server escaped the quotes of a text child. A `<` is CSS-escaped, so no theme value can end the element. */}
-    {surface && <style nonce={styleNonce} dangerouslySetInnerHTML={css} />}
+    {css.__html && <style nonce={styleNonce} dangerouslySetInnerHTML={css} />}
     <SceneRenderer geometry={view} theme={request.theme} responsive={responsive} background={background} onSeriesClick={onSeriesClick} focusStops={focusStops} />
     {keys && <RecordKeys geometry={geometry} responsive={responsive} cursor={cursor} describedBy={custom ? contentId : undefined} />}
-    {engine && custom && <engine.CustomCard input={view.cardInput!} theme={view.cardTheme!} origin={origin} label={active!.label}
-      contentId={contentId} locale={request.locale?.language} cardRef={cardRef}>{content}</engine.CustomCard>}
-    {engine && shown && <engine.ChartCard {...shown} cardRef={cardRef} hidden={fading} />}
+    {engine && <engine.Cards view={view} origin={origin} follow={follow} content={custom ? content : undefined} hosted={renderHoverContent !== undefined}
+      contentId={contentId} locale={request.locale?.language} cardRef={cardRef} />}
     {dataTable && table && <dataTable.DataTable request={request} geometry={geometry} prepared={prepared} mode={table} />}
   </div>;
-}
-
-/** How long a closed card that followed the pointer stays mounted and faded out, in milliseconds. */
-const LINGER = 500;
-
-/**
- * The default card to draw and whether it is fading out. A card that followed
- * the pointer stays mounted for `LINGER` after it closes, so it fades out, and a
- * card that opens again within that time glides from where it was. Later it
- * unmounts, and the next card fades in at the pointer without travel.
- */
-function useFadingCard<T extends { follow: boolean }>(open: T | undefined): { card?: T; fading: boolean } {
-  const last = useRef<T | undefined>(undefined);
-  const [, expire] = useState(0);
-  useIsomorphicLayoutEffect(() => { if (open) last.current = open; });
-  const kept = open === undefined && last.current?.follow ? last.current : undefined;
-  useEffect(() => {
-    if (open !== undefined || !last.current) return;
-    if (!last.current.follow) { last.current = undefined; return; }
-    const timer = setTimeout(() => { last.current = undefined; expire(count => count + 1); }, LINGER);
-    return () => clearTimeout(timer);
-  }, [open === undefined]);
-  return { card: open ?? kept, fading: kept !== undefined };
 }
 
 const HIDDEN: CSSProperties = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden',

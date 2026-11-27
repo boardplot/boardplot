@@ -196,7 +196,8 @@ describe('shared request measurement', () => {
         const liveOptions = { ...request.options, [INTERACTIVE_LAYOUT]: true };
         const result = measureResolvedRequest({ ...request, options: liveOptions });
         received.geometry = undefined;
-        const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...options, annotations: fixture.annotations ?? options.annotations }));
+        // Hover off: the hover hint of a capped note is React's own wording, and measure has no hover.
+        const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...options, annotations: fixture.annotations ?? options.annotations, hover: false }));
         const context = `${type}/${fixture.id} at ${width}`;
         const drawn = received.geometry as Geometry | undefined;
         // A story draws its interactive step (buttons, counter); measure returns the static one.

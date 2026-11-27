@@ -14,6 +14,7 @@ import { ownerContains } from '../../core/a11y/recordsShared';
 export { tableRecords } from './dataTable';
 export { labelCardGeometry } from './labelCard';
 export { keyboardOrder, keyboardReading, keyboardSelection, keyboardStep } from './keyboard';
+export { Cards, hostContent, hoverDriver, reportHover } from './pointer';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { Id, OwnerRef } from '../../core/types/cell';
@@ -65,6 +66,8 @@ export interface HoverPosition {
   previousSide?: CardSide;
   /** A mouse or pen opened the default card: it follows the pointer instead of taking a seat beside the mark. */
   follow?: boolean;
+  /** The hover of another chart of the group put these records here: not this chart's own hover. */
+  linked?: boolean;
 }
 
 interface HoverMeasurement {
@@ -74,6 +77,9 @@ interface HoverMeasurement {
   pointer?: { clientX: number; clientY: number };
 }
 export interface HoverSelection { ids: readonly string[]; position?: HoverPosition; measurement?: HoverMeasurement }
+
+/** The hosts of charts inside a `HoverGroup`: their cards stay inside their own chart, so the cards of two charts never meet. */
+export const framedHosts = new WeakSet<HTMLElement>();
 
 /** Measure on open or a scroll/resize update, never on an already open pointer move. */
 export function hoverViewport(host: HTMLElement, size: Size, pointer?: { clientX: number; clientY: number }): HoverViewport | undefined {
@@ -85,21 +91,26 @@ export function hoverViewport(host: HTMLElement, size: Size, pointer?: { clientX
   if (!(scale > 0)) return undefined;
   const x = box.left + (box.width - size.width * scale) / 2;
   const y = box.top + (box.height - size.height * scale) / 2;
+  // 8 px inside the window, and inside the chart's own frame for a chart of a group.
+  const inset = framedHosts.has(host) ? 8 / scale : -Infinity;
+  const left = Math.max((8 - x) / scale, inset), top = Math.max((8 - y) / scale, inset);
   return { scale, origin: { x, y },
-    boundary: { x: (8 - x) / scale, y: (8 - y) / scale,
-      w: Math.max(0, win.innerWidth - 16) / scale, h: Math.max(0, win.innerHeight - 16) / scale },
+    boundary: { x: left, y: top,
+      w: Math.max(0, Math.min((win.innerWidth - 8 - x) / scale, size.width - inset) - left),
+      h: Math.max(0, Math.min((win.innerHeight - 8 - y) / scale, size.height - inset) - top) },
     pointer: pointer ? { x: (pointer.clientX - x) / scale, y: (pointer.clientY - y) / scale } : undefined };
 }
 
 /** Keep DOM measurement and card checks in the engine chunk, off each chart's initial load. */
 export function hoverSelection(model: HoverModel, request: ResolvedChartRequest, event: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>,
-  view: HoverView, selection: HoverSelection, custom = false): HoverSelection {
+  view: HoverView, selection: HoverSelection, custom = false, along = false): HoverSelection {
   const source = 'clientX' in event ? event : undefined;
   const measurement = selection.measurement?.host === event.currentTarget ? selection.measurement
     : { host: event.currentTarget, size: view.size, viewport: hoverViewport(event.currentTarget, view.size) };
   measurement.pointer = source && { clientX: source.clientX, clientY: source.clientY };
   const viewport = pointedViewport(measurement);
-  const element = event.target instanceof Element ? event.target.closest('[data-id]') : null;
+  // A touch reports every move at the element it began on: a sliding finger is read by its position alone.
+  const element = !along && event.target instanceof Element ? event.target.closest('[data-id]') : null;
   // A host that draws its own card content opens it on a record with no default card too.
   const next = hoverTargets(model, request, { nodeId: element?.getAttribute('data-id') ?? undefined,
     point: viewport?.pointer }, custom).map(record => record.id);
@@ -108,7 +119,7 @@ export function hoverSelection(model: HoverModel, request: ResolvedChartRequest,
   const follow = !custom && source !== undefined && 'pointerType' in source && source.pointerType !== 'touch';
   // Reuse the selection while the records stay. A seat beside the mark is reused only while it stays clear of the pointer;
   // a following card never covers the pointer, and the move itself goes to `cardFollower`, outside React.
-  if (measurement === selection.measurement && next.length === selection.ids.length
+  if (measurement === selection.measurement && !selection.position?.linked && next.length === selection.ids.length
     && next.every((id, index) => id === selection.ids[index]) && (selection.position?.follow ?? false) === follow
     && (follow || !(view.card && viewport?.pointer && rectContains(view.card.rect, {
       x: viewport.pointer.x * viewport.scale, y: viewport.pointer.y * viewport.scale, w: 0, h: 0,
@@ -180,8 +191,8 @@ export function activates(record: InteractionRecord): boolean {
 
 function pointedViewport({ viewport, pointer }: HoverMeasurement): HoverViewport | undefined {
   return viewport && { ...viewport, pointer: pointer ? {
-    x: (pointer.clientX - 8) / viewport.scale + viewport.boundary.x,
-    y: (pointer.clientY - 8) / viewport.scale + viewport.boundary.y,
+    x: (pointer.clientX - viewport.origin.x) / viewport.scale,
+    y: (pointer.clientY - viewport.origin.y) / viewport.scale,
   } : undefined };
 }
 
@@ -193,9 +204,11 @@ export function watchHover(selection: HoverSelection, setSelection: Dispatch<Set
   const { host } = measurement;
   let pending: number | undefined;
   let scrolled = false;
-  const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelection({ ids: [] }); };
+  // The card of a linked chart closes with the chart that owns the hover, never by a key or a tap of its own.
+  const linked = selection.position?.linked === true;
+  const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !linked) setSelection({ ids: [] }); };
   // A tap leaves no pointer to move away, so a pointer down outside the chart closes its card, as on a table.
-  const outside = (event: globalThis.PointerEvent) => { if (!host.contains(event.target as Node)) setSelection({ ids: [] }); };
+  const outside = (event: globalThis.PointerEvent) => { if (!linked && !host.contains(event.target as Node)) setSelection({ ids: [] }); };
   const update = (event?: Event) => {
     if (event?.type === 'scroll') scrolled = true;
     if (pending !== undefined) return;
@@ -394,6 +407,8 @@ export function hoverView(
 ): HoverView {
   const active = ids.flatMap(id => model.records.find(record => record.id === id) ?? []);
   if (active.length === 0) return geometry;
+  // A linked chart draws a card only where its place was measured.
+  if (position.linked) flags = { card: flags.card && position.viewport !== undefined, highlight: flags.highlight };
   const first = active[0]!;
   const placement = model.placement;
   const panel = placement?.panels?.find(entry => entry.panel === first.target.panel);

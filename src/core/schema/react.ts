@@ -3,7 +3,7 @@ import { baseOptionsSchema, sizeSchema, readerStringsSchema } from './shared';
 
 /** The hover prop of every chart component and of BoardplotChart. */
 export const hoverSchema = z.union([
-  z.boolean().describe('true shows the label card and the series highlight on pointer hover; false or omitted draws the static chart.'),
+  z.boolean().describe('true shows the label card and the series highlight on pointer hover; false draws the static chart.'),
   z.strictObject({
     card: z.union([
       z.literal(false).describe('false draws no card.'),

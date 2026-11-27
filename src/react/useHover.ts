@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode, type SetStateAction } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ResolvedChartRequest } from '../core/request';
 import type { PreparedChart, RenderGeometry } from './prepared';
 import type { CardFollower, HoverModel, HoverSelection, HoverView } from './hover/engine';
-
-/** How long the default card stays after the pointer leaves the chart or every mark, in milliseconds. */
-const FOLLOW_CLOSE = 100;
+import { HoverGroupContext } from './hoverGroupContext';
 
 /**
  * Which card a hovered mark opens. `'label'` is the record's own facts, the
@@ -53,14 +51,16 @@ export function hoverFlags(hover: HoverOption | undefined): HoverFlagSet | undef
 }
 
 let enginePromise: Promise<HoverEngine> | undefined;
+/** The engine once it is on the page: a chart that is used after that takes it without a wait. */
+let loadedEngine: HoverEngine | undefined;
 
 /**
  * The engine loads once per page, on the first chart that asks for it. A
- * failed load is forgotten, so the next chart that mounts asks again instead
+ * failed load is forgotten, so the next chart that asks tries again instead
  * of reading the same rejection for good.
  */
 export function loadHoverEngine(): Promise<HoverEngine> {
-  enginePromise ??= import('./hover/engine').catch((error: unknown) => {
+  enginePromise ??= import('./hover/engine').then(module => loadedEngine = module, (error: unknown) => {
     enginePromise = undefined;
     throw error;
   });
@@ -79,7 +79,7 @@ export function useOptionalModule<T>(provided: T | undefined, enabled: boolean, 
   return provided ?? (enabled ? loaded : undefined);
 }
 
-/** The enabled chart loads the shared engine after mount; hydration starts without it. */
+/** A table with hover on loads the shared engine after mount; hydration starts without it. */
 export function useHoverEngine(enabled = true): HoverEngine | undefined {
   return useOptionalModule(undefined, enabled, loadHoverEngine);
 }
@@ -90,238 +90,172 @@ export interface KeyCursor { id: string; index: number; size: number; reading: s
 /** A record click or its keyboard twin, Enter or Space on the focused record. */
 export type RecordClickEvent = MouseEvent<Element> | KeyboardEvent<Element>;
 
-const RECORD_KEYS: ReadonlySet<string> = new Set(['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End']);
+/** The event of an input from before the engine was here, and the handler it belongs to. It keeps `currentTarget`, which React clears after the dispatch. */
+export interface HeldInput { kind: 'onPointerMove' | 'onPointerDown' | 'onPointerUp' | 'onFocus' | 'onBlur' | 'onKeyDown'; currentTarget: EventTarget }
 
-function isKeyStop(target: EventTarget): boolean {
-  return target instanceof Element && target.hasAttribute('data-bp-keys');
+/** What one chart's hover keeps between renders. The handlers in the engine chunk read and write it. */
+export interface HoverRefs {
+  /** The element that carries `data-bp-hover`. */
+  host: HTMLElement | null;
+  last: { id?: string; index: number };
+  order: { model?: HoverModel; activation?: boolean; records: InteractionRecord[] };
+  /** The host's card element, the focus to return to on Escape, and the pointer's way to the card. */
+  card: HTMLElement | null;
+  opener: HTMLElement | null;
+  quiet: boolean;
+  corridor: { from?: { x: number; y: number }; distance: number };
+  close?: ReturnType<typeof setTimeout>;
+  rest?: ReturnType<typeof setTimeout>;
+  /** Moves the default card with a mouse or pen, outside React. */
+  follower?: CardFollower;
+  /** The pointer id of the one finger that moves the card along a line. */
+  touch?: number;
+  /** Input from before the engine was here, oldest first. */
+  held: HeldInput[];
+  /** The engine was asked for. */
+  asked?: boolean;
+  /** The records last passed to `onHoverChange`. */
+  reported: readonly InteractionRecord[];
 }
 
+/** One render's state of a chart's hover, as the engine's handlers take it. */
+export interface HoverContext {
+  model: HoverModel; request: ResolvedChartRequest; geometry: RenderGeometry; view: HoverView;
+  selection: HoverSelection; setSelection: Dispatch<SetStateAction<HoverSelection>>;
+  cursor: KeyCursor | undefined; setCursor: Dispatch<SetStateAction<KeyCursor | undefined>>;
+  hover: HoverFlagSet | undefined; keys: boolean; custom: boolean; scrub: boolean;
+  /** Inside a `HoverGroup`: every card of the chart stays inside its own frame. */
+  grouped: boolean;
+  onRecordClick?: (record: InteractionRecord, event: RecordClickEvent) => void;
+  refs: HoverRefs;
+}
+
+const NONE: readonly never[] = [];
+const never = () => () => {};
+const onClient = () => true;
+const onServer = () => false;
+const nothing = () => undefined;
+/** The keys the chart's keyboard stop answers: held, and kept from the page, until the engine is here. */
+const STOP_KEYS = /^(Arrow|Home$|End$|Enter$| $)/;
+
 /**
- * Hover state of one drawn chart. Pointer input before the engine has loaded
- * is ignored. The hovered records are kept by id and resolved against the
- * current records, so a new layout drops a hovered mark that no longer exists.
- * Only this hook and the pointer handlers ship with every chart; records, hit
- * test, card and highlight live in the engine chunk.
+ * Hover state of one drawn chart. Only this hook ships with every chart.
+ * Records, hit test, pointer and key handlers, card and highlight live in the
+ * engine chunk, which loads at the first use of the chart: the pointer enters
+ * its box, a touch starts on it, or it takes the keyboard focus. Input from
+ * before the engine arrived is held and replayed, so the first pointer
+ * position and the first key press count.
  *
- * The keyboard reaches the same records through one tab stop per chart (the
- * `keys` element HoverSurface renders once the engine has loaded). Arrow keys
- * choose spatial neighbours where records form a grid or scatter, else
- * step through the engine's reading order, built on the first focus. The
- * focused record opens the pointer's card and highlight. The last input wins:
- * a pointer move takes the card over, the next key takes it back.
+ * The keyboard reaches the records through one tab stop per chart (the
+ * `keys` element HoverSurface renders after mount). The focused record opens
+ * the pointer's card and highlight. The last input wins: a pointer move takes
+ * the card over, the next key takes it back.
  */
 export function useHover(input: { request: ResolvedChartRequest; geometry: RenderGeometry; prepared?: PreparedChart; hover?: HoverOption;
   onRecordClick?: (record: InteractionRecord, event: RecordClickEvent) => void;
+  onHoverChange?: (records: InteractionRecord[]) => void;
   /** The host draws its own card content (`renderHoverContent`): the card takes the pointer and the focus. */
   custom?: boolean; }) {
-  const { request, geometry, prepared, onRecordClick, custom = false } = input;
+  const { request, geometry, prepared, onRecordClick, onHoverChange, custom = false } = input;
   // Asking for card content asks for the card: an absent `hover` turns on, an explicit one wins.
-  const asked = hoverFlags(input.hover ?? (custom ? true : undefined));
+  const shown = hoverFlags(input.hover ?? (custom ? true : undefined));
+  // A page that only listens tracks the pointer and draws nothing.
+  const asked = shown ?? (input.hover && onHoverChange ? { card: false as const, highlight: false } : undefined);
   // A drill-down needs the keyboard too: a chart with `onRecordClick` gets the tab stop without hover.
-  const keys = asked !== undefined || onRecordClick !== undefined;
-  const engine = useHoverEngine(keys);
+  const wanted = asked !== undefined || onRecordClick !== undefined;
+  // Not in the server pass and not in the pass that hydrates it: the stop, the event stops and the touch rule arrive after mount.
+  const keys = useSyncExternalStore(never, onClient, onServer) && wanted;
+  const [engine, setEngine] = useState<HoverEngine>();
+  const [selection, setSelection] = useState<HoverSelection>({ ids: [] });
+  const [cursor, setCursor] = useState<KeyCursor>();
+  const [, again] = useState(0);
+  const refs = useRef<HoverRefs>({ host: null, last: { index: 0 }, order: { records: [] }, card: null, opener: null, quiet: false,
+    corridor: { distance: Infinity }, held: [], reported: NONE }).current;
+  const group = useContext(HoverGroupContext);
+  // The hover of another chart of the group. This chart's own hover reads as none.
+  const link = useSyncExternalStore(group?.subscribe ?? never, () => { const value = group?.get(); return value?.source === refs ? undefined : value; }, nothing);
+  const wake = () => {
+    if (refs.asked) return;
+    refs.asked = true;
+    if (loadedEngine) setEngine(loadedEngine);
+    else loadHoverEngine().then(setEngine, (error: unknown) => { refs.asked = false; console.warn(error); });
+  };
+  // A click that names a record cannot wait for a download, and a linked chart follows without being touched.
+  const eager = wanted && (onRecordClick !== undefined || link !== undefined);
+  useEffect(() => { if (eager) wake(); }, [eager]);
+  useEffect(() => () => { clearTimeout(refs.close); clearTimeout(refs.rest); refs.follower?.cancel(); }, []);
   const model = useMemo(() => engine?.hoverModel(request, geometry, prepared), [engine, request, geometry, prepared]);
   // A metric stack's focus look: the hovered category becomes the focus. No series dims, and a card shows only
   // where the host asks for one (`hover.card` or its own card content).
   const look = model?.placement?.focusBand !== undefined;
   const hover = asked && look
     ? { card: custom || (typeof input.hover === 'object' && input.hover.card !== undefined) ? asked.card : false as const, highlight: false } : asked;
-  const [selection, setSelection] = useState<HoverSelection>({ ids: [] });
-  const [cursor, setCursor] = useState<KeyCursor>();
-  const host = useRef<HTMLElement | null>(null);
-  const last = useRef<{ id?: string; index: number }>({ index: 0 });
-  const order = useRef<{ model?: HoverModel; activation?: boolean; records: InteractionRecord[] }>({ records: [] });
-  // A record with no card is a keyboard stop only while a click callback can activate it, or the host draws its card.
-  const activation = onRecordClick !== undefined || custom;
-  /** The host's card element, the focus to return to on Escape, and the pointer's way to the card. */
-  const card = useRef<HTMLElement | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  const quiet = useRef(false);
-  const corridor = useRef<{ from?: { x: number; y: number }; distance: number }>({ distance: Infinity });
-  const timers = useRef<{ close?: ReturnType<typeof setTimeout>; rest?: ReturnType<typeof setTimeout> }>({});
-  /** Moves the default card with a mouse or pen, outside React. */
-  const follower = useRef<CardFollower | undefined>(undefined);
-  const inCard = (target: EventTarget | null) => target instanceof Node && card.current?.contains(target) === true;
-  const clearTimer = (key: 'close' | 'rest') => { if (timers.current[key] !== undefined) clearTimeout(timers.current[key]); timers.current[key] = undefined; };
-  useEffect(() => () => { clearTimer('close'); clearTimer('rest'); follower.current?.cancel(); }, []);
   const flags = hover ?? (cursor?.active ? { card: false, highlight: false } : undefined);
   const cardOn = flags !== undefined && flags.card !== false; const highlight = flags?.highlight ?? false;
   const keyed = cursor?.active === true;
   const { ids, position } = selection;
-  const close = () => { clearTimer('close'); clearTimer('rest'); follower.current?.cancel(); setSelection({ ids: [] }); };
-  useEffect(() => engine?.watchHover(selection, setSelection, geometry.size), [engine, selection.measurement, geometry.size]);
+  useEffect(() => engine?.watchHover(selection, setSelection, geometry.size), [engine, selection.measurement, selection.position?.linked, geometry.size]);
   // A card closed by Escape or a tap outside cancels the pointer's pending re-pick, which would open it again.
-  useEffect(() => { if (!ids.length) clearTimer('rest'); }, [ids.length]);
+  useEffect(() => { if (!ids.length) { clearTimeout(refs.rest); refs.rest = undefined; } }, [ids.length]);
   // Keyed by value: a literal `hover={{ card: 'label' }}` is a new object every render.
   const view: HoverView = useMemo(() => engine && model && flags
     ? engine.hoverView(model, request, geometry, ids, { card: cardOn, highlight, keyboard: keyed }, position) : geometry,
   [engine, model, request, geometry, ids, cardOn, highlight, keyed, position]);
-  /** The reading order of the drawn model, built on the first keyboard use and again after a new layout or callback. */
-  const records = (): InteractionRecord[] => {
-    if (!engine || !model) return [];
-    if (order.current.model !== model || order.current.activation !== activation) order.current = { model, activation, records: engine.keyboardOrder(model, request, geometry, activation) };
-    return order.current.records;
-  };
-  /** Rest the keyboard on the record at `index` of the order; `open` also opens its card, as the last input. */
-  const show = (index: number, open = true) => {
-    // The keyboard takes over: no pending pointer close, re-pick or card move may replace its record.
-    clearTimer('close'); clearTimer('rest'); follower.current?.cancel();
-    const list = records();
-    if (!engine || !model || !host.current || !list.length) return;
-    const at = Math.min(Math.max(index, 0), list.length - 1);
-    const record = list[at]!;
-    last.current = { id: record.id, index: at };
-    const reading = engine.keyboardReading(model, request, record);
-    setCursor(current => ({ id: record.id, index: at, size: list.length, reading, active: open || current?.active === true }));
-    const surface = host.current;
-    if (open) setSelection(current => engine.keyboardSelection(model, request, surface, view, current, record));
-  };
+  const activation = onRecordClick !== undefined || custom;
+  const scrub = asked !== undefined && request.type === 'line';
+  const driver = engine && model && engine.hoverDriver({ model, request, geometry, view, selection, setSelection, cursor, setCursor, hover, keys: wanted, custom, scrub, grouped: group !== undefined, onRecordClick, refs });
+  useEffect(() => { driver?.sync(); }, [model, activation]);
+  // The category another chart of the group has hovered, while this chart has no hover of its own.
+  useEffect(() => { driver?.follow(asked && link); }, [engine, model, link, asked !== undefined, ids.length > 0]);
+  // One held input per render: each handler reads the state the one before it set. A passive effect, so a long run
+  // of held keys renders one commit after another and never nests one render in the next.
   useEffect(() => {
-    if (!model) return;
-    setSelection(current => current.ids.length && !model.records.some(record => current.ids.includes(record.id))
-      ? { ids: [] } : current);
-    // A new layout or callback keeps the focused record where it still exists, else the record at its place in the order.
-    if (!cursor) return;
-    const list = records();
-    const found = list.findIndex(record => record.id === cursor.id);
-    if (list.length) show(found >= 0 ? found : cursor.index, cursor.active && selection.ids.length > 0);
-    else setCursor(undefined);
-  }, [model, activation]);
-  const pick = (event: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
-    if (engine && model) setSelection(engine.hoverSelection(model, request, event, view, selection, custom));
-  };
-  /**
-   * A card stays while the pointer travels to it: inside the corridor
-   * from the point the record was picked to the card, and getting closer.
-   * A pointer that rests there for 250 ms is hit-tested again.
-   */
-  const towardCard = (event: PointerEvent<HTMLElement>): boolean => {
-    // A label card over the points' path lets the pointer through: the pointer picks the point under it.
-    const shown = engine && selection.ids.length && (custom || !view.card?.overPath) ? card.current?.getBoundingClientRect() : undefined;
-    const box = shown && shown.width > 0 && shown.height > 0 ? shown : undefined;
-    const at = { x: event.clientX, y: event.clientY };
-    const distance = box ? Math.hypot(Math.max(box.left - at.x, 0, at.x - box.right), Math.max(box.top - at.y, 0, at.y - box.bottom)) : Infinity;
-    const { from } = corridor.current;
-    if (box && from && distance < corridor.current.distance
-      && engine!.inCardCorridor(from, { x: box.left, y: box.top, w: box.width, h: box.height }, at, view.cardInput?.path, position?.viewport?.origin)) {
-      corridor.current.distance = distance;
-      clearTimer('rest');
-      const rest = { currentTarget: event.currentTarget, target: event.target, clientX: event.clientX, clientY: event.clientY } as unknown as PointerEvent<HTMLElement>;
-      timers.current.rest = setTimeout(() => { corridor.current = { from: at, distance: Infinity }; pick(rest); }, 250);
-      return true;
-    }
-    corridor.current = { from: at, distance: Infinity };
-    return false;
-  };
-  const point = (event: PointerEvent<HTMLElement>) => {
-    // A mouse or pen moves the default card with the pointer; a tap and the host's own card keep their seat beside the mark.
-    const follows = !custom && event.pointerType !== 'touch';
-    if (!follows) clearTimer('close');
-    // The card's own content belongs to the host: a pointer in it keeps the card where it is.
-    if (inCard(event.target)) { clearTimer('close'); clearTimer('rest'); return; }
-    // A card that holds keyboard focus stays until focus leaves it; a tap still picks a new record.
-    if (event.pointerType !== 'touch' && card.current?.contains(card.current.ownerDocument.activeElement)) return;
-    if (!follows && towardCard(event)) return;
-    clearTimer('rest');
-    setCursor(current => current?.active ? { ...current, active: false } : current);
-    if (!engine || !model) return;
-    const next = engine.hoverSelection(model, request, event, view, selection, custom);
-    // Nothing open and nothing hit: no state changes, so the chart does not render again.
-    if (!next.ids.length && !selection.ids.length) return;
-    if (follows && !next.ids.length) {
-      // An empty spot closes the card after a moment, as leaving the chart does, so crossing a gap between marks does not flicker it.
-      timers.current.close ??= setTimeout(close, FOLLOW_CLOSE);
-      return;
-    }
-    clearTimer('close');
-    if (next === selection) {
-      // The same records: only the card moves, outside React.
-      if (follows) (follower.current ??= engine.cardFollower()).move(card.current, next, geometry.size, event.clientX, event.clientY);
-      return;
-    }
-    follower.current?.cancel();
-    setSelection(next);
-  };
-  // A click on a mark names the record the hover card names. It runs before the
-  // mark's own series click, which then does not fire: the legend keeps it.
-  const onClickCapture = onRecordClick && ((event: MouseEvent<HTMLElement>) => {
-    // A click in the host's card (a link) is the host's, never a mark's under the card.
-    if (inCard(event.target)) return;
-    const record = engine && model ? engine.clickedRecord(model, request, event, view) : undefined;
-    if (!record) return;
-    event.stopPropagation();
-    onRecordClick(record, event);
+    const next = driver && refs.held.shift();
+    if (!next) return;
+    (driver.handlers as Record<string, ((event: never) => void) | undefined>)[next.kind]?.(next as never);
+    // Also after the last one: the engine's handlers take over in that render.
+    again(count => count + 1);
   });
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (inCard(event.target)) {
-      // Keys in the card are the host's. Escape closes it and returns the focus to what opened it.
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        quiet.current = true;
-        (opener.current?.isConnected ? opener.current : event.currentTarget.querySelector<HTMLElement>('[data-bp-keys]'))?.focus();
-        quiet.current = false;
-        close();
-      }
-      return;
-    }
-    if (!isKeyStop(event.target) || event.altKey || event.ctrlKey || event.metaKey || !cursor) return;
-    if (RECORD_KEYS.has(event.key) && engine && model) {
-      event.preventDefault();
-      show(engine.keyboardStep(records(), cursor.index, event.key, model, request));
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      const record = records()[cursor.index];
-      // The key is the last input: the card and highlight return to the record it fires for.
-      show(cursor.index);
-      if (record && onRecordClick && engine?.activates(record)) onRecordClick(record, event);
-    } else if (event.key === 'Escape' && selection.ids.length) {
-      // The card closes; the focus stays on the record, and the next arrow opens it again.
-      close();
-    }
+  // The page hears each change of the hovered records, also a new layout under a resting pointer, and one empty list at the end.
+  const listener = useRef(onHoverChange);
+  listener.current = onHoverChange;
+  useEffect(() => { if (engine && model) engine.reportHover(refs, model, asked ? selection : undefined, listener.current, group); },
+    [engine, model, selection, asked !== undefined, group]);
+  useEffect(() => () => {
+    if (refs.reported.length) { refs.reported = NONE; listener.current?.([]); }
+    group?.set(refs);
+  }, [group]);
+  const hold = (drop: string, kind?: HeldInput['kind'], event?: object) => {
+    refs.held = refs.held.filter(item => !item.kind.startsWith(drop));
+    if (!kind) return;
+    // The event itself, so a record click gets the real event: a focus has no pointer position, and the engine tells the two apart by that.
+    refs.held.push(Object.create(event!, { kind: { value: kind }, currentTarget: { value: (event as HeldInput).currentTarget } }));
+    wake();
   };
-  const onFocus = (event: FocusEvent<HTMLElement>) => {
-    if (inCard(event.target)) {
-      // The focus holds the card: no pending close or re-pick takes it away.
-      clearTimer('close'); clearTimer('rest');
-      // Remember what opened the card: the record stop or an event marker.
-      if (event.relatedTarget instanceof HTMLElement && !inCard(event.relatedTarget) && event.currentTarget.contains(event.relatedTarget)) opener.current = event.relatedTarget;
-      return;
-    }
-    // Escape from the card returns the focus here; the card it closed stays closed.
-    if (!isKeyStop(event.target)) { if (hover && !quiet.current) pick(event); return; }
-    host.current = event.currentTarget;
-    const list = records();
-    const found = list.findIndex(record => record.id === last.current.id);
-    show(found >= 0 ? found : last.current.index, !quiet.current);
-  };
-  const onBlur = (event: FocusEvent<HTMLElement>) => {
-    if (!(event.target instanceof Element)) return;
-    // The focus moves into the card: the record and its card stay open.
-    if (inCard(event.relatedTarget)) return;
-    if (inCard(event.target)) {
-      if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) { close(); setCursor(undefined); }
-      return;
-    }
-    if (isKeyStop(event.target)) {
-      if (cursor?.active) close();
-      setCursor(undefined);
-    } else if (hover && event.target.hasAttribute('data-bp-stop')) close();
-  };
-  const handlers = { ...onClickCapture && { onClickCapture }, ...keys && { onFocus, onBlur, onKeyDown }, ...hover && {
-    onPointerMove: (event: PointerEvent<HTMLElement>) => { if (event.pointerType !== 'touch') point(event); },
-    onPointerDown: (event: PointerEvent<HTMLElement>) => { if (event.pointerType === 'touch') point(event); },
-    onPointerLeave: (event: PointerEvent<HTMLElement>) => {
-      if (event.pointerType === 'touch') return;
-      clearTimer('rest');
-      // A card that holds the focus stays; else the pointer has 150 ms to cross a gap into the host's card.
-      // The default card follows the pointer and closes after 100 ms.
-      if (card.current?.contains(card.current.ownerDocument.activeElement)) return;
-      clearTimer('close');
-      timers.current.close = setTimeout(close, custom ? 150 : FOLLOW_CLOSE);
+  const mouse = (event: { pointerType: string }) => { if (event.pointerType !== 'touch') hold('onP', 'onPointerMove', event); };
+  // A tap lifts before the engine is here: the lift is held after its touch, so the engine does not take the next tap for a second finger.
+  const lifted = (event: { pointerType: string }) => { if (event.pointerType === 'touch') hold('-', 'onPointerUp', event); };
+  // Input keeps queuing behind held input, so it runs after it, in order.
+  const handlers = driver && !refs.held.length ? driver.handlers : keys ? {
+    ...asked && {
+      onPointerEnter: mouse, onPointerMove: mouse,
+      onPointerDown: (event: { pointerType: string }) => { if (event.pointerType === 'touch') hold('onP', 'onPointerDown', event); },
+      // A lifted finger leaves the chart too: that leave drops nothing.
+      onPointerLeave: (event: { pointerType: string }) => { if (event.pointerType !== 'touch') hold('onP'); },
+      ...scrub && { onPointerUp: lifted, onPointerCancel: lifted },
     },
-  } };
-  const cardRef = (node: HTMLElement | null) => { card.current = node; };
-  // The focus look's focus: the category of the hovered or focused record.
+    onFocus: (event: object) => hold('on', 'onFocus', event),
+    // Before the engine: the focus and keys held so far go. Behind held input: the blur waits its turn, so the card closes after it.
+    onBlur: (event: object) => { if (driver) hold('-', 'onBlur', event); else { hold('onF'); hold('onK'); } },
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (!(event.target as Element).hasAttribute('data-bp-keys') || event.altKey || event.ctrlKey || event.metaKey || !STOP_KEYS.test(event.key)) return;
+      event.preventDefault();
+      hold('-', 'onKeyDown', event);
+    },
+  } : undefined;
+  const cardRef = (node: HTMLElement | null) => { refs.card = node; };
+  const hostRef = (node: HTMLElement | null) => { refs.host = node; };
+  // The focus look's focus: the category of the hovered, focused or linked record.
   const focusCategory = look ? model!.records.find(record => record.id === ids[0])?.target.owner.categoryId : undefined;
-  return { engine, view, origin: position?.viewport?.origin, follow: position?.follow === true, handlers, focusStops: hover !== undefined, keys: keys && engine !== undefined, cursor, cardRef, focusCategory };
+  return { engine, view, origin: position?.viewport?.origin, follow: position?.follow === true, handlers, focusStops: keys && hover !== undefined, keys, scrub: keys && scrub, cursor, cardRef, hostRef, focusCategory };
 }

@@ -1405,3 +1405,22 @@ it('keeps creative, lookup, sankey and pvm keys in their exported documents', as
   const pvm = getFixtures('pvm').find(item => item.id === 'no-point-labels')!;
   expect(await optionsOf(exporter => <PvmChart {...pvm.options as object} data={pvm.data as never} exporter={exporter} />)).toMatchObject({ labels: { point: false } });
 });
+
+// A downloaded picture or a printed page would tell its reader to tap or hover, which neither can do.
+it('exports and prints a capped note without the hover hint', async () => {
+  const print = printMedia();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthly = [10, 11, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16];
+  const capped = { categories: months, series: [{ id: 'a', label: 'North', values: monthly },
+    { id: 'b', label: 'South', values: monthly.map(value => value + 0.5) }, { id: 'c', label: 'West', values: monthly.map(value => value + 0.2) }] };
+  const handle = await exporterOf(exporter => <LineChart data={capped} title="Three regions" valueLabels="all" notes={{ show: ['disclosure'] }}
+    size={{ width: 720, height: 405 }} exporter={exporter} />);
+  expect(host.textContent).toContain('tap or hover');
+  const svg = await handle.svg();
+  expect(svg.ok && svg.artifact.text).toContain('more');
+  expect(svg.ok && svg.artifact.text).not.toContain('tap or hover');
+  act(() => { window.dispatchEvent(new Event('beforeprint')); print(true); });
+  expect(host.textContent).not.toContain('tap or hover');
+  act(() => { window.dispatchEvent(new Event('afterprint')); print(false); });
+  expect(host.textContent).toContain('tap or hover');
+});
