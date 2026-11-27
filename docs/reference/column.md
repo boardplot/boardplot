@@ -296,3 +296,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | inside-base-values | example | Column values inside the base |
 | stacked-inside-base-values | example | Stacked column values inside each base |
 | drawing-kinds | example | A box around the launch months, the old level and an arrow from a note |
+| stacked-series-cagr-card | torture | One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top |

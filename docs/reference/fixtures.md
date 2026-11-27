@@ -133,6 +133,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | inside-base-values | column.grouped | example | Column values inside the base |
 | stacked-inside-base-values | column.stacked | example | Stacked column values inside each base |
 | drawing-kinds | column.grouped | example | A box around the launch months, the old level and an arrow from a note |
+| stacked-series-cagr-card | column.stacked | torture | One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top |
 
 ## bar
 
@@ -251,6 +252,8 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | live-window-preserves-source | line.line | torture | Sampled live periods retain the source mean |
 | auto-decimated-days | line.line | torture | Eight years of daily values sample to the width of the plot |
 | decimate-none-days | line.line | torture | decimate: 'none' draws every one of the daily values |
+| daily-labels-wide | line.line | torture | Every value label on 2,000 daily points in the shortest wide frame that draws |
+| daily-labels-phone-card | line.line | torture | Every value label on 60 undecimated daily points in a phone dashboard card |
 | area-focus-tint | line.area | example | A single area in a pale tint of the focus under an ink line, the forecast hatched |
 | option-lower-ratio | line.line | example | Defects fall relative to inspected units |
 | option-lower-bump | line.bump | torture | Delivery-time ranks reward shorter waits |
@@ -573,6 +576,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | ranked-campaigns-rank-key-only | combo.dual-axis | torture | Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks) |
 | area-capacity-behind-columns | combo.overlay | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
 | inside-base-values | combo.overlay | example | Combo column values inside the base |
+| daily-columns-lines-labels | combo.overlay | torture | Two column series and three lines on 60 days with every value label at phone width |
 
 ## variance
 
