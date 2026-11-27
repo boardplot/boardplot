@@ -333,6 +333,13 @@ export function unitPhrase(unit: string | undefined): boolean {
 /** A unit that opens with a scale ("thousand per month", "M users"): the number is in that scale, so the unit stays on it. */
 const SCALE_FIRST = /^(?:M|(?:k|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\.?)(?:\s|$)/iu;
 
+/** A unit phrase the row's name already says ("Visits" in visits) leaves the number: "Visits: 122k". */
+function namedNumber(name: string, text: string, unit: string | undefined): string {
+  const phrase = unit?.trim();
+  if (!phrase || !unitPhrase(phrase) || !text.endsWith(phrase) || !name.toLocaleLowerCase().includes(phrase.toLocaleLowerCase())) return text;
+  return text.slice(0, -phrase.length).replace(/[\s\u00a0\u202f]+$/u, '') || text;
+}
+
 /** The value row's name and number, and the heading above it. */
 interface ValueName { heading: string; name?: string; value: string }
 
@@ -355,15 +362,9 @@ function valueName(record: InteractionRecord, locale?: string, options?: LabelCa
   const named = (heading: string, name?: string, number = value): ValueName =>
     name !== undefined && !sameName(name, heading) ? { heading, name, value: number } : { heading, value: number };
   if (record.valueLabel) return named(options?.title ?? record.label, record.valueLabel);
-  if (record.seriesLabel) {
-    // A unit phrase the series name already says ("Visits" in visits) leaves the number: "Visits: 122k".
-    const unit = record.value.unit?.trim();
-    const number = unit && unitPhrase(unit) && value.endsWith(unit) && record.seriesLabel.toLocaleLowerCase().includes(unit.toLocaleLowerCase())
-      ? value.slice(0, -unit.length).replace(/[\s\u00a0\u202f]+$/u, '') : '';
-    return named(options?.title ?? record.categoryLabel ?? record.label, record.seriesLabel, number || value);
-  }
+  if (record.seriesLabel) return named(options?.title ?? record.categoryLabel ?? record.label, record.seriesLabel, namedNumber(record.seriesLabel, value, record.value.unit));
   const heading = options?.title ?? record.label;
-  if (options?.name !== undefined && !sameName(options.name, heading)) return named(heading, options.name);
+  if (options?.name !== undefined && !sameName(options.name, heading)) return named(heading, options.name, namedNumber(options.name, value, record.value.unit));
   const unit = record.value.unit?.trim();
   if (unit && unitPhrase(unit) && value.endsWith(unit)) {
     const number = value.slice(0, -unit.length).replace(/[\s  ]+$/u, '');
