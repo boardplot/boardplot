@@ -1123,8 +1123,9 @@ function rowsWithinHeight(
   locale?: string,
 ): { rows: LabelCardRow[]; measured: MeasuredRow[] } {
   // Apply both limits to the source rows, so a summary never counts as data.
+  // Up to eight series, or nine: a counting row in place of one series would only hide it.
   let series = 0;
-  const cut = rows.findIndex(row => row.series && ++series > 8);
+  const cut = rows.filter(row => row.series).length <= 9 ? -1 : rows.findIndex(row => row.series && ++series > 8);
   // The Total row closes the parts it sums: a card that cuts them leaves it out.
   const maximum = cut < 0 ? rows.length : cut;
   // The hovered series stays on a card that cuts rows: its row and the detail

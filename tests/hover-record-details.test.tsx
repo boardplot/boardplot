@@ -662,6 +662,10 @@ describe('default card rows', () => {
       panel('mix', { options: { variant: 'stacked100' } }, [{ id: 'w', label: 'Web', values: [60, 70] }, { id: 'st', label: 'Store', values: [40, 30] }])] },
     options: { columns: 2, sharedScale: false, ...size } };
     for (const series of ['n', 'w']) expect(card(mixed, 'q1', series).map(row => row[0])).toEqual(['Q1', 'North:', 'South:', 'Total:', 'Web:', 'Store:']);
+    // A grid of nine panels lists all nine, not eight and a counting row.
+    const nine = { type: 'grid', data: { panels: Array.from({ length: 9 }, (_, index) => panel(`p${index}`, { title: `Region ${index + 1}` }, one([index + 1, index + 2]))) },
+      options: { columns: 3, ...size } };
+    expect(card(nine, 'q1').map(row => row[0])).toEqual(['Q1', ...Array.from({ length: 9 }, (_, index) => `Region ${index + 1} · Value:`)]);
     // A grid's shared key sets the order of the series in every panel.
     const shared = { type: 'grid', data: { panels: ['p1', 'p2'].map(id => panel(id, { title: id === 'p1' ? 'North' : 'South', options: { variant: 'stacked' } },
       [{ id: 'web', label: 'Web', values: [60, 70] }, { id: 'store', label: 'Store', values: [40, 30] }])) },
@@ -735,14 +739,14 @@ describe('default card rows', () => {
       .find(row => row[0] === 'Total:')?.[1]).toBe('200 (partial)');
     expect(names({ type: 'column', data: { categories: cats, series: parts }, options: { variant: 'stacked', legend: { position: 'top', order: ['e', 's', 'n'] },
       size: { width: 640, height: 360 } } }, 'n')).toEqual(['Q2', 'East:', 'South:', 'North:', 'Total:']);
-    const nine = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
-      values: [10 * index, 10 * index + 1] })) }, options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
-    expect(nine.find(row => row.at(-1) === true)?.[0]).toBe('S9:');
+    const ten = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 10 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
+      values: [10 * index, 10 * index + 1] })) }, options: { size: { width: 640, height: 480 } } }, 'q2', 's9');
+    expect(ten.find(row => row.at(-1) === true)?.[0]).toBe('S10:');
     // The hovered series takes its own detail rows with it, not those of the row it replaces.
-    const detailed = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 9 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
+    const detailed = card({ type: 'line', data: { categories: cats, series: Array.from({ length: 10 }, (_, index) => ({ id: `s${index}`, label: `S${index + 1}`,
       values: [1, index >= 7 ? { number: 10 * index, details: { owner: index === 7 ? 'East' : 'West' } } : 10 * index] })) },
-    options: { size: { width: 640, height: 480 } } }, 'q2', 's8');
-    expect(detailed.slice(-3, -1)).toEqual([['S9:', '80', true], ['owner:', 'West']]);
+    options: { size: { width: 640, height: 480 } } }, 'q2', 's9');
+    expect(detailed.slice(-3, -1)).toEqual([['S10:', '90', true], ['owner:', 'West']]);
   });
 
   // An earlier partial period, closed since, read "to date".
