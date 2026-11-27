@@ -19,7 +19,8 @@ const ITEM = '[data-bp-legend-item]';
  */
 export const useLegendClick: ZoomHook = (input) => {
   // Rows that are still loading or refused leave no data yet.
-  const ids = (input.data as ChartData | undefined)?.series?.filter(ranksCategories).map((s) => s.id) ?? NONE;
+  const series = (input.data as ChartData | undefined)?.series?.filter(ranksCategories) ?? [];
+  const ids = series.map((s) => s.id);
   // One data series has nothing to hide: the last series shown stays.
   // A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
   const variant = input.options.variant;
@@ -67,6 +68,8 @@ export const useLegendClick: ZoomHook = (input) => {
     if (!offered) return void keys?.remove();
     // A button that stays keeps its place in the DOM, so the focus stays on it while its series toggles.
     const old = new Map(Array.from(keys!.children as HTMLCollectionOf<HTMLButtonElement>, (button) => [button.dataset.bpLegendKey!, button]));
+    // Buttons of series that left go first, so moving a staying button never passes the focus through the body.
+    old.forEach((button, id) => { if (!labels.has(id)) button.remove(); });
     let at = 0;
     labels.forEach((node, id) => {
       let button = old.get(id);
@@ -77,17 +80,20 @@ export const useLegendClick: ZoomHook = (input) => {
         button.dataset.bpLegendKey = id;
         button.style.cssText = 'position:absolute;pointer-events:none;padding:0;border:0;background:none;color:transparent;font-size:0';
       }
-      button.textContent = node.textContent;
+      // The series name from the data: a fitted label can be cut short.
+      const named = series.find((s) => s.id === id)!;
+      button.textContent = (named.label ?? id).replace(/\n/g, ' ');
       button.setAttribute('aria-pressed', String(!hidden.includes(id)));
-      button.onfocus = () => {
+      // The focused button follows its label, also when a toggle moves the legend.
+      const place = button.onfocus = () => {
         const box = node.getBoundingClientRect();
         const frame = element.getBoundingClientRect();
         Object.assign(button!.style, { left: `${box.left - frame.left}px`, top: `${box.top - frame.top}px`, width: `${box.width}px`, height: `${box.height}px` });
       };
+      if (button === document.activeElement) place();
       if (keys!.children[at] !== button) keys!.insertBefore(button, keys!.children[at] ?? null);
       at++;
     });
-    old.forEach((button) => button.remove());
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
     seen: (geometry) => { refused = geometry !== undefined && !chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).every(isSizeDependentRefusal); } };

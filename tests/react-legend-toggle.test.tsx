@@ -109,6 +109,12 @@ it('follows new data and leaves no button behind', async () => {
   expect(marks('south')).toBe(3);
   await render(<ColumnChart data={{ ...data, series: data.series.slice(0, 1) }} legend="top" size={size} />);
   expect(host.querySelector('[data-bp-legend-key]')).toBeNull();
+  // A series that leaves takes its button with it, and a focused button keeps the focus.
+  await render(<ColumnChart data={data} legend="top" size={size} />);
+  (key('South') as HTMLElement).focus();
+  const reference = { ...data, series: [{ ...data.series[0]!, role: 'reference' as const }, ...data.series.slice(1)] };
+  await render(<ColumnChart data={reference} legend="top" size={size} />);
+  expect(document.activeElement).toBe(key('South'));
   await render(<ColumnChart data={data} legend="top" size={size} />);
   await render(<ColumnChart data={data} legend="top" size={size} onSeriesClick={vi.fn()} />);
   expect(host.querySelector('[aria-pressed]')).toBeNull();
