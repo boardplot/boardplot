@@ -154,7 +154,7 @@ function namedMagnitude(text, language) {
 
 /** The magnitude a data unit names: "$bn", "k€", "EUR m", "€m", "kEUR", "M units". */
 function dataMagnitude(unit) {
-  const hit = /^(?:\p{Sc}\s?|[A-Z]{3}\s?)?(thousand|million|billion|k|K|m|M|bn|B|Mio\.?|Mrd\.?|Tsd\.?)(?:\s?(?:\p{Sc}|[A-Z]{3}))?(?:\s|$)/u.exec(unit.trim());
+  const hit = /^(?:\p{Sc}\s?|[A-Z]{3}\s?)?(thousand|million|billion|k|K|m|M|bn|B|Mio\.?|Mrd\.?|Tsd\.?)(?:(?<=thousand|million|billion)s)?(?:\s?(?:\p{Sc}|[A-Z]{3}))?(?:\s|$)/u.exec(unit.trim());
   return hit ? hit[1].replace('.', '') : undefined;
 }
 
