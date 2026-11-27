@@ -41,34 +41,53 @@ export const useLegendClick: ZoomHook = (input) => {
     // A refusal card has no legend to click a series back, and an offer that ends leaves no control: every series shows.
     if (!offered || refused) setList(NONE);
     if (!element) return;
-    element.onclick = element.onkeydown = offered ? (event: Event) => {
-      const id = (event.target as Element).closest<SVGElement>(ITEM)?.dataset.bpLegendItem;
-      if (!id || !ids.includes(id) || event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+    element.onclick = offered ? (event: Event) => {
+      const id = (event.target as Element).closest<HTMLElement>(`${ITEM},[data-bp-legend-key]`)?.dataset;
+      const at = id?.bpLegendItem ?? id?.bpLegendKey;
+      if (!at || !ids.includes(at)) return;
       event.preventDefault();
       // The last series shown stays.
-      setList(hidden.includes(id) ? hidden.filter((other) => other !== id) : ids.every((other) => other === id || hidden.includes(other)) ? hidden : [...hidden, id]);
+      setList(hidden.includes(at) ? hidden.filter((other) => other !== at) : ids.every((other) => other === at || hidden.includes(other)) ? hidden : [...hidden, at]);
     } : null;
-    // The entry of a data series takes the pointer, and its label is a button that says whether the series shows. Every
-    // other entry loses what this hook set on it: the offer ended, or React reuses the node for another entry. Only the
-    // page's onSeriesClick has React draw a pointer and a button on the legend, and those stay.
+    // A pointer clicks the drawn entry. The keyboard and a screen reader reach one button per series beside the SVG,
+    // which keeps role="img" and so holds no control. Each button lies over its label, so its focus ring shows there.
+    let keys = element.querySelector<HTMLElement>(':scope > [data-bp-legend-keys]');
+    if (offered && !keys) {
+      keys = element.appendChild(document.createElement('div'));
+      keys.dataset.bpLegendKeys = '';
+    }
+    const labels = new Map<string, Element>();
     element.querySelectorAll<SVGElement>(ITEM).forEach((node) => {
       const id = node.dataset.bpLegendItem!;
-      if (offered && ids.includes(id)) {
-        node.style.cursor = 'pointer';
-        if (node.dataset.part === 'legendLabel') {
-          node.setAttribute('role', 'button');
-          node.tabIndex = 0;
-          node.setAttribute('aria-pressed', String(!hidden.includes(id)));
-        }
-      } else {
-        node.removeAttribute('aria-pressed');
-        if (ownsClick) {
-          node.removeAttribute('role');
-          node.removeAttribute('tabindex');
-          node.style.cursor = '';
-        }
-      }
+      const shown = offered && ids.includes(id);
+      if (shown) node.style.cursor = 'pointer';
+      else if (ownsClick) node.style.cursor = '';
+      if (shown && node.dataset.part === 'legendLabel') labels.set(id, node);
     });
+    if (!offered) return void keys?.remove();
+    // A button that stays keeps its place in the DOM, so the focus stays on it while its series toggles.
+    const old = new Map(Array.from(keys!.children as HTMLCollectionOf<HTMLButtonElement>, (button) => [button.dataset.bpLegendKey!, button]));
+    let at = 0;
+    labels.forEach((node, id) => {
+      let button = old.get(id);
+      old.delete(id);
+      if (!button) {
+        button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.bpLegendKey = id;
+        button.style.cssText = 'position:absolute;pointer-events:none;padding:0;border:0;background:none;color:transparent;font-size:0';
+      }
+      button.textContent = node.textContent;
+      button.setAttribute('aria-pressed', String(!hidden.includes(id)));
+      button.onfocus = () => {
+        const box = node.getBoundingClientRect();
+        const frame = element.getBoundingClientRect();
+        Object.assign(button!.style, { left: `${box.left - frame.left}px`, top: `${box.top - frame.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+      };
+      if (keys!.children[at] !== button) keys!.insertBefore(button, keys!.children[at] ?? null);
+      at++;
+    });
+    old.forEach((button) => button.remove());
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
     seen: (geometry) => { refused = geometry !== undefined && !chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).every(isSizeDependentRefusal); } };

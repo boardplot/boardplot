@@ -24,6 +24,7 @@ async function render(element: ReactElement) {
   await act(async () => { root!.render(element); await loadHoverEngine(); });
 }
 const label = (name: string) => Array.from(host.querySelectorAll('[data-part="legendLabel"]')).find((node) => node.textContent === name)!;
+const key = (name: string) => Array.from(host.querySelectorAll('[data-bp-legend-key]')).find((node) => node.textContent === name)!;
 const fire = (node: Element, event: Event) => act(() => { node.dispatchEvent(event); });
 const click = (node: Element) => fire(node, new MouseEvent('click', { bubbles: true }));
 const marks = (id: string) => host.querySelectorAll(`[data-id^="mark:${id}:"]`).length;
@@ -36,8 +37,10 @@ it('hides a series on a legend click and shows it again on the next', async () =
   click(label('North'));
   expect(marks('north')).toBe(0);
   expect(fills()).toEqual(before.filter((entry) => !entry.startsWith('mark:north:')));
-  expect(label('North').getAttribute('aria-pressed')).toBe('false');
-  expect(label('South').getAttribute('aria-pressed')).toBe('true');
+  expect(key('North').getAttribute('aria-pressed')).toBe('false');
+  expect(key('South').getAttribute('aria-pressed')).toBe('true');
+  // The SVG keeps role="img", so no control sits inside it.
+  expect(host.querySelector('svg [role="button"], svg [tabindex]')).toBeNull();
   // The hover card of a category counts the visible series only.
   const south = host.querySelector('[data-id="mark:south:A"]')!;
   const move = Object.assign(new Event('pointermove', { bubbles: true }), { pointerType: 'mouse', clientX: 0, clientY: 0 });
@@ -52,12 +55,12 @@ it('hides a series on a legend click and shows it again on the next', async () =
   click(label('South'));
   click(label('West'));
   expect(marks('west')).toBe(3);
-  // Enter on the label works as the click does.
-  fire(label('South'), new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  // The keyboard button of a series works as the click does.
+  click(key('South'));
   expect(marks('south')).toBe(3);
   // Only hover={false} is the static chart.
   await render(<ColumnChart data={data} legend="top" size={size} hover={{ card: false, highlight: false }} />);
-  expect(label('West').getAttribute('role')).toBe('button');
+  expect(key('West')).toBeDefined();
 });
 
 // A series would stay hidden with no control left to show it.
@@ -79,7 +82,7 @@ it('shows every series again when the page takes the legend click or turns hover
   click(label('North'));
   await render(<ColumnChart data={data} legend="none" size={size} />);
   expect(marks('north')).toBe(3);
-  expect(host.querySelector('[data-part="legendLabel"][role="button"]')).toBeNull();
+  expect(host.querySelector('[data-bp-legend-key]')).toBeNull();
 });
 
 // The legend would mark a case as hidden while the chart still draws it.
@@ -87,7 +90,7 @@ it('offers no legend click on a tornado chart', async () => {
   const fixture = getFixtures('bar').find((entry) => entry.id === 'tornado-two-drivers')!;
   await render(<BarChart data={fixture.data as never} {...fixture.options as object} size={size} />);
   expect(host.querySelectorAll('[data-part="legendLabel"]').length).toBeGreaterThan(0);
-  expect(host.querySelector('[role="button"]')).toBeNull();
+  expect(host.querySelector('[data-bp-legend-key]')).toBeNull();
   const before = fills();
   click(host.querySelector('[data-part="swatch"]')!);
   expect(fills()).toEqual(before);
@@ -100,12 +103,12 @@ it('follows new data and leaves no button behind', async () => {
   click(label('West'));
   const two = { ...data, series: data.series.slice(0, 2) };
   await render(<ColumnChart data={two} legend="top" size={size} />);
-  expect(label('North').getAttribute('aria-pressed')).toBe('true');
+  expect(key('North').getAttribute('aria-pressed')).toBe('true');
   click(label('North'));
   expect(marks('north')).toBe(0);
   expect(marks('south')).toBe(3);
   await render(<ColumnChart data={{ ...data, series: data.series.slice(0, 1) }} legend="top" size={size} />);
-  expect(host.querySelector('[role="button"], [aria-pressed]')).toBeNull();
+  expect(host.querySelector('[data-bp-legend-key]')).toBeNull();
   await render(<ColumnChart data={data} legend="top" size={size} />);
   await render(<ColumnChart data={data} legend="top" size={size} onSeriesClick={vi.fn()} />);
   expect(host.querySelector('[aria-pressed]')).toBeNull();
