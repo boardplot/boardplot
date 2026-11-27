@@ -16,15 +16,14 @@ type Scalar = string | number | boolean;
 
 /**
  * A retired chart setting. `at` is its dotted place in the chart, from
- * `options` or `data`, or a list of such places that share the rest of the
- * row; `[]` steps into every item of an array. `values`
+ * `options` or `data`; `[]` steps into every item of an array. `values`
  * retires only those values, each mapped to its successor value or to
  * `null` when the value is removed; without it every value is retired.
  * `to` is the successor key as a chart path; without `to` and `values` the
  * key is removed, and `use` says what to use instead.
  */
 export interface RetiredSetting {
-  at: string | readonly string[];
+  at: string;
   types?: readonly string[];
   values?: Readonly<Record<string, Scalar | null>>;
   to?: string;
@@ -39,7 +38,10 @@ export function linkRetiredSettings(type: string, settings: readonly RetiredSett
   if (settings) OWN_SETTINGS.set(type, settings);
 }
 
-const RETIRED_SETTINGS: readonly RetiredSetting[] = [
+/** A shared row may list several places that share the rest of the row. */
+type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly string[] };
+
+const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
