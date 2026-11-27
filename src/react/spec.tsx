@@ -29,6 +29,7 @@ import type { HoverOption, RenderHoverContent } from './useHover';
 import { DataTableContext } from './hover/HoverSurface';
 import type { ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
+import { zoomHookFor } from './zoomHook';
 export type { ParsedChartSpec, BoardplotSpecSettings } from './specValidation';
 export type { BoardplotSpec } from '../core/types/specInput';
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -94,7 +95,7 @@ const components = new Map<string, AnyChart>();
 function componentFor(type: string): AnyChart {
   let component = components.get(type);
   if (!component) {
-    component = createChartComponent<unknown, Record<string, unknown>>(type) as unknown as AnyChart;
+    component = createChartComponent<unknown, Record<string, unknown>>(type, undefined, undefined, zoomHookFor(type)) as unknown as AnyChart;
     components.set(type, component);
   }
   return component;
@@ -277,7 +278,8 @@ function useChartEngine(type: string): { ready: boolean; failure?: string } {
  * `boardplot/react/<type>`, draws it without waiting.
  */
 function engineReady(type: string): boolean {
-  return type === 'table' ? loadedTableChart() !== undefined : getChart(type) !== undefined;
+  // A line chart also waits for its entry, which carries the zoom hook: a server or an export can register its core alone.
+  return type === 'table' ? loadedTableChart() !== undefined : getChart(type) !== undefined && (type !== 'line' || zoomHookFor(type) !== undefined);
 }
 
 /** What the reader sees when a chunk did not arrive at all. */

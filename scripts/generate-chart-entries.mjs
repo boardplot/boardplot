@@ -508,6 +508,9 @@ function sharedKeyTrees(optionKeys) {
   };
 }
 
+/** The types that zoom (core/zoom.ts `zoomAxis`): their entries pass the zoom hook to the component. */
+const ZOOM_TYPES = new Set(['line']);
+
 function renderModule(type, binding, keys, keyTrees) {
   const lines = [HEADER, `// Single-chart React entry for '${type}'.`];
   const shared = new Set();
@@ -572,6 +575,9 @@ function renderModule(type, binding, keys, keyTrees) {
   );
   lines.push("import { createChartComponent } from '../createChartComponent';");
   lines.push("import { optionKeyCheck } from '../../core/schema/unknownKeys';");
+  // Only the entry of a type that zooms links the zoom hook; every other component draws without the zoom code.
+  const zooms = ZOOM_TYPES.has(type);
+  if (zooms) lines.push("import { useZoom } from '../useZoom';", "import { linkZoom } from '../zoomHook';");
   const typeImports = new Map();
   const addTypeImport = (name, from) => {
     if (!typeImports.has(from)) typeImports.set(from, new Set());
@@ -597,7 +603,8 @@ function renderModule(type, binding, keys, keyTrees) {
   lines.push(...keyLines);
   // The deferred modules the entry links count in the server's and the hydrating first frame.
   const DEFERRED_NAMES = { linkThemeShapeRules: 'theme-rules', linkAnnotateEngine: 'annotate' };
-  const linkedArg = binding.links ? `, ${JSON.stringify(binding.links.map(([, link]) => DEFERRED_NAMES[link]))}` : '';
+  const linkedList = binding.links ? `, ${JSON.stringify(binding.links.map(([, link]) => DEFERRED_NAMES[link]))}` : '';
+  const linkedArg = zooms ? `${linkedList || ', undefined'}, linkZoom(${quoted(type)}, useZoom)` : linkedList;
   if (binding.links?.some(([, link]) => !DEFERRED_NAMES[link])) throw new Error(`${type}: a link without a deferred module name`);
   if (binding.loose) {
     lines.push(

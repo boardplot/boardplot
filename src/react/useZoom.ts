@@ -12,6 +12,7 @@ import {
   drawnGrain, panBy, readZoomRange, wantedGrain, zoomAxis, zoomBy, zoomChange, zoomSpec,
   type ZoomChange, type ZoomSettings, type ZoomSpec,
 } from '../core/zoom';
+import { languageOf } from './zoomHook';
 
 export type { ZoomAggregate, ZoomChange, ZoomGrain, ZoomGrainUnit, ZoomReason } from '../core/zoom';
 
@@ -22,9 +23,6 @@ export interface ZoomProps extends ZoomSettings {
   onZoom?: (change: ZoomChange) => void;
 }
 
-/** The language of a locale given as a tag ('de') or as `{ language }`. */
-export const languageOf = (locale: unknown): string | undefined =>
-  typeof locale === 'string' ? locale : (locale as { language?: string } | undefined)?.language;
 
 /** `zoom` on a chart: true, or the settings. */
 export type ZoomOption = boolean | ZoomProps;
