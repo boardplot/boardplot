@@ -14,7 +14,7 @@ import { chartString } from '../strings/layoutGrid';
 import { frameTextOptions, LEFT_OUT_OF_NOTE, valueNoteLine, panelNoteTexts, solveFrame, type FrameInput } from '../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from './gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierChromeFloor, varianceTierWeights } from './varianceTiers';
-import { boundsOf, type Rect } from '../geometry';
+import { boundsOf, sameRect, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
@@ -194,7 +194,7 @@ export const FACET_GAPS = Symbol('facetGaps');
 export const SCALE_GROUP_MEMBERS = Symbol('scaleGroupMembers');
 
 type GridChild = {
-  def: ReturnType<typeof getChart>;
+  def: NonNullable<ReturnType<typeof getChart>>;
   geo: Geometry;
   recordOptions: object;
   sameGridKey?: boolean;
@@ -214,10 +214,9 @@ type TierGroup = { slots: Rect[]; children: GridChild[]; sharedX?: number; share
  */
 export function layoutGrid(data: GridData, options: GridOptions = {}): LayoutResult<GridMarks, GridDerived> {
   let named: string[] = [];
-  // A disclosure retry changes only the grid footer. Keep aligned groups inside
-  // this call. An equal set of panel slots draws the same children and axes.
-  const groups: TierGroup[] | undefined = (options.measure ?? defaultMeasurer) === defaultMeasurer
-    && Array.isArray(data?.panels) && varianceTierWeights(data.panels) ? [] : undefined;
+  // A disclosure retry changes only the grid footer. Keep aligned variance-tier groups
+  // inside this call. An equal set of panel slots draws the same children and axes.
+  const groups: TierGroup[] | undefined = (options.measure ?? defaultMeasurer) === defaultMeasurer ? [] : undefined;
   let geometry = layoutGridPass(data, options, groups);
   for (let round = 0; round < 2; round++) {
     if (geometry.refused) return geometry;
@@ -448,7 +447,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
     const knownVariance = varianceNames?.get(panelIndex);
     const probe = knownCaption || knownVariance !== undefined ? undefined : draw(opts);
     const autoTierName = knownVariance ?? (probe?.derived as { tierName?: unknown } | undefined)?.tierName;
-    if (varianceNames && compactTiers && def.type === 'variance' && !opts.annotations?.length
+    if (varianceNames && def.type === 'variance' && !opts.annotations?.length
       && probe && varianceTierChromeFloor.has(probe.plot) && typeof autoTierName === 'string') {
       varianceNames.set(panelIndex, autoTierName);
     }
@@ -504,17 +503,17 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
   const landsOnEndpointLegend = (children: GridChild[]): boolean =>
     children.some(
       (child) =>
-        child.def?.type === 'line' &&
+        child.def.type === 'line' &&
         (child.geo.derived as { endpointLabelEconomy?: { strategy?: unknown } })
           .endpointLabelEconomy?.strategy === 'legend',
     );
   const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
-    const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options) : {};
+    const anchored = child.anchored ??= panelAnchoring(child.def.type, data.panels[i]!.options);
     const columnOptions = child.recordOptions as { annotations?: unknown[]; ratioTier?: unknown; labels?: { category?: boolean; point?: boolean; segment?: boolean } };
     return {
       geometry: child.geo, slot: slots[i]!,
       // With the category row off and no ratio tier, the column only subtracts room from its frame.
-      columnPlotFloor: child.def?.type === 'column' && captionSizedPanelLayouts.has(child.def.layout)
+      columnPlotFloor: child.def.type === 'column' && captionSizedPanelLayouts.has(child.def.layout)
         && measure === defaultMeasurer && child.geo.labels.length === 0 && child.geo.warnings.length === 0
         && !columnOptions.ratioTier && !columnOptions.annotations?.length && columnOptions.labels?.category === false
         && columnOptions.labels.point === false && columnOptions.labels.segment === false,
@@ -546,7 +545,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
       let pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i], undefined, 'check'));
       if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(pass1)) {
         uniformLineEndpointLegend = true;
-        pass1 = pass1.map((child, i) => reusePanels && child.def?.type !== 'line'
+        pass1 = pass1.map((child, i) => reusePanels && child.def.type !== 'line'
           ? child : layoutPanel(data.panels[i]!, i, slots[i]!, baseMargins[i], undefined, child.sameGridKey ? child : undefined));
       }
       sharedX = maxOf(pass1.map((c) => c.geo.plot.x));
@@ -577,17 +576,14 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
     let children = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!));
     if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(children)) {
       uniformLineEndpointLegend = true;
-      children = children.map((child, i) => reusePanels && child.def?.type !== 'line'
+      children = children.map((child, i) => reusePanels && child.def.type !== 'line'
         ? child : layoutPanel(data.panels[i]!, i, slots[i]!));
     }
     return alignSharedValues(children);
   };
 
   const layoutChildren = groups && varianceWeights ? (): GridChild[] => {
-    const known = groups.find(group => slots.every((s, i) => {
-      const old = group.slots[i]!;
-      return s.x === old.x && s.y === old.y && s.w === old.w && s.h === old.h;
-    }));
+    const known = groups.find(group => slots.every((s, i) => sameRect(s, group.slots[i]!)));
     if (known) {
       sharedX = known.sharedX;
       sharedW = known.sharedW;
@@ -610,7 +606,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
         return !opts.scaleGroup && !opts.annotations?.length && !panel.annotations?.length
           && (opts.margin?.top ?? 0) >= 0 && (opts.margin?.bottom ?? 0) >= 0
           && (panel.type === 'variance' ? varianceTierChromeFloor.has(children[i]!.geo.plot)
-            : children[i]!.def && captionSizedPanelLayouts.has(children[i]!.def!.layout));
+            : captionSizedPanelLayouts.has(children[i]!.def.layout));
       })) {
       // If the taller probe is clamped it already keeps the original group.
       // Otherwise each variance plot uses at least its value rows and bottom
@@ -1002,7 +998,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
       chart: { options: child.recordOptions, geometry: geo, offset: { x: dx, y: dy }, warningOffset, ...((panel.options as { theme?: ThemeRef } | undefined)?.theme ? { theme: (panel.options as { theme?: ThemeRef }).theme } : {}) },
       plot: { x: geo.plot.x + dx, y: geo.plot.y + dy, w: geo.plot.w, h: geo.plot.h },
       content: { x: content.x + dx, y: content.y + dy, w: content.w, h: content.h },
-      title: child.tierCaption ?? (geo.a11y.title || child.def?.title || panel.id),
+      title: child.tierCaption ?? (geo.a11y.title || child.def.title || panel.id),
       ...(titleNodeId ? { titleNodeId } : {}),
       ...(captionNodeId ? { captionNodeId } : {}),
     });

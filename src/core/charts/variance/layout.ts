@@ -440,9 +440,9 @@ export function layoutVariance(
   data: ChartData,
   options: VarianceOptions = {} as VarianceOptions,
 ): Geometry<VarianceMarks, VarianceDerived> {
-  const variant = options.variant ?? 'absolute';
-  if (variant !== 'absolute') refuseLabelPosition(options, `variance ${variant}`,
-    variant === 'integrated' ? ['center', 'insideEnd', 'insideBase'] : []);
+  const mode = options.variant ?? 'absolute';
+  if (mode !== 'absolute') refuseLabelPosition(options, `variance ${mode}`,
+    mode === 'integrated' ? ['center', 'insideEnd', 'insideBase'] : []);
   const warnings: LintWarning[] = [];
   breakUnsupported('variance', options, warnings);
   const theme = resolveSemanticPaletteTheme(
@@ -460,7 +460,6 @@ export function layoutVariance(
 
   // Absolute and relative tiers use the same actuals, reference and deltas at
   // every trial height. Sorting or cutting categories owns its input order.
-  const mode = options.variant ?? 'absolute';
   const shared = panelTypeClass(options) !== undefined && measure === defaultMeasurer && !options.sort && !options.topN
     && data && typeof data === 'object'
     ? requestMemo<{ values?: ReturnType<typeof prepareVarianceValues> }>(data,
