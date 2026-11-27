@@ -4,7 +4,6 @@ import type { ResolvedChartRequest } from '../core/request';
 import type { PreparedChart, RenderGeometry } from './prepared';
 import type { CardFollower, HoverModel, HoverSelection, HoverView } from './hover/engine';
 import { HoverGroupContext } from './hoverGroupContext';
-import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 /**
  * Which card a hovered mark opens. `'label'` is the record's own facts, the
@@ -91,14 +90,8 @@ export interface KeyCursor { id: string; index: number; size: number; reading: s
 /** A record click or its keyboard twin, Enter or Space on the focused record. */
 export type RecordClickEvent = MouseEvent<Element> | KeyboardEvent<Element>;
 
-/** The handler an input belongs to, and the fields of its event the handler reads: React clears `currentTarget` after the dispatch. */
-export interface HeldInput {
-  kind: 'onPointerMove' | 'onPointerDown' | 'onPointerUp' | 'onFocus' | 'onKeyDown';
-  currentTarget: EventTarget; target: EventTarget; relatedTarget?: EventTarget | null;
-  clientX?: number; clientY?: number; pointerType?: string; pointerId?: number; isPrimary?: boolean;
-  key?: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean;
-  preventDefault(): void;
-}
+/** The event of an input from before the engine was here, and the handler it belongs to. It keeps `currentTarget`, which React clears after the dispatch. */
+export interface HeldInput { kind: 'onPointerMove' | 'onPointerDown' | 'onPointerUp' | 'onFocus' | 'onKeyDown'; currentTarget: EventTarget }
 
 /** What one chart's hover keeps between renders. The handlers in the engine chunk read and write it. */
 export interface HoverRefs {
@@ -144,8 +137,6 @@ const onServer = () => false;
 const nothing = () => undefined;
 /** The keys the chart's keyboard stop answers: held, and kept from the page, until the engine is here. */
 const STOP_KEYS = /^(Arrow|Home$|End$|Enter$| $)/;
-/** The event fields a handler reads. A held input copies those its event has: a focus has no pointer position, and the engine tells the two apart by that. */
-const HELD = ['currentTarget', 'target', 'relatedTarget', 'clientX', 'clientY', 'pointerType', 'pointerId', 'isPrimary', 'key', 'altKey', 'ctrlKey', 'metaKey'] as const;
 
 /**
  * Hover state of one drawn chart. Only this hook ships with every chart.
@@ -203,7 +194,7 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   const cardOn = flags !== undefined && flags.card !== false; const highlight = flags?.highlight ?? false;
   const keyed = cursor?.active === true;
   const { ids, position } = selection;
-  useEffect(() => engine?.watchHover(selection, setSelection, geometry.size), [engine, selection.measurement, geometry.size]);
+  useEffect(() => engine?.watchHover(selection, setSelection, geometry.size), [engine, selection.measurement, selection.position?.linked, geometry.size]);
   // A card closed by Escape or a tap outside cancels the pointer's pending re-pick, which would open it again.
   useEffect(() => { if (!ids.length) { clearTimeout(refs.rest); refs.rest = undefined; } }, [ids.length]);
   // Keyed by value: a literal `hover={{ card: 'label' }}` is a new object every render.
@@ -216,8 +207,9 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   useEffect(() => { driver?.sync(); }, [model, activation]);
   // The category another chart of the group has hovered, while this chart has no hover of its own.
   useEffect(() => { driver?.follow(asked && link); }, [engine, model, link, asked !== undefined, ids.length > 0]);
-  // One held input per render: each handler reads the state the one before it set.
-  useIsomorphicLayoutEffect(() => {
+  // One held input per render: each handler reads the state the one before it set. A passive effect, so a long run
+  // of held keys renders one commit after another and never nests one render in the next.
+  useEffect(() => {
     const next = driver && refs.held.shift();
     if (!next) return;
     (driver.handlers as Record<string, ((event: never) => void) | undefined>)[next.kind]?.(next as never);
@@ -235,9 +227,8 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   const hold = (drop: string, kind?: HeldInput['kind'], event?: object) => {
     refs.held = refs.held.filter(item => !item.kind.startsWith(drop));
     if (!kind) return;
-    const input: Record<string, unknown> = { kind, preventDefault() {} };
-    for (const field of HELD) if (field in event!) input[field] = (event as Record<string, unknown>)[field];
-    refs.held.push(input as unknown as HeldInput);
+    // The event itself, so a record click gets the real event: a focus has no pointer position, and the engine tells the two apart by that.
+    refs.held.push(Object.create(event!, { kind: { value: kind }, currentTarget: { value: (event as HeldInput).currentTarget } }));
     wake();
   };
   const mouse = (event: { pointerType: string }) => { if (event.pointerType !== 'touch') hold('onP', 'onPointerMove', event); };

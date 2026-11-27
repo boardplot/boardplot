@@ -449,3 +449,22 @@ it('keeps a key pressed before the hover code has loaded', async () => {
   // Only a card that follows a pointer carries `will-change`. A focus has no pointer.
   expect(opened.style.willChange).toBe('');
 });
+
+// A key held down while the hover code loads queued dozens of inputs: their replay crashed the chart, and a held Enter gave onRecordClick an event without its methods.
+it('replays a long run of held keys and gives a held Enter its keyboard event', async () => {
+  const data = { categories: Array.from({ length: 60 }, (_, index) => `C${index + 1}`), series: [{ id: 'v', label: 'Value', values: Array.from({ length: 60 }, (_, index) => index + 1) }] };
+  const clicked: string[] = [];
+  root = createRoot(host);
+  await act(async () => { root!.render(<ColumnChart data={data} size={{ width: 1200, height: 450 }} onRecordClick={(record, event) => { event.stopPropagation(); clicked.push(record.target.owner.categoryId as string); }} />); });
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  // One turn: every key reaches the chart before React renders again.
+  act(() => {
+    keyStop().focus();
+    for (let step = 0; step < 40; step++) keyStop().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    keyStop().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  });
+  await act(async () => { await loadHoverEngine(); });
+  expect(errors).not.toHaveBeenCalled();
+  expect(option()).toContain('C41');
+  expect(clicked).toEqual(['C41']);
+});

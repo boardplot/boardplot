@@ -405,6 +405,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       return { ...drawn, options: Object.keys(strings).length ? { ...options, strings } : options } as typeof drawn;
     }, [resolved.request, noteOptions, layoutOptions]);
     useChartExport(exporter, shown && pictured, zoomed.data, shown?.size, container || scrolls, pinned, storyStep);
+    // A column drawn as bars hovers as a bar. One request per layout: a new one each render would report the same hover again.
+    const asBar = useMemo(() => resolved.request && drawnRequest(resolved.request, { type: 'bar' }), [resolved.request]);
 
     // The wrapper the container size is measured on; a filling chart's first
     // child is the probe that reads the host's height (useContainerSize).
@@ -438,7 +440,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} onHoverChange={onHoverChange} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view) === request ? request : asBar!} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} onHoverChange={onHoverChange} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
         : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} />;
     };
     const drawn = geometry;

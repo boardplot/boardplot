@@ -450,7 +450,7 @@ function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, targe
   const { onExpansionChange: _onExpansionChange, ...chart } = host;
   // The interactive table, unless the host asks for something only the picture has. The view comes from the options,
   // and a prepared picture cannot turn into the table, so the table draws from the data.
-  if (type === 'dimswitch' && !chart.onGeometry && !chart.fixedSize && !chart.onRecordClick && !chart.onSeriesClick && !chart.renderHoverContent) {
+  if (type === 'dimswitch' && !chart.onGeometry && !chart.fixedSize && !chart.onRecordClick && !chart.onSeriesClick && !chart.renderHoverContent && !onHoverChange) {
     const { deferLayout: _deferLayout, zoom: _zoom, fixedSize: _fixedSize, ...table } = chart;
     const DimSwitch = loadedDimSwitchChart()!;
     return <DimSwitch {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as DimSwitchChartProps['data']} {...{ annotations } as object} />;

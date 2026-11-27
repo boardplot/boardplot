@@ -33,7 +33,7 @@ function clearTimer(refs: HoverRefs, key: 'close' | 'rest'): void {
 /**
  * The records of this chart that another chart's hover names: the same
  * category, and the same series where this chart has it. A record that stands
- * for other categories (a generated Others bucket) is never matched: two
+ * for other categories or series (a generated Others bucket) is never matched: two
  * charts give it the same id for different members.
  */
 function linkedIds(model: HoverModel, link: HoverLink): string[] {
@@ -43,8 +43,8 @@ function linkedIds(model: HoverModel, link: HoverLink): string[] {
   return (series.length ? series : records).map(record => record.id);
 }
 
-function pooled(record: InteractionRecord): boolean {
-  return record.members?.some(member => member.categoryId !== record.target.owner.categoryId) === true;
+function pooled({ members, target: { owner } }: InteractionRecord): boolean {
+  return members?.some(member => member.categoryId !== owner.categoryId || member.seriesId !== owner.seriesId) === true;
 }
 
 /**

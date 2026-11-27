@@ -119,7 +119,7 @@ export function hoverSelection(model: HoverModel, request: ResolvedChartRequest,
   const follow = !custom && source !== undefined && 'pointerType' in source && source.pointerType !== 'touch';
   // Reuse the selection while the records stay. A seat beside the mark is reused only while it stays clear of the pointer;
   // a following card never covers the pointer, and the move itself goes to `cardFollower`, outside React.
-  if (measurement === selection.measurement && next.length === selection.ids.length
+  if (measurement === selection.measurement && !selection.position?.linked && next.length === selection.ids.length
     && next.every((id, index) => id === selection.ids[index]) && (selection.position?.follow ?? false) === follow
     && (follow || !(view.card && viewport?.pointer && rectContains(view.card.rect, {
       x: viewport.pointer.x * viewport.scale, y: viewport.pointer.y * viewport.scale, w: 0, h: 0,
@@ -191,8 +191,8 @@ export function activates(record: InteractionRecord): boolean {
 
 function pointedViewport({ viewport, pointer }: HoverMeasurement): HoverViewport | undefined {
   return viewport && { ...viewport, pointer: pointer ? {
-    x: (pointer.clientX - 8) / viewport.scale + viewport.boundary.x,
-    y: (pointer.clientY - 8) / viewport.scale + viewport.boundary.y,
+    x: (pointer.clientX - viewport.origin.x) / viewport.scale,
+    y: (pointer.clientY - viewport.origin.y) / viewport.scale,
   } : undefined };
 }
 

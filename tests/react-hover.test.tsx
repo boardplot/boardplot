@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import './helpers/hover-viewport';
-import { act, type ComponentProps } from 'react';
+import { act, useState, type ComponentProps } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup, renderToString } from 'react-dom/server';
 import { ComboChart } from '../src/react/charts/combo';
@@ -560,6 +560,54 @@ describe('hover callback, linked charts and touch', () => {
       expect(outlined(three)).toBe('');
       expect(cards()).toEqual([]);
     } finally { vi.useRealTimers(); }
+  });
+
+  // A page that stores the hovered records in its state rendered the chart again, and a column drawn as bars reported the same hover again on each render: a loop.
+  it('reports a hover once on a column drawn as bars whose page keeps the records in its state', async () => {
+    const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+    const sectors = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+    let calls = 0;
+    function Page() {
+      const [records, setRecords] = useState<InteractionRecord[]>([]);
+      return <><ColumnChart data={sectors} size={{ width: 320 }} onHoverChange={next => { calls++; setRecords(next); }} /><p>{records.length}</p></>;
+    }
+    await render(<Page />);
+    expect(host.querySelector('svg')!.getAttribute('data-bp-chart')).toBe('bar');
+    pointer(host.querySelector('[data-id^="mark:"]')!, 'pointermove');
+    expect(calls).toBe(1);
+  });
+
+  // Two charts side by side in a group: a chart away from the window's left edge read the pointer at another category, a tap on the category another chart had linked closed both cards, and a tap outside left a card open.
+  it('reads the pointer and the taps of a chart in a group at its place on the page', async () => {
+    const left = 700;
+    vi.spyOn(SVGSVGElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: SVGSVGElement) {
+      const [, , width = 0, height = 0] = (this.getAttribute('viewBox') ?? '').split(' ').map(Number);
+      const x = this.closest('#two') ? left : 0;
+      return { x, y: 0, left: x, top: 0, right: x + width, bottom: height, width, height, toJSON() {} };
+    });
+    await render(<HoverGroup>
+      <div id="one"><ColumnChart data={regions([3, 5, 4])} size={box} /></div>
+      <div id="two"><ColumnChart data={{ categories: ['Q1', 'Q2', 'Q3'], series: [{ id: 'north', label: 'North', values: [6, 7, 8] }] }} size={box} /></div>
+    </HoverGroup>);
+    const [one, two] = ['#one', '#two'].map(id => host.querySelector(id)!) as [Element, Element];
+    const tap = (target: Element, x: number, y: number) => {
+      const event = new Event('pointerdown', { bubbles: true });
+      Object.assign(event, { pointerType: 'touch', pointerId: 3, isPrimary: true, clientX: x, clientY: y });
+      act(() => target.dispatchEvent(event));
+    };
+    const at = (node: Element, x = 0) => [Number(node.getAttribute('x')) + Number(node.getAttribute('width')) / 2 + x, Number(node.getAttribute('y')) + Number(node.getAttribute('height')) - 2] as const;
+    // A point on the Q1 bar of chart two, read by its position alone.
+    move(two.querySelector('[data-bp-hover]')!, at(mark(two, 'north:Q1'), left)[0], at(mark(two, 'north:Q1'))[1]);
+    expect(outlined(one)).toBe('Q1');
+    leave(two.querySelector('[data-bp-hover]')!);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+    tap(mark(one, 'north:Q2'), ...at(mark(one, 'north:Q2')));
+    expect(cards()).toEqual(['Q2 | North: | 5 | South: | 3', 'Q2 | North: | 7']);
+    // A tap on the linked category of chart two makes that chart's hover its own.
+    tap(mark(two, 'north:Q2'), at(mark(two, 'north:Q2'))[0] + left, at(mark(two, 'north:Q2'))[1]);
+    expect(cards()).toEqual(['Q2 | North: | 5', 'Q2 | North: | 7']);
+    tap(document.body, 5, 900);
+    expect(cards()).toEqual([]);
   });
 
   // A pinch on a line chart would move the card to the point under the second finger.
