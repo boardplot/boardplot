@@ -49,9 +49,25 @@ it('keeps the share precision and an authored axis bound while a series is hidde
     const texts = labelTexts(laidOut(type, shares, { variant: 'stacked100', size }, ['tiny']).geometry).filter((text) => text.endsWith('%'));
     expect(texts, type).toContain('60.2%');
   }
+  // Rounding 'sum-consistent' on bars printed 60% and 40% after the tiny series was hidden.
+  expect(labelTexts(laidOut('bar', shares, { variant: 'stacked100', rounding: 'sum-consistent', size }, ['tiny']).geometry)).toContain('60.2%');
   const levels = { categories: ['A', 'B'], series: [{ id: 'large', values: [900, 1000] }, { id: 'small', values: [20, 30] }] };
   expect(Math.max(...valueTicks(laidOut('column', levels, { valueAxis: { min: 0, show: true }, size }, ['large']).geometry))).toBeGreaterThanOrEqual(1000);
   expect(Math.max(...valueTicks(laidOut('column', levels, { valueAxis: { show: true }, size }, ['large']).geometry))).toBeLessThan(100);
   const bar = laidOut('bar', levels, { valueAxis: { min: 0, show: true }, size }, ['large']).geometry;
   expect(Math.max(...bar.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => Number(tick.at)))).toBeGreaterThanOrEqual(1000);
+});
+
+// A hidden subtotal series dropped the column's net line with a warning, one hidden of two series lost the category
+// highlight, and a narrow chart drew series names it had no room for beside its legend.
+it('keeps the net line, the highlight and the fitted names of a column while a series is hidden', () => {
+  const categories = Array.from({ length: 12 }, (_, i) => `M${i}`);
+  const series = ['a', 'b', 'c'].map((id, k) => ({ id, label: `${id} segment name`, values: categories.map((_, i) => 3 + i + k) }));
+  const net = laidOut('column', { categories, series }, { variant: 'stacked', legend: 'top', netLine: { seriesId: 'b' } }, ['b']).geometry;
+  expect(net.warnings.map((warning) => warning.code)).toEqual([]);
+  expect(net.scene.some((node) => node.id.startsWith('netLine:'))).toBe(true);
+  const highlighted = laidOut('column', { categories, series: series.slice(0, 2) }, { legend: 'top', highlight: ['M2'] }, ['b']).geometry;
+  expect(highlighted.scene.some((node) => node.id === 'highlightBand:M2')).toBe(true);
+  const narrow = laidOut('column', { categories, series }, { variant: 'stacked', legend: 'top', seriesLabels: { at: 'right-edge' }, size: { width: 300, height: 300 } }, ['c']).geometry;
+  expect(labelTexts(narrow).filter((text) => text === 'a segment name')).toHaveLength(1);
 });

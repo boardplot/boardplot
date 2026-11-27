@@ -621,7 +621,7 @@ export function eachStackRect(domain: ColumnDomain, area: ColumnArea, visit: (re
  * group marks the category instead.
  */
 function highlightBands(domain: ColumnDomain, area: ColumnArea): SceneNode[] {
-  if (domain.dataSeries.length < 2) return [];
+  if (domain.keySeries.length < 2) return [];
   const { band, plot } = area;
   return domain.cats.flatMap((c, ci) => {
     if (!domain.highlights.has(c.id)) return [];

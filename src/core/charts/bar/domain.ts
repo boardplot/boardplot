@@ -641,9 +641,11 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   const shareExample = shareFormatExample(options, keySeries);
   const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
   const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
+  // The shares print at the precision of every series, so hiding one keeps it; a row without full shares reads its own.
+  const decimalsOf = (ci: number, shares: number[]) => Math.max(shareSetDecimals(full.shares[ci]!), shareSetDecimals(shares));
   if (options.rounding === 'sum-consistent') {
-    for (const { c, shares } of wholes) {
-      const rounded = sumConsistentShares(shares, options.locale?.language, shareSpec);
+    for (const { c, ci, shares } of wholes) {
+      const rounded = sumConsistentShares(shares, options.locale?.language, shareSpec, decimalsOf(ci, shares));
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label, rounded.warning));
       else if (rounded) dataSeries.forEach((s, si) => {
         const share = shares[si]!;
@@ -655,8 +657,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
   } else if (sharesOn) {
     const labelDecimals = new Map<Id, number>();
     if (!shareSpec) for (const { c, ci, shares } of wholes) {
-      // Missing cells contribute zero to the full row, which cannot raise its precision.
-      const decimals = shareSetDecimals(full.shares[ci]!);
+      const decimals = decimalsOf(ci, shares);
       labelDecimals.set(c.id, decimals);
       dataSeries.forEach((s, si) => shareTexts.set(`${c.id}\0${s.id}`, shareText(shares[si]!, decimals, options.locale?.language)));
     }

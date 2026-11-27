@@ -294,11 +294,15 @@ type ColumnLines = Pick<
   'connectorsOn' | 'connectorDashed' | 'connectorSeries' | 'netLineOn' | 'netLineSeries' | 'netLineSteps'
 >;
 
-/** Series connectors and the net line, with the warnings for the cases they cannot draw. */
+/**
+ * Series connectors and the net line, with the warnings for the cases they cannot draw. The warnings read the boundary
+ * the author named among every series. A reader who hides series sees the line at the last visible series up to it.
+ */
 function columnLines(
   options: AnomalyColumnOptions,
   stackedLike: boolean,
   dataSeries: NormSer[],
+  shown: NormSer[],
   warnings: LintWarning[],
   basesGiven = false,
 ): ColumnLines {
@@ -402,7 +406,8 @@ function columnLines(
       });
     }
   }
-  return { connectorsOn, connectorDashed, connectorSeries, netLineOn, netLineSeries, netLineSteps };
+  const drawn = netLineSeries && shown[netLineSeries.lastVisibleIndex ?? dataSeries.indexOf(netLineSeries)];
+  return { connectorsOn, connectorDashed, connectorSeries, netLineOn: netLineOn && (!netLineSeries || !!drawn), netLineSeries: drawn, netLineSteps };
 }
 
 /**
@@ -995,8 +1000,9 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
-  const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, dataSeries, refSeries, warnings);
-  const lines = columnLines(options, stackedLike, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
+  // A paint decision and a warning read every series, so hiding one changes neither.
+  const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, keySeries, refSeries, warnings);
+  const lines = columnLines(options, stackedLike, keySeries, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
   const va = options.valueAxis ?? {};
   // A window or zoom draws some periods; the anomaly rule, the mean and the
   // average marker below keep every source period, as on line and combo.
@@ -1347,7 +1353,7 @@ function planEdgeNames(domain: ColumnDomain): EdgePlan {
     .map((series) => ({ id: series.id, label: domain.seriesCagr.get(series.id)?.text ?? series.label }));
   const keyed = options.legend !== undefined && options.legend !== 'none' &&
     panelTypeClass(options) === undefined && (options as { [KEY_EDGE_SERIES]?: true })[KEY_EDGE_SERIES] !== true;
-  if (!keyed || names.length === 0 || names.length < domain.keySeries.length) return { names, replaceKey: false };
+  if (!keyed || names.length === 0 || names.length < domain.dataSeries.length) return { names, replaceKey: false };
   // The names take their room from the columns. They stand where that room
   // is at most one column step; on a narrower card the key names the series.
   const { theme, measure, size } = domain;
@@ -1356,7 +1362,8 @@ function planEdgeNames(domain: ColumnDomain): EdgePlan {
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   const axis = domain.va.show ? measureValueAxisWidth([domain.dLo, domain.dHi], domain.fmt, theme, measure, 5, domain.valueSpec.spec, domain.stepTicks) : 0;
   const step = (size.width - margin.left - margin.right - axis) / Math.max(1, domain.cats.length);
-  return gutter <= step ? { names, replaceKey: true } : { names: [], replaceKey: false };
+  // While a reader hides a series the key stays, so its hollow entry can be clicked back.
+  return gutter <= step ? { names, replaceKey: domain.dataSeries === domain.keySeries } : { names: [], replaceKey: false };
 }
 
 /** The key of a share printed under rounding 'sum-consistent'. */

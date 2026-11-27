@@ -87,3 +87,22 @@ it('offers no legend click on a tornado chart', async () => {
   click(host.querySelector('[data-part="swatch"]')!);
   expect(fills()).toEqual(before);
 });
+
+// New data that drops series kept a stale hidden list: the legend marked drawn series as hidden and a click hid another
+// series, and a legend that lost its click kept dead buttons.
+it('follows new data and leaves no button behind', async () => {
+  await render(<ColumnChart data={data} legend="top" size={size} />);
+  click(label('West'));
+  const two = { ...data, series: data.series.slice(0, 2) };
+  await render(<ColumnChart data={two} legend="top" size={size} />);
+  expect(label('North').getAttribute('aria-pressed')).toBe('true');
+  click(label('North'));
+  expect(marks('north')).toBe(0);
+  expect(marks('south')).toBe(3);
+  await render(<ColumnChart data={{ ...data, series: data.series.slice(0, 1) }} legend="top" size={size} />);
+  expect(host.querySelector('[role="button"], [aria-pressed]')).toBeNull();
+  await render(<ColumnChart data={data} legend="top" size={size} />);
+  await render(<ColumnChart data={data} legend="top" size={size} onSeriesClick={vi.fn()} />);
+  expect(host.querySelector('[aria-pressed]')).toBeNull();
+  expect(label('North').getAttribute('role')).toBe('button');
+});

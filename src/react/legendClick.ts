@@ -15,16 +15,23 @@ const NONE: string[] = [];
  * render have none, and only the entries of these two types carry this code.
  */
 export const useLegendClick: ZoomHook = (input) => {
-  const ids = ((input.data as { series?: { id: string; role?: string }[] }).series ?? []).flatMap((s) => (s.role ?? 'data') === 'data' ? [s.id] : []);
+  // Rows that are still loading or refused leave no data yet.
+  const ids = ((input.data as { series?: { id: string; role?: string }[] } | undefined)?.series ?? []).flatMap((s) => (s.role ?? 'data') === 'data' ? [s.id] : []);
   // One data series has nothing to hide: the last series shown stays.
   // A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
   const variant = input.options.variant;
   const offered = ids.length > 1 && input.hover !== false && input.onSeriesClick === undefined && variant !== 'tornado' && variant !== 'football-field';
   const [list, setList] = useState(NONE);
-  const hidden = offered ? list : NONE;
+  // New data keeps the hidden series it still has, and never all of them.
+  const key = ids.join('\0');
+  const hidden = useMemo(() => {
+    const kept = list.filter((id) => ids.includes(id));
+    return offered && kept.length < ids.length ? kept : NONE;
+  }, [list, key, offered]);
   const options = useMemo(() => (hidden.length ? { ...input.options, [HIDDEN_SERIES]: hidden } : input.options), [input.options, hidden]);
   const [element, setElement] = useState<HTMLElement | null>(null);
   const refused = useRef(false);
+  const marked = useRef(new Set<SVGElement>());
   useEffect(() => {
     // A refusal card has no legend to click a series back, and an offer that ends leaves no control: every series shows.
     if (!offered || refused.current) setList(NONE);
@@ -37,9 +44,11 @@ export const useLegendClick: ZoomHook = (input) => {
       // The last series shown stays.
       setList(hidden.includes(id) ? hidden.filter((other) => other !== id) : ids.every((other) => other === id || hidden.includes(other)) ? hidden : [...hidden, id]);
     } : null;
+    const now = new Set<SVGElement>();
     if (offered) element.querySelectorAll<SVGElement>('[data-bp-legend-item]').forEach((node) => {
       const id = node.getAttribute('data-bp-legend-item')!;
       if (!ids.includes(id)) return;
+      now.add(node);
       node.style.cursor = 'pointer';
       if (node.dataset.part === 'legendLabel') {
         node.setAttribute('role', 'button');
@@ -47,6 +56,17 @@ export const useLegendClick: ZoomHook = (input) => {
         node.setAttribute('aria-pressed', String(!hidden.includes(id)));
       }
     });
+    // An entry that no longer takes the click (the offer ended, or React reuses the node for another entry) loses what
+    // this hook set on it. The page's onSeriesClick has React draw the pointer and the button itself.
+    for (const node of marked.current) if (!now.has(node)) {
+      node.removeAttribute('aria-pressed');
+      if (input.onSeriesClick === undefined) {
+        node.removeAttribute('role');
+        node.removeAttribute('tabindex');
+        node.style.cursor = '';
+      }
+    }
+    marked.current = now;
   });
   return { ...noZoom(input), options, derived: hidden.length > 0, attach: setElement,
     seen: (geometry) => { refused.current = geometry !== undefined && chartRefusals((geometry as unknown as { warnings: LintWarning[] }).warnings).some((warning) => !isSizeDependentRefusal(warning)); } };
