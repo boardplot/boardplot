@@ -225,4 +225,7 @@ it('draws the prepared chart in the first frame for every form of the same chart
   expect(charts(await first(themed, await prepareChart((await parseChartSpec(themed)).request)))).toBe(2);
   const untitled = { ...kpi, options: { title: undefined } };
   expect(charts(await first(untitled, await prepareChart(untitled as never)))).toBe(2);
+  // The host's theme prop wins over the chart's own theme, so a chart prepared with the chart's theme is another chart.
+  const light = renderToString(<BoardplotChart spec={themed} theme="standard" prepared={await prepareChart((await parseChartSpec(themed)).request) as never} />);
+  expect(light).toContain('data-bp-loading');
 });
