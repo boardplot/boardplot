@@ -48,7 +48,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, ChartFailure, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -418,6 +418,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       return idPrefix === undefined ? body : <IdPrefixContext.Provider value={checkedIdPrefix(idPrefix)}>{body}</IdPrefixContext.Provider>;
     };
 
+    // An input the engine threw on draws its card in place of the chart.
+    if (first.failed !== undefined) return <ChartFailure error={first.failed} />;
     // The busy box takes the refusal's size: a host without a height
     // would otherwise swap heights, show or hide its scrollbar and restart the settle.
     if (settling && resolved.request && geometry) return frame(<LoadingPlaceholder fixedSize={fixedSize} theme={resolved.request.theme} size={geometry.size} options={{ ...stableOptions, target }} />);
@@ -464,9 +466,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const { target, fixedSize, title, theme, background } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
     const normalizedSize = useMemo(() => asSize(size), [size]);
     const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
-    const chart = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} background={background}
-      fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
-        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+    const chart = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} background={background} title={title} fixedSize={fixedSize}>
       <DrawnChart {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
     </RefusalBoundary>;
     return className !== undefined || style !== undefined ? <div className={className} style={style}>{chart}</div> : chart;

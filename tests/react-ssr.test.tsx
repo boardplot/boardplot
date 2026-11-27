@@ -59,6 +59,14 @@ it('renders refusal diagnostics for invalid sizes and themes on the server', () 
   expect(renderToStaticMarkup(<DimSwitchChart data={dimswitch.data as never} size={'huge' as never} />)).toContain('invalid-size');
 });
 
+// React has no error boundary on the server: an engine refusal thrown while the chart resolves or lays out failed the whole page.
+it('renders the refusal card on the server for an input the engine refuses', () => {
+  const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [1, 2] }] };
+  const fixture = getFixtures('table').find(candidate => candidate.id === 'steering-monthly')!;
+  expect(renderToStaticMarkup(<LineChart data={data} xAxis={{ type: 'time' }} />)).toContain('data-bp-spec-error');
+  expect(renderToStaticMarkup(<TableChart data={fixture.data} sort={{ segments: 'asc' } as never} />)).toContain('data-bp-spec-error');
+});
+
 // Host props and numeric widths must reach the chart without being refused as options.
 it('renders per-type host props, numeric sizes and SVG backgrounds', () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };

@@ -10,7 +10,6 @@ import { loadedDeferred } from '../src/core/deferred';
 import { getChart } from '../src/core/registry';
 import { invertedRangeTorture } from '../src/core/charts/dot/fixtures';
 import { getFixtures } from '../src/fixtures';
-import { NormalizeError } from '../src/core/normalize/shared';
 import { resolveTheme } from '../src/core/theme';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
@@ -105,28 +104,18 @@ describe('React adapter boundary', () => {
   it('runs the data schema before layout', () => {
     const definition = getChart('column')!;
     const layout = vi.spyOn(definition, 'layout');
-    expect(() =>
-      renderToStaticMarkup(
-        createElement(ColumnChart, {
-          data: { categories: [{ id: 'a' }], series: [{ id: 's', values: [{ range: { low: 9, high: 1 } }] }] } as never,
-        }),
-      ),
-    ).toThrow();
+    const html = renderToStaticMarkup(
+      createElement(ColumnChart, {
+        data: { categories: [{ id: 'a' }], series: [{ id: 's', values: [{ range: { low: 9, high: 1 } }] }] } as never,
+      }),
+    );
+    expect(html).toContain('data-bp-spec-error');
     expect(layout).not.toHaveBeenCalled();
   });
 
   it('runs semantic normalization before range-family layout', () => {
     for (const Component of [BarChart, ColumnChart, DotChart]) {
-      let caught: unknown;
-      try {
-        renderToStaticMarkup(
-          createElement(Component as typeof DotChart, { data: invertedRangeTorture }),
-        );
-      } catch (error) {
-        caught = error;
-      }
-      expect(caught).toBeInstanceOf(NormalizeError);
-      expect((caught as NormalizeError).code).toBe('range-inverted');
+      expect(renderToStaticMarkup(createElement(Component as typeof DotChart, { data: invertedRangeTorture }))).toContain('range-inverted');
     }
   });
 

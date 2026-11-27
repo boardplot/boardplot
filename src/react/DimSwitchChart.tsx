@@ -27,7 +27,7 @@ import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
 import type { ContainerSizeOptions } from './useContainerSize';
@@ -100,8 +100,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const {className,style,size,fallbackSize,...rest}=props;
   const normalizedSize=useMemo(()=>asSize(size),[size]);
   const normalizedFallback=useMemo(()=>asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'],[fallbackSize]);
-  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme}
-   fallback={finding=><LayoutRefusal refusals={[finding]} theme={props.theme} size={frameSize(normalizedSize==='container'?normalizedFallback:normalizedSize,props.target)} options={typeof props.title==='string'?{title:props.title}:{}}/>}>
+  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme} title={props.title}>
    <GatedDimSwitch {...rest} size={normalizedSize} fallbackSize={normalizedFallback}/>
   </RefusalBoundary>;
   return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;

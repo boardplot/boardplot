@@ -1,4 +1,4 @@
-import { Component, useContext, useMemo, type ReactNode } from 'react';
+import { Component, createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
 import { NormalizeError } from '../core/normalize/shared';
 import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
@@ -6,8 +6,10 @@ import { resolveTheme } from '../core/theme';
 import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import type { RefusalFinding } from '../core/schema/refusals';
+import type { DocumentFinding } from '../core/doc/diagnostics';
 import { BoardplotThemeContext } from './themeContext';
 import type { ContainerSizeOptions } from './useContainerSize';
+import { LayoutRefusal } from './SizePlaceholder';
 
 /** Per-type components also accept a width in pixels as a number. */
 export type PerTypeSizeOptions = Omit<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
@@ -28,7 +30,7 @@ function findingOf(error: NormalizeError): RefusalFinding {
 }
 
 /** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
-export function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: RenderTarget | undefined): Size | undefined {
+function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: RenderTarget | undefined): Size | undefined {
   try { return resolveTargetSize(target ?? DEFAULT_TARGET, size).sizePx; } catch { return undefined; }
 }
 
@@ -41,7 +43,7 @@ export function frameSize(size: Parameters<typeof resolveTargetSize>[1], target:
  * goes when the chart gets new props or inherited settings.
  */
 class Boundary extends Component<
-  { watch: unknown; inherited: unknown; fallback: (finding: RefusalFinding) => ReactNode; children: ReactNode },
+  { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
   { watch: unknown; inherited: unknown; failed?: { error: unknown } }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
@@ -59,14 +61,26 @@ class Boundary extends Component<
     if (!failed) return this.props.children;
     const { error } = failed;
     if (!(error instanceof NormalizeError)) throw error;
-    return this.props.fallback(findingOf(error));
+    return this.props.fallback([findingOf(error)]);
   }
 }
 
-export function RefusalBoundary({ watch, fallback, children, size, fallbackSize, target, theme, background }: {
+/** The refusal card with these findings. */
+type Fallback = (findings: readonly DocumentFinding[]) => ReactNode;
+const FallbackContext = createContext<Fallback>(() => null);
+
+/** What a chart draws when its engine refused its input (a NormalizeError), on the server too. Any other error goes on up to the host. */
+export function ChartFailure({ error }: { error: unknown }): ReactNode {
+  const fallback = useContext(FallbackContext);
+  if (error instanceof NormalizeError) return fallback([findingOf(error)]);
+  throw error;
+}
+
+export function RefusalBoundary({ watch, children, size, fallbackSize, target, theme, background, title, fixedSize }: {
   watch: unknown;
-  fallback: (finding: RefusalFinding) => ReactNode;
   children: ReactNode;
+  title?: unknown;
+  fixedSize?: boolean;
   size?: ContainerSizeOptions['size'];
   fallbackSize?: ContainerSizeOptions['fallbackSize'];
   target?: RenderTarget;
@@ -97,5 +111,8 @@ export function RefusalBoundary({ watch, fallback, children, size, fallbackSize,
     }
     return undefined;
   }, [size, fallbackSize, target, inherited?.target, theme, background]);
-  return finding ? fallback(finding) : <Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary>;
+  // The card takes the asked size, or the default when the size itself is the bad prop.
+  const frame = { fixedSize, theme, size: frameSize(size === 'container' ? fallbackSize : size, target), options: typeof title === 'string' ? { title } : {} };
+  const fallback: Fallback = (findings) => <LayoutRefusal {...frame} refusals={findings} />;
+  return finding ? fallback([finding]) : <FallbackContext.Provider value={fallback}><Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary></FallbackContext.Provider>;
 }

@@ -73,4 +73,10 @@ describe('regions the data never names', () => {
     } as never));
     expect(JSON.stringify(layout)).not.toContain('by value');
   });
+
+  // A per-type map entry does not run the schema, and a diverging scale without a midpoint painted every region NaN.
+  it('a diverging scale without a midpoint refuses instead of painting NaN', () => {
+    expect(() => buildGeoScale(values, { scale: { kind: 'diverging' } as never, classes: 5 }, String, false, resolveTheme(), { token: 'neutral' }))
+      .toThrow('a diverging scale needs a number as its midpoint');
+  });
 });

@@ -20,7 +20,10 @@ interface RenderOptions {
   fallback?: Size;
   /** The options are refused (optionRefusals): no layout runs, since one may throw on them. */
   skipLayout?: boolean;
-  /** A layout that refuses (`empty-data`, a spacing floor, ...) answers with its refusal card instead of throwing, as the CLI refuses. */
+  /**
+   * A layout that refuses (`empty-data`, a spacing floor, ...) answers with its refusal card instead of throwing, as the CLI refuses.
+   * Any other error of the resolution or the layout comes back as `failed`, for the caller's ChartFailure.
+   */
   errorAsRefusal?: boolean;
   /** The fetched core modules the caller's own entry links, which its server and hydrating frames may use (`asFirstFrame`). */
   linked?: readonly DeferredName[];
@@ -67,10 +70,11 @@ export function useDeferrableChartLayout(
   input: ChartRequest,
   context: RequestContext = {},
   rendering: RenderOptions = {},
-): { request?: ResolvedChartRequest; geometry?: RenderResult; deferred?: DeferredName; pending?: boolean; failure?: string } {
+): { request?: ResolvedChartRequest; geometry?: RenderResult; deferred?: DeferredName; pending?: boolean; failure?: string; failed?: unknown } {
   const { prepared, fit, fallback, skipLayout, errorAsRefusal, linked = NONE, defer = false, idle = false } = rendering;
   const current = useResolvedChartRequest(input, context, prepared, linked, idle);
   const { provider } = current;
+  if (current.failed !== undefined && !errorAsRefusal) throw current.failed;
   // Deferred: the layout reads the inputs of the last background pass. React renders the new inputs at transition
   // priority, a chart at a time, and drops a pass that a newer size or data makes stale. Mount, the server and
   // hydration read the current inputs (no initial value), so their markup is unchanged. A paint-only change (a
@@ -90,7 +94,7 @@ export function useDeferrableChartLayout(
   const shownFit = inputs.fit;
   const initial = usePrepared(prepared, layoutRequest, 'svg', shownFit, fallback);
   const revision = useDeferredRevision();
-  const attempt = useMemo((): { geometry?: RenderResult; deferred?: DeferredName; failure?: string } => {
+  const attempt = useMemo((): { geometry?: RenderResult; deferred?: DeferredName; failure?: string; failed?: unknown } => {
     // A refused chart lays nothing out, but its card still needs the resolved
     // theme: a patch waits on the theme checks either way.
     if (skip) return { deferred: themeDeferred };
@@ -101,8 +105,9 @@ export function useDeferrableChartLayout(
       if (errorAsRefusal && error instanceof NormalizeError) {
         return { geometry: layoutRefusal(layoutRequest.type, getChart(layoutRequest.type)?.title ?? layoutRequest.type, layoutRequest.size, error) };
       }
-      if (!(error instanceof DeferredCoreError)) throw error;
-      return { deferred: error.module, failure: error.failure };
+      if (error instanceof DeferredCoreError) return { deferred: error.module, failure: error.failure };
+      if (errorAsRefusal) return { failed: error };
+      throw error;
     }
     // `revision` is the store snapshot: a layout that asked for a deferred
     // module runs again once that module has landed.
@@ -130,5 +135,5 @@ export function useDeferrableChartLayout(
   // `pending`: a newer request is still laying out in the background.
   const pending = inputs !== now;
   if (waiting && drawn.current) return { ...drawn.current, deferred: attempt.deferred, pending };
-  return { request, geometry: painted, deferred: attempt.deferred, pending, ...(failure === undefined ? {} : { failure }) };
+  return { request, geometry: painted, deferred: attempt.deferred, pending, failed: current.failed ?? attempt.failed, ...(failure === undefined ? {} : { failure }) };
 }
