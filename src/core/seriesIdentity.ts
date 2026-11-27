@@ -15,11 +15,12 @@ export function omittedKey(id: Id, label: string): SeriesIdentity {
 }
 
 /**
- * The key entry of a series a reader hid with a legend click: the omitted look (a hollow box draws hollow
- * whatever its pattern), under the series' own name. No pattern, so it keys no scenario that a cell paints.
+ * The key entry of a series a reader hid with a legend click: the omitted look, under the series' own name. No
+ * pattern, so it keys no scenario that a cell paints. A box key draws no level: the series' place in the legend
+ * keeps two hidden entries apart for the collision check, which would call them indistinguishable.
  */
-export function hiddenKey(id: Id, label: string): SeriesIdentity {
-  return { id, label, paint: { token: 'inkMuted' }, hollow: true, hidden: true };
+export function hiddenKey(id: Id, label: string, place: number): SeriesIdentity {
+  return { id, label, paint: { token: 'inkMuted' }, hollow: true, level: place };
 }
 
 export interface SeriesIdentity {
@@ -88,8 +89,6 @@ export interface SeriesIdentity {
   separation?: SeparationRule;
   /** A formatted figure printed in bold after the name: a treemap group total. */
   value?: string;
-  /** A series a reader hid: its key shares the omitted look with every other hidden series and collides with none. */
-  hidden?: true;
 }
 
 export function identityAppearance(item: SeriesIdentity, theme: Theme): string {
@@ -104,7 +103,7 @@ export function identityAppearance(item: SeriesIdentity, theme: Theme): string {
 export function identityCollisionWarnings(items: readonly SeriesIdentity[], theme: Theme): LintWarning[] {
   const groups = new Map<string, SeriesIdentity[]>();
   for (const item of items) {
-    if (item.key === 'heading' || item.hidden) continue;
+    if (item.key === 'heading') continue;
     const appearance = identityAppearance(item, theme);
     const group = groups.get(appearance) ?? [];
     if (!group.some(previous => previous.label === item.label)) group.push(item);

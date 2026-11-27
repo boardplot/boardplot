@@ -287,9 +287,10 @@ function useChartEngine(type: string | undefined): { ready: boolean; failure?: s
  * `boardplot/react/<type>`, draws it without waiting.
  */
 function engineReady(type: string): boolean {
-  // A line chart also waits for its entry, which carries the zoom hook: a server or an export can register its core alone.
+  // A line, column or bar chart also waits for its entry, which carries its view hook (the zoom, the legend click):
+  // a server or an export can register its core alone.
   return type === 'table' ? loadedTableChart() !== undefined
-    : (type === 'dimswitch' ? loadedDimSwitchChart() !== undefined : getChart(type) !== undefined && (type !== 'line' || zoomHookFor(type) !== undefined));
+    : (type === 'dimswitch' ? loadedDimSwitchChart() !== undefined : getChart(type) !== undefined && (!['line', 'column', 'bar'].includes(type) || zoomHookFor(type) !== undefined));
 }
 
 /** What the reader sees when a chunk did not arrive at all. */

@@ -4,7 +4,7 @@ import type { A11yTablePlacement } from '../../core/a11y/accessibility';
 import type { Id } from '../../core/types/cell';
 import type { ResolvedChartRequest } from '../../core/request';
 import type { PreparedChart, RenderGeometry } from '../prepared';
-import { SceneRenderer, type SeriesToggle } from '../SceneRenderer';
+import { SceneRenderer } from '../SceneRenderer';
 import { a11ySurfaceStyle, keyRingStyle } from '../a11ySurface';
 import { useHover, useOptionalModule, type HoverOption, type KeyCursor, type RecordClickEvent, type RenderHoverContent } from '../useHover';
 
@@ -21,7 +21,7 @@ const loadDataTable = () => import('./dataTable');
  * the two is on, so a static chart's markup is unchanged. The table loads
  * independently of the hover engine.
  */
-export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, onStackFocus, seriesToggle }: {
+export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, onHoverChange, renderHoverContent, onStackFocus }: {
   geometry: RenderGeometry;
   request: ResolvedChartRequest;
   prepared?: PreparedChart;
@@ -39,7 +39,6 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   renderHoverContent?: RenderHoverContent;
   /** A metric stack's focus look: the category the pointer or the keyboard rests on, undefined at rest. The chart lays the stack out with it. */
   onStackFocus?: (category: string | undefined) => void;
-  seriesToggle?: SeriesToggle;
 }): ReactElement {
   const { engine, view, origin, follow, handlers, focusStops, keys, scrub, cursor, cardRef, hostRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick, onHoverChange,
     custom: renderHoverContent !== undefined });
@@ -58,7 +57,7 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   return <div ref={hostRef} data-bp-hover="" data-bp-keyed={cursor?.active ? '' : undefined} style={style} {...handlers}>
     {/* Raw text, as the table's: React 18's server escaped the quotes of a text child. A `<` is CSS-escaped, so no theme value can end the element. */}
     {css.__html && <style nonce={styleNonce} dangerouslySetInnerHTML={css} />}
-    <SceneRenderer geometry={view} theme={request.theme} responsive={responsive} background={background} onSeriesClick={onSeriesClick} seriesToggle={seriesToggle} focusStops={focusStops} />
+    <SceneRenderer geometry={view} theme={request.theme} responsive={responsive} background={background} onSeriesClick={onSeriesClick} focusStops={focusStops} />
     {keys && <RecordKeys geometry={geometry} responsive={responsive} cursor={cursor} describedBy={custom ? contentId : undefined} />}
     {engine && <engine.Cards view={view} origin={origin} follow={follow} content={custom ? content : undefined} hosted={renderHoverContent !== undefined}
       contentId={contentId} locale={request.locale?.language} cardRef={cardRef} />}

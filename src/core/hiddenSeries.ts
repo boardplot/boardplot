@@ -1,5 +1,3 @@
-import { drawnVariant } from './stackAdds';
-
 /**
  * The series a reader hides with a legend click, on the options of a mounted React chart. A registered symbol:
  * the request keeps it and JSON never carries it, so the CLI, the MCP tools and the server draw every series.
@@ -20,9 +18,9 @@ export function shownSeries<S extends { id: string }>(options: object, all: S[])
 }
 
 /**
- * Whether the layout draws without the hidden series: grouped, stacked and 100% stacked columns and bars.
+ * Whether the layout draws without the hidden series: every column chart, and the grouped, stacked and 100% stacked bars.
  * A tornado and a football field lay their rows out of the series cases, so they offer no legend click.
  */
-export function readsHiddenSeries(type: string, options: { variant?: string; valueAxis?: { percent?: boolean } }): boolean {
-  return (type === 'column' || type === 'bar') && ['grouped', 'stacked', 'stacked100'].includes(drawnVariant(type, options) ?? 'grouped');
+export function readsHiddenSeries(type: string, options: { variant?: string }): boolean {
+  return type === 'column' || type === 'bar' && options.variant !== 'tornado' && options.variant !== 'football-field';
 }

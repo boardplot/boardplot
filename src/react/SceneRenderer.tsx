@@ -35,12 +35,7 @@ interface SceneRendererProps {
   onSeriesClick?: (seriesId: Id) => void;
   /** Makes the keyboard stops of the scene (an event's marker or title line) focusable: set while hover opens a card on focus. */
   focusStops?: boolean;
-  /** Without `onSeriesClick`, a legend entry of these series hides or shows its series. */
-  seriesToggle?: SeriesToggle;
 }
-
-/** The series a legend click hides or shows, the hidden ones among them, and the click. */
-export interface SeriesToggle { ids: readonly Id[]; hidden: readonly Id[]; toggle: (seriesId: Id) => void }
 
 /** Marks that answer a series click. Name labels and legend labels are also keyboard buttons; the rest are pointer-only, so one series adds no tab stop per point. */
 const SERIES_POINTER_PARTS: ReadonlySet<string> = new Set(['line', 'lineCasing', 'area', 'marker', 'labelSwatch', 'swatch']);
@@ -240,7 +235,6 @@ export function SceneRenderer({
   onElementClick,
   onSeriesClick,
   focusStops,
-  seriesToggle,
 }: SceneRendererProps): ReactElement {
   const provider = useContext(BoardplotThemeContext);
   const patternScope = useScopedId();
@@ -276,7 +270,7 @@ export function SceneRenderer({
       <ScenePatternDefs geometry={geometry} theme={theme} scope={patternScope} paint={paint} />
       {canvasBackground !== 'transparent' && <rect x={0} y={0} width={size.width} height={size.height} fill={background} />}
       {geometry.scene.map((node) => {
-        const drawn = <Node key={node.id} node={node} theme={theme} paint={paint} patternScope={patternScope} onClick={onElementClick} onSeriesClick={onSeriesClick} seriesToggle={seriesToggle} legendItem={legendItems.get(node.id)} focusStops={focusStops} />;
+        const drawn = <Node key={node.id} node={node} theme={theme} paint={paint} patternScope={patternScope} onClick={onElementClick} onSeriesClick={onSeriesClick} legendItem={legendItems.get(node.id)} focusStops={focusStops} />;
         return node.tx || node.ty ? <g key={node.id} transform={`translate(${node.tx ?? 0},${node.ty ?? 0})`}>{drawn}</g> : drawn;
       })}
     </svg>
@@ -290,7 +284,6 @@ function Node({
   paint,
   onClick,
   onSeriesClick,
-  seriesToggle,
   legendItem,
   focusStops,
 }: {
@@ -300,12 +293,11 @@ function Node({
   paint: ScenePaint;
   onClick?: (node: SceneNode) => void;
   onSeriesClick?: (seriesId: Id) => void;
-  seriesToggle?: SeriesToggle;
   legendItem?: string;
   focusStops?: boolean;
 }): ReactElement | null {
   const background = paint({ token: 'background' });
-  const common = { ...sceneAttributes(node, legendItem), ...nodeInteraction(node, onClick, onSeriesClick, focusStops, seriesToggle),
+  const common = { ...sceneAttributes(node, legendItem), ...nodeInteraction(node, onClick, onSeriesClick, focusStops),
     ...(POINTER_TRANSPARENT_PARTS.has(node.part) ? { pointerEvents: 'none' as const } : {}) };
 
   switch (node.t) {
@@ -447,14 +439,11 @@ function Node({
   }
 }
 
-function nodeInteraction(node: SceneNode, onElementClick?: (node: SceneNode) => void, onSeriesClick?: (seriesId: Id) => void, focusStops?: boolean, toggle?: SeriesToggle) {
+function nodeInteraction(node: SceneNode, onElementClick?: (node: SceneNode) => void, onSeriesClick?: (seriesId: Id) => void, focusStops?: boolean) {
   const seriesId = node.owner.seriesId;
-  // Without the page's series click, a legend entry hides or shows its series: the swatch for the pointer, the label as a button too.
-  const toggled = !onSeriesClick && (node.part === 'swatch' || node.part === 'legendLabel') && toggle?.ids.includes(seriesId as Id) ? toggle : undefined;
-  const onSeries = toggled?.toggle ?? onSeriesClick;
-  const seriesPart = !onElementClick && onSeries !== undefined && seriesId !== undefined
+  const seriesPart = !onElementClick && onSeriesClick !== undefined && seriesId !== undefined
     && (SERIES_POINTER_PARTS.has(node.part) || SERIES_KEY_PARTS.has(node.part));
-  const onClick = onElementClick ? () => onElementClick(node) : seriesPart ? () => onSeries(seriesId) : undefined;
+  const onClick = onElementClick ? () => onElementClick(node) : seriesPart ? () => onSeriesClick(seriesId) : undefined;
   // A series click on a line, area, marker or swatch is pointer-only: one series adds no tab stop per point.
   const keyboard = onClick !== undefined && !(seriesPart && SERIES_POINTER_PARTS.has(node.part));
   // An event's marker or title line: a stop that opens the event's hover card on focus. It is named by its full reading.
@@ -475,8 +464,6 @@ function nodeInteraction(node: SceneNode, onElementClick?: (node: SceneNode) => 
     ...(stop ? { 'data-bp-stop': '' } : {}),
     tabIndex: keyboard || stop ? 0 : undefined,
     role: keyboard ? 'button' : stop ? 'img' : undefined,
-    // Pressed while the series shows.
-    'aria-pressed': toggled && keyboard ? !toggled.hidden.includes(seriesId!) : undefined,
     'aria-label': stop && (node.t === 'circle' || node.t === 'text') ? node.title : keyboard ? (seriesPart ? (node.t === 'text' ? node.lines.join(' ') : seriesId) : [node.part, node.display?.value].filter(Boolean).join(': ') || node.id) : undefined,
   };
 }

@@ -1,6 +1,5 @@
 import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
 import { AUTHORED_EXAMPLES, readFormatExamples, UNIT_FORMATS, UNIT_STAND_INS } from './formatSpec';
-import { HIDDEN_SERIES } from './hiddenSeries';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { PLAN_ONLY, RETAIN_TABLE_RESULT, withPlanInputs, requestMemo, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
@@ -143,6 +142,8 @@ function refuseBigIntSettings(input: { options?: unknown; size?: unknown; annota
 }
 
 /** Defaults, inherited context, chart options, then explicit request fields. */
+const HIDDEN = Symbol.for('boardplot.hiddenSeries');
+
 export function resolveChartRequest<D, O extends object>(
   input: ChartRequest<D, O & RequestInputOptions>,
   context: RequestContext = {},
@@ -151,9 +152,10 @@ export function resolveChartRequest<D, O extends object>(
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
   // Options that another chart resolved or compiled (a dimension switch's table, a grid panel) carry that chart's
   // answer of which formats its author wrote; the entries below drop symbols, so it is read here.
-  // So do the series a reader hid on a React chart (hiddenSeries.ts).
-  const source = input.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string>; [HIDDEN_SERIES]?: readonly string[] } | undefined;
-  const sourceStandIns = source?.[UNIT_STAND_INS], sourceAuthored = source?.[AUTHORED_EXAMPLES], hidden = source?.[HIDDEN_SERIES];
+  // So do the series a reader hid on a React chart: HIDDEN_SERIES of hiddenSeries.ts, named here so that no
+  // other code of that module reaches the first load of every chart.
+  const source = input.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string>; [HIDDEN]?: readonly string[] } | undefined;
+  const sourceStandIns = source?.[UNIT_STAND_INS], sourceAuthored = source?.[AUTHORED_EXAMPLES], hidden = source?.[HIDDEN];
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
   refuseBigIntSettings(input);
   const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
@@ -183,7 +185,7 @@ export function resolveChartRequest<D, O extends object>(
   (options as Record<symbol, unknown>)[AUTHORED_EXAMPLES] = sourceAuthored ?? read.authored;
   // The export writes the unit-only formats back as the author wrote them (withAuthoredUnits).
   if (read.unitFormats.length) (options as Record<symbol, unknown>)[UNIT_FORMATS] = read.unitFormats;
-  if (hidden) (options as Record<symbol, unknown>)[HIDDEN_SERIES] = hidden;
+  if (hidden) (options as Record<symbol, unknown>)[HIDDEN] = hidden;
   // The root list replaces options.annotations. A list from the type's defaults is not authored and has no origin.
   const annotationList = input.annotations !== undefined ? ['annotations'] as const : input.options?.annotations !== undefined ? ['options', 'annotations'] as const : undefined;
   if (annotationList && Array.isArray(options.annotations)) options.annotations = withAnnotationOrigins<Annotation>(options.annotations, annotationList);
