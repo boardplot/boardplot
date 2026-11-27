@@ -113,6 +113,18 @@ describe('React adapter boundary', () => {
     expect(layout).not.toHaveBeenCalled();
   });
 
+  // A chart that drew its refusal card kept its state: a dimswitch that refused empty facts opened every row once its data came.
+  it('mounts a chart afresh after its refusal card', () => {
+    act(() => { root.render(createElement(DimSwitchChart, { data: { ...dimSwitchData, facts: [] } } as never)); });
+    expect(container.innerHTML).toContain('empty-data');
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    const rows = container.querySelectorAll('[role="row"]').length;
+    act(() => { root.unmount(); });
+    root = createRoot(container);
+    act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
+    expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
+  });
+
   it('runs semantic normalization before range-family layout', () => {
     for (const Component of [BarChart, ColumnChart, DotChart]) {
       expect(renderToStaticMarkup(createElement(Component as typeof DotChart, { data: invertedRangeTorture }))).toContain('range-inverted');

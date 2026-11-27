@@ -1,4 +1,4 @@
-import { Component, createContext, useContext, useMemo, type ReactNode } from 'react';
+import { Component, createContext, Fragment, useContext, useMemo, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
 import { NormalizeError } from '../core/normalize/shared';
 import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
@@ -10,6 +10,7 @@ import type { DocumentFinding } from '../core/doc/diagnostics';
 import { BoardplotThemeContext } from './themeContext';
 import type { ContainerSizeOptions } from './useContainerSize';
 import { LayoutRefusal } from './SizePlaceholder';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 /** Per-type components also accept a width in pixels as a number. */
 export type PerTypeSizeOptions = Omit<ContainerSizeOptions, 'size' | 'fallbackSize'> & {
@@ -40,13 +41,17 @@ function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: Render
  * number) throws a NormalizeError while the chart renders. The CLI turns that error
  * into a refusal; here it draws the refusal card, so one bad chart does not unmount
  * the host's React root. Any other error keeps travelling up to the host. The card
- * goes when the chart gets new props or inherited settings.
+ * goes when the chart gets new props or inherited settings. A chart that drew its
+ * card itself (ChartFailure) then mounts afresh, as after a caught error: nothing of
+ * the refused input stays, such as its last drawing or its folds.
  */
 class Boundary extends Component<
   { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
   { watch: unknown; inherited: unknown; failed?: { error: unknown } }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
+  /** Raised by a drawn ChartFailure: the boundary's next render, on new props or settings, mounts its chart afresh. */
+  mount = 0;
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -58,7 +63,7 @@ class Boundary extends Component<
 
   override render(): ReactNode {
     const { failed } = this.state;
-    if (!failed) return this.props.children;
+    if (!failed) return <FallbackContext.Provider value={this}><Fragment key={this.mount}>{this.props.children}</Fragment></FallbackContext.Provider>;
     const { error } = failed;
     if (!(error instanceof NormalizeError)) throw error;
     return this.props.fallback([findingOf(error)]);
@@ -67,12 +72,13 @@ class Boundary extends Component<
 
 /** The refusal card with these findings. */
 type Fallback = (findings: readonly DocumentFinding[]) => ReactNode;
-const FallbackContext = createContext<Fallback>(() => null);
+const FallbackContext = createContext<Boundary>(undefined!);
 
 /** What a chart draws when its engine refused its input (a NormalizeError), on the server too. Any other error goes on up to the host. */
 export function ChartFailure({ error }: { error: unknown }): ReactNode {
-  const fallback = useContext(FallbackContext);
-  if (error instanceof NormalizeError) return fallback([findingOf(error)]);
+  const boundary = useContext(FallbackContext);
+  useIsomorphicLayoutEffect(() => { boundary.mount++; });
+  if (error instanceof NormalizeError) return boundary.props.fallback([findingOf(error)]);
   throw error;
 }
 
@@ -114,5 +120,5 @@ export function RefusalBoundary({ watch, children, size, fallbackSize, target, t
   // The card takes the asked size, or the default when the size itself is the bad prop.
   const frame = { fixedSize, theme, size: frameSize(size === 'container' ? fallbackSize : size, target), options: typeof title === 'string' ? { title } : {} };
   const fallback: Fallback = (findings) => <LayoutRefusal {...frame} refusals={findings} />;
-  return finding ? fallback([finding]) : <FallbackContext.Provider value={fallback}><Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary></FallbackContext.Provider>;
+  return finding ? fallback([finding]) : <Boundary watch={watch} fallback={fallback} inherited={inherited}>{children}</Boundary>;
 }
