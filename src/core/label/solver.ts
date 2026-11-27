@@ -551,11 +551,6 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
   }
 }
 
-/** `occupied.hitsWhich(rect, pad).some(test)`, without building the list where the index can. `test` must not query the index. */
-function anyHit(occupied: OccupiedIndex, rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean {
-  return occupied.some ? occupied.some(rect, pad, test) : occupied.hitsWhich(rect, pad).some(test);
-}
-
 /** Adjacent values keep a horizontal gap whenever their rows overlap. */
 function rowValuesCrowd(a: Rect, b: Rect, pad: number): boolean {
   return rectsOverlap(a, b, pad) || (a.y < b.y + b.h && b.y < a.y + a.h && rectsOverlap(a, b, SERIES_VALUE_GAP));
@@ -1178,7 +1173,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     {
       const across = req.candidates.findIndex((cand) =>
         !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
-        !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))) && !crossesLabel(leaderFor(cand)));
+        !occupied.some(cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))) && !crossesLabel(leaderFor(cand)));
       if (across >= 0) {
         if (yieldsToPeak(req.candidates[across]!)) continue;
         const cand = settled(req.candidates[across]!, req.pad ?? pad);

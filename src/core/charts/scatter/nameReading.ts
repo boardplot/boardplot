@@ -53,7 +53,7 @@ function clearLeader(from: Point, to: Point, own: NameMark, marks: readonly Name
  * mark is its own, or when a leader joins them that crosses no other mark
  * and no text.
  */
-export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMark, marks: readonly NameMark[], fontSize?: number, nearer = true): boolean {
+export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMark, marks: readonly NameMark[], fontSize: number, nearer: boolean): boolean {
   // A mark whose centre lies inside the own mark, and the own centre inside it,
   // draws as one clump with it: no seat is nearer one of them and no leader
   // leaves the clump without crossing the other, so the rule reads the clump
@@ -79,7 +79,7 @@ export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMar
   // of the type size. Dot charts leave it out: their small dots keep their
   // seats, and a lattice of 40 dots would otherwise lose a name and send the
   // height search through extra layouts (dense-40-thinning).
-  const margin = fontSize === undefined || !nearer ? 0 : NEARER_SHARE * fontSize;
+  const margin = nearer ? NEARER_SHARE * fontSize : 0;
   const ink = inkBox(rect, fontSize);
   if (!nearer && own.r < 1e6 && Math.abs(own.cy) < 1e6) {
     const dx = Math.max(ink.x - own.cx, 0, own.cx - ink.x - ink.w);
@@ -99,7 +99,7 @@ export function nameReadsAsOwn(rect: Rect, from: Point | undefined, own: NameMar
  * bubble's row: with its middle nearer a neighbour it stands between the two
  * (a name slid between two bubbles). A name beside its mark starts at the mark.
  */
-export function middleNearerOther(rect: Rect, own: NameMark, marks: readonly NameMark[], fontSize?: number): boolean {
+export function middleNearerOther(rect: Rect, own: NameMark, marks: readonly NameMark[], fontSize: number): boolean {
   const ink = inkBox(rect, fontSize);
   return !nearestIsOwn({ x: ink.x + ink.w / 2, y: ink.y + ink.h / 2, w: 0, h: 0 }, own, clumpFor(own, marks).apart);
 }

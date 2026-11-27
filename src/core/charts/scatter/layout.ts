@@ -36,12 +36,12 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { sameContent, scatterNoteLimit, SCATTER_NOTE_LIMIT_EXCEEDED } from '../../sizing';
 import { layoutStepKey, spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { leaderPieces, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { accessibleTitle, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { defaultAnnotationId, type AnchorRef, type Annotation } from '../../types/annotations';
-import { rectsOverlap, type Rect } from '../../geometry';
+import { rectsOverlap, sameRect, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { ScatterData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from '../../types/scene';
@@ -431,26 +431,34 @@ function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
 function retrySeparatedNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx,
   size: { width: number; height: number }, previous: ProbeSolve, changed: ReadonlySet<Id>): ProbeSolve {
   const first = previous.result.placed.findIndex(label => changed.has(label.id));
-  if (first <= 0 || ctx.measure !== defaultMeasurer || ctx.labelOffsets || ctx.seriesUniform || ctx.valueRows || ctx.pointOwnership
+  if (first <= 0 || ctx.measure !== defaultMeasurer || ctx.labelOffsets
     || requests.some(r => r.order !== undefined || r.rowPeak || r.leaderAvoidsLabels || r.printedIn || r.rotate || r.pinnedSlot || ctx.pins[r.id]
       || !(r.id === `point:${r.owner.pointId}` || r.id.startsWith('quadrant:')))) {
     return probeSolveOn(requests, occupied, ctx, size);
   }
-  const prefix = previous.result.placed.slice(0, first);
-  const owners = new Set(prefix.map(label => label.owner));
-  const suffix = requests.filter(request => !owners.has(request.owner));
+  return solveAfterPrefix(requests, occupied, ctx, size, previous, first, previous.index.snapshot().slice(occupied.snapshot().length), owner => owner)
+    ?? probeSolveOn(requests, occupied, ctx, size);
+}
+
+/**
+ * Keeps the first `count` placements of `previous` and their `claims`, and solves only the other requests on a
+ * copy of `occupied`. `key` matches a placement, its claims and its request. Undefined when the keys do not match.
+ */
+function solveAfterPrefix(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, size: { width: number; height: number }, previous: ProbeSolve,
+  count: number, claims: readonly OccupiedClaim[], key: (owner: PlacedLabel['owner']) => unknown, onHidden?: (label: PlacedLabel) => void): ProbeSolve | undefined {
+  const prefix = previous.result.placed.slice(0, count);
+  const owners = new Set(prefix.map(label => key(label.owner)));
+  const suffix = requests.filter(request => !owners.has(key(request.owner)));
   // A result restored from another draw can have cloned owners. Only reuse this pass's claims.
-  if (suffix.length + first !== requests.length) return probeSolveOn(requests, occupied, ctx, size);
+  if (suffix.length + count !== requests.length) return undefined;
   const index = copyOccupied(occupied, size);
-  for (const claim of previous.index.snapshot().slice(occupied.snapshot().length)) {
-    if (owners.has(claim.owner)) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
-  }
-  const result = solveLabels(suffix, index, ctx);
-  return { index, result: {
-    ...result,
+  for (const claim of claims) if (owners.has(key(claim.owner))) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+  const result = solveLabels(suffix, index, ctx, onHidden);
+  const ids = new Set(prefix.map(label => label.id));
+  return { index, result: { ...result,
     placed: [...prefix.map(label => ({ ...label })), ...result.placed],
-    decisions: [...previous.result.decisions.slice(0, first), ...result.decisions],
-    warnings: [...previous.result.warnings.filter(warning => warning.owner && owners.has(warning.owner)), ...result.warnings],
+    decisions: [...previous.result.decisions.filter(decision => ids.has(decision.labelId)), ...result.decisions],
+    warnings: [...previous.result.warnings.filter(warning => warning.owner && owners.has(key(warning.owner))), ...result.warnings],
   } };
 }
 
@@ -530,24 +538,10 @@ function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: S
             };
             try {
               const firstChanged = prefixSafe ? Math.min(...blockers.map(label => all.indexOf(label))) : 0;
-              let probe: ProbeSolve;
-              if (firstChanged > 0) {
-                const prefix = all.slice(0, firstChanged);
-                const owners = new Set(prefix.map(label => label.owner.pointId));
-                hidden = prefix.filter(label => label.hidden).length;
-                const index = copyOccupied(occupied, size);
-                for (const claim of placedClaims) {
-                  if (owners.has(claim.owner.pointId)) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
-                }
-                const suffix = requests.filter(request => !owners.has(request.owner.pointId));
-                const result = solveLabels(suffix, index, ctx, reject);
-                const ids = new Set(prefix.map(label => label.id));
-                probe = { index, result: { ...result,
-                  placed: [...prefix.map(label => ({ ...label })), ...result.placed],
-                  decisions: [...previous.result.decisions.filter(decision => ids.has(decision.labelId)), ...result.decisions],
-                  warnings: [...previous.result.warnings.filter(warning => owners.has(warning.owner?.pointId)), ...result.warnings],
-                } };
-              } else {
+              hidden = all.slice(0, firstChanged).filter(label => label.hidden).length;
+              let probe = firstChanged > 0 ? solveAfterPrefix(requests, occupied, ctx, size, previous, firstChanged, placedClaims, owner => owner.pointId, reject) : undefined;
+              if (!probe) {
+                hidden = 0;
                 probe = probeSolveOn(requests, occupied, ctx, size, canReject ? reject : undefined);
               }
               const next = probe.result.placed;
@@ -572,8 +566,9 @@ function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: S
   return seated;
 }
 
+/** The shared commitClaims without the tick columns: the solver keeps point names out of them. */
 function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
-  for (const c of phase.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
+  phase.copyTo!(occupied);
 }
 
 /** A fresh index with the claims and tick columns of `occupied`: a solve on it leaves `occupied` as it was. */
@@ -856,10 +851,7 @@ function layoutScatterRun(
   commitClaims(occupied, claims);
   const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
   const plot = area.plot;
-  const samePlot = previous && previous.plot.x === plot.x && previous.plot.y === plot.y
-    && previous.plot.w === plot.w && previous.plot.h === plot.h
-    && previous.inner.x === area.inner.x && previous.inner.y === area.inner.y
-    && previous.inner.w === area.inner.w && previous.inner.h === area.inner.h;
+  const samePlot = previous && sameRect(previous.plot, plot) && sameRect(previous.inner, area.inner);
   if (samePlot) geometry.seatMemo = previous.seats;
   if (geometry.densePoints) {
     warnings.push({

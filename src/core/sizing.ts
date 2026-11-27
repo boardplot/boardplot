@@ -1,15 +1,15 @@
-import { PLAN_ONLY, RETAIN_TABLE_RESULT, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
+import { PLAN_ONLY, RETAIN_TABLE_RESULT, isPlanned, materializeLayout, requestMemo, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
-import { singleStops } from './strings';
+import { localeStrings, singleStops } from './strings';
 import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types/scene';
 import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
-import { COMPACT_SOURCE_LINES, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
+import { COMPACT_SOURCE_LINES, beforeUnprintedLabelNote, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
 import { withSourceLineCheck } from './frameText';
 import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER_TOLERANCE } from './aspect';
@@ -1637,18 +1637,18 @@ function findFit<D, O extends ChartOptions, M extends object, DV extends object>
         && !(ACCEPTANCE_PROBE in options) && !nested && !compactFallback && !forcedCompact(options)
         && options.mode !== 'compact' && options.target === 'report' && !options.notes && !shownNoteKinds(options)
         && !staticFrame.pinned && !(LIVE_NOTE_SHOW in options) && (options.measure ?? defaultMeasurer) === defaultMeasurer
-        && options.strings?.hiddenLabels === HIDDEN_LABEL_LEAD
+        && options.strings?.hiddenLabels === localeStrings(options.locale?.language).hiddenLabels
         ? beforeUnprintedLabelNote(withoutCallState(options)!) : undefined;
-      const ganttTrials = noteBase && ganttScope ? requestMemo<{ options: object; selected: number }[]>(data as object,
-        `gantt-note-height:${memoId(definition)}:${memoId(ganttScope)}:${height}:${sourceLimitState(options)}`, () => []) : undefined;
+      const ganttTrials = noteBase ? requestMemo<{ options: object; selected: number }[]>(data as object,
+        `gantt-note-height:${memoId(definition)}:${memoId(ganttScope!)}:${height}:${sourceLimitState(options)}`, () => []) : undefined;
       const selected = options.footnotes === undefined ? undefined : ganttTrials?.find(trial => sameContent(trial.options, noteBase))?.selected;
       let settled = selected !== undefined ? at(width, selected) : contentHeight();
       if (selected !== undefined && (settled.refused || settled.mode !== 'full' || settled.sizing?.naturalHeight !== selected))
         settled = contentHeight();
-      if (ganttTrials && noteBase && options.footnotes === undefined && fullGanttTrials && !settled.refused
+      if (ganttTrials && options.footnotes === undefined && fullGanttTrials && !settled.refused
         && fullGanttReportSizes.has(settled.size)
         && settled.mode === 'full' && settled.size.height === settled.sizing?.naturalHeight)
-        ganttTrials.push({ options: noteBase, selected: settled.size.height });
+        ganttTrials.push({ options: noteBase!, selected: settled.size.height });
       // A grid of fill panels keeps the plot floor checked by the layout scorecard: its
       // canvas grows until the plot holds it, while the plot takes the added height.
       if (definition.type === 'grid' && !nested) {
