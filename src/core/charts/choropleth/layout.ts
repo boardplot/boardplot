@@ -869,8 +869,7 @@ function layoutMapPass(
       const trial: { taller?: number } = {};
       try {
         const winner = layoutMapPass(data, options, prior.ids, 1, new Map(), omittedOverlays, undefined, trial);
-        const nextHeight = Math.ceil(Math.max(winner.sizing?.minHeight ?? 0, winner.sizing?.naturalHeight ?? 0));
-        if (winner.size.height === size.height && nextHeight <= size.height
+        if (winner.size.height === size.height && winner.sizing!.naturalHeight <= size.height
           && winner.labels.every(label => !label.hidden)) return winner;
       } catch (error) {
         if (error !== listedKeyTooTall && error !== trial) throw error;
