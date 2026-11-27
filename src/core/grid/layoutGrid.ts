@@ -13,8 +13,8 @@ import { chartString } from '../strings/layoutGrid';
 
 import { frameTextOptions, LEFT_OUT_OF_NOTE, valueNoteLine, panelNoteTexts, solveFrame, type FrameInput } from '../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from './gridKey';
-import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from './varianceTiers';
-import { boundsOf, type Rect } from '../geometry';
+import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierChromeFloor, varianceTierWeights } from './varianceTiers';
+import { boundsOf, sameRect, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
@@ -193,6 +193,19 @@ export const FACET_GAPS = Symbol('facetGaps');
 /** Internal option key: the panel ids of each shared y scale group the grid chart resolved; a clamped or log panel left its group. */
 export const SCALE_GROUP_MEMBERS = Symbol('scaleGroupMembers');
 
+type GridChild = {
+  def: NonNullable<ReturnType<typeof getChart>>;
+  geo: Geometry;
+  recordOptions: object;
+  sameGridKey?: boolean;
+  tierCaption?: string;
+  tierDetail?: string;
+  /** The category inset the alignment settled; both relayouts below read the same holder. */
+  anchored?: PanelAnchoring;
+};
+
+type TierGroup = { slots: Rect[]; children: GridChild[]; sharedX?: number; sharedW?: number };
+
 /**
  * A column panel leaves the values it cannot print to its grid
  * (column/layout.ts), so the grid names them in its note line. The note takes
@@ -201,13 +214,16 @@ export const SCALE_GROUP_MEMBERS = Symbol('scaleGroupMembers');
  */
 export function layoutGrid(data: GridData, options: GridOptions = {}): LayoutResult<GridMarks, GridDerived> {
   let named: string[] = [];
-  let geometry = layoutGridPass(data, options);
+  // A disclosure retry changes only the grid footer. Keep aligned variance-tier groups
+  // inside this call. An equal set of panel slots draws the same children and axes.
+  const groups: TierGroup[] | undefined = (options.measure ?? defaultMeasurer) === defaultMeasurer ? [] : undefined;
+  let geometry = layoutGridPass(data, options, groups);
   for (let round = 0; round < 2; round++) {
     if (geometry.refused) return geometry;
     const unprinted = unprintedPanelValues(data, geometry);
     if (unprinted.every((item) => named.includes(item))) break;
     named = [...new Set([...named, ...unprinted])];
-    geometry = layoutGridPass(data, { ...options, [PANEL_VALUE_NOTE]: named } as GridOptions);
+    geometry = layoutGridPass(data, { ...options, [PANEL_VALUE_NOTE]: named } as GridOptions, groups);
   }
   return geometry;
 }
@@ -237,7 +253,7 @@ function unprintedPanelValues(data: GridData, geometry: { labels: readonly Place
   return byPanel.flatMap((entry) => (byPanel.length > 1 ? entry.items.map((item) => `${entry.title}: ${item}`) : entry.items));
 }
 
-function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult<GridMarks, GridDerived> {
+function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: TierGroup[]): LayoutResult<GridMarks, GridDerived> {
   options = resolveCanvasOptions(options);
   if (!data || !Array.isArray(data.panels) || data.panels.length === 0) {
     throw new NormalizeError('empty-data', 'panels', 'grid requires at least one panel');
@@ -350,6 +366,9 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     if (!size) byText.set(text, size = measuredCaption(text, font, width, measure));
     return size;
   };
+  // A built-in variance tier names its reference and whether it shows a percent.
+  // These stay fixed across slot heights during this draw.
+  const varianceNames = varianceWeights && measure === defaultMeasurer ? new Map<number, string>() : undefined;
   let uniformLineEndpointLegend = false;
   // under legend 'none', or a key row that keys only some series, each line
   // panel keeps the end names it can fit; a panel that cannot fit them is keyed by the grid.
@@ -425,8 +444,13 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     // Plain column and line panels return geometry at either margin. Their authored caption already fixes the reserve.
     const knownCaption = compactTiers && authoredTitle !== undefined && reusePanels && !opts.annotations?.length
       && captionSizedPanelLayouts.has(def.layout);
-    const probe = knownCaption ? undefined : draw(opts);
-    const autoTierName = (probe?.derived as { tierName?: unknown } | undefined)?.tierName;
+    const knownVariance = varianceNames?.get(panelIndex);
+    const probe = knownCaption || knownVariance !== undefined ? undefined : draw(opts);
+    const autoTierName = knownVariance ?? (probe?.derived as { tierName?: unknown } | undefined)?.tierName;
+    if (varianceNames && def.type === 'variance' && !opts.annotations?.length
+      && probe && varianceTierChromeFloor.has(probe.plot) && typeof autoTierName === 'string') {
+      varianceNames.set(panelIndex, autoTierName);
+    }
     const tierCaption = compactTiers && panelOpts.title !== false
       ? authoredTitle ?? (typeof autoTierName === 'string' ? autoTierName : undefined)
       : undefined;
@@ -474,32 +498,22 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     return { left: m?.left ?? 28, right: m?.right ?? 28 };
   });
 
-  type GridChild = {
-    def: ReturnType<typeof getChart>;
-    geo: Geometry;
-    recordOptions: object;
-    sameGridKey?: boolean;
-    tierCaption?: string;
-    tierDetail?: string;
-    /** The category inset the alignment settled; both relayouts below read the same holder. */
-    anchored?: PanelAnchoring;
-  };
   let sharedX: number | undefined;
   let sharedW: number | undefined;
   const landsOnEndpointLegend = (children: GridChild[]): boolean =>
     children.some(
       (child) =>
-        child.def?.type === 'line' &&
+        child.def.type === 'line' &&
         (child.geo.derived as { endpointLabelEconomy?: { strategy?: unknown } })
           .endpointLabelEconomy?.strategy === 'legend',
     );
   const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
-    const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options) : {};
+    const anchored = child.anchored ??= panelAnchoring(child.def.type, data.panels[i]!.options);
     const columnOptions = child.recordOptions as { annotations?: unknown[]; ratioTier?: unknown; labels?: { category?: boolean; point?: boolean; segment?: boolean } };
     return {
       geometry: child.geo, slot: slots[i]!,
       // With the category row off and no ratio tier, the column only subtracts room from its frame.
-      columnPlotFloor: child.def?.type === 'column' && captionSizedPanelLayouts.has(child.def.layout)
+      columnPlotFloor: child.def.type === 'column' && captionSizedPanelLayouts.has(child.def.layout)
         && measure === defaultMeasurer && child.geo.labels.length === 0 && child.geo.warnings.length === 0
         && !columnOptions.ratioTier && !columnOptions.annotations?.length && columnOptions.labels?.category === false
         && columnOptions.labels.point === false && columnOptions.labels.segment === false,
@@ -526,12 +540,12 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   };
   // A custom measurer can return a new width on a second call.
   const reusePanels = isCachedTextMeasurer(measure);
-  const layoutChildren = (): GridChild[] => {
+  const drawChildren = (): GridChild[] => {
     if (share === 'category' && n > 1) {
       let pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i], undefined, 'check'));
       if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(pass1)) {
         uniformLineEndpointLegend = true;
-        pass1 = pass1.map((child, i) => reusePanels && child.def?.type !== 'line'
+        pass1 = pass1.map((child, i) => reusePanels && child.def.type !== 'line'
           ? child : layoutPanel(data.panels[i]!, i, slots[i]!, baseMargins[i], undefined, child.sameGridKey ? child : undefined));
       }
       sharedX = maxOf(pass1.map((c) => c.geo.plot.x));
@@ -562,10 +576,46 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     let children = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!));
     if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(children)) {
       uniformLineEndpointLegend = true;
-      children = children.map((child, i) => reusePanels && child.def?.type !== 'line'
+      children = children.map((child, i) => reusePanels && child.def.type !== 'line'
         ? child : layoutPanel(data.panels[i]!, i, slots[i]!));
     }
     return alignSharedValues(children);
+  };
+
+  const layoutChildren = groups && varianceWeights ? (): GridChild[] => {
+    const known = groups.find(group => slots.every((s, i) => sameRect(s, group.slots[i]!)));
+    if (known) {
+      sharedX = known.sharedX;
+      sharedW = known.sharedW;
+      return known.children;
+    }
+    const children = drawChildren();
+    // Only the clamped group and the first taller measurement can repeat on a
+    // disclosure retry. Leave later spare-height trials free for collection.
+    if (groups.length < 2 && (groups.length === 1 || children.some(child => child.geo.plot.h <= 10))) {
+      groups.push({ slots: slots.map(slot => ({ ...slot })), children, sharedX, sharedW });
+    }
+    return children;
+  } : drawChildren;
+
+  const balance = (children: GridChild[]): GridChild[] => {
+    if (groups && varianceWeights && !data.panels.some(panel => (panel.options as { theme?: unknown } | undefined)?.theme)
+      && children.some(child => child.geo.plot.h <= 10)
+      && data.panels.every((panel, i) => {
+        const opts = resolveCanvasOptions((panel.options ?? {}) as { margin?: { top?: number; bottom?: number }; scaleGroup?: object; annotations?: unknown[] });
+        return !opts.scaleGroup && !opts.annotations?.length && !panel.annotations?.length
+          && (opts.margin?.top ?? 0) >= 0 && (opts.margin?.bottom ?? 0) >= 0
+          && (panel.type === 'variance' ? varianceTierChromeFloor.has(children[i]!.geo.plot)
+            : captionSizedPanelLayouts.has(children[i]!.def.layout));
+      })) {
+      // If the taller probe is clamped it already keeps the original group.
+      // Otherwise each variance plot uses at least its value rows and bottom
+      // margin. Even giving every other pixel to the plots can rule out 10 px.
+      const available = slots.reduce((sum, slot, i) => sum + slot.h - (varianceTierChromeFloor.get(children[i]!.geo.plot) ?? 0), 0);
+      const totalWeight = varianceWeights.reduce((sum, w) => sum + w, 0);
+      if (available * minOf(varianceWeights) / totalWeight < 10 - 1e-6) return children;
+    }
+    return balanceVarianceTierPlots(slots, children, varianceWeights, layoutChildren);
   };
 
   const measureTierContents = (laidOut: GridChild[]) => {
@@ -654,7 +704,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     slots.forEach((slot, index) => { slot.y = starts[rowOf(index)]!; slot.h = heights[rowOf(index)]!; });
     children = layoutChildren();
   }
-  children = balanceVarianceTierPlots(slots, children, varianceWeights, layoutChildren);
+  children = balance(children);
   let tierContents = measureTierContents(children);
   let effectiveTierGap = theme.space.tierGap;
   // Heading air (theme.space.tierHeadingGap): a tier with a heading stands at least twice as far from the
@@ -692,7 +742,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       slots.forEach((slot, index) => { slots[index] = { ...slot, h: heights[index]! }; });
       let y = area.y + area.h;
       for (const i of bottomUpOrder) { y -= slots[i]!.h; slots[i] = { ...slots[i]!, y }; y -= theme.space.tierGap; }
-      children = balanceVarianceTierPlots(slots, layoutChildren(), varianceWeights, layoutChildren);
+      children = balance(layoutChildren());
       tierContents = measureTierContents(children);
     };
     // A panel that the weights give less than its own minimum draws a flat strip, although the
@@ -749,7 +799,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         for (let i = 0; i < n; i++) {
           slots[i] = { ...slots[i]!, h: slots[i]!.h + (growth * fraction * weights[i]!) / wSum };
         }
-        children = balanceVarianceTierPlots(slots, layoutChildren(), varianceWeights, layoutChildren);
+        children = balance(layoutChildren());
         tierContents = measureTierContents(children);
         const remaining =
           area.h -
@@ -948,7 +998,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       chart: { options: child.recordOptions, geometry: geo, offset: { x: dx, y: dy }, warningOffset, ...((panel.options as { theme?: ThemeRef } | undefined)?.theme ? { theme: (panel.options as { theme?: ThemeRef }).theme } : {}) },
       plot: { x: geo.plot.x + dx, y: geo.plot.y + dy, w: geo.plot.w, h: geo.plot.h },
       content: { x: content.x + dx, y: content.y + dy, w: content.w, h: content.h },
-      title: child.tierCaption ?? (geo.a11y.title || child.def?.title || panel.id),
+      title: child.tierCaption ?? (geo.a11y.title || child.def.title || panel.id),
       ...(titleNodeId ? { titleNodeId } : {}),
       ...(captionNodeId ? { captionNodeId } : {}),
     });

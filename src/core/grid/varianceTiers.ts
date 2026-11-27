@@ -2,6 +2,8 @@ import type { Rect } from '../geometry';
 import { maxOf } from '../arrays';
 
 export const VARIANCE_TIER = Symbol('varianceTier');
+/** Bottom margin and value rows a taller variance panel must keep when its plot exceeds the clamp. */
+export const varianceTierChromeFloor = new WeakMap<object, number>();
 
 type TierPanel = { type?: string; options?: object };
 
