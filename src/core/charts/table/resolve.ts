@@ -1332,7 +1332,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // 1000: a column printing "€2.4M" in a board
     // of thousands is the defect the option exists to prevent. A percent or
     // a count has no magnitude to force.
-    if (scales(sourceExample ?? defaultExample(col)) && forcedMagnitude !== undefined) {
+    if (forcedMagnitude !== undefined && scales(sourceExample ?? defaultExample(col))) {
       forceScale(spec, forcedMagnitude, locale.thousands);
       if (spec.lockMagnitude) forcedColumns.add(col.id);
     }
