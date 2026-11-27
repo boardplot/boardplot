@@ -56,6 +56,7 @@ import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { dataSeriesUnitRefusal } from '../../schema/units';
 import { shownSeries } from '../../hiddenSeries';
+import { HIDDEN_SERIES } from '../../hiddenSeriesKey';
 import { breakWhileHidden, drawnWithoutBreak, drawsNetLine } from '../../columnBarChecks';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
@@ -942,7 +943,8 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const env = resolveColumnEnv(options, warnings);
   // These trials keep the original sheet order. Simple cells emit no range
   // warnings, and a missing part stays null in the prepared values and shares.
-  const shareValues = options.variant === 'stacked' && !options.valueAxis?.percent && !options.sort && !options.topN
+  // A reader's hidden series change the stacks and mark the shared series, so such a request prepares its own.
+  const shareValues = options.variant === 'stacked' && !(options as { [HIDDEN_SERIES]?: readonly string[] })[HIDDEN_SERIES]?.length && !options.valueAxis?.percent && !options.sort && !options.topN
     && !options.window && !options.viewDomain && !options.ribbons && (options.measure ?? defaultMeasurer) === defaultMeasurer
     && data && typeof data === 'object' && requestMemo(data, 'column-simple-missing', () =>
       Array.isArray(data.series) && data.series.some(s => Array.isArray(s?.values) && s.values.includes(null))

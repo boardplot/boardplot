@@ -87,3 +87,20 @@ it('draws without the axis break that the visible series cannot hold', () => {
     expect(zero.filter((warning) => warning.code === 'axis-break-invalid').map((warning) => warning.severity), type).toEqual(['error']);
   }
 });
+
+// Gapped daily stacks share prepared values across sizing trials; a trial that saw every series must not hand them on.
+it('keeps a hidden series out of a narrow stacked column chart with gaps', () => {
+  const days = Array.from({ length: 16 }, (_, i) => i);
+  const data = {
+    categories: days.map((i) => ({ id: `p${i}`, date: `2025-01-${String(i + 1).padStart(2, '0')}` })),
+    series: [
+      { id: 'online', label: 'Online', values: days.map((i) => (i % 2 ? 57000 : 490)) },
+      { id: 'retail', label: 'Retail', values: days.map((i) => (i % 5 === 0 ? null : 61000 - i * 900)) },
+      { id: 'partners', label: 'Partners', values: days.map((i) => (i % 3 === 0 ? null : 42000 + i * 50)) },
+    ],
+  };
+  const options = { variant: 'stacked', target: 'report', legend: 'top', size: { width: 375 }, source: 'Sales export' };
+  const marks = Object.keys(markFills(laidOut('column', data, options, ['retail']).geometry));
+  expect(marks.length).toBeGreaterThan(0);
+  expect(marks.some((id) => id.includes('retail'))).toBe(false);
+});
