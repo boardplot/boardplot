@@ -18,7 +18,7 @@ import { layoutHeatmap } from '../src/core/charts/heatmap/layout';
 import { layoutKpi } from '../src/core/charts/kpi/layout';
 import { layoutLine } from '../src/core/charts/line/layout';
 import { layoutPareto } from '../src/core/charts/pareto/layout';
-import { layoutSparkline } from '../src/core/charts/sparkline/layout';
+import { layoutSparkline } from '../src/core/charts/sparkline/chart';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { Geometry } from '../src/core/types/scene';

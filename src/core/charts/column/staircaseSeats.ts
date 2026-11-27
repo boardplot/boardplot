@@ -5,7 +5,8 @@ import { claimStaircase, staircaseRequests, type StaircaseName } from '../../lab
 import { hasLabelPosition } from '../band/labelPosition';
 import { kindSetting } from './domain';
 import { planColumnLabels } from './labels';
-import { baselineBounds, netInsideStack, netTotalBounds, stackSegmentRect } from './marks';
+import { baselineBounds, netInsideStack, stackSegmentRect } from './marks';
+import { netTotalBounds } from './netTick';
 import type { ColumnArea, ColumnDomain } from './model';
 
 /** Prove that the no-axis layout seats every total and every staircase name at the proposed size. */

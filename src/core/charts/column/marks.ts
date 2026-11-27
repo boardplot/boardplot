@@ -16,11 +16,11 @@ import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
 import { ribbonPath } from '../../svgPath';
 import type { Id } from '../../types/cell';
-import type { Theme } from '../../types/theme';
 import type { AxisGeometry, Paint, SceneNode } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { breakAxisScale, REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
 import type { ColumnMarks } from './layout';
+import { netTotalBounds, netTotalTick } from './netTick';
 import {
   ANOMALY_FLAG_GAP,
   ANOMALY_FLAG_H,
@@ -605,24 +605,6 @@ function netTotalTicks(domain: ColumnDomain, area: ColumnArea, nodes: SceneNode[
     tickYs.set(c.id, [...(tickYs.get(c.id) ?? []), yy]);
   });
 }
-
-export function netTotalBounds(x: number, w: number, yy: number): Rect {
-  const x1 = x - 2;
-  return { x: x1, y: yy - 0.7, w: x + w + NET_TICK_REACH - x1, h: 1.4 };
-}
-
-/** The tick at a mixed-sign stack's net, across its column and reaching past it on the right (combo draws it too). */
-export function netTotalTick(theme: Theme, categoryId: Id, x: number, w: number, yy: number, nodes: SceneNode[], claims: OccupiedIndex): void {
-  const x1 = x - 2;
-  const x2 = x + w + NET_TICK_REACH;
-  // Its own owner: no segment value of the column may sit across it.
-  const owner = { categoryId, seriesId: '__netTotal' };
-  nodes.push({ t: 'line', id: `netTotal:${categoryId}`, x1, y1: yy, x2, y2: yy, stroke: { token: 'markInk' }, width: strokeToken(theme, 'rule'), owner, part: 'netTotal' });
-  claims.claim(netTotalBounds(x, w, yy), 'mark', owner, 'netTotal');
-}
-
-/** How far a net total's tick reaches past its column, where its label starts. */
-export const NET_TICK_REACH = 6;
 
 /**
  * A highlighted category of several series keeps each series'

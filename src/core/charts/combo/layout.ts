@@ -80,8 +80,8 @@ import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
 import type { AnomalyDerived } from '../column/types';
 import type { LineAnomaly } from '../line/model';
-import { fillShadingKinds, fillShadings, regroundOnShadings, withoutEvents } from '../line/marks';
-import { bandHatch } from '../line/scene';
+import { fillShadingKinds, fillShadings, regroundOnShadings, withoutEvents } from '../line/shared';
+import { bandHatch } from '../line/shared';
 import { pushAll } from '../../arrays';
 
 export interface ComboMarks {

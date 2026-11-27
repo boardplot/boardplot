@@ -5,7 +5,7 @@ import { chartSizing } from '../../sizing';
 import type { ChartCore } from '../../registry';
 import type { SparklineData } from '../../types/data';
 import type { SparklineOptions } from '../../types/options';
-import { layoutSparkline, type SparklineDerived, type SparklineMarks } from './layout';
+import { layoutSparkline, type SparklineDerived, type SparklineMarks } from './chart';
 
 export const sparklineCore: ChartCore<SparklineData, SparklineOptions, SparklineMarks, SparklineDerived> = {
   type: 'sparkline',

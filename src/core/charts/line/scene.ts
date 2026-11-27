@@ -15,15 +15,15 @@ import { layoutValueAxis, straightBreakGlyph, valueAxisTitleRequest } from '../.
 import { fitLogTicks } from '../logAxis';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { LabelRequest } from '../../label/solver';
-import { strokeToken, HATCH_STRENGTH_DEFAULT, hatchGapFactor } from '../../theme';
+import { strokeToken } from '../../theme';
 import type { AxisGeometry, LintWarning, PaintWarningRule, SceneNode } from '../../types/scene';
-import type { Theme } from '../../types/theme';
 import { resolvePaintWarnings } from '../../paintWarnings';
 import { lineSeriesAdjacentWarnings } from './adjacent';
 import { renderGapFill, renderTargets } from './difference';
 import { renderFanWashes } from './fan';
 import { actualHeader, forecastDividerAt, forecastStroke, placeForecastHeaders } from './forecast';
-import { pathFor, renderLineMarks, renderPhaseFills, reversePathTail } from './marks';
+import { renderLineMarks, renderPhaseFills, reversePathTail } from './marks';
+import { bandHatch, pathFor } from './shared';
 import { lineMeans } from './means';
 import type { LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
 import { layoutReferenceBands } from './referenceBands';
@@ -34,19 +34,6 @@ import { INTERVAL_TICK } from '../../intervalTicks';
 /** Length of a date-interval tick under the plot; the category names start 6 px below the plot. */
 /** Interval ticks closer than this (px) draw only where a label prints. */
 export const MIN_TICK_GAP = 2;
-/** A stacked band's forecast stripes sit 1/√2 of the theme's second-cue pitch apart (9.6 px along x at the default). */
-const BAND_HATCH_PITCH = Math.SQRT1_2;
-/** The page colour's share in a stacked band's stripe at the default strength. */
-const BAND_HATCH_SHARE = 0.45;
-
-/** The forecast overlay of a fill: page-colour stripes over the fill's own colour (renderLineMarks' `hatch`). */
-export function bandHatch(theme: Theme, hatchStrength: number | undefined): { gap: number; width: number; share: number } {
-  return {
-    gap: theme.pattern.hatchGap * hatchGapFactor({ strength: hatchStrength ?? HATCH_STRENGTH_DEFAULT.second, cue: 'second' }) * BAND_HATCH_PITCH,
-    width: strokeToken(theme, 'hair'),
-    share: BAND_HATCH_SHARE * (0.5 + 0.5 * (hatchStrength ?? HATCH_STRENGTH_DEFAULT.second) / 100) / (0.5 + 0.5 * HATCH_STRENGTH_DEFAULT.second / 100),
-  };
-}
 
 /** Phase 2: the plot area, scales and paints in, every mark in paint order out. */
 export function layoutLineMarks(

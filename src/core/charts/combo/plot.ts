@@ -48,7 +48,7 @@ import {
 } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
-import { MARKER_MAX_CATS } from '../line/paints';
+import { MARKER_MAX_CATS } from '../line/shared';
 import type { LabelContent, LabelKind, LegendOptions } from '../../types/options';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { planComboAxisTitles } from './axisTitles';
