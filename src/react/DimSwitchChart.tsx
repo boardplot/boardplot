@@ -28,7 +28,7 @@ import { optionRefusals } from '../core/schema/refusals';
 import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { asSize, ChartFailure, RefusalBoundary } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useChartFailure } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
 import type { ContainerSizeOptions } from './useContainerSize';
@@ -157,7 +157,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
         return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
       },true);
     } catch(error) {
-      // An unknown row id draws the dimswitch card; any other refusal the boundary's card, on the server too.
+      // An unknown row id draws the dimswitch card; any other refusal the boundary's card (useChartFailure).
       if(error instanceof NormalizeError) return error;
       throw error;
     }
@@ -248,10 +248,11 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     reported.current=key;
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,warningRecords,stableOptions,stableData,collapsed,tableWarnings,printed,refused]);
-  if(compilation instanceof NormalizeError && !failedCompile) return <ChartFailure error={compilation}/>;
+  const card=useChartFailure(compilation instanceof NormalizeError && !failedCompile ? compilation : undefined);
+  if(card) return card;
   if(failedCompile || foreign!==undefined) return <DimSwitchRefusal failure={failedCompile ? compilation : foreign!} data={stableData} options={stableOptions} size={size} fallbackSize={fallbackSize} onRefused={onRefused} renderRefused={renderRefused} />;
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
-  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compilation.options} exporter={exporter} data={compilation.data} collapsed={collapsed} onCollapsedChange={toggle}
+  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled!.options} exporter={exporter} data={compiled!.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}

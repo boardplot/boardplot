@@ -37,7 +37,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { asSize, ChartFailure, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useChartFailure, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -1665,8 +1665,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   } : undefined, [exporter, drew, request, data, table, collapsedSet, rootsHidden, columnVisibility, inlineVisibility, contentWidth, originalFloorRequest]);
   useExportLink(exporter, exported);
   // An input the engine threw on draws its card in place of the table.
-  const thrown = failed ?? resolution.failed;
-  if (thrown !== undefined) return <ChartFailure error={thrown} />;
+  const card = useChartFailure(failed ?? resolution.failed);
+  if (card) return card;
   if (refusedOptions.length && request?.theme) return wrap(<LayoutRefusal refusals={refusedOptions} theme={request.theme} options={request.options} size={request.size} />);
   if (floorAttempt.deferred || !resolved || !table || !theme || !tableOptions || stylesheet === undefined) {
     return wrap(<LoadingPlaceholder theme={stableOptions.theme} failure={failure ?? floorFailure} options={{ ...stableOptions, target }} />);

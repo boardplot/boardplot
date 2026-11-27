@@ -3,8 +3,8 @@
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
 import { act, createElement, useState, type ReactElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup, renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadedDeferred } from '../src/core/deferred';
 import { getChart } from '../src/core/registry';
@@ -123,6 +123,20 @@ describe('React adapter boundary', () => {
     root = createRoot(container);
     act(() => { root.render(createElement(DimSwitchChart, { data: dimSwitchData } as never)); });
     expect(container.querySelectorAll('[role="row"]').length).toBe(rows);
+  });
+
+  // The server draws a refused chart's card; its hydration must keep that card without a mismatch or an error.
+  it('hydrates the refusal card of the server', () => {
+    const chart = createElement(ColumnChart, { data: { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] }, locale: { language: 'x-invalid-tag-' } } as never);
+    act(() => root.unmount());
+    container.innerHTML = renderToString(chart);
+    expect(container.innerHTML).toContain('data-bp-spec-error');
+    const errors = vi.fn();
+    const logged = vi.spyOn(console, 'error');
+    act(() => { root = hydrateRoot(container, chart, { onRecoverableError: errors, onCaughtError: errors }); });
+    expect(container.innerHTML).toContain('data-bp-spec-error');
+    expect(errors).not.toHaveBeenCalled();
+    expect(logged).not.toHaveBeenCalled();
   });
 
   it('runs semantic normalization before range-family layout', () => {

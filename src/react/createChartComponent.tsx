@@ -48,7 +48,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { asSize, ChartFailure, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { asSize, RefusalBoundary, useChartFailure, type PerTypeSizeOptions } from './RefusalBoundary';
 import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -420,7 +420,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
 
     // An input the engine threw on draws its card in place of the chart.
     const failed = first.failed ?? full.failed ?? wide.failed ?? wider.failed;
-    if (failed !== undefined) return <ChartFailure error={failed} />;
+    const card = useChartFailure(failed);
+    if (card) return card;
     // The busy box takes the refusal's size: a host without a height
     // would otherwise swap heights, show or hide its scrollbar and restart the settle.
     if (settling && resolved.request && geometry) return frame(<LoadingPlaceholder fixedSize={fixedSize} theme={resolved.request.theme} size={geometry.size} options={{ ...stableOptions, target }} />);

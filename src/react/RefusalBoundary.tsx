@@ -1,4 +1,4 @@
-import { Component, createContext, Fragment, useContext, useMemo, type ReactNode } from 'react';
+import { Component, createContext, useContext, useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
 import { NormalizeError } from '../core/normalize/shared';
 import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
@@ -41,17 +41,13 @@ function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: Render
  * number) throws a NormalizeError while the chart renders. The CLI turns that error
  * into a refusal; here it draws the refusal card, so one bad chart does not unmount
  * the host's React root. Any other error keeps travelling up to the host. The card
- * goes when the chart gets new props or inherited settings. A chart that drew its
- * card itself (ChartFailure) then mounts afresh, as after a caught error: nothing of
- * the refused input stays, such as its last drawing or its folds.
+ * goes when the chart gets new props or inherited settings.
  */
 class Boundary extends Component<
   { watch: unknown; inherited: unknown; fallback: Fallback; children: ReactNode },
   { watch: unknown; inherited: unknown; failed?: { error: unknown } }
 > {
   override state: { watch: unknown; inherited: unknown; failed?: { error: unknown } } = { watch: this.props.watch, inherited: this.props.inherited };
-  /** Raised by a drawn ChartFailure: the boundary's next render, on new props or settings, mounts its chart afresh. */
-  mount = 0;
 
   static getDerivedStateFromError(error: unknown) {
     return { failed: { error } };
@@ -63,7 +59,7 @@ class Boundary extends Component<
 
   override render(): ReactNode {
     const { failed } = this.state;
-    if (!failed) return <FallbackContext.Provider value={this}><Fragment key={this.mount}>{this.props.children}</Fragment></FallbackContext.Provider>;
+    if (!failed) return <FallbackContext.Provider value={this}>{this.props.children}</FallbackContext.Provider>;
     const { error } = failed;
     if (!(error instanceof NormalizeError)) throw error;
     return this.props.fallback([findingOf(error)]);
@@ -74,12 +70,26 @@ class Boundary extends Component<
 type Fallback = (findings: readonly DocumentFinding[]) => ReactNode;
 const FallbackContext = createContext<Boundary>(undefined!);
 
-/** What a chart draws when its engine refused its input (a NormalizeError), on the server too. Any other error goes on up to the host. */
-export function ChartFailure({ error }: { error: unknown }): ReactNode {
+/** The server's card of a refusal. Once hydrated, the boundary holds it, as if the chart had thrown in the browser. */
+function ChartFailure({ error }: { error: NormalizeError }): ReactNode {
   const boundary = useContext(FallbackContext);
-  useIsomorphicLayoutEffect(() => { boundary.mount++; });
-  if (error instanceof NormalizeError) return boundary.props.fallback([findingOf(error)]);
-  throw error;
+  useIsomorphicLayoutEffect(() => boundary.setState({ failed: { error } }), [error]);
+  return boundary.props.fallback([findingOf(error)]);
+}
+
+const subscribeNever = () => () => {};
+const inBrowser = () => false;
+
+/**
+ * What a chart draws when its engine refused its input (a NormalizeError) on the server, where React has no error
+ * boundary, and in the hydration of that markup: the card. In the browser the error is thrown to the boundary, as
+ * it always was. Any other error goes on up to the host.
+ */
+export function useChartFailure(failed: unknown): ReactElement | null {
+  const serverPass = useSyncExternalStore(subscribeNever, inBrowser, () => failed !== undefined);
+  if (failed === undefined) return null;
+  if (!serverPass || !(failed instanceof NormalizeError)) throw failed;
+  return <ChartFailure error={failed} />;
 }
 
 export function RefusalBoundary({ watch, children, size, fallbackSize, target, theme, background, title, fixedSize }: {
