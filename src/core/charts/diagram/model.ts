@@ -385,9 +385,9 @@ function validateMonotonePins(data: NormalizedDiagram, options: DiagramOptions, 
     .filter((node) => node.kind === 'milestone' && node.position)
     .sort(
       (a, b) =>
+        // The order the roadmap draws its milestones in: data.nodes is in stable order already.
         (laneOrder.get(a.laneId!) ?? 0) - (laneOrder.get(b.laneId!) ?? 0) ||
-        (a.order ?? 0) - (b.order ?? 0) ||
-        compareDiagramIds(a.id, b.id),
+        (a.order === undefined || b.order === undefined ? 0 : a.order - b.order || compareDiagramIds(a.id, b.id)),
     );
   for (let index = 1; index < pinned.length; index++) {
     const previous = pinned[index - 1]!.position!;
