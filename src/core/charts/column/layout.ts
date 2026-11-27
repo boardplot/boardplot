@@ -74,7 +74,7 @@ import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
-import { authoredNotes, dataOrder, sourceOnlyListNotes, hiddenNoteBodyOptions, LEGEND_HEIGHT, type LegendBudget, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
+import { authoredNotes, comparableOptions, dataOrder, sourceOnlyListNotes, hiddenNoteBodyOptions, NOTED_LABELS, plotChromeFloor, POINTED_NOTES, type InternalFootnoteOptions } from '../../frame';
 import { withBandValueNotes } from '../band/valueNotes';
 import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStaircase, settleStaircase, staircaseNameSeats, staircaseShortOnHeight, staircaseState, STAIRCASE_MAX_PAD, type StaircaseOutcome } from '../../label/staircase';
 import type { Theme } from '../../types/theme';
@@ -1390,12 +1390,7 @@ function layoutColumnPass(
   const bodies = (keyed || offCanvasMissing && domain.va.show === true && !measuredBody
     && !(COLLECT_IDENTITIES in options) && !options.window && !options.viewDomain) && noteFrame && !noteParent && reusablePreparation
     ? requestMemo<KeyedColumnBody[]>(data, `column-note:${size.width}:${size.height}:${keepEachValue}:${probeAxis}:${layoutStepKey()}:${currentSmallValues()}:${formatScopeKey(options)}`, () => []) : undefined;
-  const bodyOptions = bodies && hiddenNoteBodyOptions(options);
-  if (bodyOptions && offCanvasMissing) {
-    const compared = bodyOptions as { [LEGEND_HEIGHT]?: LegendBudget };
-    const legend = compared[LEGEND_HEIGHT];
-    if (legend) Object.assign(compared, { [LEGEND_HEIGHT]: { ...legend, names: [...legend.names] } });
-  }
+  const bodyOptions = bodies && (offCanvasMissing ? comparableOptions(hiddenNoteBodyOptions(options)) : hiddenNoteBodyOptions(options));
   const saved = bodyOptions && NOTED_LABELS in options ? bodies?.find(entry => sameContent(entry.options, bodyOptions)) : undefined;
   const parent = noteParent ?? saved?.pass;
   const before = parent?.noteFrame;

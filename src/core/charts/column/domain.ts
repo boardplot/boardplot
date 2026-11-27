@@ -1023,7 +1023,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // The Total column's weighted shares are statistics: a set of their own beside the shares they weigh.
   const totalStatFmt = computedTotal ? statisticFormatter(Object.values(computedTotal.values), valueSpec.percentSpec) : undefined;
   const ranked = ribbons.ribbonsOn && ribbons.ribbonRank;
-  const source = shareValues && variant === 'stacked' && !ranked
+  const source = shareValues
     ? requestMemo(data, 'column-missing-stacks', () => columnBasis(variant, cats, dataSeries, warnings))
     : columnBasis(variant, cats, dataSeries, viewportOn ? [] : warnings, ranked);
   let anomaly: AnomalyModel | undefined;

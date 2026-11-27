@@ -33,8 +33,7 @@ import { zoneYearSpan } from '../../timeAxis';
 import { corridorEdgeRects, emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryBandFromCenters, categoryTargetFields, spliceAnnotationNodes, type CategoryBand } from '../../annotateFields';
 import { rectsOverlap, type Rect } from '../../geometry';
-import { cutLabels } from '../../label/omissions';
-import { heightOmitted, LINE_HEIGHT_REFERENCE, PLOT_FLOOR_RECT } from '../../sizing';
+import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
 import { DeferredShownMarks } from '../../shownMarks';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
@@ -898,7 +897,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
       at: c.id,
       pos: xOf(i),
       // A continuous axis labels its scale ticks, not its readings.
-      labelId: plan.catLabelsShown && !area.xTicks && (!plan.heightReference || area.catPlan.keep[i]) ? `category:${c.id}` : undefined,
+      labelId: plan.catLabelsShown && !area.xTicks ? `category:${c.id}` : undefined,
     })),
   });
   const variantName = isBump
@@ -1375,10 +1374,6 @@ function layoutLinePass(
     env, domain, area, text, reserves, scene, plan, solved, annResult, ratioTierResult, occupied, warnings, lane, areaFill: paints.areaFill, seriesPaint: paints.keyPaint, pointPaint: paints.point,
   });
   // Read by layoutLine only; a symbol key stays out of the published geometry.
-  // A later disclosure can change which categories still print. Repeat the wider request
-  // with complete receipts before any note repair or shortened-label comparison can read them.
-  if (plan.heightReference && (geometry.labels.some(label => label.hidden !== undefined && label.hidden !== 'redundant')
-    || cutLabels(geometry).length > 0)) throw LINE_HEIGHT_REFERENCE;
   if (annResult.gapBracketNeed > 0) Object.assign(geometry, { [GAP_BRACKET_RESERVE]: annResult.gapBracketNeed });
   if (annResult.gapBracketHidden.length > 0) Object.assign(geometry, { [GAP_BRACKET_REFUSED]: annResult.gapBracketHidden });
   if (annResult.bandNeed > 0) Object.assign(geometry, { [BAND_PAD]: annResult.bandNeed });

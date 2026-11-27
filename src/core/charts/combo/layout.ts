@@ -79,7 +79,7 @@ import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMa
 import { comboPaints, contentOf, comboPlotArea, drawComboFrame, eventFrameHeights, prepareComboFrame, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { collectFrameClaims, solveFrame, hiddenNoteBodyOptions, NOTED_LABELS, LEGEND_HEIGHT, type LegendBudget, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
+import { collectFrameClaims, solveFrame, comparableOptions, hiddenNoteBodyOptions, NOTED_LABELS, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -434,15 +434,13 @@ interface DensityBody {
   proof: DensitySelectionProof;
 }
 function densityBodyOptions(options: ComboOptions): object {
-  const { [DENSITY_VALUES]: _ids, [LEGEND_HEIGHT]: legend, ...body } = hiddenNoteBodyOptions(options as Parameters<typeof hiddenNoteBodyOptions>[0]) as DensityOptions & { [LEGEND_HEIGHT]?: LegendBudget };
-  return { ...body, ...(legend ? { [LEGEND_HEIGHT]: { ...legend, names: [...legend.names] } } : {}) };
+  return comparableOptions(hiddenNoteBodyOptions(options as Parameters<typeof hiddenNoteBodyOptions>[0]), DENSITY_VALUES);
 }
 function reuseDensityBody(body: DensityBody, options: ComboOptions, locked: ReadonlySet<Id> | undefined): Geometry<ComboMarks, ComboDerived> | undefined {
   if (!sameContent(body.options, densityBodyOptions(options))) return;
   // The ordinary point note and the later density note use separate mutable
   // label, frame and warning fields. Keep the original for the later lock.
   const geo = locked ? body.geo : copyFitDrawing(body.geo);
-  if (!('sizing' in body.geo)) delete geo.sizing;
   let points: LabelRequest[] | undefined;
   if (locked) {
     if (body.proof.peaks.some(id => !locked.has(id)) || body.proof.prefix?.some(id => locked.has(id))) return;

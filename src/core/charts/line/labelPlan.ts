@@ -7,7 +7,6 @@
  */
 
 import { GAP_BRACKET_REFUSED, gapBracketPairs } from '../../annotateParts';
-import { LINE_HEIGHT_REFERENCE } from '../../sizing';
 import { rectContains, type Rect } from '../../geometry';
 import { screenEdges, seatValuesOnGround, type AreaGround } from '../../label/areaGround';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
@@ -35,8 +34,6 @@ export interface LineLabelPlan {
   /** Where each endpoint and bump start leader starts, by label id. */
   endpointLeaderAnchors: Map<Id, { x: number; y: number }>;
   catLabelsShown: boolean;
-  /** Suppressed categories have no receipt in this private wider-card height measurement. */
-  heightReference?: true;
   /** The reading names under each time-axis partial label `xpartial:<k>`, for the warning when one drops. */
   xPartialGroups: string[][];
   endpointFallback: boolean;
@@ -189,16 +186,12 @@ export function planLineLabels(
     && !end.quietWhenCrowded && !end.printedIn && end.owner.categoryId === domain.endpoints[drawnSeries[0]!.id]?.categoryId
     && end.candidates.every(seat => !rectContains(canvas, seat.rect));
   if (offPageEnd) bounded.fallback = true;
-  const heightReference = !!scene && !area.xTicks && LINE_HEIGHT_REFERENCE in domain.options && !domain.options.labelPlacements && !domain.options.labelOffsets
-    && domain.variant === 'line' && !domain.x && !domain.running.size && !domain.anomaly && !reserves.annList.length
-    && !domain.options.story;
   const catLabelsShown = !scene ? false : area.xTicks && area.xOfValue
     ? placeXTickLabels({ show: area.showCategoryTickRow, plan: area.xTicks, xOf: area.xOfValue, row: area.frame.plot,
       bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, plotLeft: plot.x, labelRequests, ...xPartial })
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,
-      heightReference,
       plot: { ...plot, h: plot.h + area.categoryTickGap - 6 }, labelRequests });
-  return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, ...(heightReference ? { heightReference: true as const } : {}), xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false,
+  return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false,
     wouldShow: pointWouldShows({ ...valueInput, format: domain.options.format }), tieShows };
 }
 

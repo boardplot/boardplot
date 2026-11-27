@@ -126,9 +126,9 @@ export interface ChartCore<
   referencePlotHeight?(data: D, options?: O): number | undefined;
   /** The full one-row key when every automatic candidate can only omit its entries. */
   coveringKey?(data: D, options: O, baseline: Geometry<M, DV>): Pick<Geometry, 'scene' | 'legend'> | undefined;
-  /** True when every label in the note still needs it at any taller layout with this width and mode. */
   /** True when the one taller fixed candidate must retain at least as many noted labels. */
   notesAtTallerHeight?(data: D, options: O, fixed: O, noted: Geometry<M, DV>['labels']): boolean;
+  /** True when every label in the note still needs it at any taller layout with this width and mode. */
   notesBoundByWidth?(data: D, options: O, geometry: Geometry<M, DV>, noted: Geometry<M, DV>['labels']): boolean;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
   finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;

@@ -9,8 +9,8 @@ import { KEY_EDGE_SERIES, resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
 import { COLUMN_FRACTION_MAX, columnPlotArea, solveColumnFrame } from './plot';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
-import { keylessFrame, LEGEND_HEIGHT, type LegendBudget } from '../../frame';
-import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
+import { comparableOptions, keylessFrame, LEGEND_HEIGHT } from '../../frame';
+import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { withLocaleStrings } from '../../strings';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
@@ -170,10 +170,8 @@ export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
   if (!memo) return measure();
   const saved = requestMemo<{ shape: object; fits: boolean }[]>(data, JSON.stringify(['column-keyless', size.width, opening,
     layoutStepKey(), currentSmallValues(), formatScopeKey(options), staticFrame.countable]), () => []);
-  const { [CARD_HEIGHT_MEMO]: _card, [PLOT_SHARE]: _share, [AUTHORED_EXAMPLES]: examples, [LEGEND_HEIGHT]: budget, ...raw } =
-    options as ColumnOptions & { [CARD_HEIGHT_MEMO]?: unknown; [PLOT_SHARE]?: number; [AUTHORED_EXAMPLES]?: ReadonlySet<string>; [LEGEND_HEIGHT]?: LegendBudget };
-  const shape = { ...raw, ...(examples ? { [AUTHORED_EXAMPLES]: [...examples] } : {}),
-    ...(budget ? { [LEGEND_HEIGHT]: { ...budget, names: [...budget.names] } } : {}) };
+  const examples = (options as { [AUTHORED_EXAMPLES]?: ReadonlySet<string> })[AUTHORED_EXAMPLES];
+  const shape = { ...comparableOptions(options, CARD_HEIGHT_MEMO, PLOT_SHARE), ...(examples ? { [AUTHORED_EXAMPLES]: [...examples] } : {}) };
   const prior = saved.find(entry => sameContent(entry.shape, shape));
   if (prior) return prior.fits;
   const fits = measure();

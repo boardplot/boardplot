@@ -1440,8 +1440,6 @@ export function compactReplacesRefusal<D, O extends ChartOptions, M extends obje
 
 /** Shared only by the owning top-level call and its wider-card probes. */
 export const CARD_HEIGHT_MEMO = Symbol('boardplot.cardHeightMemo');
-/** A wider line reference returns only its height. Its fixed frames have separate layout memo keys. */
-export const LINE_HEIGHT_REFERENCE = Symbol('line.heightReference');
 export interface CardHeightMemo {
   type: string;
   active: boolean;
@@ -1520,16 +1518,7 @@ function cardClassHeight<D, O extends ChartOptions, M extends object, DV extends
   if (memo) (raw as Record<symbol, unknown>)[CARD_HEIGHT_MEMO] = memo;
   let height: number | undefined;
   try {
-    let wider;
-    if (definition.type === 'line' && (options as O & { window?: { decimate?: string } }).window?.decimate === 'none'
-      && !options.story && (options.measure ?? defaultMeasurer) === defaultMeasurer) {
-      try {
-        wider = layout(data, { ...raw, [LINE_HEIGHT_REFERENCE]: true } as unknown as O);
-      } catch (error) {
-        if (error !== LINE_HEIGHT_REFERENCE) throw error;
-      }
-    }
-    wider ??= layout(data, raw as O);
+    const wider = layout(data, raw as O);
     height = isRefused(wider) ? undefined : wider.size.height;
   } catch (error) {
     if (!(error instanceof NormalizeError)) throw error;

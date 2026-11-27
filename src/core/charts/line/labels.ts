@@ -1640,7 +1640,6 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
 
 export function placeCategoryLabels(input: {
   show: boolean;
-  heightReference?: boolean;
   plan: CategoryRowPlan;
   cats: Category[];
   xOf: (categoryIndex: number) => number;
@@ -1650,13 +1649,7 @@ export function placeCategoryLabels(input: {
   if (!input.show) return false;
   const rotated = input.plan.rotation !== 0;
   const bottom = input.plot.y + input.plot.h;
-  let sawHidden = false;
   input.cats.forEach((category, ci) => {
-    // The centred-room retry checks whether anything was hidden. One hidden category preserves that test.
-    if (input.heightReference && !input.plan.keep[ci]) {
-      if (sawHidden) return;
-      sawHidden = true;
-    }
     const info = input.plan.infos[ci]!;
     input.labelRequests.push({
       id: `category:${category.id}`,
