@@ -344,14 +344,8 @@ console.log(JSON.stringify([...requested]));
   }
 }
 
-/**
- * What `react/spec` links, chunk by chunk: no chart engine before a spec
- * names its type, no schema chunk carrying its type's engine, and map
- * geometry only where a map is drawn. It reads the source entry rather than
- * the built one, because shipped chunks carry no module names.
- */
-function checkSpecChunks(types) {
-  const entry = join(ROOT, 'src/react/spec.tsx');
+/** One graph supplies the module names for the source checks or the bytes for the installed package. */
+function specGraph(entry) {
   const build = buildSync({
     absWorkingDir: ROOT, entryPoints: [entry], bundle: true, format: 'esm', splitting: true,
     outdir: '/react-entry', metafile: true, minify: true, write: false, logLevel: 'silent',
@@ -387,8 +381,33 @@ function checkSpecChunks(types) {
   const without = (keys, ...counted) => new Set([...keys].filter((key) => !counted.some((set) => set.has(key))));
   const bytes = (keys) => gzipBytes(Buffer.concat([...keys].map((key) => Buffer.from(contents.get(basename(key))))));
   const modulesOf = (keys) => new Set([...keys].flatMap((key) => Object.keys(outputs[key].inputs)));
-  const mounted = mountImports(build, types);
+  return { build, chunkFor, reach, without, bytes, modulesOf };
+}
 
+/** Measure the files a browser receives from the installed package. */
+function packedSpecSizes(packageRoot, types) {
+  const entry = join(packageRoot, 'dist/react/spec.js');
+  const { build, chunkFor, reach, without, bytes } = specGraph(entry);
+  const chunks = Object.entries(build.metafile.outputs);
+  const validationKey = chunks.find(([, chunk]) => chunk.entryPoint && chunk.exports.includes('beginSpecParse'))?.[0];
+  if (!validationKey) fail('the packed spec loader has no validation chunk');
+  const initial = reach(chunkFor(entry));
+  const validation = without(reach(validationKey), initial);
+  const entries = { 'react/spec initial': bytes(initial), 'react/spec validation': bytes(validation) };
+  const mounted = mountImports(build, types);
+  const firstChart = {};
+  for (const type of types) {
+    const downloaded = new Set([...initial, ...validation]);
+    for (const key of mounted.get(type)) for (const dependency of reach(key)) downloaded.add(dependency);
+    firstChart[type] = bytes(downloaded);
+    console.log(`  ${type}: ${firstChart[type]} gzip bytes on first mount from the installed package`);
+  }
+  return { entries, firstChart };
+}
+
+/** Source chunks retain the module names needed to check which engines and schemas can load. */
+function checkSpecChunks(packageRoot, types) {
+  const { chunkFor, reach, without, modulesOf } = specGraph(join(ROOT, 'src/react/spec.tsx'));
   const initial = reach(chunkFor('src/react/spec.tsx'));
   const validation = without(reach(chunkFor('src/react/specValidation.ts')), initial);
   const failures = [];
@@ -426,18 +445,9 @@ function checkSpecChunks(types) {
     console.log('hover and data table chunks: no creative layout');
   }
 
-  const initialBytes = bytes(initial);
-  const validationBytes = bytes(validation);
-  const entries = { 'react/spec initial': initialBytes, 'react/spec validation': validationBytes };
-  const firstChart = {};
-  const lines = [`First chart through react/spec, gzip -9 bytes (initial ${initialBytes} + shared validation ${validationBytes} + schema + engine + mount imports):`];
   for (const type of types) {
     const schema = without(reach(chunkFor(`src/core/charts/${type}/schema.ts`)), initial, validation);
     const engine = without(reach(chunkFor(`src/react/charts/${type}.ts`)), initial, validation);
-    const mount = without(new Set(mounted.get(type).flatMap(key => [...reach(key)])), initial, validation, schema, engine);
-    const total = bytes(new Set([...initial, ...validation, ...schema, ...engine, ...mount]));
-    firstChart[type] = total;
-    lines.push(`  ${type}: ${bytes(schema)} schema + ${bytes(without(engine, schema))} engine; first chart ${total}`);
     const engineInSchema = [...modulesOf(schema)].filter((module) =>
       new RegExp(`^src/core/charts/${type}/(layout|marks|domain|core)\\.ts$`).test(module));
     if (engineInSchema.length > 0) {
@@ -448,8 +458,7 @@ function checkSpecChunks(types) {
       failures.push(`the ${type} engine chunk carries map geometry: ${geo.sort().join(', ')}`);
     }
   }
-  console.log(lines.join('\n'));
-  return { entries, firstChart, failures };
+  return { ...packedSpecSizes(packageRoot, types), failures };
 }
 
 /**
@@ -897,6 +906,84 @@ function checkFixtureImports(installRoot, chartTypes, example) {
   }
 }
 
+/** Whether a parsed output holds a description slot (U+0001 index U+0002) that its text never replaced. */
+function hasSlotMark(value) {
+  if (typeof value === 'string') {
+    if (/[\u0001\u0002]/.test(value)) return true;
+    // An MCP tool result carries its answer as JSON text, which escapes a mark once more.
+    if (!/^[[{]/.test(value)) return false;
+    try {
+      return hasSlotMark(JSON.parse(value));
+    } catch {
+      return false;
+    }
+  }
+  return value !== null && typeof value === 'object' && Object.values(value).some(hasSlotMark);
+}
+
+/**
+ * The package build moves option descriptions into a dictionary that only
+ * the schema accessors, describe and list link. A text it fails to keep, or
+ * a read before the link, prints a slot in place of the description. Every
+ * other check runs the source, where the texts are inline, so this one reads
+ * the installed tools: describe of every type, an MCP session that asks for
+ * fixtures before describe, and a validation hint in a process that never links.
+ */
+function assertDescriptionsLinked(boardplot, boardplotMcp, installRoot, scratch, types) {
+  for (const type of types) {
+    if (hasSlotMark(jsonOutput(boardplot, ['describe', type, '--full'], { cwd: installRoot }))) {
+      fail(`installed CLI describe ${type} --full prints a description slot`);
+    }
+  }
+
+  const call = (id, name, args) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+  const requests = [
+    { jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'boardplot-package-smoke', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized', params: {} },
+    ...types.map((type, index) => call(1 + index, 'boardplot_fixtures', { type })),
+    ...types.map((type, index) => call(1 + types.length + index, 'boardplot_describe', { type })),
+  ];
+  const answers = new Map(run(boardplotMcp, [], { cwd: installRoot, input: `${requests.map((request) => JSON.stringify(request)).join('\n')}\n` })
+    .split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)).map((response) => [response.id, response]));
+  types.forEach((type, index) => {
+    const answer = answers.get(1 + types.length + index);
+    // A missing answer holds no slot, so it must not pass.
+    if (!answer?.result || answer.result.isError) fail(`installed MCP server gave no describe answer for ${type} after fixtures`);
+    if (hasSlotMark(answer)) fail(`installed MCP describe ${type} after fixtures prints a description slot`);
+  });
+
+  // A grid mode option on panel data is refused with the description of each
+  // authored key in its suggestion. Name every key of the stack options with a
+  // value its schema accepts, so that a new key is covered.
+  const stack = jsonOutput(boardplot, ['describe', 'grid', '--schema', 'options'], { cwd: installRoot }).schema?.properties?.stack;
+  if (!stack?.properties) fail('installed CLI describes no grid stack options');
+  const sample = (node) => node.anyOf ? sample(node.anyOf.find((branch) => branch.type !== 'null') ?? node.anyOf[0])
+    : node.enum ? node.enum[0]
+      : node.type === 'array' ? Array.from({ length: node.minItems ?? 0 }, () => sample(node.items))
+        : node.type === 'object' ? Object.fromEntries((node.required ?? []).map((key) => [key, sample(node.properties[key])]))
+          : node.type === 'number' || node.type === 'integer' ? (node.minimum ?? 0) + 1
+            : node.type === 'boolean' ? true : 'x';
+  const spec = join(scratch, 'grid-stack-hint.json');
+  writeFileSync(spec, JSON.stringify({
+    type: 'grid',
+    data: { panels: [{ id: 'p', type: 'kpi', data: { label: 'v', value: 2 } }] },
+    options: { stack: Object.fromEntries(Object.entries(stack.properties).map(([key, node]) => [key, sample(node)])) },
+  }));
+  // A refused render exits 1, so it is read without run().
+  const refused = spawnSync(boardplot, ['render', spec], { cwd: installRoot, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+  let hint;
+  try {
+    hint = JSON.parse(refused.stdout).errors?.find((error) => error.code === 'invalid-options')?.suggest;
+  } catch {
+    fail(`installed CLI render of a grid stack hint did not return JSON:\n${refused.stdout}${refused.stderr}`);
+  }
+  if (typeof hint !== 'string') fail('installed CLI refused a grid stack on panel data without its invalid-options hint');
+  if (hasSlotMark(hint)) fail('installed CLI grid stack hint prints a description slot');
+  // The hint names each key only when the options parse. A key whose sample fails it must not pass unseen.
+  const unnamed = Object.entries(stack.properties).filter(([key, node]) => node.description && !hint.includes(`options.stack.${key}: `));
+  if (unnamed.length) fail(`installed CLI grid stack hint names no description for ${unnamed.map(([key]) => key).join(', ')}`);
+}
+
 function invokedAsMain() {
   return Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
@@ -1165,7 +1252,7 @@ try {
   assertConsumerTypes(installRoot);
   checkReactBundles(installedPackageRoot, installedManifest);
   const types = listReactTypes(installedManifest).sort();
-  const specChunks = checkSpecChunks(types);
+  const specChunks = checkSpecChunks(installedPackageRoot, types);
   const measured = [
     specChunks,
     checkThemeEntry(installedPackageRoot),
@@ -1265,6 +1352,7 @@ try {
     if (!toolNames.has(required)) fail(`installed MCP server is missing tool '${required}'`);
   }
   if (toolNames.size !== 6) fail(`installed MCP server lists ${toolNames.size} tools, expected 6`);
+  assertDescriptionsLinked(boardplot, boardplotMcp, installRoot, scratch, listing.types.map((chart) => chart.type));
 
   const marketplace = join(artifacts, 'boardplot-marketplace');
   run(process.execPath, ['scripts/build-plugin.mjs', '--tarball', tarball, '--out', artifacts]);

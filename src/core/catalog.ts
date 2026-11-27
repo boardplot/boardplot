@@ -7,6 +7,7 @@
 import * as z from 'zod';
 import { getChartDefinition, listCharts, unsupported } from './registry';
 import { baseOptionsSchema } from './schema/shared';
+import { linkSchemaDescriptions } from './schema/linkDescriptions';
 import { WORDING_KEYS } from './schema/unknownKeyWords';
 import { schemaReference, type SchemaFieldReference } from './schema/reference';
 import { themes } from './theme';
@@ -241,6 +242,9 @@ export function optionFields(type: string): SchemaFieldReference[] {
   if (cached) return cached;
   const definition = getChartDefinition(type);
   if (!definition) throw new Error(`unknown chart type '${type}'`);
+  // The package build keeps descriptions apart from the schemas. Every read
+  // that caches or prints them links them first, whatever ran before it.
+  linkSchemaDescriptions();
   const fields = schemaReference(z.toJSONSchema(definition.optionsSchema, { io: 'input' }) as Record<string, unknown>, definition.defaults);
   optionFieldCache.set(type, fields);
   return fields;
@@ -250,7 +254,9 @@ let sharedCache: SchemaFieldReference[] | undefined;
 
 /** The option fields every type inherits from the shared base schema. */
 export function sharedOptionFields(): SchemaFieldReference[] {
-  sharedCache ??= schemaReference(z.toJSONSchema(baseOptionsSchema, { io: 'input' }) as Record<string, unknown>);
+  if (sharedCache) return sharedCache;
+  linkSchemaDescriptions();
+  sharedCache = schemaReference(z.toJSONSchema(baseOptionsSchema, { io: 'input' }) as Record<string, unknown>);
   return sharedCache;
 }
 

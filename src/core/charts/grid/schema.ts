@@ -402,7 +402,7 @@ const pipedGridSchema = z
   })
   .pipe(refinedGridSchema);
 export const gridDataSchema = publishedGridSchema
-  ? pipedGridSchema.meta(publishedGridSchema)
+  ? pipedGridSchema.meta(/* @schemaSnapshot */ publishedGridSchema)
   : pipedGridSchema;
 
 /**

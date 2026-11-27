@@ -22,6 +22,7 @@
  * import.
  */
 
+import { linkSchemaDescriptions } from './core/schema/linkDescriptions';
 import { linkStoryLayer } from './core/storyLayer';
 import { linkAnnotateEngine } from './core/annotateEngine';
 import { registerCatalogue } from './core/charts';
@@ -51,6 +52,7 @@ function ensureCatalogueRegistered(): void {
 /** Resolves a chart with its validation schemas loaded. */
 export function getChartDefinition(typeOrAlias: string): ChartDefinition<any, any, any, any> | undefined {
   ensureCatalogueRegistered();
+  linkSchemaDescriptions();
   return getRegisteredChartDefinition(typeOrAlias);
 }
 
@@ -63,6 +65,7 @@ export function listCharts(): ReturnType<typeof listRegisteredCharts> {
 /** The data and options schemas of a type or alias. */
 export function getChartSchemas(typeOrAlias: string): ChartSchemas<any, any> | undefined {
   ensureCatalogueRegistered();
+  linkSchemaDescriptions();
   return getRegisteredChartSchemas(typeOrAlias);
 }
 

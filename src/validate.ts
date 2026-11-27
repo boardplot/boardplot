@@ -10,6 +10,14 @@ registerCatalogue();
 linkThemeShapeRules();
 linkAnnotateEngine();
 
-export { getChartDefinition, listCharts } from './core/registry';
+import { getChartDefinition as registeredDefinition } from './core/registry';
+import { linkSchemaDescriptions } from './core/schema/linkDescriptions';
+
+export function getChartDefinition(typeOrAlias: string): ReturnType<typeof registeredDefinition> {
+  linkSchemaDescriptions();
+  return registeredDefinition(typeOrAlias);
+}
+
+export { listCharts } from './core/registry';
 export { parseThemeJson } from './core/themeValidate';
 export { validateTheme } from './core/themeRules';
