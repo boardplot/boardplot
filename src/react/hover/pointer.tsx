@@ -44,7 +44,9 @@ function linkedIds(model: HoverModel, link: HoverLink): string[] {
 }
 
 function pooled({ members, target: { owner } }: InteractionRecord): boolean {
-  return members?.some(member => member.categoryId !== owner.categoryId || member.seriesId !== owner.seriesId) === true;
+  // A category record lists its series as members; only a series record whose members are other series is pooled.
+  return members?.some(member => member.categoryId !== owner.categoryId
+    || (owner.seriesId !== undefined && member.seriesId !== undefined && member.seriesId !== owner.seriesId)) === true;
 }
 
 /**

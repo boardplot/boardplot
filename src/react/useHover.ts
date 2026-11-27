@@ -91,7 +91,7 @@ export interface KeyCursor { id: string; index: number; size: number; reading: s
 export type RecordClickEvent = MouseEvent<Element> | KeyboardEvent<Element>;
 
 /** The event of an input from before the engine was here, and the handler it belongs to. It keeps `currentTarget`, which React clears after the dispatch. */
-export interface HeldInput { kind: 'onPointerMove' | 'onPointerDown' | 'onPointerUp' | 'onFocus' | 'onKeyDown'; currentTarget: EventTarget }
+export interface HeldInput { kind: 'onPointerMove' | 'onPointerDown' | 'onPointerUp' | 'onFocus' | 'onBlur' | 'onKeyDown'; currentTarget: EventTarget }
 
 /** What one chart's hover keeps between renders. The handlers in the engine chunk read and write it. */
 export interface HoverRefs {
@@ -245,7 +245,8 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
       ...scrub && { onPointerUp: lifted, onPointerCancel: lifted },
     },
     onFocus: (event: object) => hold('on', 'onFocus', event),
-    onBlur: () => { hold('onF'); hold('onK'); },
+    // Before the engine: the focus and keys held so far go. Behind held input: the blur waits its turn, so the card closes after it.
+    onBlur: (event: object) => { if (driver) hold('-', 'onBlur', event); else { hold('onF'); hold('onK'); } },
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (!(event.target as Element).hasAttribute('data-bp-keys') || event.altKey || event.ctrlKey || event.metaKey || !STOP_KEYS.test(event.key)) return;
       event.preventDefault();

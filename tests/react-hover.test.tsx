@@ -15,6 +15,7 @@ import { SlopeChart } from '../src/react/charts/slope';
 import { prepareChart } from '../src/react/prepare';
 import { BoardplotChart } from '../src/react/spec';
 import { BarChart } from '../src/react/charts/bar';
+import { VarianceChart } from '../src/react/charts/variance';
 import { HoverGroup } from '../src/react/HoverGroup';
 import type { InteractionRecord } from '../src/core/a11y/types';
 import { mount, mountedMarkup } from './helpers/spec-chunks';
@@ -560,6 +561,18 @@ describe('hover callback, linked charts and touch', () => {
       expect(outlined(three)).toBe('');
       expect(cards()).toEqual([]);
     } finally { vi.useRealTimers(); }
+  });
+
+  // A variance category lists the series it sums as its members, and was taken for an Others bucket that never links.
+  it('links a category that sums several series', async () => {
+    const variance = { categories: ['Q1', 'Q2', 'Q3'], series: [{ id: 'north', label: 'North', values: [3, 5, 4] }, { id: 'south', label: 'South', values: [2, 3, 3] },
+      { id: 'plan', label: 'Plan', values: [4, 9, 6], role: 'reference' as const }] };
+    await render(<HoverGroup>
+      <div id="one"><ColumnChart data={regions([3, 5, 4])} size={box} /></div>
+      <div id="two"><VarianceChart data={variance} variant="absolute" variance={{ vs: 'plan' }} size={box} /></div>
+    </HoverGroup>);
+    pointer(mark(host.querySelector('#one')!, 'north:Q2'), 'pointermove');
+    expect(outlined(host.querySelector('#two')!)).toBe('Q2');
   });
 
   // A page that stores the hovered records in its state rendered the chart again, and a column drawn as bars reported the same hover again on each render: a loop.
