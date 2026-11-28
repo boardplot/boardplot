@@ -257,6 +257,9 @@ describe('line clamp', () => {
   it('prints the applied bound exactly', () => {
     const geometry = requireGeometry(layout({ valueAxis: { show: true, clamp: { max: 1550000 } } }, { categories, series: rate([1000000, 1400000, 50000000, 1200000]) }));
     expect(geometry.derived).toMatchObject({ clipped: [{ limit: 1550000, limitText: '1.55M' }] });
+    // A small bound under a huge outlier printed "0.0001M" for 50 when the scale came from the outlier.
+    const small = requireGeometry(layout({ valueAxis: { show: true, clamp: { max: 50 } } }, { categories, series: rate([10, 20, 50000000, 30]) }));
+    expect(small.derived).toMatchObject({ clipped: [{ limit: 50, limitText: '50' }] });
   });
 
   // Invalid bounds cannot define a scale, even when another feature would otherwise disable the clamp.

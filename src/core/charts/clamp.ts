@@ -2,6 +2,7 @@ import { fmtPathNumber as fmtN } from '../curve';
 import { MAGNITUDE_DIVISOR, RULE_SET, formatWithSpec, roundedNumber, type NumberFormatSpec } from '../formatSpec';
 import { NormalizeError } from '../normalize/shared';
 import { caveatNote } from '../notes';
+import { tickScale } from '../numberRule';
 import { ruleSetOf } from '../numberSets';
 import { chartString } from '../strings/clamp';
 import { dashToken, strokeToken } from '../theme';
@@ -149,17 +150,20 @@ export function pinClampDomain(edges: ValueClampOptions | undefined, lo: number,
   return [edges?.min ?? lo, edges?.max ?? hi];
 }
 
+export const RULE_MAGNITUDE = { 0: 'none', 3: 'k', 6: 'm', 9: 'bn', 12: 't' } as const;
+
 /** Use the same number for the position and the printed boundary. */
-export function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boolean): { value: number; text: string; exact: boolean } {
+export function discloseNumber(raw: number, format: NumberFormatSpec, authoredFormat: boolean): { value: number; text: string; exact: boolean } {
+  // A rule set or an automatic format rounds the digits it prints. The bound prints at its own scale with every digit it needs.
+  const { [RULE_SET]: rule, ...rest } = format;
+  const spec: NumberFormatSpec = rule ? { ...rest, automatic: false, rollMagnitude: false, ...(rule.words ? { magnitude: RULE_MAGNITUDE[tickScale(rule, raw)] } : {}) } : { ...rest, automatic: false };
   const scaled = Math.abs(raw / MAGNITUDE_DIVISOR[spec.magnitude]);
   const base = authoredFormat ? spec.decimals : ruleSetOf([scaled], undefined, { words: false }).groupOf(scaled).decimals;
   let decimals = base;
   // Twenty fractional digits are the practical limit of the fixed-decimal printer.
   while (decimals < 20 && Number(scaled.toFixed(decimals)) !== scaled) decimals += 1;
   const exact = Number(scaled.toFixed(decimals)) === scaled;
-  // A rule set would print its own rounded digits and not these decimals.
-  const { [RULE_SET]: _rules, ...plain } = spec;
-  const applied = { ...plain, decimals: exact ? decimals : base };
+  const applied = { ...spec, decimals: exact ? decimals : base };
   const value = exact ? raw : roundedNumber(raw, applied);
   return { value, text: formatWithSpec(value, applied), exact };
 }

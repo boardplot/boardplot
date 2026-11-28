@@ -39,7 +39,7 @@ import {
   refuseClampedValueLines,
   type ScatterClampPlan,
 } from './clamp';
-import { clampSeed, discloseNumber, pinClampDomain, pointCountText } from '../clamp';
+import { RULE_MAGNITUDE, clampSeed, discloseNumber, pinClampDomain, pointCountText } from '../clamp';
 import type { NormGroup, NormPt, ScatterDomain, ScatterEnv } from './model';
 import { logAxesOf, logDomain, refuseNonPositiveOnLog } from './logAxis';
 import { deriveQuadrants } from './quadrants';
@@ -113,8 +113,6 @@ function pointValues(data: ScatterData | undefined, field: 'x' | 'y' | 'size'): 
   }
   return values;
 }
-
-const RULE_MAGNITUDE = { 0: 'none', 3: 'k', 6: 'm', 9: 'bn', 12: 't' } as const;
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
 export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[], data?: ScatterData): ScatterEnv {
