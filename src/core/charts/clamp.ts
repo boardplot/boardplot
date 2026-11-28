@@ -187,8 +187,10 @@ export function clippedMarker(theme: Theme, input: {
   cy: number;
   r: number;
   paint: Paint;
+  /** A point on a line covers the line under it, so the ring ends the line. */
+  fill?: Paint;
 }): SceneNode {
-  const { id, owner, part, display, marker, cx, cy, r, paint } = input;
+  const { id, owner, part, display, marker, cx, cy, r, paint, fill } = input;
   return { t: 'path', id, owner, part, display, d: pointMarkerOutline(marker, cx, cy, r),
-    stroke: paint, width: strokeToken(theme, 'mark'), dash: dashToken(theme, 'dotted'), lineCap: 'round' };
+    ...(fill ? { fill } : {}), stroke: paint, width: strokeToken(theme, 'mark'), dash: dashToken(theme, 'dotted'), lineCap: 'round' };
 }

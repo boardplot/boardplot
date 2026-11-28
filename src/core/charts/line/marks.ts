@@ -428,7 +428,7 @@ function pushMarkerNode(input: RenderLineMarksInput, series: NormSer, dataIdx: n
   if (point.clip) {
     const state = clippedValueState(point.clip.limitText, { locale: { language: input.language }, strings: input.strings });
     input.nodes.push(clippedMarker(input.theme, { id, owner, part: 'marker', display: { ...display, state },
-      marker: shape === 'none' ? 'circle' : shape, cx: point.x, cy: point.y, r, paint: stroke }));
+      marker: shape === 'none' ? 'circle' : shape, cx: point.x, cy: point.y, r, paint: stroke, fill: { token: 'background' } }));
   } else if (shape === 'circle') input.nodes.push({ t: 'circle', id, cx: point.x, cy: point.y, r, fill, ...(hollow ? { stroke } : {}), owner, part: 'marker', display });
   else if (shape === 'square') input.nodes.push({ t: 'rect', id, rect: { x: point.x - r, y: point.y - r, w: 2 * r, h: 2 * r }, fill, ...(hollow ? { stroke, strokeWidth: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
   else if (shape !== 'none') input.nodes.push({ t: 'path', id, d: markerPath(shape, point, scale), fill, ...(hollow ? { stroke, width: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });

@@ -147,7 +147,8 @@ describe('per-type React entries draw the recorded markup', { timeout: 120_000 }
     expect(path).toMatchObject({ t: 'path', d: expect.stringContaining(`L${fmtPathNumber(point.x)} ${fmtPathNumber(point.y)}`) });
     const marker = geometry.scene.find(node => node.id === point.nodeId);
     expect(marker).toMatchObject({ t: 'path', dash: expect.any(Array), display: { value: '300', state: 'clipped at 100' } });
-    expect(marker).not.toHaveProperty('fill');
+    // The ring covers the line under it, so the line ends at the ring.
+    expect(marker).toMatchObject({ fill: { token: 'background' } });
     expect(geometry.derived).toMatchObject({ clipped: [{ limit: 100, points: [{ value: 300 }] }] });
     const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
     expect(records.find(record => record.target.owner.categoryId === 'Q4')).toMatchObject({ anchor: { y: point.y }, value: { raw: 300 } });
