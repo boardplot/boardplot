@@ -289,6 +289,11 @@ export function authoredStrings(options: Pick<BaseOptions, 'strings'>): Record<s
  */
 let readEnglish: Map<string, string> | null = null;
 
+/** Whether an outer layout is recording English words. */
+export function recordingEnglishWords(): boolean {
+  return readEnglish !== null;
+}
+
 /** Whether the chart's language has no wording table of its own. */
 export function lacksWordTable(options: { locale?: { language?: string } } | undefined): string | undefined {
   const language = wordLanguage(options?.locale?.language);
