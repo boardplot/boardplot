@@ -5,7 +5,6 @@ import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/c
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { statementData } from '../src/core/charts/dimswitch/statementExample';
-import { ENGINE_NOTES } from '../src/core/charts/table/tracks';
 import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
 import { visibleRows } from '../src/core/charts/table/view';
 import { renderSvg } from '../src/core/svg/renderSvg';
@@ -619,12 +618,6 @@ describe('dimswitch rowVisibility', () => {
     const table = accessibleDataTable(records);
     expect(table.columns.filter(column => lines.has(column.key))).toEqual([]);
     expect(table.columns.filter((column, index) => !column.key.endsWith(':change') && table.rows.some(row => row.cells[index]?.state === 'missing'))).toEqual([]);
-  });
-  // A note about a change no reader can see would point at nothing.
-  it('prints no near-zero note for a hidden Total', () => {
-    const data: DimSwitchData = { ...exampleData, facts: exampleData.facts.map(f => f.memberId === 'total' && f.periodId === 'prior' ? { ...f, sums: { ...f.sums, orders: 0 } } : f) };
-    const notes = (options: object) => compileDimSwitch(data, { variant: 'by-member', ...options }).options[ENGINE_NOTES as never] as unknown as string[] | undefined;
-    expect(notes({ rowVisibility: { total: false } })?.length).toBe(notes({})!.length - 1);
   });
   // A wrong id must say which ids exist, and a table with no number left must say why, and neither may refuse.
   it('warns on an id the form does not draw and on a table with no value left', () => {

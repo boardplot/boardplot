@@ -43,8 +43,10 @@ export function bandKeyFirst(measureBody: MeasureBody) {
     const unnamed = new Set(data.series.filter(s => !categories.has(s.id) &&
       (type !== 'combo' || (s.axis === 'secondary' ? secondary : primary).length > 1)).map(s => s.id));
     if (!unnamed.size) return;
-    if (!speculate(() => measureBody(data, band, opening), false)) return;
+    const keylessCountable = speculate(() => measureBody(data, band, opening) ? staticFrame.countable : undefined, undefined);
+    if (keylessCountable === undefined) return;
+    // Skip the keyless draw if its probe finds no list note that could trigger a footer retry.
     return (key: Geometry<object, object>) => key.mode === (options.mode === 'compact' ? 'compact' : 'full') && !!key.legend?.items.some(item => unnamed.has(item.id))
-      && (!staticFrame.pinned || staticFrame.countable || options.notes?.maxListed === 0);
+      && (!staticFrame.pinned || !keylessCountable || staticFrame.countable || options.notes?.maxListed === 0);
   };
 }

@@ -8,7 +8,7 @@ function hiddenValues(type: string, id: string): string[] {
   const { size: _size, ...options } = fixture.options as Record<string, unknown>;
   const result = layoutResolvedRequest(resolveChartRequest({ type, data: fixture.data, options: { ...options, size: { width: 720 } } }));
   if (result.refused) throw new Error(`${type}/${id} refused`);
-  return result.labels.filter((label) => label.kind === 'segment' && (label.noted || label.noteCounted)).map((label) => label.id).sort();
+  return result.labels.filter((label) => label.kind === 'segment' && label.hidden).map((label) => label.id).sort();
 }
 
 describe('segment values stay on the chart at the report width', () => {

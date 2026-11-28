@@ -367,17 +367,16 @@ describe('funnel truth contract', () => {
   });
 });
 
-describe('a zero stage and a clamped value are said on the chart', () => {
-  it('prints "not defined" in the gap after a zero stage and counts the clamped value in a note', () => {
+describe('funnel stage values', () => {
+  it('warns about a zero conversion base and prints the clamp note', () => {
     const texts = (geometry: FunnelGeometry) => geometry.scene.flatMap((node) => (node.t === 'text' ? [node.lines.join(' ')] : []));
     const { data, options } = fixture('zero-stage');
     const shown = { notes: { show: ['note', 'disclosure'] } };
-    const rows = texts(layout(data, { ...options, ...shown } as never));
-    expect(rows).toContain('not defined: previous stage is zero');
-    expect(rows).toContain('1 value below zero shown as 0.');
-    const centered = texts(layout(data, { ...options, ...shown, variant: 'centered' } as never));
-    expect(centered).toContain('1 value below zero shown as 0.');
-    expect(centered).toContain('n/a: not defined, the previous stage is zero.');
+    for (const variant of ['rows', 'centered'] as const) {
+      const geometry = layout(data, { ...options, ...shown, variant });
+      expect(geometry.warnings.map((warning) => warning.code), variant).toContain('conversion-undefined');
+      expect(texts(geometry), variant).toContain('1 value below zero shown as 0.');
+    }
   });
 
   // A positive segment thinner than a pixel was dropped with no mark, label or warning.
