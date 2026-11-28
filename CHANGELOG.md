@@ -2,6 +2,90 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.68.0
+
+### Dashboard cards
+
+- Dashboard cards under 400 px use 12 px names and values, 11 px ticks and 12 px margins, and a line, bar or waterfall draws down to 200 px. To bring back the old look set `textSize: 13` on the chart or on `BoardplotTheme`, and set the theme `space` margin to 16 / 16 / 10 / 16 (bar, waterfall) or 13 / 13 / 8 / 13 (line, column).
+- Dashboard cards under 400 px of 20 more chart types use the narrow class (12 px names and values, 11 px ticks, 12 px margins). To bring back the old look set `textSize: 13` and the theme `space` margin to 16 / 16 / 10 / 16.
+- A dashboard card of a line, bar, waterfall or column chart that does not fit in its own text sizes draws in the other class: under 400 px in the usual sizes, from 400 to 599 px in the narrow sizes with the warning `narrow-sizes-used`. `measure()` follows render. To keep the size message for a card, set `belowMinimum: 'refuse'`.
+
+### Line
+
+- Line: a dashed or dotted series on actual data now draws, with the warning `dash-on-actual-data`, instead of a refusal. No default changes.
+- Line: a series with `axis: 'secondary'` draws on the shared scale with the warning `secondary-axis-ignored` instead of a refusal on the command line. No default changes.
+- Line charts accept `valueAxis.clamp`. Points beyond a bound are drawn at the edge as open markers, keep their real value in labels and hover, and are counted in a footer note. Where the clamp cannot combine with another option, the chart ignores it and warns `clamp-ignored`.
+- Line: a reference line shows its name beside its end, or above or below it where the end has no room. Before, it had no name and warned `series-unexplained`. There is no option to bring back the old look; a name that finds no free seat is not drawn.
+- Line: `categories-are-dates` stays quiet for one date per month on any day of the month. No default changes.
+
+### Combo
+
+- Combo: a series on `axis: 'secondary'` draws a second value scale and warns `dual-axis`; `options.secondaryAxis.acknowledge` is no longer needed. A spec that carries it still draws and warns `option-deprecated`. Old behaviour (refusal of a second axis without the flag): none to restore, as the chart was not drawn.
+- Combo: a dashed or dotted line on actual data draws and warns `dash-on-actual-data`, as the line chart does. It was refused before. Nothing to restore: the chart was not drawn.
+
+### Column, bar, line and combo
+
+- Column, bar, line and combo: `options.categoryAxis.title` prints a title for the category axis. A title that does not fit is dropped with the warning `axis-title-dropped`. No default changes.
+- Column and bar: `data.categories[].group` names a group of consecutive stacks once, centred in a row under the stacks (column) or in a column left of them (bar). A group change draws the default gap unless `gapAfter` is set. Charts without `group` are unchanged, so no patch for the old look is needed.
+- Column charts with plain string category names now step to bars at small widths, as the same names written as `{ id, label }` already did.
+- On a column or bar chart in React, a click on a legend entry hides that series, and the next click shows it again. A keyboard button per series does the same with Enter or Space. The hidden entry stays in the legend as a hollow grey box. The hidden series leaves the bars, labels, totals, shares, hover card, downloaded PNG and CSV. The CLI, the MCP tools and the server SVG and PNG draw every series. Charts with `onSeriesClick`, `hover={false}`, one data series, a tornado or a football-field bar offer no click.
+
+### Pie, dot, box, scatterplot and roadmap
+
+- A pie prints its shares so they add up to 100% by default (`rounding: 'sum-consistent'`). To get the old look, set `options: { rounding: 'nearest' }`.
+- Dot and box charts: `valueAxis.log` draws a log value axis. Bars and columns still refuse it. A grid panel of any chart type with its own log scale now prints its own tick labels, where main printed none. No other default changes.
+- Scatterplot: a chart in another language or with custom note words counts the same hidden labels as the English chart.
+- Roadmap: the name of a milestone pinned outside its own phase stands at its circle. Old look: the name stood at the edge of its own phase. No option brings it back.
+- A roadmap diagram with a pinned milestone left of a later unpinned milestone draws instead of failing with `layout-error`. Every roadmap that drew before keeps its drawing. A reversed pair of pinned milestones in one phase without `order` is refused with `non-monotone-roadmap`.
+
+### Notes
+
+- Boardplot no longer prints notes that explain a method, repeat what the picture shows, or count labels that did not fit. The plot is taller by the height of the removed note. The options `methodNote`, `notes.show: 'ranks'`, `scatter.quadrants.axisNames`, and `likert.requiredNotes.base` are retired: an old spec still draws and warns `option-deprecated`. The old look: author the removed sentence as an `options.notes` entry.
+- Three data caveats print by default: the note on an incomplete stack total, the stacked-area missing-value note and the scatter clipped-point note. To bring back the old look, set `notes: { show: ['note'] }`. The "(partial)" marker under a stack total no longer exists, and `strings.partialTotals` is retired (accepted with a deprecation warning).
+
+### Numbers and words
+
+- The document root `locale` accepts the same object as `options.locale`, and a chart's locale now merges per key with the document's and the provider's. Drawings of specs that did not use these do not change.
+- Added the info warning `locale-marks-unset` for charts whose language usually uses a decimal comma and that set no `locale.decimal`. Drawings do not change.
+- `options.locale.minusGlyph` now applies to every chart's numbers, not only tables. The default stays the Unicode minus, so no existing drawing changes.
+- `options.strings` takes every built-in word, listed in `docs/reference/strings.md`. A misspelt key is refused with the nearest key. No drawing changes.
+
+### Warnings and refusals
+
+- `options.animate` and `options.debug` are retired: accepted, removed and reported with `option-deprecated`. New warnings name the fix for settings that did nothing or misled: `categories-are-dates` for ISO date names at unequal gaps on a line, `format-not-example` for a d3 or printf format code, `mixed-language` for the English `Source:` prefix in a locale without built-in words, and `option-ignored` for `axisTitles` on a horizontal waterfall. A request for `area`, `gauge`, `radar`, `spider`, `control-chart`, `donut` or an `orientation` names the chart or option that Boardplot draws. Rows input with two columns forms one series named after the value column. No drawing changes.
+- A tilemap or choropleth with `scale: { kind: 'diverging' }` and no `midpoint` refuses with `invalid-options` at `options.scale.midpoint`. Before, it painted every region `NaN` and threw.
+
+### Hover card and accessibility
+
+- React: hover is on by default on every SVG chart component and on `BoardplotChart` with an SVG type. `hover={false}` draws the static markup and loads no hover code. Tables keep hover off. The hover code loads at the first pointer, touch or keyboard focus.
+- React: `onHoverChange(records)` tells the page which records the card covers. `HoverGroup` links the hover of every chart inside it: the other charts highlight the same category and show a small card with their own numbers. On line and area charts a finger that slides sideways moves the card from point to point.
+- Hover card: rows read like the chart. A dated category is named as its period ("Week of 7 Sep 2026", "January 2027"). Each row names its series and prints the value with its unit, in the order of the key, with the hovered series bold. A stack prints each part with its share, then one Total row. A missing value prints "–". `renderHoverContent` receives the same records; only `context.defaultContent` reads differently.
+- Hover card: on a grid of several panels, one card lists the hovered category in every banded panel (line, column, bar, combo). A series name that two panels share takes its panel's title. A card of nine series prints all nine. A line row's marker takes the series colour.
+- Hover card: a scale word or percent sign in the unit stays on the number: "1.8 thousand per month" reads "1.8k per month", "13.1 % of enquiries" reads "13.1% of enquiries". The spoken reading keeps the words.
+- Hover card: the card of a period on a column, combo or line chart, also in a grid panel, lists the events of that period under its values, with the date the event lane prints and the title. Over the dotted line of an event, the pointer opens the period's card. No option.
+- Hover card: a value that is already the share (a pie of percents) prints once, with no second "Share" row. Old look: none to restore by option; a host that wants the share row can build it with `renderHoverContent` from the record's `share`.
+- Legend: the keyboard focus ring around a label has 3 px of room on every side. Old look: a ring flush with the label text (the focus button had the label's own size).
+- The hidden description of a chart for screen readers is now one short line, the chart type and its counts, as in ECharts and Highcharts. The data table for screen readers is unchanged. The `a11y.description` option still replaces it. Old look: set `a11y.description` to the old text.
+
+### React: server HTML, errors and downloads
+
+- `BoardplotChart` puts a chart prepared on the server with `prepareChart` into the first HTML, as the per-type components already do, when the page draws that same chart once its code has loaded. `prepareChart` checks each form of the page with the real parser and stores them in `PreparedChart.inputKeys`, which replaces `inputKey`. `BoardplotChart` and `parseChartSpec` read a spec as JSON carries it: a key set to `undefined` counts as absent, `undefined`, `NaN` or `Infinity` in a data array reads as a gap, and a `Date` reads as its ISO string.
+- `prepareChart` takes the optional `zoom` setting of the chart. A line chart with a zoom aggregate and a fixed size now shows the same values in the server HTML as after load. A page with a zoom aggregate and a chart prepared without that `zoom`, or with `size="container"`, shows the loading box first.
+- `prepareChart` is about 15 ms faster on a 2,000-point line chart whose spec sets a theme and a target. Its output is unchanged.
+- A refused, empty or invalid `BoardplotChart` hydrates without React error 419. A `BoardplotChart` page no longer calls `new Function`, so a page without `'unsafe-eval'` sees no violation. A `dimswitch` spec draws the interactive table. `BoardplotChart` takes `className`, `style` and `measure`. `rows` and `columns` are type errors on the 14 chart types without a rows mapping.
+- A per-type React chart whose engine refuses its input draws its refusal card in the server markup and hydrates it without a mismatch. Before, the refusal failed the whole page. An engine error on a value the chart cannot use draws one card, "The <type> chart could not be drawn.", and calls `onRefused` once with the code `chart-failed`.
+- An unknown `options.target` in a `BoardplotChart` spec, or an unknown `target` on a `BoardplotTheme` provider, shows the error card with `invalid-target`. Before, the card threw and React unmounted the chart.
+- Typed React charts, `prepareChart` and `useChartLayout` accept the JSON shorthands that the CLI draws: string categories and values keyed by category id. The new type `BoardplotSpec` (from `boardplot/react/spec`) gives editor help with `satisfies BoardplotSpec`. `useExport()` gains `downloadSvg()`, `downloadPng(scale = 2)` and `downloadCsv()`, and `png()` defaults to `scale = 2`. `downloadArtifact(result)` in `boardplot/react/export` saves an existing `ExportResult`. Footer credit links pass the same check as table links.
+
+### Package size and speed
+
+- Smaller first loads in React. `boardplot/react/export` loads its engine at the first export call (about 15 kB gzip at first load instead of 453 kB), and `boardplot/react/prepare` loads its layout code at the first `prepareChart` call. Chart types load only the code they draw: option descriptions, the row planner, zoom, bar parts and other types' modules stay out. The first chart of combo and Pareto through `BoardplotChart` is about 70 kB gzip smaller. The tile map data stores each border once.
+- Stacked columns, treemaps, narrow dimension-switch cards, mixed column and line grids, dense combo, event and Pareto charts, Gantt charts, scatterplots, world maps with country labels, long daily lines and compact grids of column and variance panels size themselves faster. `prepareChart` hashes the data of its pages once. Drawings do not change.
+
+### Python
+
+- `bp.chart(df, ...)` draws `histogram`, `box`, `sankey` and `table` from rows. Before, it raised a bare `KeyError`. New arguments `source`, `target`, `source_stage`, `target_stage` and `id`. The package is not on PyPI yet; the README gives the source build.
+
 ## 0.67.0
 
 ### Changed
