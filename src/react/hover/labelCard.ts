@@ -540,20 +540,24 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
 /**
  * The card of a period with the events that sit on it under its rows: the
  * date the lane prints in front, then the title, one row per item. The
- * engine names each event's category, so the card and the lane agree.
+ * engine names each event's category, so the card and the lane agree. An
+ * event the records also carry as an annotation is listed once, as an event.
  * A period without events keeps its card, and an event's own card is left as it is.
  */
-export function withPeriodEvents(content: LabelCardContent, records: readonly InteractionRecord[], first: InteractionRecord): LabelCardContent {
+export function withPeriodEvents(records: readonly InteractionRecord[], listed: readonly InteractionRecord[],
+  content: (listed: readonly InteractionRecord[]) => LabelCardContent): LabelCardContent {
+  const first = listed[0]!;
   const { categoryId } = first.target.owner;
-  if (categoryId === undefined || first.event) return content;
-  const events = records.flatMap(record => record.event?.categoryId === categoryId
-    && record.target.chart === first.target.chart && record.target.panel === first.target.panel ? [record.event] : []);
-  const rows: LabelCardRow[] = events.flatMap(event => event.items.map(({ title }) => event.day
-    ? { kind: 'event' as const, label: event.day, value: title, text: `${event.day} ${title}` } : { kind: 'event' as const, text: title }));
-  if (!rows.length) return content;
-  // An event the record already names as an annotation is listed once, as an event.
-  const titles = new Set(events.flatMap(event => event.items.map(item => item.title)));
-  return cardContent([...content.rows.filter(row => row.kind !== 'annotation' || !titles.has(row.text)), ...rows]);
+  const events = categoryId === undefined || first.event ? [] : records.filter(record => record.event?.categoryId === categoryId
+    && record.target.chart === first.target.chart && record.target.panel === first.target.panel);
+  if (!events.length) return content(listed);
+  // A grid panel's records name an annotation with the panel's prefix.
+  const ids = events.map(record => record.target.owner.annotationId!);
+  const own = (id: string) => ids.some(event => id === event || id.endsWith(`/${event}`));
+  const base = content(listed.map(record => ({ ...record, annotations: record.annotations.filter(annotation => !own(annotation.id)) })));
+  const rows = events.flatMap(({ event }) => event!.items.map(({ title }): LabelCardRow => event!.day
+    ? { kind: 'event', label: event!.day, value: title, text: `${event!.day} ${title}` } : { kind: 'event', text: title }));
+  return cardContent([...base.rows, ...rows]);
 }
 
 /** The widest an event's card is: its detail is prose and wraps at a reading measure. */
@@ -1210,7 +1214,7 @@ function rowsWithinHeight(
   // rows under it take the place of the last kept series and its details.
   const pointedAt = rows.findIndex(row => row.series && row.pointed);
   let pointedEnd = pointedAt + 1;
-  while (pointedAt >= 0 && pointedEnd < rows.length && !rows[pointedEnd]!.series && rows[pointedEnd]!.kind !== 'total') pointedEnd++;
+  while (pointedAt >= 0 && pointedEnd < rows.length && !rows[pointedEnd]!.series && rows[pointedEnd]!.kind !== 'total' && rows[pointedEnd]!.kind !== 'event') pointedEnd++;
   const first = (count: number) => {
     const kept = rows.slice(0, count);
     if (pointedAt < 0 || pointedAt < count) return kept;
