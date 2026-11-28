@@ -196,21 +196,21 @@ export function layoutLineMarks(
   // shaded difference between two named series
   renderGapFill({
     range: domain.x?.range, xOfValue: area.xOfValue,
-    gapFillSeries: domain.gapFillSeries, gapFill: options.gapFill, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y: pointY,
+    gapFillSeries: domain.gapFillSeries, gapFill: options.gapFill, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
     warnings, occupied: claims, nodes, marks, analyticalSceneStart,
   });
   // uncertainty fan: nested washes, outermost first, behind everything
   renderFanWashes(theme, {
     language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
-    fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y: pointY,
+    fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
     pathFor, reversePathTail, fmt: domain.fanFmt ?? domain.fmt, numberSpec: domain.valueSpec.spec, occupied: claims, warnings, nodes, marks, analyticalSceneStart,
   });
   const phaseRequests: LabelRequest[] = [];
   const phaseDerived = renderPhaseFills(theme, {
     language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
-    phases: domain.phases, pv, rowOf, cats, xOf, y: pointY, zeroY: domain.clamp ? y(0) : undefined, baseY, plot: area.forecastPlot, phaseHeaderHeight: area.phaseHeaderHeight,
+    phases: domain.phases, pv, rowOf, cats, xOf, y, baseY, plot: area.forecastPlot, phaseHeaderHeight: area.phaseHeaderHeight,
     paletteRamp: env.paletteRamp, palette: options.palette, fmt: domain.fmt, measure, tickFont,
     labelRequests: phaseRequests, occupied: claims, nodes, marks, analyticalSceneStart, forecast: area.forecast,
   });

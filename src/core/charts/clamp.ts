@@ -35,9 +35,11 @@ export interface AxisClamp {
   project: (value: number) => number;
 }
 
-export function validateClampBounds(bounds: Partial<Record<ClampAxis, ValueClampOptions>>, valueAxisBounds: ValueClampOptions): void {
+export function validateClampBounds(bounds: Partial<Record<ClampAxis, ValueClampOptions>>, valueAxisBounds: ValueClampOptions, allowOverlap = false): void {
   for (const bound of ['min', 'max'] as const) {
-    if (bounds.y?.[bound] !== undefined && valueAxisBounds[bound] !== undefined) {
+    const limit = bounds.y?.[bound];
+    if (limit === undefined) continue;
+    if (!allowOverlap && valueAxisBounds[bound] !== undefined) {
       throw new NormalizeError(
         'clamp-bound-conflict',
         `options.valueAxis.clamp.${bound}`,
@@ -47,13 +49,29 @@ export function validateClampBounds(bounds: Partial<Record<ClampAxis, ValueClamp
         ['options', 'valueAxis', 'clamp', bound],
       );
     }
+    const opposite = bound === 'min' ? 'max' : 'min';
+    const end = valueAxisBounds[opposite];
+    if (end !== undefined && (bound === 'min' ? limit >= end : limit <= end)) {
+      throw new NormalizeError(
+        'clamp-bound-conflict',
+        `options.valueAxis.clamp.${bound}`,
+        `valueAxis.clamp.${bound} ${limit} and valueAxis.${opposite} ${end} leave an empty range`,
+        'set the lower bound below the upper one',
+        undefined,
+        ['options', 'valueAxis', 'clamp', bound],
+      );
+    }
   }
   for (const axis of ['x', 'y'] as const) {
     const { min, max } = bounds[axis] ?? {};
+    const path = `options.valueAxis.clamp${axis === 'y' ? '' : '.x'}`;
+    if ((min !== undefined && !Number.isFinite(min)) || (max !== undefined && !Number.isFinite(max))) {
+      throw new NormalizeError('invalid-options', path, 'valueAxis.clamp bounds must be finite numbers');
+    }
     if (min !== undefined && max !== undefined && min >= max) {
       throw new NormalizeError(
         'clamp-empty-range',
-        `options.valueAxis.clamp${axis === 'y' ? '' : '.x'}`,
+        path,
         `the ${axis} clamp keeps values from ${min} up to ${max}, which is an empty range`,
         `set the lower bound below the upper one`,
         undefined,
@@ -65,6 +83,14 @@ export function validateClampBounds(bounds: Partial<Record<ClampAxis, ValueClamp
 
 export function isClipped(value: number, bound: ClampBound, limit: number): boolean {
   return bound === 'max' ? value > limit : value < limit;
+}
+
+/** The first applied bound a value lies beyond, if any. */
+export function boundBeyond(bounds: ValueClampOptions, value: number): { bound: ClampBound; limit: number } | undefined {
+  const { min, max } = bounds;
+  if (max !== undefined && isClipped(value, 'max', max)) return { bound: 'max', limit: max };
+  if (min !== undefined && isClipped(value, 'min', min)) return { bound: 'min', limit: min };
+  return undefined;
 }
 
 export function clipRecordFor(clamp: AxisClamp, value: number): ClipRecord | undefined {

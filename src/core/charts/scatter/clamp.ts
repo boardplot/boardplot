@@ -4,7 +4,7 @@ import { chartString } from '../../strings/scatter';
 import type { Id } from '../../types/cell';
 import type { BaseOptions, ValueClampOptions } from '../../types/options';
 import {
-  clippedValueState, isClipped, planAxisClamp, pointCountText, validateClampBounds,
+  boundBeyond, clippedValueState, planAxisClamp, pointCountText, validateClampBounds,
   type ClampAxis, type ClampBound, type ClipRecord,
 } from '../clamp';
 import type { DrawnValueLine } from './valueLines';
@@ -216,18 +216,6 @@ export function clampStateOf(plan: ScatterClampPlan | undefined, id: Id, options
   return clippedValueState(records.map((record) => chartString(options, 'clippedAtAxis', { v1: record.limitText, v2: plan.axisNames[record.axis] })).join(chartString(options, 'clippedAtJoin')), options);
 }
 
-/** The first applied bound a value lies beyond, if any. */
-function boundBeyond(
-  plan: ScatterClampPlan,
-  axis: ScatterAxis,
-  value: number,
-): { bound: ScatterBoundName; limit: number } | undefined {
-  const { min, max } = plan.applied[axis];
-  if (max !== undefined && isClipped(value, 'max', max)) return { bound: 'max', limit: max };
-  if (min !== undefined && isClipped(value, 'min', min)) return { bound: 'min', limit: min };
-  return undefined;
-}
-
 const clampPath = (axis: ScatterAxis, bound: ScatterBoundName): string =>
   `valueAxis.clamp.${axis === 'y' ? '' : 'x.'}${bound}`;
 
@@ -245,7 +233,7 @@ export function refuseClampedRegions(
   for (const region of regions) {
     for (const vertex of region.points) {
       for (const axis of ['x', 'y'] as const) {
-        const beyond = boundBeyond(plan, axis, vertex[axis]);
+        const beyond = boundBeyond(plan.applied[axis], vertex[axis]);
         if (!beyond) continue;
         throw new NormalizeError(
           'clamp-zone-conflict',
@@ -273,14 +261,15 @@ export function refuseClampedValueLines(
 ): void {
   if (!plan) return;
   for (const line of lines) {
-    const beyond = boundBeyond(plan, 'y', line.value);
+    const beyond = boundBeyond(plan.applied.y, line.value);
     if (!beyond) continue;
+    const path = clampPath('y', beyond.bound);
     const what = line.isMean ? `the mean of the plotted points (${format(line.value)})` : `its value ${format(line.value)}`;
     throw new NormalizeError(
       'clamp-value-line-conflict',
       line.ref.name,
-      `valueLine '${line.id}' sits at ${what}, beyond ${clampPath('y', beyond.bound)} ${beyond.limit}, so the line would be drawn outside the plot`,
-      `move ${clampPath('y', beyond.bound)} past the line, or drop the value line`,
+      `valueLine '${line.id}' sits at ${what}, beyond ${path} ${beyond.limit}, so the line would be drawn outside the plot`,
+      `move ${path} past the line, or drop the value line`,
       undefined,
       line.ref.segments,
     );

@@ -813,7 +813,6 @@ export function renderPhaseFills(theme: Theme, input: {
   cats: Category[];
   xOf: (categoryIndex: number) => number;
   y: (value: number) => number;
-  zeroY?: number;
   baseY: number;
   plot: Rect;
   phaseHeaderHeight: number;
@@ -848,7 +847,7 @@ export function renderPhaseFills(theme: Theme, input: {
   // An area down to a broken axis floor reads as the value's size and
   // exaggerates it: where zero is off the plot, each phase is a pale band
   // across the plot height behind the line, and the line alone carries the values.
-  const zeroY = input.zeroY ?? input.y(0);
+  const zeroY = input.y(0);
   const banded = zeroY < input.plot.y - 0.5 || zeroY > input.plot.y + input.plot.h + 0.5;
   drawn.forEach((phase, index) => {
     const start = resolved.boundaries[index]!;
