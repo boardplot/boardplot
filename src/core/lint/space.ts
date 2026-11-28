@@ -36,7 +36,7 @@ import { classStepWidth, resolveTheme, spaceTokens } from '../theme';
 import type { ThemeRef } from '../types/theme';
 import type { BaseOptions } from '../types/options';
 import { resolveCanvasOptions } from '../normalize/shared';
-import type { Rect } from '../geometry';
+import { sameRect, type Rect } from '../geometry';
 import type { Geometry, LintWarning, OccupiedRect } from '../types/scene';
 import { contentSized, furnitureShare, plotFloorShare } from '../sizing';
 import { maxOf, minOf } from '../arrays';
@@ -172,7 +172,11 @@ export function spaceDocLints(
   const warnings: LintWarning[] = [];
   const { width: W, height: H } = geo.size;
   const plot = geo.plot;
-  const occupied: OccupiedRect[] = geo.debug.occupied;
+  // A reference name takes a free seat after layout. It contributes neither data ink nor a margin reserve.
+  const referenceNames = type === 'line' ? geo.labels.filter(label => label.kind === 'series' && label.printsFor?.length === 0
+    && geo.scene.some(node => node.part === 'referenceLine' && node.owner.seriesId === label.owner.seriesId)) : [];
+  const occupied: OccupiedRect[] = referenceNames.length ? geo.debug.occupied.filter(claim => claim.kind !== 'label'
+    || !referenceNames.some(label => label.owner.seriesId === claim.owner.seriesId && sameRect(label.rect, claim.rect))) : geo.debug.occupied;
   const push = (code: string, message: string, suggest?: string) =>
     warnings.push({
       code,
@@ -195,7 +199,8 @@ export function spaceDocLints(
   // half-step past the last point and run out of it; no other label that crosses the edge is a column.
   const labelColumnRight = occupied.some(
     (o) => o.kind === 'label' && o.rect.w > 0 && o.rect.x >= plot.x + plot.w - PX_EPS,
-  ) || geo.labels.some((label) => label.kind === 'series' && !label.hidden && label.rect.w > 0 && label.rect.x + label.rect.w > plot.x + plot.w + PX_EPS);
+  ) || geo.labels.some((label) => label.kind === 'series' && !label.hidden && label.rect.w > 0 && label.rect.x + label.rect.w > plot.x + plot.w + PX_EPS
+    && !referenceNames.includes(label));
 
   // ---- plot-ratio-under-floor -----------------------------------------
   // Height binds the FRAME plot band (header/legend/footer vs the rest):

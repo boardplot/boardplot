@@ -41,6 +41,7 @@ export interface LinePhaseResolved {
 
 export interface RenderedLineMarks {
   marks: LineMarks;
+  referenceEnds?: Map<NormSer, Point>;
   baselineId: Id;
   analyticalSceneStart: number;
   paintedAreaCats: Map<Id, Set<number>>;
@@ -547,7 +548,8 @@ function renderInvalidComposition(input: RenderLineMarksInput): void {
   });
 }
 
-function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): void {
+function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): Map<NormSer, Point> {
+  const ends = new Map<NormSer, Point>();
   input.refSeries.forEach((series) => {
     const geometry = buildSeriesGeometry({ ...input, isStacked: false }, series, 0);
     const { interpolation, runs } = geometry;
@@ -566,6 +568,7 @@ function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): vo
         return;
       }
       if (points.length < 2) return;
+      ends.set(series, points[points.length - 1]!);
       const curve = geometry.monotoneByRun?.get(points) ?? [];
       input.nodes.push({ t: 'path', id: `ref:${series.id}${runIndex === 0 ? '' : `:${runIndex}`}`, d: interpolation === 'monotone' ? curvePathFromSegments(curve) : pathFor(points, interpolation), stroke: input.refPaintOf(series), width: strokeToken(input.theme, 'rule'), dash: dashToken(input.theme, 'reference'), owner: { seriesId: series.id }, part: 'referenceLine' });
       if (interpolation === 'monotone') claims.monotoneRun(points, curve, series.id);
@@ -574,6 +577,7 @@ function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): vo
     });
     clipped?.forEach(drawPoint);
   });
+  return ends;
 }
 
 interface RenderLineMarksInput {
@@ -673,7 +677,7 @@ export function renderLineMarks(input: RenderLineMarksInput): RenderedLineMarks 
     marks.series.push({ seriesId: series.id, points: row.flatMap((rank, ci) => (rank === null ? [] : [{ categoryId: input.cats[ci]!.id, x: input.xOf(ci), y: input.y(rank) }])) });
   }
   renderInvalidComposition(input);
-  renderReferences(input, claims);
+  const referenceEnds = input.refSeries.length ? renderReferences(input, claims) : undefined;
   const rangeEdges = input.range ? new Map(input.drawnSeries.map((series, i) => {
     const geometry = geometries[i]!;
     return [series.id, {
@@ -681,7 +685,7 @@ export function renderLineMarks(input: RenderLineMarksInput): RenderedLineMarks 
       ...(geometry.bottomByRun ? { bottom: geometry.runs.flatMap(run => edgePolyline(geometry.bottomByRun!.get(run)!)) } : {}),
     }];
   })) : undefined;
-  return { marks, baselineId, analyticalSceneStart, paintedAreaCats, areaOutlines, ...(rangeEdges ? { rangeEdges } : {}) };
+  return { marks, baselineId, analyticalSceneStart, paintedAreaCats, areaOutlines, referenceEnds, ...(rangeEdges ? { rangeEdges } : {}) };
 }
 
 function linearYAt(points: readonly Point[], x: number): number {

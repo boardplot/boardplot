@@ -194,7 +194,9 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         const group = scatterGroups?.find(group => group.id === s.id);
         return group ? !scatterGroupNameIsDrawn(geometry, group, prefix) : !nameIsDrawn(geometry, labelOf(s) ?? '', prefix + s.id);
       });
-      if ((drawn.length > 1 && unnamed.length > 0) || unnamed.some(s => s.role === 'reference')) warnings.push(warning(chart,
+      // A line chart's title can carry its lone data line even when it also draws a reference.
+      const dataCount = chart.type === 'line' ? drawn.filter(s => s.role !== 'reference').length : drawn.length;
+      if ((dataCount > 1 && unnamed.length > 0) || unnamed.some(s => s.role === 'reference')) warnings.push(warning(chart,
         'series-unexplained', 'warn', `Drawn series ${unnamed.map(s => labelOf(s)).join(', ')} have no visible name`,
         'set options.legend to top, or show a direct label for each series'));
       continue;
