@@ -8,16 +8,6 @@ function literal(template: string): string {
   return template.split(/\{[^}]*\}/).map((piece) => piece.trim()).sort((a, b) => b.length - a.length)[0] ?? '';
 }
 
-/** Every text the author wrote in the data and the options, except the `strings` block: a drawn line equal to one of them is the author's own text. */
-function authoredTexts(value: unknown, into = new Set<string>(), key = ''): Set<string> {
-  if (typeof value === 'string') into.add(value.trim());
-  else if (Array.isArray(value)) for (const item of value) authoredTexts(item, into);
-  else if (value !== null && typeof value === 'object' && key !== 'strings') {
-    for (const [name, item] of Object.entries(value)) authoredTexts(item, into, name);
-  }
-  return into;
-}
-
 /** Whether `line` holds `word` as a whole word. */
 function holds(line: string, word: string): boolean {
   for (let at = line.indexOf(word); at >= 0; at = line.indexOf(word, at + 1)) {
@@ -39,7 +29,9 @@ export function mixedLanguageWarning(
   geo: Pick<Geometry<object, object>, 'scene' | 'frame'>, options: Pick<BaseOptions, 'locale' | 'strings'> & { source?: unknown }, data: unknown,
   language: string, read: ReadonlyMap<string, string>, htmlFooter = false,
 ): LintWarning | undefined {
-  const written = [...authoredTexts([data, options])];
+  // Everything the author wrote except the `strings` block; a value that cannot be written out (bigint, a cycle) counts as nothing.
+  let written = '';
+  try { written = JSON.stringify([data, { ...options, strings: undefined }]); } catch { /* nothing written out */ }
   // A child panel of a grid names its own words under its own language.
   const lines = geo.scene.flatMap((node) => (node.t === 'text' && !node.origin?.panels?.length ? node.lines : []));
   const authored = authoredWordKeys(options);
@@ -53,7 +45,7 @@ export function mixedLanguageWarning(
     // A source the author wrote with its own prefix ("Source: INSEE") prints no built-in word.
     if (key === 'source' && (source === undefined || sourceLine(source, word) === source)) continue;
     // A French chart that writes "Total" itself is not told about the built-in Total.
-    if (lines.some((line) => holds(line, word)) && !written.some((text) => holds(text, word))) found.set(key, word);
+    if (lines.some((line) => holds(line, word)) && !holds(written, word)) found.set(key, word);
   }
   // A React chart draws its notes panel and map credit as HTML, so their words are not in the scene.
   if (htmlFooter) {
