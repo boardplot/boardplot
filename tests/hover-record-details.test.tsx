@@ -477,7 +477,7 @@ it('prints a value without a shown text through its format', () => {
   expect(shares.geometry.labels.find(label => label.id === 'segment:a:q1')?.hidden).toBeDefined();
   const sliver = interactionRecords({ request: shares.request, geometry: shares.geometry, scope: shares.request.scope, claims: [] })
     .find(record => record.target.owner.seriesId === 'a')!;
-  expect(labelCardContent(sliver).rows.find(row => row.kind === 'share')?.value).toBe('2%');
+  expect(labelCardContent(sliver, undefined, { hundredPercent: true }).rows.find(row => row.kind === 'share')?.value).toBe('2%');
 });
 
 // A label that joins a currency sign before its bound ("$<0.01") counted as the value's shown text, so the card printed the bound in place of the value.
@@ -737,6 +737,9 @@ describe('default card rows', () => {
     // A percent unit without a series name stays on the number, not in front of it ("% of workloads: 92").
     expect(card({ type: 'pie', data: { categories: [{ id: 'a', label: 'Cloud' }, { id: 'b', label: 'Other' }], series: [{ id: 's', values: [92, 8] }] },
       options: { unit: '% of workloads', size: { width: 480, height: 360 } } }, 'a')[1]?.[1]).toBe('92% of workloads');
+    // The same pie printed "Share: 92% of 100% of workloads" under the value, which says the number twice.
+    expect(card({ type: 'pie', data: { categories: [{ id: 'a', label: 'Cloud' }, { id: 'b', label: 'Other' }], series: [{ id: 's', values: [92, 8] }] },
+      options: { unit: '% of workloads', size: { width: 480, height: 360 } } }, 'a').map(row => row[0])).toEqual(['Cloud', '']);
     expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
   });
 

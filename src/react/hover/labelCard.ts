@@ -499,7 +499,9 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
     }
     const reference = referenceName(record);
     pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale, reference) ?? []));
-    if (record.share && share) {
+    // A value that is already the share (a pie of percents) needs no second row for the same number.
+    // A 100 % composition keeps its share column, which the stack's rows line up on.
+    if (record.share && share && (options?.hundredPercent === true || !sameNumber(record.value, record.share.percent))) {
       const base = record.share.denominator;
       const values = [record.share.numerator, base, record.share.percent];
       const withheld = values.some(value => value.state === 'suppressed');
