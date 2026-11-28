@@ -438,6 +438,15 @@ function sameNumber(a: InteractionValue, b: InteractionValue): boolean {
   return a.state === 'value' && b.state === 'value' && typeof a.raw === 'number' && a.raw === b.raw;
 }
 
+/** The value is a percent of a whole of 100 % (a pie of percents), so its share row would print the same number again. */
+function valueIsShare(record: InteractionRecord): boolean {
+  const { value, share } = record;
+  const base = share?.denominator;
+  if (!share || !base || value.state !== 'value' || typeof value.raw !== 'number' || share.percent.state !== 'value' || typeof share.percent.raw !== 'number') return false;
+  // The pie computes its percent by division, so the two numbers can differ by float residue.
+  return base.state === 'value' && base.raw === 100 && base.unit?.startsWith('%') === true && Math.abs(value.raw - share.percent.raw) < 1e-9;
+}
+
 /**
  * A record that names no series and no statistic whose number a field or a
  * comparison repeats (a variance's Actual, its change): the card prints the
@@ -501,7 +510,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
     pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale, reference) ?? []));
     // A value that is already the share (a pie of percents) needs no second row for the same number.
     // A 100 % composition keeps its share column, which the stack's rows line up on.
-    if (record.share && share && (options?.hundredPercent === true || !sameNumber(record.value, record.share.percent))) {
+    if (record.share && share && (options?.hundredPercent === true || !valueIsShare(record))) {
       const base = record.share.denominator;
       const values = [record.share.numerator, base, record.share.percent];
       const withheld = values.some(value => value.state === 'suppressed');

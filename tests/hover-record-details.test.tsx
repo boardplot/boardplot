@@ -740,6 +740,11 @@ describe('default card rows', () => {
     // The same pie printed "Share: 92% of 100% of workloads" under the value, which says the number twice.
     expect(card({ type: 'pie', data: { categories: [{ id: 'a', label: 'Cloud' }, { id: 'b', label: 'Other' }], series: [{ id: 's', values: [92, 8] }] },
       options: { unit: '% of workloads', size: { width: 480, height: 360 } } }, 'a').map(row => row[0])).toEqual(['Cloud', '']);
+    // A pie of money that adds up to 100 keeps its share row, and a percent pie drops it for every slice, also 58 and 29 whose division leaves float residue.
+    const pie = (unit: string, values: number[]) => card({ type: 'pie', data: { categories: values.map((_, index) => ({ id: `c${index}`, label: `C${index}` })), series: [{ id: 's', values }] },
+      options: { unit, size: { width: 480, height: 360 } } }, 'c0').map(row => row[0]);
+    expect(pie('$m', [42, 58])).toEqual(['C0', '', 'Share:']);
+    expect(pie('%', [58, 42])).toEqual(['C0', '']);
     expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
   });
 
