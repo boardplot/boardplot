@@ -26,6 +26,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 ### Column, bar, line and combo
 
 - Column, bar, line and combo: `options.categoryAxis.title` prints a title for the category axis. A title that does not fit is dropped with the warning `axis-title-dropped`. No default changes.
+- Column and bar: `data.categories[].group` names a group of consecutive stacks once, centred in a row under the stacks (column) or in a column left of them (bar). A group change draws the default gap unless `gapAfter` is set. Charts without `group` are unchanged, so no patch for the old look is needed.
 - Column charts with plain string category names now step to bars at small widths, as the same names written as `{ id, label }` already did.
 - On a column or bar chart in React, a click on a legend entry hides that series, and the next click shows it again. A keyboard button per series does the same with Enter or Space. The hidden entry stays in the legend as a hollow grey box. The hidden series leaves the bars, labels, totals, shares, hover card, downloaded PNG and CSV. The CLI, the MCP tools and the server SVG and PNG draw every series. Charts with `onSeriesClick`, `hover={false}`, one data series, a tornado or a football-field bar offer no click.
 
