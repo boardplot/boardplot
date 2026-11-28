@@ -254,6 +254,8 @@ export interface DocumentedStrings {
   gapBelow?: string;
   gapAbove?: string;
   gapOn?: string;
+  /** Waffle note naming the share of one cell; '{value}' becomes the percent, such as 5%. Default 'One cell = {value}'. */
+  cellNote?: string;
   /**
    * Last item of a note line that lists only its first items (`notes.maxListed`); '{count}' becomes the
    * number left out. Default 'and {count} more'.

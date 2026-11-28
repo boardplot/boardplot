@@ -132,6 +132,7 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.heatAbove | string |  |  | Key label of the good side of a table's traffic-light heat lane; default Above average, or Above total. |
 | strings.bandKey | array |  |  | Words of the bullet worse-to-better band key, worst first, one for each band (2 to 5). A list of another length than the bands keeps the built-in words (Worse ... Better; German with locale.language de). |
 | strings.moreListed | string |  |  | Last item of a capped note line; '{count}' is the number left out. Default 'and {count} more'. |
+| strings.cellNote | string |  |  | Waffle note that names the share of one cell; '{value}' becomes the percent, such as 5%. Default 'One cell = {value}'. |
 | strings.storyBack | string |  |  | Story Back button; default '‹ Back'. |
 | strings.storyNext | string |  |  | Story Next button; default 'Next ›'. |
 | strings.storyCounter | string |  |  | Story counter, unpadded '{step}' and '{count}'; default '{step} / {count}'. |

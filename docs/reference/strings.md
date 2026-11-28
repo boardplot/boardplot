@@ -2,7 +2,7 @@
 
 # Built-in words
 
-Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 694 keys with their English default. A retired key still draws with an `option-deprecated` warning. An unknown key is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
+Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 700 keys with their English default. A retired key still draws with an `option-deprecated` warning. An unknown key is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
 
 A word with a field in braces, such as `{count}`, keeps the field in the replacement. A word written for a plural, such as `{v1|slice|slices}`, keeps that form.
 
@@ -103,6 +103,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `categoryState` | `Category state` | a11y-structuralRecords |
 | `causesOfCount` | `{v1} of {v2} causes` | pareto |
 | `cellNotApplicable` | `n/a` | bartable |
+| `cellNote` | `One cell = {value}` | shared |
 | `cells` | `Cells` | a11y-businessRecords |
 | `change` | `Change` | waterfall |
 | `changeHead` | `Change` | slope |
@@ -127,6 +128,10 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `cohortSizeLabel` | `{v1} / cohort size` | a11y-statisticsRecords |
 | `columnCount` | `column {v1}` | scatter |
 | `combinedRowLabel` | `Top {v1} combined` | bartable |
+| `combinedShadedLead` | `Shaded rows, {v1}` | bartable |
+| `combinedShareNote` | `{v1}: {v2} of {v3}{v4} of {v5} ({v6}).` | bartable |
+| `combinedShareRangeNote` | `{v1}: {v2} of {v3}{v4} of {v5} at the low end ({v6}); {v7} of {v8}{v4} at the high end ({v9}).` | bartable |
+| `combinedShareZero` | `share not defined: total is zero` | bartable |
 | `comboOwnScale` | `Each series on its own scale.` | combo |
 | `comparisonLabel` | `vs {label}:` | hover |
 | `compositionColumns` | `by {v1} composition` | grid |
@@ -368,6 +373,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `noStatusCount` | `No status {v1}` | status |
 | `noTarget` | `no {v1}` | bullet |
 | `noValue` | `no value` | sparkline |
+| `noValueNote` | `{na} = no value: {v1}` | waffle |
 | `none` | `none` | line |
 | `notApplicable` | `n/a` | shared |
 | `notApplicableName` | `Not applicable` | a11y-statisticsRecords |

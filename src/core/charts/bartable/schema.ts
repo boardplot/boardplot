@@ -168,7 +168,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
   columnHeads: columnHeadsOption(),
   combinedShare: z.strictObject({
     rows: z.array(idSchema).min(2).describe('Row ids whose combined share prints; at least two, each once.'),
-    label: z.string().trim().min(1).optional().describe("What the cascade bracket calls the rows; default their labels joined with 'and'."),
+    label: z.string().trim().min(1).optional().describe("What the rows are called together in the note; default their labels joined with 'and'."),
   }).superRefine((combined, ctx) => {
     // A row named twice is counted twice and can print a share above 100 %.
     // The patch drops the repeat, or the whole note when fewer

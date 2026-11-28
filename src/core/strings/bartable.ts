@@ -10,7 +10,11 @@ export const EN = {
   "cellNotApplicable": "n/a",
   "shareHeading": "Share",
   "shareChangeSpan": "{v1} share change, pp",
+  "combinedShareZero": "share not defined: total is zero",
+  "combinedShareNote": "{v1}: {v2} of {v3}{v4} of {v5} ({v6}).",
+  "combinedShareRangeNote": "{v1}: {v2} of {v3}{v4} of {v5} at the low end ({v6}); {v7} of {v8}{v4} at the high end ({v9}).",
   // the note names the shaded rows; the compact cascade names its combined row.
+  "combinedShadedLead": "Shaded rows, {v1}",
   "combinedRowLabel": "Top {v1} combined",
   "residualKey": "Rest rows",
 } as const;
@@ -24,7 +28,11 @@ const DE: { [K in keyof typeof EN]: string } = {
   "cellNotApplicable": "k. A.",
   "shareHeading": "Anteil",
   "shareChangeSpan": "{v1} Anteilsänderung, pp",
+  "combinedShareZero": "Anteil nicht definiert: Summe ist null",
+  "combinedShareNote": "{v1}: {v2} von {v3}{v4} in {v5} ({v6}).",
+  "combinedShareRangeNote": "{v1}: {v2} von {v3}{v4} in {v5} an der unteren Grenze ({v6}); {v7} von {v8}{v4} an der oberen Grenze ({v9}).",
   // the note names the shaded rows; the compact cascade names its combined row.
+  "combinedShadedLead": "Schattierte Zeilen, {v1}",
   "combinedRowLabel": "Top {v1} zusammen",
   "residualKey": "Übrige Zeilen",
 };

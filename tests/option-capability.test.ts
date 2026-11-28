@@ -396,6 +396,7 @@ describe('published option behaviour census', () => {
     'waterfall.bracketRow': { fixture: 'step-brackets', value: 'span' },
     'heatmap.bubble': { fixture: 'survey-journey-bubbles', value: { levels: ['Low', 'Medium', 'High'], sizeLabel: 'Census importance', colorLabel: 'Expectations exceeded, % of respondents' } },
     'line.bump': { fixture: 'brand-share-bump', value: { direction: 'lowerIsBetter' } },
+    'waffle.cellNote': { fixture: 'coarse-grid-cell-note', value: 'none', options: { notes: { show: ['disclosure'] } } },
     'gantt.colHeaders': { fixture: 'transformation-program', value: ['Owner census'] },
     'bar.colorblindSafe': { fixture: 'option-sign-color' },
     'butterfly.colorblindSafe': { options: { annotations: [{ kind: 'delta', at: { categoryId: 'c2', seriesId: 'prodB' }, vs: { categoryId: 'c2', seriesId: 'prodA' } }, { kind: 'note', at: 'c1', text: 'Census note', status: 'bad' }] } },

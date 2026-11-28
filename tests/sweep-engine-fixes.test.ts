@@ -28,6 +28,7 @@ describe('chart layout edge cases', () => {
     const body = render({ spec, return: ['svg', 'reading'] }).body as any;
     expect(body.ok).toBe(true);
     expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'slope-too-many-points', severity: 'warn' }));
+    expect(body.reading.notes).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('2024') }));
     const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
     expect(geometry.derived.changes.north).toEqual({ abs: 15, pct: 150 });
     expect(geometry.labels.filter((label: { hidden?: boolean }) => !label.hidden).map((label: { text: string }) => label.text)).not.toContain('900');

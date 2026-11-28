@@ -42,7 +42,7 @@ export function linkRetiredSettings(type: string, settings: readonly RetiredSett
 type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly string[] };
 
 const RETIRED_NOTE_WORDS = new Set([
-  'cellNote', 'hatchedBaseNote', 'histogramAbout', 'histogramMethod', 'histogramRounded', 'histogramRuleCount', 'histogramRuleWidth', 'histogramSmallSample', 'histogramSnapped', 'mixedCoverage', 'mixedShares', 'nearZeroChange', 'nearZeroNote', 'rangeMidNote', 'rankFormat', 'rankMethod', 'rankRing', 'sensitivityNote', 'stackAverages', 'valuesNotBesideMarks', 'valuesNotOnColumns',
+  'hatchedBaseNote', 'histogramAbout', 'histogramMethod', 'histogramRounded', 'histogramRuleCount', 'histogramRuleWidth', 'histogramSmallSample', 'histogramSnapped', 'mixedCoverage', 'mixedShares', 'nearZeroChange', 'nearZeroNote', 'rangeMidNote', 'rankFormat', 'rankMethod', 'rankRing', 'sensitivityNote', 'stackAverages', 'valuesNotBesideMarks', 'valuesNotOnColumns',
 ]);
 
 const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [

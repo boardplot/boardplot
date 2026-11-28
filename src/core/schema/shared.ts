@@ -1345,6 +1345,7 @@ export const stringsShape = {
       heatAbove: z.string().min(1).optional().describe("Key label of the good side of a table's traffic-light heat lane; default Above average, or Above total."),
       bandKey: z.array(z.string().trim().min(1)).min(2).max(5).optional().describe('Words of the bullet worse-to-better band key, worst first, one for each band (2 to 5). A list of another length than the bands keeps the built-in words (Worse ... Better; German with locale.language de).'),
       moreListed: z.string().trim().min(1).optional().describe("Last item of a capped note line; '{count}' is the number left out. Default 'and {count} more'."),
+      cellNote: z.string().trim().min(1).optional().describe("Waffle note that names the share of one cell; '{value}' becomes the percent, such as 5%. Default 'One cell = {value}'."),
       storyBack: z.string().min(1).optional().describe("Story Back button; default '‹ Back'."),
       storyNext: z.string().min(1).optional().describe("Story Next button; default 'Next ›'."),
       storyCounter: z.string().min(1).optional().describe("Story counter, unpadded '{step}' and '{count}'; default '{step} / {count}'."),

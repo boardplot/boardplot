@@ -27,7 +27,6 @@ import type { Category } from '../../types/data';
 import type { LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { NormSer } from './model';
 import type { AnomalyDerived, AnomalyFlag, AnomalySpec } from './types';
-import { maxOf, minOf } from '../../arrays';
 
 /**
  * Median, Excel/MEDIAN convention, stated because an undeclared quantile
@@ -344,8 +343,7 @@ function anomalyFlagWarnings(
 
 /**
  * The anomaly model. Computed from the values the chart will actually plot,
- * so the rule and the marks cannot disagree. `values` are the values the rule
- * was computed from, kept for the offscale disclosure.
+ * so the rule and the marks cannot disagree.
  */
 export function columnAnomalyModel(
   anomalySpec: AnomalySpec,
@@ -358,7 +356,7 @@ export function columnAnomalyModel(
   warnings: LintWarning[],
   strings?: StringsSpec,
   rule?: RuleStatistics,
-): { anomaly: AnomalyModel; values: number[] } {
+): AnomalyModel {
   const present: { categoryId: Id; value: number }[] = [];
   cats.forEach((c, ci) => {
     const v = absOf(series, ci);
@@ -380,7 +378,7 @@ export function anomalyModel(
   warnings: LintWarning[],
   strings?: StringsSpec,
   rule?: RuleStatistics,
-): { anomaly: AnomalyModel; values: number[] } {
+): AnomalyModel {
   // k and the 1.4826 factor are DIMENSIONLESS: running them through `fmt`
   // would print "€3.5m" for a threshold on a currency-formatted chart.
   // Only the data-unit numbers (median, MAD, scale, corridor) take `fmt`,
@@ -399,7 +397,6 @@ export function anomalyModel(
     }
     return formatAutomaticNumber(v, { locale, decimals });
   };
-  const values = present.map((p) => p.value);
   const ruled = anomalyRule(anomalySpec, present, statFmt, plainFmt, warnings, { ...localeStrings(locale), ...strings }, locale, rule);
   anomalyFlagWarnings(present, ruled.usable, ruled.flags, fmt, warnings);
   const anomaly: AnomalyModel = {
@@ -431,7 +428,7 @@ export function anomalyModel(
       `scale ${anomaly.scale === null ? 'n/a' : statFmt(anomaly.scale)}, ` +
       `n ${anomaly.n}, usable ${anomaly.usable}, flagged ${anomaly.flags.length} — ${anomaly.rule}`,
   });
-  return { anomaly, values };
+  return anomaly;
 }
 
 /**
@@ -451,7 +448,6 @@ export function anomalyModel(
  */
 export function anomalyCorridor(
   anomaly: AnomalyModel | undefined,
-  anomalyValues: number[],
   dLo: number,
   dHi: number,
   statFmt: (v: number) => string,
@@ -491,22 +487,6 @@ export function anomalyCorridor(
       missing.push(stringFields(words.upperBound, { value: boundFmt(anomaly.corridor.high) }));
     }
     if (offscale.length > 0) {
-      // A blanket claim such as "no period comes near it" can be false — a bound
-      // of −10.7 over data reaching −8 is 75% approached — so the sentence
-      // explaining a suppression states the MEASURED approach instead of
-      // asserting a comfortable one.
-      const approach = (bound: number): string => {
-        const reach = bound < 0 ? minOf(anomalyValues) : maxOf(anomalyValues);
-        if (bound === 0 || !Number.isFinite(bound)) return `the data reaches ${statFmt(reach)}`;
-        const ratio = reach / bound;
-        // A negative ratio means the nearest value sits on the OTHER side of
-        // zero from the bound, so "x% of the way to it" would be nonsense —
-        // 975 is not ">99% of the way" to −77.8.
-        if (ratio <= 0) return `the data reaches ${statFmt(reach)} and never moves toward it`;
-        const pct = ratio * 100;
-        // Rounded ONLY for the sentence; nothing forks on the rounded value.
-        return `the data reaches ${statFmt(reach)}, ${pct >= 99.5 ? '>99' : Math.round(pct)}% of the way to it`;
-      };
       warnings.push({
         code: 'anomaly-corridor-offscale',
         severity: 'info',
@@ -515,9 +495,7 @@ export function anomalyCorridor(
             offscale.length === 2
               ? `both corridor bounds (${statFmt(offscale[0]!)}, ${statFmt(offscale[1]!)}) lie`
               : `the corridor bound at ${statFmt(offscale[0]!)} lies`
-          } outside the plotted value range, so ${offscale.length === 2 ? 'neither rule is' : 'that rule is not'} drawn — ` +
-          offscale.map((bound) => approach(bound)).join('; ') +
-          `. The bounds stay stated in the rule sentence ON the exhibit, which names the undrawn one, and in the anomaly-method receipt`,
+          } outside the plotted value range, so ${offscale.length === 2 ? 'neither rule is' : 'that rule is not'} drawn.`,
       });
       corridorNote = stringFields(words.undrawnBounds, { bounds: missing.join(` ${words.and} `) });
     }

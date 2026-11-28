@@ -465,7 +465,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             // This larger size drew. The remaining search only refines the size refusal.
             // The counted or compact form can replace it before anyone reads its advice.
             const repair = (frame as { [FALLBACK_REPAIR]?: FallbackRepair } | undefined)?.[FALLBACK_REPAIR];
-            if (repair && staticFrame.countable && resolved.fixed.height && !layoutOptions?.annotations?.length
+            if (repair && resolved.fixed.height && !layoutOptions?.annotations?.length
               && (layoutOptions?.measure === undefined || layoutOptions.measure === defaultMeasurer)
               && compactFallbackApplies(def, options, data) && fitsSize(resolved.sizePx, declaredSizing(def, options))) {
               repair.deferred = true;

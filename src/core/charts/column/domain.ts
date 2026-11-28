@@ -1002,11 +1002,9 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const source = shareValues
     ? requestMemo(data, 'column-missing-stacks', () => columnBasis(variant, cats, dataSeries, warnings))
     : columnBasis(variant, cats, dataSeries, viewportOn ? [] : warnings, ranked);
-  let anomaly: AnomalyModel | undefined;
-  let anomalyValues: number[] = [];
-  if (options.anomaly) {
-    ({ anomaly, values: anomalyValues } = columnAnomalyModel(options.anomaly, cats, dataSeries[0]!, source.absOf, fmt, statFmt, options.locale?.language, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt)));
-  }
+  const anomaly = options.anomaly
+    ? columnAnomalyModel(options.anomaly, cats, dataSeries[0]!, source.absOf, fmt, statFmt, options.locale?.language, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt))
+    : undefined;
   // a stack of percents of different wholes has no total to print,
   // anchor on or average.
   const addsOver = (series: NormSer[]) => !stackedLike
@@ -1049,7 +1047,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   const axis = full !== basis && (va.min !== undefined || va.max !== undefined)
     ? columnValueDomain(va, variant, keySeries, refSeries, full, lineExtent, []).scale : scale;
   let [dLo, dHi] = axis.domain;
-  const corridor = anomalyCorridor(anomaly, anomalyValues, dLo, dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
+  const corridor = anomalyCorridor(anomaly, dLo, dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
   // No total on a 100 % stack unless authored, and none on grouped
   // columns, where the bars stand side by side and add to nothing.
   const grandTotalsRequested = grandTotalRequested(options.grandTotalLabels, variant, warnings, partsAdd);

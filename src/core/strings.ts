@@ -72,6 +72,7 @@ export const EN = {
   "share": "Share",
   // shared reader-facing chart and accessibility wording.
   "target": "target",
+  "cellNote": "One cell = {value}",
   "axisLow": "Lower",
   "axisHigh": "Higher",
   "newItems": "New items",
@@ -155,6 +156,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "share": "Anteil",
   // shared reader-facing chart and accessibility wording.
   "target": "Ziel",
+  "cellNote": "Eine Zelle = {value}",
   "axisLow": "Niedriger",
   "axisHigh": "Höher",
   "newItems": "Neue Artikel",

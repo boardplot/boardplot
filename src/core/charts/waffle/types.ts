@@ -25,6 +25,8 @@ export interface WaffleOptions extends BaseOptionsFor<'waffle'> {
   headline?: 'value' | 'none';
   /** One panel with one series on a pinned canvas. 'rows' (default): the grid takes the full plot height and the value and label stand beside the filled cells. 'none': the label, the value and the grid stack in a column. */
   heightFill?: 'rows' | 'none';
+  /** 'auto' (default) prints a note "One cell = 5%" when one cell is not 1%; 'none' leaves it out. */
+  cellNote?: 'auto' | 'none';
   /** 'cells' (default) draws the grid of cells; 'square' draws one solid square whose area is the share, inside a pale 100% square. */
   variant?: 'cells' | 'square';
   /** Square mode: one reference share drawn as a dashed square outline in every panel, from a panel (categoryId) or a number (value). */

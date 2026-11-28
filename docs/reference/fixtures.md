@@ -1157,6 +1157,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | stacked-segments | waffle.cells | example | One panel with three segments: whole-cell rounding, values beside the grid, 13 empty cells and a subtotal bracket |
 | fraction-input | waffle.cells | example | Fractions of 1 under valueKind fraction, on a wide 5 by 20 grid |
 | top-fill-no-headline | waffle.cells | example | Fill from the top on a coarse 4 by 5 grid, no headline |
+| coarse-grid-cell-note | waffle.cells | example | A 4 by 5 grid: one cell is 5%, and the note says so in the host wording |
 | seven-panels-narrow | waffle.cells | torture | Torture: seven panels near the minimum cell size, a missing value, a value under half a cell and a full panel |
 | share-squares | waffle.square | example | Square mode: five shares as solid squares in pale 100% squares, one dashed reference, two captioned groups |
 | share-squares-arrows | waffle.square | example | Square mode with arrows on: three panels, a number reference with its label, arrows in the gaps at the outline height |

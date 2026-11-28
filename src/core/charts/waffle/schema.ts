@@ -65,6 +65,8 @@ export const waffleOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   heightFill: z.enum(['rows', 'none']).optional()
     .meta({ default: 'rows' })
     .describe("Spare canvas height of one panel with one series. 'rows' (default): a pinned canvas gives the grid the full plot height, with the value and the label beside the filled cells. 'none': the label, the value and the grid stack in a column."),
+  cellNote: z.enum(['auto', 'none']).optional()
+    .describe("'auto' (default) prints the note \"One cell = 5%\" under the chart when one cell is not 1% of the whole, so a coarse grid reads right. 'none' leaves it out. The wording comes from strings.cellNote, with '{value}' for the percent."),
   variant: z.enum(['cells', 'square']).optional()
     .describe("'cells' (default) draws the grid of cells. 'square' draws one solid square per panel whose AREA is the share (side = square root of the share × panel side), anchored at the fillFrom corner on the left, inside a pale tint of the same colour that stands for 100%. The headline prints under the panel. Square mode takes exactly one series (a nested second square would read as an L-shape, not a share) and refuses grid; there are no cells, so no cell note prints. Area understates differences (59% is 15 times 4% but only about 4 times as wide), so keep the headline.").meta({ default: 'cells' }),
   reference: z.strictObject({

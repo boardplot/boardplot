@@ -36,7 +36,7 @@ import { fittedLabel } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
 import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
-import { formatAutomaticPercent, numberRange } from '../../format';
+import { formatAutomaticPercent, formatShare, numberRange } from '../../format';
 import { fixedHeightCanvas, rowDrivenHeight } from '../../rowCanvas';
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing } from '../../sizing';
 import { isNumberAlone } from '../../textRole';
@@ -65,6 +65,7 @@ import type {
   BarTableData,
   BarTablePlainData,
   BarTableValue,
+  BarTableEnd,
   BarTableDerived,
   BarTableMarks,
   BarTableOptions,
@@ -269,13 +270,16 @@ function twoLineNote(lead: string, items: readonly string[], tail: string, font:
  * The combined share of named rows in each summed panel, with its
  * numerator, denominator and, where rows carry ranges, the end each belongs to.
  */
-function combinedShareRows(
+function combinedShareNotes(
   options: BarTableOptions,
-  rows: readonly { id: string }[],
-): number[] | undefined {
+  rows: readonly { id: string; label: string }[],
+  panels: readonly { panel: BarTablePlainData['panels'][number]; rowSums: (number | null)[]; ranges: (BarTableEnd | undefined)[]; fmt: (v: number) => string }[],
+  locale: string | undefined,
+  authored: BarTablePlainData['panels'],
+): string[] {
   const combined = options.combinedShare;
-  if (!combined) return undefined;
-  return combined.rows.map((id, i) => {
+  if (!combined) return [];
+  const picked = combined.rows.map((id, i) => {
     // The schema refuses a repeat; a direct caller gets the same refusal.
     if (combined.rows.indexOf(id) !== i) {
       throw new NormalizeError('bartable-combined-share-row', `options.combinedShare.rows[${i}]`,
@@ -287,6 +291,29 @@ function combinedShareRows(
         `combinedShare names row '${id}', which the table does not have`, `use one of the row ids: ${rows.map((row) => row.id).join(', ')}`, undefined, ['options', 'combinedShare', 'rows', i]);
     }
     return r;
+  });
+  // The panels form shades the combined rows, and the note names them as such.
+  const label = chartString(options, 'combinedShadedLead', { v1: combinedLabel(combined.label, picked.map((r) => rows[r]!.label), options) });
+  // A zero whole has no share: say so instead of printing NaN%.
+  const pct = (part: number, whole: number) => (whole === 0
+    ? chartString(options, 'combinedShareZero')
+    : formatShare((part / whole) * 100, locale));
+  return panels.flatMap((entry, p) => {
+    // Only an authored 'none' drops the readout: a defaulted 'none' (a % unit) still has rows that add.
+    if (authored[p]?.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
+    const unit = entry.panel.unit ? ` ${entry.panel.unit}` : '';
+    const at = (end: 'low' | 'high', r: number) => entry.ranges[r]?.[end] ?? entry.rowSums[r]!;
+    const sumAt = (end: 'low' | 'high', of: readonly number[]) => of.reduce((sum, r) => sum + at(end, r), 0);
+    const all = rows.map((_, r) => r);
+    const name = entry.panel.label ?? entry.panel.id;
+    if (!entry.ranges.some(Boolean)) {
+      const part = sumAt('low', picked);
+      const whole = sumAt('low', all);
+      // The readout the author asked for with combinedShare: printed like a footnote.
+      return [disclosureNote(chartString(options, 'combinedShareNote', { v1: label, v2: entry.fmt(part), v3: entry.fmt(whole), v4: unit, v5: name, v6: pct(part, whole) }))];
+    }
+    const [lowPart, lowWhole, highPart, highWhole] = [sumAt('low', picked), sumAt('low', all), sumAt('high', picked), sumAt('high', all)];
+    return [disclosureNote(chartString(options, 'combinedShareRangeNote', { v1: label, v2: entry.fmt(lowPart), v3: entry.fmt(lowWhole), v4: unit, v5: name, v6: pct(lowPart, lowWhole), v7: entry.fmt(highPart), v8: entry.fmt(highWhole), v9: pct(highPart, highWhole) }))];
   });
 }
 
@@ -492,11 +519,11 @@ export function layoutBarTable(
   );
   // ---- cascade: starts, shares, the bracket and the growth column ----
   // The note also checks the rows: each once, each a row of the table.
-  const combinedRows = combinedShareRows(options, rows);
+  const shareNotes = combinedShareNotes(options, rows, panels, locale, split.data.panels);
   let bracketRows: number[] | undefined;
   if (cascadeOptions && options.combinedShare) {
     // The bracket spans its rows, so they must stand together.
-    bracketRows = combinedRows!.sort((a, b) => a - b);
+    bracketRows = options.combinedShare.rows.map((id) => rows.findIndex((row) => row.id === id)).sort((a, b) => a - b);
     if (bracketRows.some((r, i) => i > 0 && r !== bracketRows![i - 1]! + 1)) {
       throw new NormalizeError('bartable-combined-share-row', 'options.combinedShare.rows',
         'under cascade the combined share prints beside a bracket over its rows, and these rows do not stand together',
@@ -531,6 +558,8 @@ export function layoutBarTable(
   // and one segment is the whole bar, which the end label prints already.
   const partsPrinted = panels.map((entry) => !cascade && series.length > 1 && options.segmentValues !== false && valuesPrinted && entry.spec.decimals <= PART_DECIMALS);
   const derivedNotes = [
+    // Under cascade the bracket prints the combined share.
+    ...(cascade ? [] : shareNotes),
     ...(blanks.length > 0 ? [disclosureNote(twoLineNote(chartString(options, single ? 'bartableMissingHeading' : 'bartableBlankHeading', { v1: glyph }), blanks, showTotal ? chartString(options, 'bartableBlankTotal') : '', noteFont, noteW, measure, options))] : []),
     ...shareRoundingNotes(options, cascade?.adjustments ?? []),
   ];

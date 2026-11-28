@@ -697,10 +697,8 @@ export function layoutPareto(
       severity: lost.length > 0 ? 'warn' : 'info',
       message:
         `${unnamed.length} of ${plotted.length} columns have no room for their axis label: ` +
-        `${unnamed.map((u) => `'${u.label}'`).join(', ')} — ` +
-        (lost.length > 0
-          ? `${lost.length} of them are NOT named anywhere on the exhibit`
-          : 'named by rank in a footnote already present'),
+        unnamed.map((u) => `'${u.label}'`).join(', ') +
+        (lost.length > 0 ? ` — ${lost.length} of them are NOT named anywhere on the exhibit` : ''),
       suggest: 'shorten the labels, widen the canvas, or aggregate the tail with topN',
     });
   }
