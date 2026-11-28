@@ -64,7 +64,7 @@ export function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): b
   // A column's value line with a span or a series is measured over it and warns when it also has a value; a bar draws it over the span with no warning.
   if (annotations.some((annotation) => annotation.kind === 'valueLine' && (annotation.seriesId !== undefined || annotation.from !== undefined || annotation.to !== undefined || annotation.axis !== undefined))) return false;
   if (!hasOnly(data, SAME_DATA)) return false;
-  if (!data.categories.every((category) => hasOnly(category, SAME_CATEGORY))) return false;
+  if (!data.categories.every((category) => typeof category === 'string' || hasOnly(category, SAME_CATEGORY))) return false;
   return data.series.every((series) => hasOnly(series, SAME_SERIES) && series.role === undefined && series.values.every((cell) => cell === null || typeof cell === 'number' || hasOnly(cell, SAME_CELL)));
 }
 

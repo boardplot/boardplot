@@ -1491,6 +1491,15 @@ it('keeps the column for every setting a bar draws differently, drops or has not
   ] as [string, object[], object][]) expect(draw(series, options).type, name).toBe('bar');
 });
 
+// The step-to-bars check read a plain string name as an object with unknown keys, so the same names written as { id, label } stepped to bars and the strings stayed a column.
+it('steps a column with plain string names to bars as it does the same names written as id and label', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const series = [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }];
+  const draw = (categories: unknown[]) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories, series }, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } } as never)) as Geometry;
+  expect(draw(names).type).toBe('bar');
+  expect(draw(names.map(label => ({ id: label, label }))).type).toBe('bar');
+});
+
 // The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
 it('reports the drawn type in the reading of a column that stepped to bars', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
