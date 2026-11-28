@@ -3,7 +3,6 @@ import { HIDDEN_SERIES } from './hiddenSeriesKey';
 import { AUTHORED_EXAMPLES, readFormatExamples, UNIT_FORMATS, UNIT_STAND_INS } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { drawnVariant } from './stackAdds';
 import { PLAN_ONLY, RETAIN_TABLE_RESULT, withPlanInputs, requestMemo, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
 import { INTERACTIVE_LAYOUT } from './footer';
@@ -1043,8 +1042,9 @@ function lineSecondaryAxisWarnings(data: unknown): LintWarning[] {
   }];
 }
 
-function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant?: string }): LintWarning[] {
-  const variant = drawnVariant('line', options);
+function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant?: string; valueAxis?: { percent?: boolean } }): LintWarning[] {
+  // valueAxis.percent turns a line chart into a 100% area, as drawnVariant in stackAdds.ts reads it.
+  const variant = options.valueAxis?.percent ? 'stacked100-area' : options.variant;
   if (variant === 'stacked-area' || variant === 'stacked100-area' || !isRecord(data) || !Array.isArray(data.series)) return [];
   const isPlanOrForecast = (scenario: unknown): boolean => typeof scenario === 'string' && /^(FC|PL|FCST|BUD)$/i.test(scenario);
   const ids: string[] = [];
