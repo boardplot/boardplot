@@ -27,11 +27,12 @@ import type { BarOptions } from '../../types/options';
 const categorySchema = categorySchemaOf({
   date: categoryDateSchema.optional().describe("ISO 8601 category date, yyyy-mm-dd; strictly increasing dates permit date-axis promotion where supported."),
   fields: {
+    group: z.string().trim().min(1).optional().describe('Group name for consecutive bars. It appears to the left of the stacks when their names fit in full, or after each stack name.'),
     total100: z.number().optional().describe("Authored quantity represented by 100%; otherwise percentage variants derive their basis from the category values."),
     gapAfter: z
       .union([z.boolean(), z.number().nonnegative()])
       .optional()
-      .describe('Extra band-step fractions after this category; true defaults to 0.5.'),
+      .describe('Extra spacing after this category in band steps. Adjacent named groups have a half-step gap. An explicit value overrides the group gap (true = 0.5, false = 0).'),
     breakAfter: z
       .boolean()
       .optional()

@@ -119,6 +119,7 @@ export interface NormSeries {
 export interface NormCat {
   id: Id;
   label: string;
+  group?: string;
   date?: string;
   total100?: number;
   gapAfter?: boolean | number;
@@ -256,6 +257,8 @@ export interface BarArea {
   /** "n) Full name." for every row name the band cut and marked. */
   cutNotes: string[];
   catBandW: number;
+  categoryX: number;
+  groupLabels?: LabelRequest[];
   plot: Rect;
   /** The value-axis title: in the tick row where it fits, else in its own row under it. */
   axisTitle: ValueAxisTitle | undefined;

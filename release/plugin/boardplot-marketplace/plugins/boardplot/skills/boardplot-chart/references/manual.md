@@ -358,21 +358,21 @@ In a stacked column, bar or combo, `null` means a value that is unknown. A stack
 
 ### Two stacks per period
 
-To place two stacks side by side in each period, list both stacks in `data.categories` as consecutive entries. Set `gapAfter` on the second entry of each pair, and label each stack on two lines with `\n`. This layout gives no shared quarter label under each pair and no group totals.
+Give each stack a year as its `label` and each consecutive pair the same quarter as its `group`. When every stack name fits horizontally and in full, the quarter appears once below the pair on a column chart or to its left on a bar chart. When the names need more room, each stack label includes its quarter, such as `FY24 Q1`. A half-step gap separates adjacent quarters in either layout. Each stack has its own total. Setting `labels.category` to `false` hides the stack and group names.
 
 ```json
 {
   "type": "column",
   "data": {
     "categories": [
-      { "id": "FY24q1", "label": "FY24\nQ1" },
-      { "id": "FY25q1", "label": "FY25\nQ1", "gapAfter": 0.6 },
-      { "id": "FY24q2", "label": "FY24\nQ2" },
-      { "id": "FY25q2", "label": "FY25\nQ2", "gapAfter": 0.6 },
-      { "id": "FY24q3", "label": "FY24\nQ3" },
-      { "id": "FY25q3", "label": "FY25\nQ3", "gapAfter": 0.6 },
-      { "id": "FY24q4", "label": "FY24\nQ4" },
-      { "id": "FY25q4", "label": "FY25\nQ4" }
+      { "id": "FY24q1", "label": "FY24", "group": "Q1" },
+      { "id": "FY25q1", "label": "FY25", "group": "Q1" },
+      { "id": "FY24q2", "label": "FY24", "group": "Q2" },
+      { "id": "FY25q2", "label": "FY25", "group": "Q2" },
+      { "id": "FY24q3", "label": "FY24", "group": "Q3" },
+      { "id": "FY25q3", "label": "FY25", "group": "Q3" },
+      { "id": "FY24q4", "label": "FY24", "group": "Q4" },
+      { "id": "FY25q4", "label": "FY25", "group": "Q4" }
     ],
     "series": [
       { "id": "north", "label": "North", "values": [40, 46, 44, 50, 48, 55, 52, 60] },

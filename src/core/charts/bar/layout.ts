@@ -6,6 +6,7 @@ import { separationStroke, withSegmentSeams } from '../../markVisibility';
 import { stringFields } from '../../strings';
 import { structureCount, type StructureCount } from '../../structureCounts';
 import { rowLabelBand } from '../../label/rowLabels';
+import { barGroupColumn, categoryGapAfter } from '../../label/categoryGroups';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, planCategoryTitle, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { seriesRasterFormatter } from '../../formatSpec';
@@ -27,7 +28,7 @@ import type { Geometry, LintWarning, Paint, PlacedAnnotation, SceneNode, ShownMa
 import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
 import { labelOn as barLabelOn } from '../labelOn';
-import { CAT_BAND_GAP, CAT_MAX_LINES, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN } from './model';
+import { bandSteps, CAT_BAND_GAP, CAT_MAX_LINES, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN } from './model';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote, disclosuresShown } from '../../notes';
@@ -397,10 +398,11 @@ function compactRowNames(
 }
 
 /** The row band of compact rows: each step holds a name line, then its bar, both at the foot of the step. */
-function compactBand(count: number, plot: Rect, nameBlock: number, barNatural: number, rowGap: number): BandScale {
-  const step = plot.h / Math.max(1, count);
+function compactBand(count: number, plot: Rect, nameBlock: number, barNatural: number, rowGap: number, gapAfter?: number[]): BandScale {
+  const slots = gapAfter && bandScale(count, [plot.y, plot.y + plot.h], { paddingInner: 0, gapAfter });
+  const step = slots?.step ?? plot.h / Math.max(1, count);
   const bandwidth = Math.max(4, Math.min(barNatural, step - rowGap - nameBlock - COMPACT_NAME_GAP));
-  const position = (index: number) => plot.y + (index + 1) * step - bandwidth;
+  const position = (index: number) => (slots ? slots.position(index) + step : plot.y + (index + 1) * step) - bandwidth;
   return { position, center: (index) => position(index) + bandwidth / 2, bandwidth, step, count, range: [plot.y, plot.y + plot.h] };
 }
 
@@ -464,6 +466,8 @@ function layoutRows(
       ? planFootballField(data, options as FootballFieldBarOptions, ctx)
       : planTornado(data, options as TornadoBarOptions, ctx);
   const cats = plan.cats;
+  const gapAfter = cats.some(cat => cat.group !== undefined) ? cats.map((cat, i) => categoryGapAfter(cat, cats[i + 1])) : undefined;
+  const steps = gapAfter ? bandSteps(cats.length, gapAfter) : cats.length;
   if (mode === 'football-field' && cats.length < data.categories.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   const rows = plan.rows;
   const spine = plan.spine;
@@ -561,7 +565,7 @@ function layoutRows(
     const headerH = categoryTitle?.bandHeight ?? 0;
     const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH - headerH);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
-    const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
+    const stepEst = theme.space.barRow?.pitch ?? availH / steps;
     const fittedCats = rowLabelBand(
       cats.map((cat) => ({ id: cat.id, label: cat.label ?? cat.id, footnote: cat.footnote })), tickFont, catCap, stepEst >= Math.max(30, 2 * lineH + (targetSizing ? 4 : 0)) ? 2 : 1, lineH, measure,
       { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: nameTrack ?? gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
@@ -571,7 +575,7 @@ function layoutRows(
       ? { ...label, w: Math.max(label.w, measure(label.lines[0]!, { ...label.font, weight: emphasisWeight(theme) }).width) } : label);
     const catBandW = nameTrack ?? Math.max(fittedCats.width, maxOf(catLines.map((label) => label.w)));
     const fixedRow = fixedBarRow(theme, catLines.map((label) => label.h));
-    const fixedRowsH = fixedRow ? fixedRow.step * cats.length : undefined;
+    const fixedRowsH = fixedRow ? fixedRow.step * steps : undefined;
     const nameW = noNameColumn ? 0 : catBandW + CAT_BAND_GAP;
     const valueBody: Rect = {
       x: plot0.x + nameW,
@@ -582,6 +586,24 @@ function layoutRows(
     };
     const leftReserve = maxLowWidth + LABEL_GAP + 8;
     const rightReserve = maxHighWidth + LABEL_GAP + 8;
+    const fraction = options.bandFraction ?? fixedRow?.fraction ?? 0.56;
+    const compactNames = noNameColumn ? compactPlan : undefined;
+    const band = compactNames ? compactBand(cats.length, valueBody, compactNames.nameBlock, compactBar, compactRowGap, gapAfter)
+      : bandScale(cats.length, [valueBody.y, valueBody.y + valueBody.h], { paddingInner: 1 - fraction, gapAfter });
+    let groups;
+    if (!callerNames && labelOn('category') && gapAfter) {
+      // A compact name already fitted across the chart keeps every pixel of its longest line.
+      const nameRoom = compactNames ? plot0.w - maxOf(compactNames.names.map(name => compactNameRight(name, 0, tickFont, emphasisWeight(theme), measure))) : Infinity;
+      groups = barGroupColumn(cats, band, compactNames ? tickFont : catLines[0]!.font, measure, {
+        cap: catCap, wider: nameTrack ?? gutterBudget(24, plot0.w), gap: CAT_BAND_GAP, x: plot0.x,
+        spare: Math.min(nameRoom, valueBody.w - leftReserve - rightReserve - 10),
+      });
+      if (groups) {
+        valueBody.x += groups.width;
+        valueBody.w -= groups.width;
+      }
+    }
+    const categoryX = plot0.x + (groups?.width ?? 0);
     const plot: Rect = {
       x: valueBody.x + leftReserve,
       y: valueBody.y,
@@ -593,7 +615,7 @@ function layoutRows(
       ? tickRowTitleEnd(axisTitle, { scale: x, ticks: stepped.ticks, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
       : undefined;
     const minWidth = size.width - plot0.w + nameW + leftReserve + rightReserve + 10;
-    return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow, categoryTitle };
+    return { availH, minWidth, catCap, catLines, catBandW, categoryX, groups, band, fixedRowsH, valueBody, plot, x, titleEnd, titleRow, categoryTitle };
   };
   // With no tick row nothing reads the round ends, so the bars span the plot.
   // A football field reads its ranges against the current value, not against
@@ -615,7 +637,7 @@ function layoutRows(
   let rowPlan = planRows(callerNames || compactPlan !== undefined, warnings);
   // A canvas too short for a name line over every bar keeps the name column;
   // its natural height is still the compact one, so a content-fit chart gets it.
-  const compact = compactPlan && rowPlan.availH >= cats.length * compactStep(compactBar) ? compactPlan : undefined;
+  const compact = compactPlan && rowPlan.availH >= steps * compactStep(compactBar) ? compactPlan : undefined;
   if (compactPlan && !compact) {
     currentPad = spineLabelPad;
     rowPlan = planRows(false, []);
@@ -623,14 +645,7 @@ function layoutRows(
   /** Compact rows: the spine label stands in the first row's top air, its line starts under it. */
   const labelDrop = compact ? spineLift : 0;
   const spineTop = rowPlan.plot.y + (labelDrop > 0 ? labelDrop - 2 : 0);
-  const { catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x } = rowPlan;
-  const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.56;
-  const band = compact
-    ? compactBand(cats.length, plot, compact.nameBlock, compactBar, compactRowGap)
-    : bandScale(cats.length, [plot.y, plot.y + plot.h], {
-      paddingInner: 1 - bandFraction,
-      paddingOuter: (1 - bandFraction) / 2,
-    });
+  const { catCap, catLines, catBandW, categoryX, band, fixedRowsH, valueBody, plot, x } = rowPlan;
 
   const nodes: SceneNode[] = [...frameResult.nodes];
   const axes: Geometry['axes'] = [];
@@ -659,7 +674,8 @@ function layoutRows(
   const labelRequests: LabelRequest[] = axisShown && axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: rowPlan.titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (rowPlan.titleRow ? tickRowH + 2 : 0) }, 'end', 'axis:x:title')]
     : [];
-  if (rowPlan.categoryTitle) labelRequests.push(rowPlan.categoryTitle.request(plot0.x, plot0.y, 'start'));
+  if (rowPlan.categoryTitle) labelRequests.push(rowPlan.categoryTitle.request(plot0.x, plot0.y, 'start', rowPlan.groups?.width));
+  if (rowPlan.groups) pushAll(labelRequests, rowPlan.groups.labels);
   const currentX = spine ? x(spine.value) : undefined;
   const canvas: Rect = { x: 0, y: 0, w: size.width, h: size.height };
   const currentRuleClaim =
@@ -796,7 +812,7 @@ function layoutRows(
     }
 
     if (compact) {
-      pushAll(labelRequests, compactNameRequests(compact.names[ri]!, cat, plot0.x, band.position(ri) - COMPACT_NAME_GAP, nameLineH, tickFont, emphasisWeight(theme), measure));
+      pushAll(labelRequests, compactNameRequests(compact.names[ri]!, cat, categoryX, band.position(ri) - COMPACT_NAME_GAP, nameLineH, tickFont, emphasisWeight(theme), measure));
     } else if (labelOn('category') && !callerNames) {
       const category = catLines[ri]!;
       labelRequests.push({
@@ -813,7 +829,7 @@ function layoutRows(
           {
             slot: 'left',
             rect: {
-              x: rowLabelX(plot0.x, catBandW, category.w, options.rowLabels?.align ?? 'left'),
+              x: rowLabelX(categoryX, catBandW, category.w, options.rowLabels?.align ?? 'left'),
               y: rowCenter - category.h / 2,
               w: category.w,
               h: category.h,
@@ -838,7 +854,7 @@ function layoutRows(
       ? rows.map((_, ri) => ({ y1: band.position(ri), y2: band.position(ri) + band.bandwidth }))
       : [{ y1: plot.y, y2: plot.y + plot.h }];
     if (compact && spineRuns.length > 0) {
-      const firstName = compactNameRight(compact.names[0]!, plot0.x, tickFont, emphasisWeight(theme), measure);
+      const firstName = compactNameRight(compact.names[0]!, categoryX, tickFont, emphasisWeight(theme), measure);
       if (mode === 'tornado' && firstName + 4 < currentX) spineRuns[0]!.y1 = spineTop;
     }
     const drawnRuns = !compact ? spineRuns : mode === 'football-field'
@@ -976,9 +992,7 @@ function layoutRows(
   // Below the compact minimum the chart falls back to the name column, so that
   // column's minimum is the chart's minimum: a host that asks for less is refused, not served.
   const fallbackPlan = compact ? planRows(false, []) : undefined;
-  const fallbackFraction = options.bandFraction ?? fallbackPlan?.fixedRow?.fraction ?? 0.56;
-  const fallbackSizing = fallbackPlan && barSizing(size, fallbackPlan,
-    bandScale(cats.length, [fallbackPlan.plot.y, fallbackPlan.plot.y + fallbackPlan.plot.h], { paddingInner: 1 - fallbackFraction, paddingOuter: (1 - fallbackFraction) / 2 }).step,
+  const fallbackSizing = fallbackPlan && barSizing(size, fallbackPlan, fallbackPlan.band.step,
     fallbackPlan.catLines, naturalCategoryHeights(cats, tickFont, fallbackPlan.catCap, measure), fallbackPlan.fixedRowsH, 0, targetSizing, textScaleOf(options));
   const compactOrFallback = compactSizing && fallbackSizing && fallbackSizing.minHeight < compactSizing.minHeight
     ? { ...compactSizing, minHeight: fallbackSizing.minHeight, measuredMinHeight: Math.min(compactSizing.measuredMinHeight, fallbackSizing.measuredMinHeight), comfortableHeight: fallbackSizing.comfortableHeight }

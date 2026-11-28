@@ -38,7 +38,7 @@ const SAME_CATEGORY_AXIS = new Set(['title']);
 const SAME_LABELS = new Set(['restSeries']);
 const SAME_ANNOTATIONS = new Set(['note', 'callout', 'diff', 'delta', 'cagr', 'band', 'valueLine']);
 const SAME_DATA = new Set(['categories', 'series', 'valueKind']);
-const SAME_CATEGORY = new Set(['id', 'label', 'footnote', 'partial']);
+const SAME_CATEGORY = new Set(['id', 'label', 'footnote', 'partial', 'group']);
 const SAME_SERIES = new Set(['id', 'label', 'values', 'valueKind', 'scenario', 'colorRole', 'format']);
 const SAME_CELL = new Set(['number', 'fill', 'format', 'label', 'pct', 'scenario']);
 
@@ -100,7 +100,7 @@ export function stepToBar(
   options: AnomalyColumnOptions,
   column: Geometry<ColumnMarks, ColumnDerived>,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
-  const names = column.labels.filter((label) => label.kind === 'category');
+  const names = column.labels.filter((label) => label.kind === 'category' && !label.id.startsWith('category-group:'));
   const hidden = names.filter((label) => label.hidden === 'density');
   // A name cut on the rotated row is lost as well: only its SVG title keeps the full text.
   const lost = [...hidden, ...names.filter((label) => !label.hidden && label.rotate !== undefined && label.title !== undefined)];

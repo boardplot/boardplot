@@ -7,7 +7,7 @@ import type { SlopeDerived } from '../charts/slope/layout';
 import { addsTo100, drawnVariant, stackAdds, statedInPercent } from '../stackAdds';
 import { calendarNames } from '../calendarLabels';
 import { rectCenter } from '../geometry';
-import { normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
+import { categoryNameWithGroup, normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
 import { cellMeta, cellValue, isPctCell, type Cell, type RangeCell, type Scenario } from '../types/cell';
 import type { Category, ChartData, HeatmapSeries, Series, SlopeSeries } from '../types/data';
 import type { HeatmapOptions } from '../types/options';
@@ -286,7 +286,9 @@ export function categoryRecords(ctx: RecordContext): InteractionRecord[] | undef
   const periods = ['line', 'column', 'combo'].includes(ctx.request.type) ? calendarNames(data.categories, ctx.request.locale?.language) : undefined;
   const categories = data.categories.map((raw, index) => {
     const category = normalizeCategory(raw, index);
-    return periods?.[index] === undefined ? category : { ...category, label: periods[index] };
+    category.label = periods?.[index] ?? category.label;
+    if (ctx.request.type === 'column' || ctx.request.type === 'bar') category.label = categoryNameWithGroup(category);
+    return category;
   });
   // Slope 'diverging' draws each negative share as its own series (`<id>:negative`), so it reads its own values.
   const negName = (ctx.request.options as { diverging?: { labels?: { negative?: string } } }).diverging?.labels?.negative ?? 'Negative';

@@ -118,7 +118,7 @@ function stepsBelow(domain: BarDomain, font: FontSpec): FontSpec[] {
 export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarArea, scene: BarMarkGeometry, warnings: LintWarning[], stated?: Map<Id, Omit<ShownMark, 'drawn'>>, alignRow?: typeof rowLabelX): LabelRequest[] {
   const { options, measure, highlights, cats, dataSeries, variant, totals, plotRange } = domain;
   const { labelFont, strongFont, tickFont, pointFont, compact, band } = area;
-  const requests: LabelRequest[] = [];
+  const requests: LabelRequest[] = [...(area.groupLabels ?? [])];
   const slivers: string[] = [];
   const maxTotal = maxOf(totals);
   const minTotal = minOf(totals);
@@ -364,7 +364,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
           {
             slot: 'left',
             rect: {
-              x: alignRow?.(area.frame.plot.x, area.catBandW, cl.w, options.rowLabels?.align ?? 'left') ?? area.frame.plot.x,
+              x: alignRow?.(area.categoryX, area.catBandW, cl.w, options.rowLabels?.align ?? 'left') ?? area.categoryX,
               y: rowCenter - cl.h / 2,
               w: cl.w,
               h: cl.h,

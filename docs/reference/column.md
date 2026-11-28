@@ -43,8 +43,9 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | categories[].id | string | yes | Category identity used to match keyed values and annotation anchors. |
 | categories[].label | string |  | Displayed category name; defaults to the category id and supports line breaks. A date id or `date` without a label prints a short date such as 'Sep'. Day ticks include the month ('2 Oct', or 'Fri 2 Oct' where room allows). A separate row carries the year under day, month and quarter ticks. |
 | categories[].date | string |  | ISO 8601 category date, yyyy-mm-dd; strictly increasing dates permit date-axis promotion where supported. |
+| categories[].group | string |  | Group name for consecutive columns. It appears below the stacks when their names fit horizontally and in full, or after each stack name. |
 | categories[].total100 | number |  | Authored quantity represented by 100%; otherwise percentage variants derive their basis from the category values. |
-| categories[].gapAfter | boolean \| number |  | Extra band-step fractions after this category; true defaults to 0.5. |
+| categories[].gapAfter | boolean \| number |  | Extra spacing after this category in band steps. Adjacent named groups have a half-step gap. An explicit value overrides the group gap (true = 0.5, false = 0). |
 | categories[].breakAfter | boolean |  | Category axis break after this category: a gap of at least half a band step with the straight break glyph on the category baseline. Series connectors and net-line steps do not cross it. |
 | categories[].footnote | integer |  | 1-based reference into options.footnotes. The number is drawn beside this category label as the reference mark, and the note it points at keeps that number; a reference to no note draws nothing and warns, and notes the engine derives print unnumbered. |
 | categories[].partial | boolean |  | Period still running, such as the current week. Bars and segments on it are hatched and line markers on it are hollow; marks keep their positions. A drawn key names the running category once as "<label> to date". With no such key, the frame adds that note. |
@@ -296,3 +297,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | drawing-kinds | example | A box around the launch months, the old level and an arrow from a note |
 | stacked-series-cagr-card | torture | One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top |
 | category-axis-title | example | A title below the quarter names |
+| two-stacks-per-period | example | Two fiscal years grouped by quarter |

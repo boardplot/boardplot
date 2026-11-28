@@ -35,6 +35,7 @@ import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { columnHeightSearch, measureColumnHeight, sameContent, type ColumnHeightTrial } from '../../sizing';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotatedNames, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
+import { categoryGapAfter, columnGroupRow } from '../../label/categoryGroups';
 import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
@@ -505,13 +506,7 @@ function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisRese
   const grouped = domain.variant === 'grouped' && domain.dataSeries.length > 1;
   const panelGroup = options.bandFraction === undefined && !narrow && grouped && panelTypeClass(options) !== undefined;
   let bandFraction = panelGroup ? PANEL_GROUP_FRACTION : options.bandFraction ?? (narrow ? Math.min(0.7, Math.max(ribbonColumn, ribbonFraction)) : domain.pyRef ? (pyTickKeyed(domain, frame.legend) ? 0.5 : 0.42) : grouped ? COLUMN_FRACTION_MAX : columnBandFraction(plotW0, cats.length));
-  const gapAfter = cats.map((c, ci) => {
-    const authored = c.gapAfter === true ? 0.5 : typeof c.gapAfter === 'number' ? Math.max(0, c.gapAfter) : 0;
-    // A total column stands apart: at least half a step before it, for its divider.
-    const gap = cats[ci + 1]?.role === 'total' ? Math.max(authored, 0.5) : authored;
-    // A category break needs a gap wide enough to carry its glyph.
-    return c.breakAfter ? Math.max(gap, 0.5) : gap;
-  });
+  const gapAfter = cats.map((cat, i) => categoryGapAfter(cat, cats[i + 1]));
   const bandFor = (x0: number, w: number) =>
     bandScale(cats.length, [x0, x0 + w], {
       paddingInner: 1 - bandFraction,
@@ -728,6 +723,7 @@ function columnBand(
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   const authored = authoredDateTicks(cats, options, warnings);
   bandedCrossesBetween(options, warnings);
+  const groupedNames = !stair && kindSetting(options, 'category') !== false && cats.some(cat => cat.group !== undefined);
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
@@ -751,6 +747,7 @@ function columnBand(
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
+      ...(groupedNames && !ticked ? { stackNames: true, everyName: true } : {}),
       ...ticked?.plan,
       ...(typeClassCap() === 'XS' && !ticked && calendarLike(row.labels)
         ? { pinned: cats.map((_, i) => i === cats.length - 1 || row.pinned?.[i] === true) } : {}),
@@ -1079,12 +1076,20 @@ export function columnPlotArea(
       plot.x += valueAxisReserve;
       plot.w = Math.max(10, plot.w - valueAxisReserve);
     }
+    // Take the new row from the existing plot. A pinned chart keeps its original size floor.
+    const groupRow = showCatRow && cats.some(cat => cat.group !== undefined)
+      ? columnGroupRow(cats, band, catPlan(), measure, plot.h - minPlot)
+      : undefined;
+    const plotBeforeGroupRow = groupRow ? { ...plot } : undefined;
+    if (groupRow) plot.h = Math.max(1, plot.h - groupRow.height);
     const y = domain.activeBreak
       ? brokenLinearScale([dLo, dHi], [plot.y + plot.h, plot.y], domain.activeBreak)
       : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
     return {
       frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
-      quietBand, catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
+      quietBand, catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow,
+      ...(groupRow ? { groupRow, plotBeforeGroupRow } : {}),
+      tickReserve: tickReserve + (groupRow?.height ?? 0), catBandH: catBandH + hangingReserve + (groupRow?.height ?? 0),
       // The names may rise to the frame top, under the rule and the axis title.
       ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
       // A date row stays at the plot's bottom band; prose reads under the

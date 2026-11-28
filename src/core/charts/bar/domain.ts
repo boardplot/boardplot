@@ -183,6 +183,7 @@ function orderBarCategories(
   let cats: NormCat[] = rawCats.map((c) => ({
     id: c.id,
     label: c.label ?? c.id,
+    group: c.group,
     date: c.date,
     total100: c.total100,
     gapAfter: c.gapAfter,

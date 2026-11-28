@@ -1,5 +1,6 @@
 import { a11yDescription } from '../../a11yDescription';
 import { valueLineLabelsOn } from '../labelOn';
+import { inlineCategoryGroups } from '../../label/categoryGroups';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
@@ -42,7 +43,7 @@ import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
+import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, PLOT_FLOOR_RECT, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
@@ -534,6 +535,7 @@ function assembleColumnGeometry(
     type: 'column',
     size: domain.size,
     plot: area.plot,
+    ...(area.plotBeforeGroupRow ? { [PLOT_FLOOR_RECT]: area.plotBeforeGroupRow } : {}),
     scene: measuring ? nodes : withSegmentSeams(joinHatchPeers(nodes), domain.theme),
     labels: lane ? [...allLabels, ...lane.labels] : allLabels,
     axes,
@@ -566,7 +568,7 @@ function assembleColumnGeometry(
               measuredLines: catPlan().maxLines,
               lineHeight: catPlan().font.size * 1.2,
               // Rotated rows reserve more than lines × line height; the receipt names it.
-              extra: catPlan().rowHeight - catPlan().maxLines * catPlan().font.size * 1.2,
+              extra: catPlan().rowHeight - catPlan().maxLines * catPlan().font.size * 1.2 + (area.groupRow?.height ?? 0),
               dateNumeric: catPlan().dateNumeric,
               position: 'below' as const,
             },
@@ -1153,6 +1155,8 @@ function layoutColumnPass(
   const framed = settled.framed;
   const occupied = framed.claims;
   let area = settled.area;
+  const inline = !area.groupRow && kindSetting(options, 'category') !== false ? inlineCategoryGroups(data, domain.cats) : undefined;
+  if (inline) return layoutColumnPass(inline, options, keepEachValue);
   if (domain.activeBreak && domain.variant !== 'grouped' && stackBreakReversesOrder(area.y, domain.stacks)) {
     domain.activeBreak = undefined;
     // The frame has no break note; only the plot's total row and scale change.

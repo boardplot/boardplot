@@ -135,6 +135,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | drawing-kinds | column.grouped | example | A box around the launch months, the old level and an arrow from a note |
 | stacked-series-cagr-card | column.stacked | torture | One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top |
 | category-axis-title | column.grouped | example | A title below the quarter names |
+| two-stacks-per-period | column.stacked | example | Two fiscal years grouped by quarter |
 
 ## bar
 
@@ -205,6 +206,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | centered-values | bar.grouped | example | Bar values at the center |
 | drawing-on-value-axis | bar.grouped | example | A line at the top level and an arrow over the gap, on a horizontal value axis |
 | category-axis-title | bar.grouped | example | A header above the quarter names |
+| two-stacks-per-period | bar.stacked | example | Two fiscal years grouped by quarter |
 
 ## line
 
