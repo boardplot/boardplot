@@ -684,6 +684,52 @@ describe('mechanical lints', () => {
     expect(codes({ labels: { series: ['absolute'] }, legend: 'none' })).toContain('series-unexplained');
   });
 
+  // Readers need a visible name for the dashed benchmark beside a single data line.
+  it('names a reference line and clears series-unexplained', () => {
+    const spec = { type: 'line', data: { categories: ['Jan', 'Feb', 'Mar', 'Apr'], series: [
+      { id: 'a', label: '2025', values: [10, 12, 14, 13] },
+      { id: 'b', label: 'Benchmark', role: 'reference', lineStyle: 'dashed', values: [8, 9, 11, 10] },
+    ] } };
+    const { svg, warnings } = render({ spec, return: ['svg'] }).body as { svg: string; warnings: { code: string }[] };
+    expect(svg).toMatch(/<text data-id="label:series:b"[^>]*><tspan[^>]*>Benchmark<\/tspan>/);
+    expect(warnings.map(w => w.code)).not.toContain('series-unexplained');
+  });
+
+  // A reference name must leave every data name and value in place, and two references at one end must stay unambiguous.
+  it('keeps data labels when reference names are long or share an endpoint', () => {
+    const sales = { id: 'sales', label: 'Sales', values: [7, 9, 12, 13] };
+    const costs = { id: 'costs', label: 'Costs', values: [3, 4, 5, 7] };
+    const target = { id: 'target', label: 'Target', role: 'reference', values: [13, 13, 13, 13] };
+    const draw = (...references: typeof target[]) => (render({ return: ['svg'], spec: { type: 'line',
+      data: { categories: ['Jan', 'Feb', 'Mar', 'Apr'], series: [sales, costs, ...references] },
+    } }).body as { svg: string }).svg;
+    const dataLabels = (svg: string) => svg.split('\n').filter(node => /data-id="label:(?:point|series):(?:sales|costs)[":]/.test(node));
+    const original = dataLabels(draw());
+    expect(original).toHaveLength(4);
+    const shared = draw(target);
+    const near = draw({ ...target, label: 'Benchmark', values: [7.14, 9.18, 12.24, 13.26] });
+    expect(near).toContain('data-id="label:series:target"');
+    expect(near).toContain('data-id="label:series:sales"');
+    const long = draw({ ...target, label: 'Prior-year subscription revenue', values: [6, 7, 8, 10] });
+    const pair = draw({ ...target, values: [5, 6, 7, 9] }, { ...target, id: 'budget', label: 'Budget', values: [9, 11, 10, 9] });
+    for (const svg of [shared, long, pair]) expect(dataLabels(svg)).toEqual(original);
+    expect(pair).not.toMatch(/data-id="label:series:(?:budget|target)"/);
+  });
+
+  // A name must stand at its own line end, also on a cut number axis, and a target note on the reference must not take its place.
+  it('puts a reference name beside its own end and keeps it beside a target note', () => {
+    const cut = (render({ return: ['svg'], spec: { type: 'line', options: { xAxis: { type: 'number', max: 3.6 } }, data: { x: [0, 1, 2, 3, 4], series: [
+      { id: 'a', label: 'Actual', values: [4, 5, 6, 8, 12] },
+      { id: 'b', label: 'Target', role: 'reference', values: [10.4, 10.4, 10.4, 10.4, null] },
+    ] } } }).body as { svg: string }).svg;
+    expect(Number(/<text data-id="label:series:b"[^>]* x="([\d.]+)"/.exec(cut)![1])).toBeLessThan(600);
+    const noted = (render({ return: ['svg'], spec: { type: 'line', data: { categories: ['2024', '2025', '2026', '2027'], series: [
+      { id: 'a', label: 'Actual', values: [10, 12, 14, 16] },
+      { id: 'b', label: 'Benchmark', role: 'reference', values: [8, 9, 10, null], targets: [{ at: '2027', value: 12, label: 'goal' }] },
+    ] } } }).body as { svg: string }).svg;
+    expect(noted).toContain('data-id="label:series:b"');
+  });
+
   it("series-unexplained keys combo endpoint names to the 'point' label kind", () => {
     const comboData = {
       categories: [{ id: 'q1' }, { id: 'q2' }],

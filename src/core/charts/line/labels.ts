@@ -7,17 +7,17 @@ import { DEFAULT_TARGET } from '../../target';
 import { unitPrinted } from '../../frame';
 import type { Point, Rect } from '../../geometry';
 import { drawnStroke } from '../../curve';
-import { polylineYAt, segmentHitsRect, sideAwayFrom } from '../../geometry';
+import { polylineYAt, rectContains, rectsOverlap, segmentHitsRect, sideAwayFrom } from '../../geometry';
 import { preparePolyline, type PolylineQueries } from '../../polyline';
 import { categoryLineAlign, rotatedClaimRect, yearRowRequests, type CategoryRowPlan } from '../../label/categoryRow';
 import { SWATCH_RESERVE } from '../../label/emit';
-import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
+import { leaderPieces, PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import { resolveSubtitle } from '../../normalize/shared';
 import { type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { Category } from '../../types/data';
 import type { LabelContent, LabelKind, SeriesLabelMode, ValueLabelMode } from '../../types/options';
-import type { LintWarning, Paint, ShownMark, ShownTexts } from '../../types/scene';
+import type { LintWarning, Paint, PlacedLabel, SceneNode, ShownMark, ShownTexts } from '../../types/scene';
 import type { EndLabel, EndLabelSeed, NormSer } from './context';
 import type { LineMarks } from './layout';
 import { planNearZeroTails, type NearZeroTail } from './nearZero';
@@ -27,8 +27,10 @@ import { restValueHiding } from '../../restLabels';
 import { noteName } from '../../calendarData';
 import { partialKeyForced, saysToDate, toDateFits, toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
+import { panelTypeClass } from '../../theme';
 import type { Theme } from '../../types/theme';
-import type { ComposeShows, LineDomain, LineEnv, LinePaints, LineText } from './model';
+import type { ComposeShows, LineArea, LineDomain, LineEnv, LinePaints, LineReserves, LineText } from './model';
+import { lineLabelModes } from './labelModes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { clipRecordFor, type AxisClamp } from '../clamp';
 
@@ -114,6 +116,7 @@ export interface EndpointLabelPlan {
   endReserve: number;
   /** Air between the last point and the name column. */
   columnGap: number;
+  textBudget: number;
   endpointLabelEconomy?: EndpointLabelEconomy;
   endpointLegendFallback: boolean;
   /** Near-zero group receipt, present only when a group of series ends on a printed zero. */
@@ -394,12 +397,63 @@ export function prepareEndpointLabels(input: {
     usesWideEndLabels(options) && input.mergeEndValues && label.valueText && !label.shared
       ? Math.max(label.w, measure(`${label.text} `, labelFont).width + measure(label.valueText, labelFont).width) : label.w)) + endSwatchReserve + columnGap + 8;
   const economy = !isBump && seeds.length > 0 ? { strategy: chosen.strategy, maxGutterFraction: ENDPOINT_LABEL_GUTTER_MAX_FRACTION, requiredGutter: nameGutter, appliedGutter: nameGutter, effectiveRequiredGutter: nameGutter * effectiveScale, effectiveBudget, overflow: nameGutter > svgBudget + 1e-9 } : undefined;
-  return { inlineNamesEnabled: input.names === 'inline', endContent, nameBlock, endLabels, endSwatchReserve, endpointSwatches, endReserve, columnGap, ...(economy ? { endpointLabelEconomy: economy } : {}), ...(nearZero.tail ? { nearZeroTail: nearZero.tail } : {}), endpointLegendFallback: economy?.strategy === 'legend' || economy?.strategy === 'short'
+  return { inlineNamesEnabled: input.names === 'inline', endContent, nameBlock, endLabels, endSwatchReserve, endpointSwatches, endReserve, columnGap, textBudget, ...(economy ? { endpointLabelEconomy: economy } : {}), ...(nearZero.tail ? { nearZeroTail: nearZero.tail } : {}), endpointLegendFallback: economy?.strategy === 'legend' || economy?.strategy === 'short'
     // A dropped zero group takes its names off the canvas. Without the legend
     // an exhibit made only of those series draws anonymous lines: the footnote
     // states a count and a value and nothing says which line is which. Only
     // 'auto' falls back: an explicit 'none' or position is the author's call.
     || (nearZero.tail?.mode === 'dropped' && legendPosition === undefined) };
+}
+
+/** Reference names use the space left after data names, values and annotations have been placed. */
+export function referenceNameRequests(
+  env: LineEnv, domain: LineDomain, area: LineArea, reserves: LineReserves, text: LineText,
+  ends: ReadonlyMap<NormSer, Point>, placed: PlacedLabel[], nodes: SceneNode[],
+): LabelRequest[] {
+  const { options } = domain;
+  const { endpoint } = reserves;
+  if (env.isBump || domain.isStacked || domain.fan || panelTypeClass(options) !== undefined
+    || usesEndLabelKey(options) || endpoint.endpointLegendFallback || domain.labelModes.series === 'key'
+    || (options.endLabelPlacement ?? env.theme.labels?.endLabelPlacement) === 'gutter') return [];
+  // A lone data line leaves its name to the title. An added reference still needs its own name.
+  const modes = lineLabelModes(options, domain.variant, domain.drawnSeries.length + ends.size);
+  if (modes.series !== 'end') return [];
+
+  const { plot } = area;
+  const { nameFont, labelH } = text;
+  const lastX = area.xOf(domain.cats.length - 1);
+  const columnX = (reserves.namesAtPlotEdge ? plot.x + plot.w : lastX) + endpoint.columnGap + endpoint.endSwatchReserve;
+  const references = [...ends];
+  const visible = placed.filter(label => !label.hidden);
+  // Gridlines do not reserve space in the first pass. A new name must leave them and every leader whole.
+  const rules = nodes.filter(node => node.t === 'line');
+  const leaders = visible.flatMap(label => label.leader ? leaderPieces(label.leader.d, 64) : []);
+  const canvas = { x: 0, y: 0, w: env.size.width, h: env.size.height };
+  const requests: LabelRequest[] = [];
+  for (const [series, { x, y }] of references) {
+    const id = `series:${series.id}`;
+    if (options.labelOffsets?.[id] || options.labelPlacements?.[id] || (modes.only && !modes.only.has(series.id))
+      || area.frame.legend?.items.some(item => item.id === series.id)
+      || placed.some(label => label.id === id || (!label.hidden && label.kind === 'series' && label.owner.seriesId === series.id))
+      || references.some(([other, end]) => other !== series && Math.hypot(end.x - x, end.y - y) <= labelH)) continue;
+    const block = wrapEndpointLabel(series.label, nameFont, endpoint.textBudget, env.measure);
+    if (!block?.lines.length || block.w > endpoint.textBudget) continue;
+    const w = block.w;
+    const h = block.lines.length * labelH;
+    const candidates = [
+      { slot: 'besideEnd', rect: { x: x >= lastX - 0.5 && (!reserves.namesAtPlotEdge || x >= plot.x + plot.w - 0.5) ? columnX : x + 8, y: y - h / 2, w, h }, penalty: 0 },
+      { slot: 'aboveEnd', rect: { x: x - w, y: y - h - 6, w, h }, penalty: 1 },
+      { slot: 'belowEnd', rect: { x: x - w, y: y + 6, w, h }, penalty: 2 },
+    ].filter(({ rect, penalty }) => rectContains(canvas, rect, 1) && (!penalty || rectContains(plot, rect))
+      && !visible.some(label => rectsOverlap(label.rect, rect, label.kind === 'point' ? 8 : 2))
+      && !leaders.some(([a, b]) => segmentHitsRect(a, b, rect, 2))
+      && !rules.some(rule => segmentHitsRect({ x: rule.x1, y: rule.y1 }, { x: rule.x2, y: rule.y2 }, rect, rule.width / 2 + 1)));
+    // The series owns the printed name. During the solve even its own stroke must block a seat.
+    if (candidates.length) requests.push({ id, kind: 'series', owner: {}, printsFor: [], text: series.label, lines: block.lines,
+      font: nameFont, typeRole: 'label', priority: NAME_PRIORITY, noLeader: true,
+      candidates: candidates.map(seat => ({ ...seat, keepOffLines: true })) });
+  }
+  return requests;
 }
 
 /**

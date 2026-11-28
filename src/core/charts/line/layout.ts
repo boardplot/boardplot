@@ -56,7 +56,7 @@ import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
 import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from '../../grid/lineKeyTrial';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, PLOT_END_AIR, bumpNamesMuted, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, PLOT_END_AIR, bumpNamesMuted, lineToDateIds, pointLabelsFollowShape, referenceNameRequests, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
@@ -1231,6 +1231,23 @@ function layoutLinePass(
       })
     : undefined;
   if (lane) pushAll(warnings, lane.warnings);
+  const referenceEnds = scene.rendered.referenceEnds;
+  if (referenceEnds?.size) {
+    const requests = referenceNameRequests(env, domain, area, reserves, text, referenceEnds,
+      [...solved.placed, ...annResult.labels, ...(lane?.labels ?? [])], [...scene.nodes, ...annResult.nodes, ...(lane?.behind ?? []), ...(lane?.nodes ?? [])]);
+    if (requests.length) {
+      const names = solveLabels(requests, occupied, labelCtx(theme, size, {}, { plot: area.plot, measure }));
+      for (const label of names.placed) {
+        if (label.hidden) continue;
+        const series = domain.refSeries.find(s => label.id === `series:${s.id}`)!;
+        label.owner.seriesId = series.id;
+        label.ink = seriesTextPaint(paints.ref(series));
+        label.align = label.slot === 'besideEnd' ? 'start' : 'end';
+        solved.placed.push(label);
+      }
+      pushAll(solved.decisions, names.decisions.filter(decision => decision.chose !== 'hidden'));
+    }
+  }
   const geometry = assembleLineGeometry({
     env, domain, area, text, reserves, scene, plan, solved, annResult, ratioTierResult, occupied, warnings, lane, areaFill: paints.areaFill, seriesPaint: paints.keyPaint, pointPaint: paints.point,
   });
@@ -1256,7 +1273,9 @@ function layoutLinePass(
     if (geometry.labels.some(label => !visible(label))) {
       const centred = layoutLinePass(data, { ...options, [POINT_LABEL_CENTERED_ROOM]: true } as LineOptions);
       const printed = new Map(geometry.labels.filter(visible).map(label => [label.id, label.text] as const));
-      if (!centred.labels.filter(visible).every(label => printed.get(label.id) === label.text)) return centred;
+      // A free reference name in the trial cannot change which data drawing wins.
+      if (centred.labels.some(label => visible(label) && printed.get(label.id) !== label.text
+        && !(label.kind === 'series' && domain.refSeries.some(s => label.owner.seriesId === s.id)))) return centred;
     }
   }
   return geometry;
