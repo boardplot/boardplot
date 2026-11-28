@@ -34,6 +34,7 @@ import { censusCase, EXCEPTIONS_FILE, failureLine, unexcepted } from './number-c
 
 const WIDTHS = [960, 720, 480, 400, 320];
 const CARD_WIDTHS = [480, 400, 320];
+const NARROW_CARD_WIDTHS = [280, 240, 200];
 const THEMES = ['authored', 'notation'];
 // The number census reads the authored-theme renders in English and one more render per width in German
 // marks (',' and '.'); the scorecard's own German pass keeps English marks, so it reads no German figure.
@@ -878,6 +879,8 @@ export function scorecard(shard = 0, shards = 1, only = undefined) {
     if (outcomeShard({ fixture: `${type}/${fixture.id}`, setting: 'default' }, shards) !== shard) continue;
     run(type, fixture, fixture.options ?? {}, theme, 'default', WIDTHS);
     run(type, fixture, fixture.options ?? {}, theme, 'fixed=400x300', [400], 300);
+    // Line, bar and waterfall draw down to 200 px in a dashboard card.
+    if (['line', 'bar', 'waterfall'].includes(type)) run(type, fixture, fixture.options ?? {}, theme, 'fixed=narrow-card', NARROW_CARD_WIDTHS, 300);
   }
   // Problem settings whose engine patch the scorecard applies (R4): one width unless an entry names its own, as the patch does not depend on it.
   for (const entry of REPAIRS) {
@@ -905,7 +908,7 @@ export function scorecard(shard = 0, shards = 1, only = undefined) {
 // Keep a fixture's adjacent widths together for S2. Stable ownership also detects
 // a removed fixture or setting when checking only one CI shard.
 export function outcomeShard(item, shards) {
-  const group = item.setting === 'default' || item.setting === 'fixed=400x300' ? 'fixture' : item.setting.split(':')[0];
+  const group = item.setting === 'default' || item.setting === 'fixed=400x300' || item.setting === 'fixed=narrow-card' ? 'fixture' : item.setting.split(':')[0];
   return createHash('sha256').update(`${item.fixture}/${group}`).digest().readUInt32BE(0) % shards;
 }
 
@@ -952,7 +955,7 @@ const caseKey = (item) => JSON.stringify([item.rule, item.fixture, item.width, i
 export function classify(result, known) {
   const keys = new Set();
   for (const item of known) {
-    if (RULES[item.rule] !== 3 || !item.fixture || !WIDTHS.includes(item.width) || !THEMES.includes(item.theme) || !item.setting || !item.unit || !item.reason) throw new Error('Malformed known severity-3 case');
+    if (RULES[item.rule] !== 3 || !item.fixture || !(WIDTHS.includes(item.width) || NARROW_CARD_WIDTHS.includes(item.width)) || !THEMES.includes(item.theme) || !item.setting || !item.unit || !item.reason) throw new Error('Malformed known severity-3 case');
     if (keys.has(caseKey(item))) throw new Error(`Duplicate known case: ${caseKey(item)}`);
     keys.add(caseKey(item));
   }

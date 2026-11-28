@@ -13,9 +13,11 @@ import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
 import { NormalizeError } from './normalize/shared';
-import { scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
+import { narrowIsOff, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx, typeClassCap, type TargetTypeClass } from './target';
+export { typeClassCap, withTypeClassCap } from './target';
 import type { RenderTarget } from './types/options';
 import { AUTHORED_TYPE_SIZE, hasAuthoredTypeSize, type FontSpec } from './text';
+import { themeForDensity } from './themeDensity';
 import { pieRamp, quietestTintCap, roleSteps } from './pieRamp';
 import { FILL_SEPARATION_FLOOR, MARK_CONTRAST_FLOOR, TEXT_CONTRAST_FLOOR, oklabLightness, PALETTE_CVD_FLOOR, PALETTE_NORMAL_FLOOR, PALETTE_TRITAN_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 import { registerDeferredLoader, requireDeferred } from './deferred';
@@ -110,40 +112,21 @@ function canonicalType(family: string): Theme['type'] {
 /** Width classes: W-S 480–719, W-M 720–1079 (canonical), W-L ≥ 1080. */
 export type TypeWidthClass = 'S' | 'M' | 'L';
 
-/**
- * The width class a canvas width selects for the type scale. Widths under
- * the W-S band (<480, too narrow for full charts; the
- * card families that legitimately live there are exempt at their call sites)
- * clamp to the smallest class rather than inventing a sub-S scale.
- */
+/** The shared width classes. The dashboard's XS column takes the place of S below 400 px. */
 export function typeWidthClass(width: number): TypeWidthClass {
   const cls: TypeWidthClass = width >= WIDE_CANVAS_MIN_WIDTH ? 'L' : width >= 720 ? 'M' : 'S';
+  const classCap = typeClassCap();
+  if (classCap === 'XS') return 'S';
   return classCap !== undefined && CLASS_ORDER.indexOf(cls) > CLASS_ORDER.indexOf(classCap) ? classCap : cls;
 }
 
 const CLASS_ORDER: readonly TypeWidthClass[] = ['S', 'M', 'L'];
-let classCap: TypeWidthClass | undefined;
-
-/** The largest width class `typeWidthClass` returns while `withTypeClassCap` runs; undefined outside it. */
-export function typeClassCap(): TypeWidthClass | undefined {
-  return classCap;
-}
-
-/**
- * Runs a layout whose canvases take at most the width class `cap`: a chart refused for width in the
- * class its width selects draws in the next smaller one (request.ts, smallerClass).
- */
-export function withTypeClassCap<T>(cap: TypeWidthClass, run: () => T): T {
-  const outer = classCap;
-  classCap = cap;
-  try { return run(); } finally { classCap = outer; }
-}
 
 let marginBelow = false;
 
 /** The type class cap and the canvas margin step of the running layout: the part of a layout cache key they set. */
 export function layoutStepKey(): string {
-  return (classCap ?? '') + (marginBelow ? '<' : '');
+  return (typeClassCap() ?? '') + (marginBelow ? '<' : '') + (narrowIsOff() ? '!' : '');
 }
 
 /**
@@ -172,6 +155,7 @@ export function inMarginStepBand(width: number): boolean {
  * class, so a capped layout takes the steps of the width just under the step; outside a cap it is the width.
  */
 export function classStepWidth(width: number): number {
+  const classCap = typeClassCap();
   return classCap === 'S' ? Math.min(width, 719) : classCap === 'M' ? Math.min(width, WIDE_CANVAS_MIN_WIDTH - 1) : width;
 }
 
@@ -260,8 +244,9 @@ export function secondaryFont(theme: Theme): FontSpec {
  * parent canvas class through `options.typeClass`, because a panel is not a
  * canvas (the same boundary the aspect lints draw).
  */
-export function themeForWidth(theme: Theme, widthOrClass: number | TypeWidthClass): Theme {
-  const cls = typeof widthOrClass === 'number' ? typeWidthClass(widthOrClass) : widthOrClass;
+export function themeForWidth(theme: Theme, widthOrClass: number | TargetTypeClass): Theme {
+  if (widthOrClass === 'XS') theme = dashboardCardTheme(theme);
+  const cls = typeof widthOrClass === 'number' ? typeWidthClass(widthOrClass) : widthOrClass === 'XS' ? 'S' : widthOrClass;
   const column = cls === 'M' ? undefined : theme.type.scale?.[cls];
   const roles: Partial<Record<TypeRoleName, FontSpec>> = {};
   for (const role of TYPE_ROLE_NAMES) {
@@ -761,16 +746,16 @@ function own(theme: Theme): Theme {
 }
 
 /** Replace the six role sizes and their S/L steps; keep all other type tokens. */
-export function typeForTarget(base: Theme['type'], target: RenderTarget): Theme['type'] {
-  const sizes = targetTypeSizesPx(target, 'M');
+export function typeForTarget(base: Theme['type'], target: RenderTarget, narrow = false): Theme['type'] {
+  const sizes = targetTypeSizesPx(target, narrow ? 'XS' : 'M');
   const roles = Object.fromEntries(TYPE_ROLE_NAMES.map(role => [role, {
     ...(role === 'micro' ? base.micro ?? { family: base.family, weight: 400, lineHeight: 1.2 } : role === 'secondary' ? base.secondary ?? base.axis : base[role]),
     size: sizes[role],
   }]));
-  return { ...base, ...roles, scale: { S: targetTypeSizesPx(target, 'S'), L: targetTypeSizesPx(target, 'L') } };
+  return { ...base, ...roles, scale: { S: narrow ? sizes : targetTypeSizesPx(target, 'S'), L: targetTypeSizesPx(target, 'L') } };
 }
 
-const targetThemes = new WeakMap<Theme, Map<RenderTarget, Theme>>();
+const targetThemes = new WeakMap<Theme, Map<RenderTarget | 'XS' | 'dashboard-preset-XS', Theme>>();
 /**
  * Preset appearance, target sizes, authored overrides, then `textScale`
  * (custom themes stay authored, and are scaled too). A resolved theme that
@@ -780,12 +765,39 @@ const targetThemes = new WeakMap<Theme, Map<RenderTarget, Theme>>();
  */
 export function resolveTargetTheme(ref: ThemeRef | undefined, target: RenderTarget, textScale = 1, textSize?: number): Theme {
   const theme = targetTheme(ref, target);
-  if (typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides)) return theme;
-  if (textSize !== undefined) {
-    const pinned = pinnedTheme(theme);
-    return scaledTextTheme(pinned, textSize / pinned.type.label.size, target);
+  const resolved = typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides);
+  const scaled = (base: Theme, narrow = false): Theme => {
+    if (textSize !== undefined) {
+      const pinned = pinnedTheme(base);
+      return scaledTextTheme(pinned, textSize / pinned.type.label.size, target, narrow);
+    }
+    return textScale === 1 ? base : scaledTextTheme(base, textScale, target, narrow);
+  };
+  const normal = resolved ? theme : scaled(theme);
+  if (target === 'dashboard' && !targetThemes.get(normal)?.has('XS')) {
+    // Keep the dashboard column with its resolved theme: a size probe can cross 400 px
+    // after the authored overrides and textScale have already been applied.
+    const inherited = typeof ref === 'object' && ref.overrides ? targetThemes.get(ref.overrides as Theme)?.get('XS') : undefined;
+    withDashboardCardTheme(normal, inherited ?? (resolved ? theme : scaled(targetTheme(ref, target, true, textSize !== undefined), true)));
   }
-  return textScale === 1 ? theme : scaledTextTheme(theme, textScale, target);
+  return normal;
+}
+
+/** The tight band's pads and tier gaps for a narrow dashboard card. Its margins, gaps and legend row are the class's own (spaceTokens). */
+function tightSpace(base: Theme): Theme['space'] {
+  const { tierGap, facetGap, tierHeadingGap, labelPad } = themeForDensity(base, 'compact', 320).space;
+  return { ...base.space, tierGap, facetGap, labelPad, ...(tierHeadingGap !== undefined ? { tierHeadingGap } : {}) };
+}
+
+export function dashboardCardTheme(theme: Theme): Theme {
+  return targetThemes.get(theme)?.get('XS') ?? theme;
+}
+
+export function withDashboardCardTheme(theme: Theme, card: Theme): Theme {
+  const variants = targetThemes.get(theme) ?? new Map();
+  variants.set('XS', card);
+  targetThemes.set(theme, variants);
+  return theme;
 }
 
 const pinnedThemes = new WeakMap<Theme, Theme>();
@@ -819,12 +831,12 @@ const scaledThemes = new WeakMap<Theme, Map<string, Theme>>();
  * floor of each role (scaleTextAtFloor). Cached per theme, scale and target, so
  * one chart keeps one theme object (React snapshot keys read it).
  */
-function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget): Theme {
+function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget, narrow = false): Theme {
   let byScale = scaledThemes.get(theme);
   if (!byScale) { byScale = new Map(); scaledThemes.set(theme, byScale); }
-  const known = byScale.get(`${target}:${textScale}`);
+  const known = byScale.get(`${target}:${textScale}${narrow ? ':XS' : ''}`);
   if (known) return known;
-  const floors = targetFloorsPx(target);
+  const floors = targetFloorsPx(target, 1, narrow ? 'XS' : 'M');
   const px = (size: number, floor: number): number => scaleTextAtFloor(size, textScale, floor);
   const type = theme.type;
   const roles = Object.fromEntries(TYPE_ROLE_NAMES.flatMap(role => {
@@ -849,7 +861,7 @@ function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget):
       ...(table.section ? { section: face(table.section, floors.label) } : {}),
     } } : {}),
   });
-  byScale.set(`${target}:${textScale}`, scaled);
+  byScale.set(`${target}:${textScale}${narrow ? ':XS' : ''}`, scaled);
   return scaled;
 }
 
@@ -858,7 +870,7 @@ function currentPreset(name: string): string {
   return !Object.hasOwn(themes, name) && Object.hasOwn(RETIRED_PRESETS, name) ? RETIRED_PRESETS[name]!.to : name;
 }
 
-function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
+function targetTheme(ref: ThemeRef | undefined, target: RenderTarget, narrow = false, pinned = false): Theme {
   const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET);
   // A registered/uploaded complete theme owns its sizes. Internal resolved themes
   // also travel as full overrides and must not receive the target table twice.
@@ -868,8 +880,14 @@ function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
   const base = resolveTheme(preset);
   let byTarget = targetThemes.get(base);
   if (!byTarget) { byTarget = new Map(); targetThemes.set(base, byTarget); }
-  let sized = byTarget.get(target);
-  if (!sized) { sized = own({ ...base, type: typeForTarget(base.type, target) }); byTarget.set(target, sized); }
+  const key = narrow ? 'dashboard-preset-XS' : target;
+  let sized = byTarget.get(key);
+  if (!sized) {
+    sized = own({ ...base, type: typeForTarget(base.type, target, narrow),
+      ...(narrow ? { space: tightSpace(base) } : {}) });
+    byTarget.set(key, sized);
+  }
+  if (pinned) sized = own({ ...sized, type: typeForTarget(base.type, target) });
   return typeof ref === 'object' && ref.overrides ? validatedOverride(sized, ref.overrides, preset) : sized;
 }
 
@@ -1692,6 +1710,10 @@ const CANVAS_MARGIN_STEPS: readonly { minWidth: number; margin: Margin }[] = [
 
 /** The default (unauthored) canvas margin at a canvas width, or of the step under it in `withMarginStepBelow`. */
 function defaultCanvasMargin(width: number): Margin {
+  if (typeClassCap() === 'XS') {
+    const side = width < 316 ? 10 : 12;
+    return { top: 12, right: side, bottom: 8, left: side };
+  }
   if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return SPACE_CANVAS_WIDE;
   for (const [index, step] of CANVAS_MARGIN_STEPS.entries()) {
     if (width >= step.minWidth) return (marginBelow && inMarginStepBand(width) ? CANVAS_MARGIN_STEPS[index + 1]?.margin : undefined) ?? step.margin;
@@ -1705,29 +1727,29 @@ export function spaceTokens(theme: Theme, width: number): SpaceTokens {
   const margin = wide ? canvas?.wide : canvas?.base;
   const fallback = defaultCanvasMargin(width);
   const gap = theme.space.gap;
+  // A narrow dashboard card takes the spacing of the tight band, so a card that drew there still fits.
+  const xs = typeClassCap() === 'XS';
   return {
     margin: {
       top: margin?.top ?? fallback.top, right: margin?.right ?? fallback.right,
       bottom: margin?.bottom ?? fallback.bottom, left: margin?.left ?? fallback.left,
     },
-    gapTitleSubtitle: gap?.titleSubtitle ?? 4,
+    gapTitleSubtitle: gap?.titleSubtitle ?? (xs ? 3 : 4),
     // 8 below W-L: the first plot element sits about 16-18 px under the last
     // header baseline; 12 would leave charts about 5 px lower.
-    gapSubtitlePlot: (wide ? gap?.subtitlePlotWide : gap?.subtitlePlot) ?? (wide ? 14 : 8),
-    gapAxisFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : 12),
+    gapSubtitlePlot: (wide ? gap?.subtitlePlotWide : gap?.subtitlePlot) ?? (wide ? 14 : xs ? 7 : 8),
+    gapAxisFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : xs ? 10 : 12),
     // A key row under the plot sits 10 px over the footer below W-L (key
     // baseline to source baseline 25.6-25.9 px). An authored axisFootnote gap still sets both.
     gapKeyFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : 10),
-    gapFootnoteSource: gap?.footnoteSource ?? 4,
-    gapLegend: gap?.legend ?? 8,
-    legendRowH: theme.space.legendRowH ?? 18,
+    gapFootnoteSource: gap?.footnoteSource ?? (xs ? 3 : 4),
+    gapLegend: gap?.legend ?? (xs ? 7 : 8),
+    legendRowH: theme.space.legendRowH ?? (xs ? 15 : 18),
   };
 }
 
 /**
- * The canvas margin for a chart at a given width — the single source for
- * per-chart margins. Card-class charts (kpi, bullet) do NOT call this:
- * they are exempt from the width classes that key the token.
+ * The canvas margin at a given width. KPI and bullet use this margin on narrow dashboards.
  */
 export function canvasMargin(theme: Theme, width: number): Margin {
   return spaceTokens(theme, width).margin;

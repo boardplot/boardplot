@@ -1,4 +1,4 @@
-import { spaceTokens, WIDE_CANVAS_MIN_WIDTH, type SpaceTokens } from './theme';
+import { dashboardCardTheme, spaceTokens, WIDE_CANVAS_MIN_WIDTH, withDashboardCardTheme, type SpaceTokens } from './theme';
 import type { Margin } from './geometry';
 import type { Theme } from './types/theme';
 
@@ -48,7 +48,7 @@ export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact'
   // the margin of its own step; without one the 960 px step is the base.
   const base = spaceTokens(theme, width !== undefined && width < WIDE_CANVAS_MIN_WIDTH ? width : WIDE_CANVAS_MIN_WIDTH - 1);
   const wide = spaceTokens(theme, WIDE_CANVAS_MIN_WIDTH);
-  return {
+  const dense = {
     ...theme,
     space: {
       tierGap: scaleSpacePx(theme.space.tierGap, TIER_FACET.min, TIER_FACET.max),
@@ -62,4 +62,7 @@ export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact'
       ...(theme.space.barRow ? { barRow: theme.space.barRow } : {}),
     },
   };
+  // The narrow dashboard card keeps its own sizes under compact density.
+  const card = dashboardCardTheme(theme);
+  return card === theme ? dense : withDashboardCardTheme(dense, card);
 }

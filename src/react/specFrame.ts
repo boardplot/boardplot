@@ -1,11 +1,11 @@
-import { DEFAULT_TARGET, resolveTargetSize, TARGET_TYPE_TABLES } from '../core/target';
+import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, TARGET_TYPE_TABLES } from '../core/target';
 import type { BaseOptions, LegendOptions, RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { BoardplotChartProps } from './spec';
 import { useBoardplotTheme } from './themeContext';
 import { chartSizing, contentSized, hostlessHeight, rowSizing } from '../core/sizing';
 import { textScaleOf, textSizeOf } from '../core/typeFloors';
-import { canvasMargin, resolveTargetTheme, themeForWidth } from '../core/theme';
+import { canvasMargin, dashboardCardTheme, resolveTargetTheme, themeForWidth } from '../core/theme';
 import { themeForDensity } from '../core/themeDensity';
 import { frameTextOptions, normalizeLegendOption, solveFrame } from '../core/frame';
 import { defaultMeasurer } from '../core/text';
@@ -38,7 +38,9 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
         const textScale = textScaleOf(chartText);
         const textSize = textSizeOf(chartText);
         // Keep the first frame independent of lazy validation. Read only bounded, plain geometry data.
-        const tokens = themeForWidth(themeForDensity(resolveTargetTheme(undefined, target as RenderTarget, textScale, textSize), settings.density, size.width), size.width);
+        const targetTheme = resolveTargetTheme(undefined, target as RenderTarget, textScale, textSize);
+        const tokens = themeForWidth(narrowDashboard(target as RenderTarget, size.width, type) ? dashboardCardTheme(targetTheme)
+          : themeForDensity(targetTheme, settings.density, size.width), size.width);
         const authored = record(theme);
         const barRow = record(record(record(authored.overrides ?? authored).space).barRow);
         const series = Array.isArray(data.series) ? data.series : [];

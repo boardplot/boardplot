@@ -1,8 +1,8 @@
-import { bandedCategoryStyle, categoryHeightLimit, withCategoryTitle } from '../../label/categoryRow';
+import { bandedCategoryStyle, calendarLike, categoryHeightLimit, withCategoryTitle } from '../../label/categoryRow';
 import { hiddenKey } from '../../hiddenSeries';
 import { chartString } from '../../strings/column';
 import { stringFields } from '../../strings';
-import { DEFAULT_TARGET } from '../../target';
+import { DEFAULT_TARGET, typeClassCap } from '../../target';
 /**
  * Column phase 1, frame and scale: the legend, the margins and the frame,
  * then the reserves around the plot, the band, the category row and the
@@ -752,6 +752,8 @@ function columnBand(
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
       ...ticked?.plan,
+      ...(typeClassCap() === 'XS' && !ticked && calendarLike(row.labels)
+        ? { pinned: cats.map((_, i) => i === cats.length - 1 || row.pinned?.[i] === true) } : {}),
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
       ...(rotate === false ? { rotate } : {}),

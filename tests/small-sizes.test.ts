@@ -1701,6 +1701,40 @@ it('draws a KPI, a pie and a column below 280 px when their content fits, and re
   expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
 });
 
+// Line, bar and waterfall in a dashboard card drew a size message under 280 px; they now draw down to 200 px and refuse below it.
+it('draws a line, bar and waterfall at 200 px in a dashboard card and refuses them below it', () => {
+  const data = { categories: ['Jan', 'Feb', 'Mar'], series: [{ id: 's', label: 'Sales', values: [10, 12, 15] }] };
+  for (const type of ['line', 'bar', 'waterfall']) {
+    const at = (width: number, target = 'dashboard') => layoutResolvedRequest(resolveChartRequest({ type, data: type === 'waterfall' ? { items: [{ id: 'a', label: 'Start', type: 'total', value: 10 }, { id: 'b', label: 'Gain', value: 5 }, { id: 'c', label: 'End', type: 'total' }] } : data, options: { target, size: { width, height: 240 } } } as never)) as Geometry;
+    expect(at(200).refused, type).toBeFalsy();
+    expect(at(199).refused, type).toBe(true);
+    expect(at(200, 'report').refused, type).toBe(true);
+  }
+});
+
+// A crowded quarter row must keep the newest period beside its value and keep value ticks at the smaller type size.
+it('keeps the latest quarter on a narrow dashboard column', () => {
+  const categories = Array.from({ length: 12 }, (_, i) => ({ id: 'q' + i, label: `Q${i % 4 + 1} ${23 + Math.floor(i / 4)}` }));
+  const data = { categories, series: [{ id: 's', label: 'Sales', values: [111, 114, 118, 117, 128, 131, 138, 139, 141, 146, 145, 156] }] };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: {
+    target: 'dashboard', size: { width: 300, height: 240 }, valueAxis: { show: true },
+  } })) as Geometry;
+  const drawn = geometry.scene.filter(node => node.t === 'text' && node.opacity !== 0);
+  expect(drawn).toContainEqual(expect.objectContaining({ part: 'category', lines: ['Q4 25'], font: expect.objectContaining({ size: 11 }) }));
+  expect(drawn).toContainEqual(expect.objectContaining({ part: 'point', lines: ['156'], font: expect.objectContaining({ size: 11 }) }));
+  expect(drawn).toContainEqual(expect.objectContaining({ part: 'tick', font: expect.objectContaining({ size: 11 }) }));
+  // The names carry data, so they keep the ink of the values and not the muted ink of the ticks.
+  const ink = (part: string) => (drawn.find(node => node.part === part) as { fill?: unknown } | undefined)?.fill;
+  expect(ink('category')).toEqual(ink('point'));
+});
+
+// A card that main draws must not be refused by the narrow sizes: this stacked area drew at 320 by 270 px and needed 272 px with the first version.
+it('draws a stacked area from the origin at 320 by 270 px in a dashboard card', () => {
+  const fixture = getFixtures('line').find(f => f.id === 'stacked-area-from-origin')!;
+  const card = { type: 'line', data: fixture.data, options: { ...fixture.options, target: 'dashboard', size: { width: 320, height: 270 } } };
+  expect((layoutResolvedRequest(resolveChartRequest(card as never)) as Geometry).refused).toBeFalsy();
+});
+
 describe('the type class step at 720 px', () => {
   const status = (width: number) => ({
     type: 'status', theme: 'notation',

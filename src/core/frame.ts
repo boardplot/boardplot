@@ -18,7 +18,7 @@ import type { Margin, Rect, Size } from './geometry';
 import { classStepWidth, resolveTargetTheme, panelTypeClass, smallestTitleSize, spaceTokens, emphasisWeight, secondaryType, strokeToken, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { formatScenarios, resolveSubtitle } from './normalize/shared';
 import type { TextMeasurer } from './text';
-import { DEFAULT_TARGET, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
+import { DEFAULT_TARGET, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx, typeClassCap } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { fitText } from './label/fitText';
 import { footnoteMark } from './footnoteMark';
@@ -1672,6 +1672,7 @@ function textForFrame(input: FrameInput, footW: number, footFont: FontSpec): Fra
 }
 
 export function solveFrame(input: FrameInput, occupied: FrameClaims, measurements?: FrameWidthMeasurements): FrameResult {
+  if (input.cardGaps && typeClassCap() === 'XS') input = { ...input, cardGaps: false };
   const destination = occupied;
   const pendingClaims = input.autoHeight ? [] as OccupiedClaim[] : undefined;
   if (pendingClaims) occupied = collectFrameClaims(pendingClaims);
@@ -1964,9 +1965,9 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims, measurement
     // footnote-role key (compact, automatic legends) keeps its size.
     const footKey = input.legendFont === 'footnote' || (input.legendFont === 'compact' && theme.type.footnote.size <= secondaryType(theme).size);
     const keyCap = footKey ? Infinity
-      : scaleTextAtFloor(targetTypeSizesPx(input.target ?? DEFAULT_TARGET, 'S').axis, input.textScale ?? 1, targetFloorsPx(input.target ?? DEFAULT_TARGET).secondary);
+      : scaleTextAtFloor(targetTypeSizesPx(input.target ?? DEFAULT_TARGET, typeClassCap() === 'XS' ? 'XS' : 'S').axis, input.textScale ?? 1, targetFloorsPx(input.target ?? DEFAULT_TARGET).secondary);
     // Type steps: the key text takes the secondary step, 12 px from 720 px and 11 px below.
-    const keyRole = footKey ? theme.type.footnote : secondaryType(theme);
+    const keyRole = footKey ? theme.type.footnote : typeClassCap() === 'XS' ? theme.type.axis : secondaryType(theme);
     const font = withFamily(!hasAuthoredTypeSize(keyRole) && keyRole.size > keyCap ? { ...keyRole, size: keyCap } : keyRole);
     const lineH = Math.max(SWATCH, font.size * (font.lineHeight ?? 1.2));
     const typeRole = footKey ? 'footnote' : 'secondary';

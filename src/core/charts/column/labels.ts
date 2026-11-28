@@ -272,7 +272,7 @@ function pointRequests(
     const size = normalSizes[i]!;
     const above = place.v >= 0;
     return { x: place.rect.x + place.rect.w / 2 - size.width / 2, y: above ? place.rect.y - size.height - 4 : place.rect.y + place.rect.h + 4, w: size.width, h: size.height };
-  }));
+  }), domain.size.width, labelFont.size);
   const steppedForGap = !groupedPolicy.compact && crowded && compactLabelFont.size < labelFont.size;
   const pointFont = groupedPolicy.compact || steppedForGap ? compactLabelFont : labelFont;
   if (groupedPolicy.compact || steppedForGap) {
@@ -720,11 +720,11 @@ export function planColumnTotals(
     const edgeY = above ? y(posTopP[ci]!) : y(negBotP[ci]!);
     return { x: band.center(ci) - size.width / 2, y: above ? edgeY - size.height - 4 : edgeY + 4, w: size.width, h: size.height };
   });
-  const rowFont = valueRowCrowded(seats(strongFont)) ? stepDownFont(domain.theme, strongFont, 'label', domain.options.target, textScaleOf(domain.options)) : undefined;
+  const rowFont = valueRowCrowded(seats(strongFont), domain.size.width, strongFont.size) ? stepDownFont(domain.theme, strongFont, 'label', domain.options.target, textScaleOf(domain.options)) : undefined;
   const totalFont = rowFont ?? strongFont;
   // A stack still crowded at the step: every second total prints, counted back from
   // the latest column; the notes list names the others.
-  const thinned = domain.dataSeries.length > 1 && valueRowCrowded(seats(totalFont));
+  const thinned = domain.dataSeries.length > 1 && valueRowCrowded(seats(totalFont), domain.size.width, totalFont.size);
   const skips = (ci: number) => thinned && !totals[ci]?.net && ci % 2 !== (cats.length - 1) % 2 && !highlights.has(cats[ci]!.id);
   const idAt = (ci: number) => `grandTotal:${cats[ci]!.id}`;
   const latest = thinned ? totals.reduce((last, total, ci) => total === null ? last : ci, -1) : -1;

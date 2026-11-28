@@ -3,7 +3,7 @@
 import { GRAMMAR_STROKE } from '../theme';
 import type { LintWarning, TypographyMetadata, TypographyRole } from '../types/scene';
 import type { RenderTarget } from '../types/options';
-import { DEFAULT_TARGET, targetFloorsPx } from '../target';
+import { DEFAULT_TARGET, narrowDashboard, targetFloorsPx, type TargetTypeClass } from '../target';
 import type { Size } from '../geometry';
 import { compareText, type FontSpec } from '../text';
 
@@ -71,7 +71,7 @@ interface TypographyGeometry {
   scene: readonly unknown[];
   marks?: unknown;
   warnings?: readonly LintWarning[];
-  presentation?: { target: RenderTarget };
+  presentation?: { target: RenderTarget; typeClass?: TargetTypeClass };
 }
 
 /** Declared CSS width or a React host observation. Observations do not change
@@ -96,7 +96,7 @@ function targetTypeLints(
   target: RenderTarget,
   observedWidth?: number,
 ): LintWarning[] {
-  const roleFloors = targetFloorsPx(target);
+  const roleFloors = targetFloorsPx(target, 1, geo.presentation?.typeClass ?? (narrowDashboard(target, geo.size.width, type) ? 'XS' : 'S'));
   // A table head is held to the table head floor (two px under the body), as presentationInfo holds it.
   const headFloor = tableHeadFloorPx(target);
   const emitted = new Map<string, { role: TypographyRole; size: number; floor: number; count: number }>();

@@ -26,7 +26,7 @@
  * warn lint so an agent can pick a wider canvas or a horizontal chart.
  */
 
-import { DEFAULT_TARGET, scaleTextPx, targetFloorsPx } from '../target';
+import { DEFAULT_TARGET, scaleTextPx, targetFloorsPx, typeClassCap } from '../target';
 import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { BaseOptions, RenderTarget } from '../types/options';
 import { textScaleOf } from '../typeFloors';
@@ -517,6 +517,7 @@ function strideAfterFontLadder<T>(
     }
     if (!fromEnd) yieldToPins(keep);
     const shown = keep.filter(Boolean).length;
+    if (fromEnd && typeClassCap() === 'XS' && requested === undefined && shown < 2) return undefined;
     // A thinned date row keeps a calm rhythm: the first round stride that fits
     // with at most DATE_ROW_LABELS names, every tenth year rather than every fifth.
     if (dateStride && requested !== undefined && shown > DATE_ROW_LABELS && candidates.some((next) => next > k)) return undefined;
@@ -562,13 +563,13 @@ function strideAfterFontLadder<T>(
       return found;
     }
   }
-  if (fromEnd || calendar) return plan(baseFont, infos, labels.map((_, i) => i === n - 1 || pinned[i]!), 'stride', {
+  let keep = labels.map((_, i) => pinned[i]! || ((i === 0 || i === n - 1) && (requested?.[i] ?? true)));
+  const endsFit = fits(infos, keep);
+  if ((fromEnd || calendar) && !(fromEnd && typeClassCap() === 'XS' && requested === undefined && endsFit)) return plan(baseFont, infos, labels.map((_, i) => i === n - 1 || pinned[i]!), 'stride', {
     stride: n,
     warnings: [{ code: 'category-stride', severity: 'warn', message: `category labels: only the latest of ${n} fits — the axis is too narrow for its periods`, suggest: 'widen the canvas or aggregate the periods' }],
   });
-  let keep = labels.map((_, i) => pinned[i]! || ((i === 0 || i === n - 1) && (requested?.[i] ?? true)));
   // Where the two ends collide, the first period still names the row.
-  const endsFit = fits(infos, keep);
   if (!endsFit) keep = labels.map((_, i) => pinned[i]! || (i === 0 && (requested?.[i] ?? true)));
   return plan(baseFont, infos, keep, 'stride', {
     stride: n - 1,
@@ -800,7 +801,7 @@ layoutText.withCategoryRows = run => {
 /** The number of cached row plans (0 outside a render). */
 export const cachedCategoryRowPlans = (): number => [...rowPlans?.values() ?? []].reduce((sum, plans) => sum + plans.size, 0);
 function rotatedShapeKey(input: CategoryRowInput): string {
-  return JSON.stringify({ ...input, measure: undefined, centers: undefined, step: undefined, plotHeight: undefined });
+  return JSON.stringify({ ...input, measure: undefined, centers: undefined, step: undefined, plotHeight: undefined, typeClass: typeClassCap() });
 }
 
 /** Re-evaluate a measured uniform 45-degree row at new centres and height, without drawing it. */
@@ -857,7 +858,7 @@ export function planCategoryRow(input: CategoryRowInput, cache = true): Category
   if (!rowPlans || !cache) { const cascade = planCategoryRowCascade(input); return spreadUpright(input, cascade) ?? cascade; }
   let plans = rowPlans.get(input.measure);
   if (!plans) rowPlans.set(input.measure, plans = new Map());
-  const key = JSON.stringify({ ...input, measure: undefined });
+  const key = JSON.stringify({ ...input, measure: undefined, typeClass: typeClassCap() });
   let plan = plans.get(key);
   if (!plan) {
     let shapes: Map<string, RotatedRowMeasures | null> | undefined;
@@ -1059,8 +1060,8 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   const n = labels.length;
   const dateNumeric = (input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels);
   const periodRow = dateNumeric || input.periods === true || calendarLike(labels);
-  // A period row keeps the muted secondary role but prints at the label step.
-  const secondary = periodRow && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
+  // A period row keeps the muted secondary role but prints at the label step. A narrow card keeps the ink: its names are 12 px and its secondary text 11 px.
+  const secondary = periodRow && typeClassCap() !== 'XS' && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
   const ladder = secondary ? [secondary, ...input.fonts.filter(font => font.size < secondary.size)] : input.fonts;
   const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis'];
   const fonts = ladder.filter((font, index) => index === 0 || font.size >= axisFloor);
