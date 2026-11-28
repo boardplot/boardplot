@@ -56,7 +56,7 @@ const seriesSchema = z.strictObject({
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
   kind: z.enum(['column', 'line', 'area']).optional().describe("Geometry for this series: column by default, or an overlaid line or area."),
   axis: z.enum(['primary', 'secondary']).optional().describe("Value scale used by this series; secondary requires a declared secondaryAxis."),
-  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern of a line series. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line."),
+  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern of a line or area series. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line."),
   marker: z.enum(['circle', 'square', 'triangle', 'diamond', 'none']).optional().describe("Point symbol; none suppresses point markers."),
   smooth: z.boolean().optional().describe("Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation."),
   interpolateGaps: z.boolean().optional().describe("true draws the line across a missing cell; false breaks it there, so no line suggests a value that is not there. Default false."),

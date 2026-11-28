@@ -79,7 +79,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].format | string |  | Format-by-example for this series values, for example 1,234 or 1.2%. |
 | series[].kind | string |  | Geometry for this series: column by default, or an overlaid line or area. One of `'column'`, `'line'`, `'area'`. |
 | series[].axis | string |  | Value scale used by this series; secondary requires a declared secondaryAxis. One of `'primary'`, `'secondary'`. |
-| series[].lineStyle | string |  | Stroke pattern of a line series. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line. One of `'solid'`, `'dashed'`, `'dotted'`. |
+| series[].lineStyle | string |  | Stroke pattern of a line or area series. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line. One of `'solid'`, `'dashed'`, `'dotted'`. |
 | series[].marker | string |  | Point symbol; none suppresses point markers. One of `'circle'`, `'square'`, `'triangle'`, `'diamond'`, `'none'`. |
 | series[].smooth | boolean |  | Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation. |
 | series[].interpolateGaps | boolean |  | true draws the line across a missing cell; false breaks it there, so no line suggests a value that is not there. Default false. |
