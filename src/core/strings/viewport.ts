@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "showingPeriods": "Showing {v1} of {v2} periods{v3}",
   "minmaxSampled": " · min-max sampled",

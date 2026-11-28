@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "rowsNeedHeight": "The rows need a taller canvas.",
   "butterflyTitle": "Butterfly: {v1} vs {v2}",

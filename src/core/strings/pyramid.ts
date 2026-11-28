@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "ofAllClause": ", {v1} of all",
   "pyramidDesc": "Population pyramid: {v1} (left) and {v2} (right) across {v3} ordered bands, ",

@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   "unknownRegionLeftOut": "Region '{v1}' is not in pack '{v2}' and was left out.",
   "regionsLeftOutNote": "Not on this map",
   "regionIdSuggestion": "Did you mean '{v1}'?",

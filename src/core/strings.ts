@@ -3,7 +3,7 @@ import { wordLanguage } from './numberMarks';
 import type { BaseOptions } from './types/options';
 
 /** Built-in chart wording. Unsupported languages use English. */
-const EN = {
+export const EN = {
   "storyBack": "‹ Back",
   "storyNext": "Next ›",
   "storyCounter": "{step} / {count}",

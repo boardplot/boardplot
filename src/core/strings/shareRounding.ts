@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "shareRoundingMoved": "Printed shares are moved by one step so each whole adds up to 100%. The reading lists the moved shares.",
   "shareRoundingRescaled": "{v1}: the authored parts do not add up to 100, so each share is its part divided by the stack total.",

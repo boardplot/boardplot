@@ -1,4 +1,5 @@
 import { linkAnnotateEngine } from './core/annotateEngine';
+import { linkWordKeys } from './core/schema/linkWordKeys';
 import { registerCatalogue } from './core/charts';
 import { linkThemeShapeRules } from './core/themeShapeRules';
 
@@ -7,6 +8,7 @@ import { linkThemeShapeRules } from './core/themeShapeRules';
 // resolves patched themes and lays out annotations synchronously (see
 // core/deferred).
 registerCatalogue();
+linkWordKeys();
 linkThemeShapeRules();
 linkAnnotateEngine();
 

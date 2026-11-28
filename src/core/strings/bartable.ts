@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "bartableTitle": "Bar table: {v1} rows",
   "bartableDescStart": "Table of {v1} rows{v2} and ",

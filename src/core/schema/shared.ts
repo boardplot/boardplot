@@ -28,6 +28,7 @@ import {
 // The tables live without zod so the React entries can read them (capability.ts).
 export { OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, valueAxisOnly } from './capability';
 import { parseISODate } from '../isoDate';
+import { linkedWordKeys } from './wordKeyRegistry';
 import { parseTimeText } from '../isoTime';
 import { levenshtein } from '../spelling';
 import type { BaseOptions } from '../types/options';
@@ -1284,63 +1285,23 @@ export const topNWithoutRestCount = optionShapeSchema('topN', z
     showRestCount: z.never({ error: "'topN.showRestCount' has no rest bucket to count here; drop it" }).optional().describe('Retired: this chart draws no rest bucket. An old spec still draws and warns option-deprecated.'),
   }), topNCount);
 
-export const baseOptionsSchema = z.object({
-  target: renderTargetSchema.optional(),
-  textScale: textScaleSchema.optional(),
-  textSize: textSizeSchema.optional(),
-  a11y: z.strictObject({
-    title: z.boolean().optional().describe('Emit an SVG title element for hover text; default false. Accessible naming remains available.'),
-    description: z.string().min(1).optional().describe('Accessible description of the chart, in place of the generated one, in the SVG desc element and the React chart. Omitted: the description comes from the chart.'),
-    table: z.enum(['hidden', 'toggle', 'below']).optional().describe("Record-derived accessible data table rendered by the React chart components: 'hidden' keeps it available to assistive technology only, 'toggle' adds a disclosure control, 'below' renders it visibly under the chart. BoardplotChart includes it in the server output; a per-type component adds it after mount. Omitted: no table. The SVG is unchanged."),
-  }).optional().describe('Accessible presentation options; visible chart title is controlled separately by title.'),
-  mode: z.enum(['full', 'compact']).optional().describe('Presentation framing. Omitted: full at or above the chart minimum width, compact below it where the type draws there. Compact keeps the title at the theme smallest title size. Some chart-specific schemas use a different mode vocabulary.'),
-  belowMinimum: z.enum(['compact', 'refuse']).optional().describe("What a canvas below the chart minimum gets, on either axis, for the types with a compact floor: `measure` and `boardplot_describe` list it as `compactFloor`. 'compact' (default) draws the tight chart down to the floor: minimal labels, tight spacing, a smaller key, the whole title wrapped, and the subtitle dropped when the plot would be under 80 px. 'refuse' refuses below the minimum. On a canvas with a pinned size, a full-mode refusal for lack of room also falls back to compact under 'compact', and the chart is refused only when compact does not fit either. Types without a compact floor always refuse below their minimum, and every refusal names the minimum it needs.").meta({ default: 'compact' }),
-  size: sizeSchema.optional().describe('Frame or preset. Defaults: report 720x405 px and dashboard 480x270 px automatic; slide 1184x528 px and print 267x180 mm fixed. Below minimum refuses with a verified size.'),
-  // Embed claim (--embed-width twin). Strict: an `embed:{}` with no
-  // width would arm nothing — a silent no-op option — and unknown
-  // keys inside must refuse loudly rather than strip.
-  embed: z.strictObject({ width: z.number().positive().describe('Expected display width in CSS pixels, used to assess effective text size after scaling.') }).optional().describe('Declared host display width for readability checks; does not change chart geometry.'),
-  margin: marginSchema.optional().describe('Outer canvas margins in pixels; omitted sides use chart or theme defaults. canvas.margin overrides supplied sides.'),
-  canvas: z.strictObject({ margin: marginSchema.optional().describe('Per-side outer margins overriding margin, then chart or theme defaults.') }).optional().describe('Canvas framing overrides applied before chart furniture is laid out.'),
-  title: z.union([
-    z.string().describe('Visible chart title text. `**text**` draws bold and a single `*` stays literal.'),
-    z.literal(false).describe('Suppress the visible title while retaining the accessible chart name.'),
-  ]).optional().describe('Visible title override. `**text**` draws bold and a single `*` stays literal. Omission retains the chart-specific title behaviour.'),
-  subtitle: subtitleSchema.optional().describe('Measure subtitle below the title. Strings expand to the measure field. `**text**` draws bold in company, measure and period. A single `*` stays literal.'),
-  unit: z.string().optional().describe("Chart unit, composed into the subtitle where supported; individual series may declare their own units. A unit prints as text after the number, so unit 'USD' reads 2,456 USD. For a currency sign, set format instead, such as '$1,234'; a unit the format already prints warns unit-in-format, and a unit that names another currency than the format's sign warns unit-format-conflict. A unit in words, such as 'orders', names the number on the hover card ('Orders: 76'); a sign, code or scale such as '%', 'kg' or 'k orders' stays on the number."),
-  unitShown: z.boolean().optional().describe('True when the host prints the unit beside the chart: no unit line, no unit beside a kpi value; line end labels, a table head and the legend check treat the unit as shown. Number formatting does not change. Default false.'),
-  source: optionShapeSchema('source', z.string(), z.array(z.string())).optional().describe("Source credit rendered in the chart frame. An array of strings joins with '; ' in one source line. An empty array prints no source. `**text**` draws bold and a single `*` stays literal."),
-  footnotes: optionShapeSchema('footnotes', z.union([
-    z.array(z.string().describe('Authored footnote text. `**text**` draws bold and a single `*` stays literal.')).describe('Footnotes in authored order; compact framing leaves optional notes off the canvas, keeps them in the accessible description and lists them in the info lint compact-notes-omitted.'),
-    z.literal(false).describe('No notes in the frame: authored notes, method notes, event keys and the "+N notes" pointer are left off. Disclosures that notes.show prints (rounding, partial periods, unlabelled values), the source line and a required map credit stay; leave source out for no source line. For a host that carries the notes in its own frame; the info lint footnotes-off lists what was left off and the render result lists every note in notes.'),
-  ]), z.string()).optional().describe('A string is one footnote. Footnotes in authored order. `**text**` draws bold and a single `*` stays literal. The frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
-  notes: z.object({
-    maxListed: z.union([
-      z.number().int().min(0).describe('Most items a note line names; the rest are counted. 0 names none and only counts them.'),
-      z.literal('all').describe('Name every item.'),
-    ]).optional().describe("Items a note line names before it counts the rest, such as \"Not labelled on the chart: ... and 236 more\". Default: every note line names as many items as fit two footer lines, at most 8, reference lines and line end values first, then the rest in data order, and ends with \"and N more\"; when no name fits, it counts. 'all' names every item. 0 names none and only counts them, \"18 of 36 values\". All items stay in the reading and the hover records.").meta({ default: 8 }),
-    placement: z.enum(['frame', 'info', 'list']).optional().describe("Where the notes go. 'frame' prints notes in the frame within maxLines and the rest in the notes list; 'list' prints only the source line, a required map credit and the pointer; 'info' is the React \"Notes and sources\" button with one visible line of source and required credit (an SVG or PNG draws it as 'frame'). Default by target: dashboard 'info', slide 'list', report and print 'frame'. An authored placement without notes.show also prints the engine's method notes and disclosures, within maxLines after the author notes."),
-    maxLines: z.number().int().min(1).optional().describe('Visible lines of notes and source line in the frame; a required map credit, an author note or a disclosure a drawn mark points at, and a disclosure that an authored notes.show lists do not count. Notes that do not fit go to the notes list and the pointer counts them. Default report and dashboard 3 (2 under 720 px wide), slide 2, print 3.'),
-    show: z.array(z.enum(['note', 'method', 'disclosure', 'ranks'])).optional().describe("The kinds of note the frame prints. Default ['note'], the authored footnotes, within maxLines; an authored note a mark points at always prints. 'method' adds the one-line short form of the method notes the engine writes (likert net, pvm split). 'disclosure' adds the engine's notes on how to read the chart (a key, a data change, 'Not labelled on the chart: ...'), outside maxLines; then a chart may also key its marks to them, such as rank numbers under the columns. 'ranks' prints only the rank key: rank numbers under the columns where the names fit neither upright nor rotated, with the note that names them, and no other disclosure. Without notes.show, methodNote: true or an authored placement prints the method notes and disclosures within maxLines. Engine notes print nowhere under the chart by default; every note stays in the notes list of the render result and in its warnings."),
-    pointer: z.boolean().optional().describe('Default true: when the notes list holds notes of the kinds notes.show prints that the frame does not print, the source line ends with "+N notes". false drops it; a live chart that then leaves author notes out warns notes-left-out.').meta({ default: true }),
-  }).strict().optional().describe('Notes; the footer rule: where the notes under the chart go, how many lines they take, and the note lines for what the drawing leaves out.'),
-  // any registered theme name (presets + registerTheme customs); existence
-  // is checked at resolve time with a helpful error
-  theme: optionShapeSchema('theme', z
-    .union([
-      z.string().min(1).describe('Registered theme name; existence is checked when resolving the theme.'),
-      z.object({
-        preset: z.string().min(1).describe('Registered base theme whose tokens are overridden.'),
-        overrides: z.record(z.string(), z.unknown().describe('Theme token override value; validated by theme resolution.')).optional().describe('Partial theme token tree merged with the named preset.'),
-      }).describe('Named theme with explicit token overrides.'),
-    ]), z.strictObject({
-      overrides: z.record(z.string(), z.unknown()).describe('Partial token tree applied to the default preset.'),
-    }))
-    .optional().describe('Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses bridge.'),
-  locale: optionShapeSchema('locale', localeObjectSchema, languageSchema)
-    .optional().describe('A string sets the language. Language changes words only. Set decimal and thousands to choose the number marks for the whole chart (default 1,234.5). Boardplot warns when the language usually uses a decimal comma and decimal is unset. A format example gives only the shape.'),
-  strings: z
-    .object({
+/**
+ * The documented words keep their own schema and text. Any other key of the word tables is accepted by name
+ * only, so the further keys add no field to the schema, the describe output or options.md
+ * (docs/reference/strings.md lists them). A key that no table holds is refused as an unknown key where the
+ * Node entries link the key list (wordKeyRegistry.ts).
+ */
+export function builtInStringsSchema<S extends z.ZodRawShape>(shape: S) {
+  return z.object(shape)
+    .catchall(z.string().optional().describe('Another built-in word, listed in docs/reference/strings.md.'))
+    .superRefine((value, ctx) => {
+      const words = linkedWordKeys();
+      const unknown = words ? Object.keys(value).filter((key) => !Object.hasOwn(shape, key) && !words.has(key)) : [];
+      if (unknown.length > 0) ctx.addIssue({ code: 'unrecognized_keys', keys: unknown, input: value });
+    });
+}
+
+export const stringsShape = {
       newItems: z.string().min(1).optional().describe('PVM entry-bar name; default New items.'),
       lostItems: z.string().min(1).optional().describe('PVM exit-bar name; default Lost items.'),
       cohortMeasure: z.string().trim().min(1).optional().describe('Cohort measure name for notes, keys and accessible descriptions; default Retention. Use Cumulative conversion for converted counts divided by cohort base.'),
@@ -1459,10 +1420,66 @@ export const baseOptionsSchema = z.object({
       stackFrom: z.string().min(1).optional().describe("Metric stack focus look: the base value after the change; {v1} is the base value. English from {v1}."),
       stackAgainst: z.string().min(1).optional().describe('Metric stack focus look: the word between the focus and the base window in the header line. English against.'),
       stackAverages: z.string().optional().describe('Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space.'),
-    })
-    .strict()
+};
+
+export const baseOptionsSchema = z.object({
+  target: renderTargetSchema.optional(),
+  textScale: textScaleSchema.optional(),
+  textSize: textSizeSchema.optional(),
+  a11y: z.strictObject({
+    title: z.boolean().optional().describe('Emit an SVG title element for hover text; default false. Accessible naming remains available.'),
+    description: z.string().min(1).optional().describe('Accessible description of the chart, in place of the generated one, in the SVG desc element and the React chart. Omitted: the description comes from the chart.'),
+    table: z.enum(['hidden', 'toggle', 'below']).optional().describe("Record-derived accessible data table rendered by the React chart components: 'hidden' keeps it available to assistive technology only, 'toggle' adds a disclosure control, 'below' renders it visibly under the chart. BoardplotChart includes it in the server output; a per-type component adds it after mount. Omitted: no table. The SVG is unchanged."),
+  }).optional().describe('Accessible presentation options; visible chart title is controlled separately by title.'),
+  mode: z.enum(['full', 'compact']).optional().describe('Presentation framing. Omitted: full at or above the chart minimum width, compact below it where the type draws there. Compact keeps the title at the theme smallest title size. Some chart-specific schemas use a different mode vocabulary.'),
+  belowMinimum: z.enum(['compact', 'refuse']).optional().describe("What a canvas below the chart minimum gets, on either axis, for the types with a compact floor: `measure` and `boardplot_describe` list it as `compactFloor`. 'compact' (default) draws the tight chart down to the floor: minimal labels, tight spacing, a smaller key, the whole title wrapped, and the subtitle dropped when the plot would be under 80 px. 'refuse' refuses below the minimum. On a canvas with a pinned size, a full-mode refusal for lack of room also falls back to compact under 'compact', and the chart is refused only when compact does not fit either. Types without a compact floor always refuse below their minimum, and every refusal names the minimum it needs.").meta({ default: 'compact' }),
+  size: sizeSchema.optional().describe('Frame or preset. Defaults: report 720x405 px and dashboard 480x270 px automatic; slide 1184x528 px and print 267x180 mm fixed. Below minimum refuses with a verified size.'),
+  // Embed claim (--embed-width twin). Strict: an `embed:{}` with no
+  // width would arm nothing — a silent no-op option — and unknown
+  // keys inside must refuse loudly rather than strip.
+  embed: z.strictObject({ width: z.number().positive().describe('Expected display width in CSS pixels, used to assess effective text size after scaling.') }).optional().describe('Declared host display width for readability checks; does not change chart geometry.'),
+  margin: marginSchema.optional().describe('Outer canvas margins in pixels; omitted sides use chart or theme defaults. canvas.margin overrides supplied sides.'),
+  canvas: z.strictObject({ margin: marginSchema.optional().describe('Per-side outer margins overriding margin, then chart or theme defaults.') }).optional().describe('Canvas framing overrides applied before chart furniture is laid out.'),
+  title: z.union([
+    z.string().describe('Visible chart title text. `**text**` draws bold and a single `*` stays literal.'),
+    z.literal(false).describe('Suppress the visible title while retaining the accessible chart name.'),
+  ]).optional().describe('Visible title override. `**text**` draws bold and a single `*` stays literal. Omission retains the chart-specific title behaviour.'),
+  subtitle: subtitleSchema.optional().describe('Measure subtitle below the title. Strings expand to the measure field. `**text**` draws bold in company, measure and period. A single `*` stays literal.'),
+  unit: z.string().optional().describe("Chart unit, composed into the subtitle where supported; individual series may declare their own units. A unit prints as text after the number, so unit 'USD' reads 2,456 USD. For a currency sign, set format instead, such as '$1,234'; a unit the format already prints warns unit-in-format, and a unit that names another currency than the format's sign warns unit-format-conflict. A unit in words, such as 'orders', names the number on the hover card ('Orders: 76'); a sign, code or scale such as '%', 'kg' or 'k orders' stays on the number."),
+  unitShown: z.boolean().optional().describe('True when the host prints the unit beside the chart: no unit line, no unit beside a kpi value; line end labels, a table head and the legend check treat the unit as shown. Number formatting does not change. Default false.'),
+  source: optionShapeSchema('source', z.string(), z.array(z.string())).optional().describe("Source credit rendered in the chart frame. An array of strings joins with '; ' in one source line. An empty array prints no source. `**text**` draws bold and a single `*` stays literal."),
+  footnotes: optionShapeSchema('footnotes', z.union([
+    z.array(z.string().describe('Authored footnote text. `**text**` draws bold and a single `*` stays literal.')).describe('Footnotes in authored order; compact framing leaves optional notes off the canvas, keeps them in the accessible description and lists them in the info lint compact-notes-omitted.'),
+    z.literal(false).describe('No notes in the frame: authored notes, method notes, event keys and the "+N notes" pointer are left off. Disclosures that notes.show prints (rounding, partial periods, unlabelled values), the source line and a required map credit stay; leave source out for no source line. For a host that carries the notes in its own frame; the info lint footnotes-off lists what was left off and the render result lists every note in notes.'),
+  ]), z.string()).optional().describe('A string is one footnote. Footnotes in authored order. `**text**` draws bold and a single `*` stays literal. The frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
+  notes: z.object({
+    maxListed: z.union([
+      z.number().int().min(0).describe('Most items a note line names; the rest are counted. 0 names none and only counts them.'),
+      z.literal('all').describe('Name every item.'),
+    ]).optional().describe("Items a note line names before it counts the rest, such as \"Not labelled on the chart: ... and 236 more\". Default: every note line names as many items as fit two footer lines, at most 8, reference lines and line end values first, then the rest in data order, and ends with \"and N more\"; when no name fits, it counts. 'all' names every item. 0 names none and only counts them, \"18 of 36 values\". All items stay in the reading and the hover records.").meta({ default: 8 }),
+    placement: z.enum(['frame', 'info', 'list']).optional().describe("Where the notes go. 'frame' prints notes in the frame within maxLines and the rest in the notes list; 'list' prints only the source line, a required map credit and the pointer; 'info' is the React \"Notes and sources\" button with one visible line of source and required credit (an SVG or PNG draws it as 'frame'). Default by target: dashboard 'info', slide 'list', report and print 'frame'. An authored placement without notes.show also prints the engine's method notes and disclosures, within maxLines after the author notes."),
+    maxLines: z.number().int().min(1).optional().describe('Visible lines of notes and source line in the frame; a required map credit, an author note or a disclosure a drawn mark points at, and a disclosure that an authored notes.show lists do not count. Notes that do not fit go to the notes list and the pointer counts them. Default report and dashboard 3 (2 under 720 px wide), slide 2, print 3.'),
+    show: z.array(z.enum(['note', 'method', 'disclosure', 'ranks'])).optional().describe("The kinds of note the frame prints. Default ['note'], the authored footnotes, within maxLines; an authored note a mark points at always prints. 'method' adds the one-line short form of the method notes the engine writes (likert net, pvm split). 'disclosure' adds the engine's notes on how to read the chart (a key, a data change, 'Not labelled on the chart: ...'), outside maxLines; then a chart may also key its marks to them, such as rank numbers under the columns. 'ranks' prints only the rank key: rank numbers under the columns where the names fit neither upright nor rotated, with the note that names them, and no other disclosure. Without notes.show, methodNote: true or an authored placement prints the method notes and disclosures within maxLines. Engine notes print nowhere under the chart by default; every note stays in the notes list of the render result and in its warnings."),
+    pointer: z.boolean().optional().describe('Default true: when the notes list holds notes of the kinds notes.show prints that the frame does not print, the source line ends with "+N notes". false drops it; a live chart that then leaves author notes out warns notes-left-out.').meta({ default: true }),
+  }).strict().optional().describe('Notes; the footer rule: where the notes under the chart go, how many lines they take, and the note lines for what the drawing leaves out.'),
+  // any registered theme name (presets + registerTheme customs); existence
+  // is checked at resolve time with a helpful error
+  theme: optionShapeSchema('theme', z
+    .union([
+      z.string().min(1).describe('Registered theme name; existence is checked when resolving the theme.'),
+      z.object({
+        preset: z.string().min(1).describe('Registered base theme whose tokens are overridden.'),
+        overrides: z.record(z.string(), z.unknown().describe('Theme token override value; validated by theme resolution.')).optional().describe('Partial theme token tree merged with the named preset.'),
+      }).describe('Named theme with explicit token overrides.'),
+    ]), z.strictObject({
+      overrides: z.record(z.string(), z.unknown()).describe('Partial token tree applied to the default preset.'),
+    }))
+    .optional().describe('Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses bridge.'),
+  locale: optionShapeSchema('locale', localeObjectSchema, languageSchema)
+    .optional().describe('A string sets the language. Language changes words only. Set decimal and thousands to choose the number marks for the whole chart (default 1,234.5). Boardplot warns when the language usually uses a decimal comma and decimal is unset. A format example gives only the shape.'),
+  strings: builtInStringsSchema(stringsShape)
     .optional()
-    .describe('Wording of built-in labels. These are the labels the renderer composes itself: author chart text stays unchanged and an explicit option still wins per label; host-level wording comes from the theme provider.'),
+    .describe('Wording of built-in labels. These are the labels the renderer composes itself: author chart text stays unchanged and an explicit option still wins per label; host-level wording comes from the theme provider. The keys listed here are the common ones; every other built-in word takes its key from docs/reference/strings.md.'),
   format: formatExample.optional().describe(`Chart-level format-by-example, such as 1,234.5 or 1.2pp. A currency sign comes from here: '$1,234' prints $2,456. Its decimals are preserved; series and cell formats can override it. Without a format, every number prints by the default rule: scale words from 10,000 (cells from 100,000), three digits of the largest value, no more decimals than the data carry. ${MAGNITUDE_WORDS_DOC} ${PERCENT_FORMAT_UNITS} A separator followed by exactly three digits after a nonzero integer part is a thousands mark: 1.000 groups thousands with a dot and prints decimals with a comma; write 0.000 for three decimals.`),
   detailFields: detailFieldsSchema.optional().describe("Label, format, unit and order of the cell details keys, the extra facts a value's hover card lists after it: [{ key: 'deals', label: 'Deals', format: '1,234' }]. Declared keys print first, in this order; a details key it does not declare prints after them, labelled with its key. Default: every key, labelled with itself."),
   smallValues: z.enum(['bound', 'zero', 'scientific', 'p-value']).optional().describe("How the default rule prints a nonzero value that needs more than four decimals. Without the option the rule prints its own digits, never a bound. bound and zero round such a value at the decimals of the set's first group, at most four, and print its digits where it is nonzero there (0.0003), else the bound (bound: <0.001, >−0.001 below zero) or the set's zero (zero: 0.000). scientific: two significant digits and a power of ten, 1.2 × 10⁻⁶. p-value: every value from 0 to 1 prints as APA 7 writes a p-value, three decimals without the leading zero, .042, and <.001 below; larger values keep the rule. A format the author sets prints as set."),

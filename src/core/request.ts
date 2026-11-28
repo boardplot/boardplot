@@ -36,6 +36,7 @@ import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { parseISODate } from './isoDate';
 import { retireChartSettings } from './retired';
+import { PROVIDER_ONLY_STRINGS } from './schema/unknownKeys';
 import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
 import { tableFitThemeTokens, themeGeometryTokens } from './themeGeometry';
 import type { OptionsInput } from './types/optionInput';
@@ -65,27 +66,18 @@ export interface RequestContext {
 }
 
 /**
- * The keys a layout may read. The provider's block also carries host-only
- * wording such as the refusal message, which never reaches a layout: dropping
- * it keeps `options.strings` inside the chart option schema.
+ * The words a layout may read: every key of the provider block and of the chart option except
+ * the host-only wording, such as the refusal message, which never reaches a layout.
  */
-// Exhaustive over the public type, without pulling schema validation into React bundles: a missing or
-// unknown key turns the element type into a string that indexes no StringsSpec key, and layoutStrings fails to compile.
-type Words<S extends string, A = never> = S extends `${infer W} ${infer R}` ? Words<R, A | W> : A | S;
-type Exhaustive<A, B> = [A] extends [B] ? [B] extends [A] ? B : 'unlisted StringsSpec key' : 'unknown StringsSpec key';
-const LAYOUT_STRING_WORDS = 'newItems lostItems cohortMeasure cohortFormula others total source notApplicable partial better worse positiveTotal rangeMidNote sensitivityNote hatchedBaseNote missingSwingNote rankOmitted noRank rankMethod higherBetter lowerBetter rankFormat rankRing nearZeroNote flagged corridor corridorBounds median anomalySmallSample anomalyZeroMad anomalyMadRule anomalyCentreZero anomalyCentreMedian anomalyThresholdRule outsideBounds belowBound aboveBound lowerBound upperBound undrawnBounds hiddenLabels noteOne noteMany notesAndSources close mapCredit gapBetween aboveSeries belowSeries average valueLineRange valueLineRangeKey valueLineRangeKeyPlain toDate forecast plan forecastHeader net incomplete range valuesNotOnColumns valuesNotBesideMarks partialTotals knownPartsTotals without and aboveZero belowZero declaredBounds tied tiedSymbol currentValue baseCase swingOutsideBase fanGap mixedShares heatBelow heatAround heatAbove target actualColumn shareColumn deltaColumn targetColumn gapColumn gapBelow gapAbove gapOn cellNote bandKey moreListed storyBack storyNext storyCounter storyStep axisLow axisHigh nearZeroChange mixedCoverage hiddenPeriods share histogramBins histogramAbout histogramMethod histogramRuleCount histogramRuleWidth histogramSnapped histogramRounded histogramSmallSample missingStack incompleteStacks knownPartsShares rebaseZero rebaseMissing stackFrom stackAgainst stackAverages';
-const LAYOUT_STRING_KEYS = LAYOUT_STRING_WORDS.split(' ') as Exhaustive<Words<typeof LAYOUT_STRING_WORDS>, keyof StringsSpec>[];
-
 function layoutStrings(...sources: (StringsSpec | undefined)[]): StringsSpec | undefined {
-  const merged: StringsSpec = {};
+  const merged: Record<string, unknown> = {};
   for (const source of sources) {
     if (!source) continue;
-    for (const key of LAYOUT_STRING_KEYS) {
-      const value = source[key];
-      if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+    for (const [key, value] of Object.entries(source)) {
+      if (value !== undefined && !Object.hasOwn(PROVIDER_ONLY_STRINGS, key)) merged[key] = value;
     }
   }
-  return Object.keys(merged).length > 0 ? merged : undefined;
+  return Object.keys(merged).length > 0 ? merged as StringsSpec : undefined;
 }
 
 export interface ChartRequest<D = unknown, O extends object = RequestInputOptions> extends RequestContext {

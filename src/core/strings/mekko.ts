@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "mekkoTitle": "Mekko chart: {v1} by {v2} categories",
   "validColumns": "{v1} valid composition columns",

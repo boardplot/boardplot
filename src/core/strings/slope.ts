@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "slopeDesc": "Slope chart, {v1} series from {v2} to {v3}. ",
   "seriesUnchanged": "All series unchanged.",

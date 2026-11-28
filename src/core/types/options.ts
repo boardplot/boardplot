@@ -9,6 +9,7 @@ import type { LineSeriesTarget, VarianceSpec } from './data';
 import type { Annotation, EventOptions } from './annotations';
 import type { OthersShade } from '../othersShade';
 import type { ThemeRef } from './theme';
+import type { BUILT_IN_WORD_KEYS } from '../strings/keys.generated';
 // Type-only, so nothing is imported at runtime and no cycle exists. The
 // capability table is declared ONCE, next to the schemas that enforce it; this
 // file reads its shape rather than restating it, because a declaration that
@@ -97,7 +98,7 @@ export interface LocaleSpec {
  * never rewritten, and an explicit caller option (topN.restLabel, options.source,
  * a host legend-disclosure template) keeps precedence over this block.
  */
-export interface StringsSpec {
+export interface DocumentedStrings {
   /** PVM bridge entry and exit bar names. Defaults New items and Lost items. */
   newItems?: string;
   lostItems?: string;
@@ -326,6 +327,9 @@ export interface StringsSpec {
   /** Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. */
   stackAverages?: string;
 }
+
+/** Every built-in word: the documented keys above and every other key of the word tables (docs/reference/strings.md). */
+export type StringsSpec = DocumentedStrings & { [K in (typeof BUILT_IN_WORD_KEYS)[number]]?: string };
 
 /** One step of a story: its panel text and the data ids it brings forward. No highlight is an intro step. */
 export interface StoryStepSpec {

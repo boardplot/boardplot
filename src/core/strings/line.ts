@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "referenceSeriesCount": "{v1} reference series",
   "entityRank": "{v1} rank {v2}",

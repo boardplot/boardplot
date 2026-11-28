@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "observations": "Observations",
   "histogramBins": "{v1}{v2} bins of {v3} from {v4}",

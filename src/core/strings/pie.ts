@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "pieHiddenSlices": "{v1} {v2} not labelled",
   "pieDesc": "{v1} chart, {v2} slices of {v3}, total {v4}. ",

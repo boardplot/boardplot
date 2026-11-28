@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "sparklineName": "Sparkline",
   "sparklineDesc": "Trend over {v1} points{v2}{v3}.",

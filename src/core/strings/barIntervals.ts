@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "footballTitle": "Football-field valuation: {v1} methods",
   "footballDesc": "Football-field range chart. {v1}.",

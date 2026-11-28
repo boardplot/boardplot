@@ -1,7 +1,7 @@
 import { chartStrings } from '../strings';
 export { localizedRecordReason } from './reasons';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "valueWithheld": "Value withheld",
   "valueUnavailable": "Unavailable ({v1})",

@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "sankeyTitle": "Sankey: {v1} flows between {v2} nodes, total {v3}",
   "sankeyDesc": "Sankey of {v1} flows between {v2} nodes in {v3} columns, total {v4}. ",
