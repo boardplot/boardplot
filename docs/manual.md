@@ -1126,11 +1126,13 @@ A line or area draws `data.categories` as evenly spaced names by default. For re
 - Events and bands stand at any x. A value line, a delta, a callout or a target names the x of a reading. A trend fits on elapsed time and prints its slope per second, minute, hour, day or week, or per `unit` on a number axis.
 - On a time axis, `data.x` and every annotation x anchor accept epoch milliseconds. This includes `at`, `from`, `to`, object `categoryId`, and event `date` and `end`. An epoch value names an instant; the zone sets its labels. For example, `1772496000000` is `2026-03-03T00:00:00Z`. A numeric `delta.vs` stays a comparison value. Use `vs: { categoryId: 1772496000000 }` to compare with that reading.
 - A `cagr` annotation on a time axis draws the same bracket and label as on a category axis. Its `from` and `to` name the x of two readings (default: the first and the last). The rate counts the exact years between the two readings on the calendar of `zone`: the whole years to the last anniversary, plus the rest as a share of the year after it, in milliseconds. So 1 January 2020 to 1 January 2025 is 5 years, and 1 January to 2 July 12:00 of 2025 is 0.5. An anniversary keeps the start's wall time, and 29 February falls on 28 February in a common year. A start value at or below zero omits the rate and warns `cagr-undefined`, as on a category axis. A number axis has no years, so a CAGR there warns `x-cagr-unsupported` and is not drawn.
-- Not with `variant: "bump"` or `categoryAxis`.
+- A continuous axis cannot draw bump ranks, category date ticks or band placement. Use `xAxis.title` to name a continuous axis.
 
 The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x-number-trail` show the forms.
 
 ## Calendar ticks on dated categories
+
+Set `options.categoryAxis.title` to a string such as `"Quarter"` to name the categories. Column, line and combo charts draw the title on one line below the category names, aligned with the right edge of the plot. Bar charts draw it above the row names. If the line does not fit, the chart omits the title and reports a warning.
 
 A line, column or combo chart takes `options.categoryAxis.dateTicks` (`years`, `quarters`, `months`, `weeks` or `days`) when every category has an ISO `date`. A short tick under the row marks the first category of each interval, and the labels name those intervals. On column and combo the tick stands at the middle of its band, and every column keeps its place. A category without a date, or categories not in date order (for example sorted by value), leave the option unused and warn `date-ticks-unsupported`. `categoryAxis.crossesBetween` is a line setting: column and combo ignore `false` and warn `cross-between-ignored`.
 

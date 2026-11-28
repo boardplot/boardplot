@@ -28,12 +28,13 @@ import type { AnomalyColumnOptions } from './types';
 const SAME_OPTIONS = new Set<Exclude<keyof AnomalyColumnOptions | 'measure' | 'sizeFloor' | 'authoredFootnotes' | 'footnotesOff', ColumnDrops>>([
   'size', 'target', 'textScale', 'textSize', 'a11y', 'mode', 'margin', 'canvas', 'title', 'subtitle', 'unit', 'unitShown', 'source', 'footnotes', 'notes', 'theme', 'locale', 'format',
   'sort', 'highlight', 'focus', 'signColor', 'legend', 'valueLabels', 'labelDensity', 'averageMarker',
-  'variant', 'referenceStyle', 'netLine', 'labels', 'strings', 'valueAxis', 'annotations',
+  'variant', 'referenceStyle', 'netLine', 'labels', 'strings', 'valueAxis', 'categoryAxis', 'annotations',
   'measure', 'sizeFloor', 'authoredFootnotes', 'footnotesOff',
 ]);
 /** The wording keys a bar prints as a column does. moreListed ends a capped note, and a React chart with hover sets it itself. */
 const SAME_STRINGS = new Set(['net', 'average', 'others', 'toDate', 'hiddenLabels', 'valuesNotOnColumns', 'aboveZero', 'belowZero', 'knownPartsTotals', 'moreListed']);
 const SAME_VALUE_AXIS = new Set(['show', 'min', 'includeZero']);
+const SAME_CATEGORY_AXIS = new Set(['title']);
 const SAME_LABELS = new Set(['restSeries']);
 const SAME_ANNOTATIONS = new Set(['note', 'callout', 'diff', 'delta', 'cagr', 'band', 'valueLine']);
 const SAME_DATA = new Set(['categories', 'series', 'valueKind']);
@@ -51,6 +52,7 @@ const hasOnly = (value: object, allowed: ReadonlySet<string>): boolean => Object
  */
 export function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): boolean {
   if (!hasOnly(options, SAME_OPTIONS)) return false;
+  if (options.categoryAxis && (!options.categoryAxis.title || !hasOnly(options.categoryAxis, SAME_CATEGORY_AXIS))) return false;
   if (options.variant === 'stacked100' || (options.referenceStyle !== undefined && options.referenceStyle !== 'tick')) return false;
   if (options.netLine !== undefined && options.netLine !== true) return false;
   if (options.labels !== undefined && (options.labels === false || !hasOnly(options.labels, SAME_LABELS))) return false;

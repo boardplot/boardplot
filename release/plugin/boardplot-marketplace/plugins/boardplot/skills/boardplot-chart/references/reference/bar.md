@@ -103,6 +103,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels. |
 | legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
+| categoryAxis | object |  |  | A title above the category names. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 | axisTitles | object |  |  | Title of the value axis when valueAxis.show draws it: in the tick-label row, ending at the right end of the axis past the last tick label or short of the first tick label, and in a row of its own under the ticks only when neither side has room. A theme with valueAxis.titles derives 'Measure, unit' from subtitle.measure and a unit the drawn subtitle does not print, when none is authored. |
@@ -136,7 +137,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `categoryLabels`, `secondaryAxis`, `categoryAxis.dateTicks`, `categoryAxis.crossesBetween` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -236,3 +237,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | column-overrides | example | columnOverrides sets the width of the name column |
 | centered-values | example | Bar values at the center |
 | drawing-on-value-axis | example | A line at the top level and an arrow over the gap, on a horizontal value axis |
+| category-axis-title | example | A header above the quarter names |

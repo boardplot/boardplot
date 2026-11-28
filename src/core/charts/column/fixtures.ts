@@ -2901,4 +2901,15 @@ fixtures.push({
   options: { ...seriesCagr.options, seriesLabels: { at: 'right-edge', cagr: true, only: ['b'] }, size: { width: 400 }, legend: 'top' },
 });
 
+fixtures.push({
+  id: 'category-axis-title',
+  title: 'A title below the quarter names',
+  kind: 'example',
+  data: {
+    categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
+    series: [{ id: 'sales', label: 'Sales', values: [60, 70, 80] }],
+  },
+  options: { categoryAxis: { title: 'Quarter' } },
+});
+
 registerFixtures('column', fixtures);

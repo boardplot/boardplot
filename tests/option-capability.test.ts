@@ -180,7 +180,7 @@ describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawi
   const PROBES: Partial<Record<keyof typeof OPTION_CAPABILITY, readonly unknown[]>> = {
     labelPosition: ['insideBase', 'center'],
     rowLabels: [{ align: 'right' }, { align: 'left' }],
-    categoryAxis: [{ crossesBetween: false }, { dateTicks: 'quarters' }],
+    categoryAxis: [{ title: 'Quarter' }, { crossesBetween: false }, { dateTicks: 'quarters' }],
     categoryLabels: ['staircase'],
     labels: [false, { point: false }],
     hatchStrength: [0, 100],
@@ -327,7 +327,7 @@ describe('published option behaviour census', () => {
     palette: 'categorical', labelDensity: 'minimal', labelPosition: 'insideBase', labels: false,
     labelPlacements: { census: 'above' }, labelOffsets: { census: { y: 12 } }, legend: 'top', valueAxis: { min: -100 },
     scaleGroup: { y: 'census-scale' }, rowLabels: { align: 'right' },
-    categoryAxis: { crossesBetween: false }, categoryLabels: 'staircase',
+    categoryAxis: { title: 'Quarter' }, categoryLabels: 'staircase',
     sort: { categories: 'reverse' }, topN: { n: 2 }, bandFraction: 0.3,
     hatchStrength: 0, colorblindSafe: true, interactive: true,
     rounding: 'sum-consistent',

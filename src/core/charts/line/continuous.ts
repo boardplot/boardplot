@@ -171,10 +171,15 @@ export function resolveLineXOptions(options: LineOptions, model: LineXModel, cat
     throw new NormalizeError('x-axis-unsupported', 'options.xAxis', "variant 'bump' ranks the series at each category, and a continuous axis has readings at any x, not shared periods",
       "drop xAxis and give the periods as data.categories, or draw the values with variant 'line'");
   }
-  if (options.categoryAxis !== undefined) {
+  const categoryAxis = options.categoryAxis;
+  if (categoryAxis && (categoryAxis.title === undefined || categoryAxis.dateTicks !== undefined || categoryAxis.crossesBetween !== undefined)) {
     throw new NormalizeError('x-axis-conflict', 'options.categoryAxis', 'categoryAxis sets a category row, and xAxis replaces that row with a continuous scale',
       'drop categoryAxis; set ticks with xAxis.tickStep or xAxis.ticks', [{ op: 'remove', path: '/options/categoryAxis' }]);
   }
+  if (categoryAxis?.title) warnings.push({
+    code: 'option-ignored', severity: 'warn', field: ['options', 'categoryAxis', 'title'],
+    message: 'The continuous x axis replaces the category row. Set xAxis.title to name this axis.',
+  });
   const xs = model.xs;
   const ids = cats.map((c) => c.id);
   const idSet = new Set(ids);

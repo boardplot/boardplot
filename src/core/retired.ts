@@ -9,7 +9,7 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
-import { ANNOTATIONS_RETIRED, IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
+import { ANNOTATIONS_RETIRED, CATEGORY_AXIS_SUPPORT, IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -212,7 +212,10 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
   if (!Object.hasOwn(chart, 'annotations') && !authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
   if (authored.some((key) => IGNORED_OPTION_KEYS.has(key))) {
     for (const key of schemaRefusedKeys(type).options) {
-      if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
+      if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) {
+        const title = key === 'categoryAxis' && readAt(chart.options[key], ['title']) !== undefined;
+        ignore(['options', key], 'warn', type, title ? CATEGORY_AXIS_SUPPORT : undefined);
+      }
     }
   }
   const axis = chart.options.valueAxis;

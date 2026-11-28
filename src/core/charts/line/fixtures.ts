@@ -3422,4 +3422,15 @@ const pointEmphasisFixture: Fixture<LineChartData, LineOptions> = {
   options: { ...valueLineEndValueFixture.options, subtitle: { measure: 'Load by week' }, highlight: ['w5'], pointLabelSide: 'shape', valueAxis: { min: 30, max: 60, gridlines: true } },
 };
 
+fixtures.push({
+  id: 'category-axis-title',
+  title: 'A title below the quarter names',
+  kind: 'example',
+  data: {
+    categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
+    series: [{ id: 'sales', label: 'Sales', values: [60, 70, 80] }],
+  },
+  options: { categoryAxis: { title: 'Quarter' } },
+});
+
 registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, pointEmphasisFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

@@ -1,4 +1,4 @@
-import { categoryHeightLimit } from '../../label/categoryRow';
+import { bandedCategoryStyle, categoryHeightLimit, withCategoryTitle } from '../../label/categoryRow';
 import { chartString } from '../../strings/combo';
 import { planLineStyle } from '../../planLineStyle';
 import { BAND_PAD, namedLineText, VALUE_LINE_RESERVE } from '../../annotateParts';
@@ -11,7 +11,7 @@ import { resolveSubtitle } from '../../normalize/shared';
  * before the scales, because the plot rect comes out of it.
  */
 
-import { measureValueAxisWidth } from '../../axis';
+import { measureValueAxisWidth, planCategoryTitle } from '../../axis';
 import { bandedCrossesBetween } from '../../intervalTicks';
 import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import type { Rect } from '../../geometry';
@@ -65,8 +65,6 @@ import { comboBandFraction, primaryLineMean, secondaryPrimaryRange } from './dom
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
-import { textScaleOf } from '../../typeFloors';
-import { scaleTextPx } from '../../target';
 import { engineNoteMeta, disclosureNote, disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
@@ -856,7 +854,8 @@ export function comboPlotArea(
   const lineLabelReserve = (options as { [VALUE_LINE_RESERVE]?: number })[VALUE_LINE_RESERVE] ?? 0;
   const rightReserve = rightAxisReserve + Math.max(gutters.last + growthReserve + anomalyReserve, lineLabelReserve);
   let plotX0 = frame.plot.x + (showPrimaryAxis ? leftAxisReserve : 0) + gutters.first;
-  let plotW0 = Math.max(10, axisW - rightReserve - gutters.first);
+  const plotWidth = Math.max(10, axisW - rightReserve - gutters.first);
+  let plotW0 = plotWidth;
   // A grid panel can place its categories inside the plot; the plot keeps its edges.
   ({ x: plotX0, w: plotW0 } = insetRange(plotX0, plotW0, categoryInsetOf(options)));
   const endpointWidth = plotW0;
@@ -866,11 +865,12 @@ export function comboPlotArea(
   const bandFraction = comboBandFraction(domain.options, cats.length);
   const bandFor = (x0: number, w: number) =>
     bandScale(cats.length, [x0 + inside.first, x0 + w - inside.last], { paddingInner: 1 - bandFraction, paddingOuter: (1 - bandFraction) / 2 + 0.05 });
+  const categoryNames = cats.map(category => category.label ?? category.id);
   // Staircase names run past the last column on the falling side; the band gives that room.
   if (stair) {
     const direction = staircaseDirection(domain.posTop);
     const room = staircaseRoom({
-      names: cats.map((c) => c.label ?? c.id), font: tickFont, measure, direction,
+      names: categoryNames, font: tickFont, measure, direction,
       edge: direction === 'right' ? plotX0 + plotW0 : plotX0, width: plotW0,
       centers: (r) => { const b = bandFor(direction === 'right' ? plotX0 : plotX0 + r, plotW0 - r); return cats.map((_, ci) => b.center(ci)); },
     });
@@ -878,8 +878,8 @@ export function comboPlotArea(
     plotW0 -= room;
   }
   let band = bandFor(plotX0, plotW0);
-  const categoryNames = cats.map(category => category.label ?? category.id);
-  const periodRow = cats.some(category => (category as { calendar?: unknown }).calendar) || isDateNumericTickSequence(categoryNames)
+  const dateNames = isDateNumericTickSequence(categoryNames);
+  const periodRow = cats.some(category => (category as { calendar?: unknown }).calendar) || dateNames
     || calendarLike(categoryNames) || categoryNames.every(label => /^[MWT]\d+$/i.test(label));
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   const authored = authoredDateTicks(cats, options, warnings);
@@ -887,24 +887,22 @@ export function comboPlotArea(
   // Combo publishes the rank to name mapping, so it takes ranks over a
   // row of cut names. `withCategoryRanks` keeps that decision, and the strings
   // that carry the mapping, out of the shared cascade every type imports.
+  const chronological = (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] !== false;
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain));
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, toDate, domain.running);
     ticked?.name(row);
     return withCategoryRanks(planCategoryRow({
-      rotate: !cats.every(c => MONTH_START.exec((c.label ?? c.id).trim())?.[0] === (c.label ?? c.id).trim()),
-      target: options.target, textScale: textScaleOf(options),
+      rotate: !categoryNames.every(name => MONTH_START.exec(name.trim())?.[0] === name.trim()),
+      ...bandedCategoryStyle(options, theme, tickFont),
       ...row,
       // A ranked row (pareto) is not a timeline: its dates are not a calendar tick row.
-      ...((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? { dates: undefined } : { reference: { x: frame.plot.x, width: frame.plot.w } }),
-      strideFromEnd: periodRow && (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] !== false,
+      ...(chronological ? { reference: { x: frame.plot.x, width: frame.plot.w } } : { dates: undefined }),
+      strideFromEnd: periodRow && chronological,
       rotate90: (options as { [CATEGORY_ROW_VERTICAL]?: boolean })[CATEGORY_ROW_VERTICAL] === true,
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
-      fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
-      stepToFloor: true,
-      secondary: secondaryFont(theme), periods: periodRow,
-      padding: 4,
+      periods: periodRow,
       measure,
       // A complete calendar row is always upright. Only rotated names use plot height.
       plotHeight: measure === defaultMeasurer && row.calendar?.length === row.labels.length && row.calendar.every(Boolean) ? undefined : frame.plot.h,
@@ -917,25 +915,27 @@ export function comboPlotArea(
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
       ...(rotate === false ? { rotate } : {}),
-    }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    }), measure, categoryNames, (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
   };
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   let catPlan = planRow(band, authored);
   // A ranked row (pareto) is not a timeline, so it keeps its day names.
-  const ticked = authored ?? ((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language));
+  const ticked = authored ?? (chronological ? longDayMonths(cats, catPlan.stride, options.locale?.language) : undefined);
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   if (!stair) ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
   const showCatTickRow = kindSetting(domain, 'category') !== false && cats.length > 0 && !stair;
+  const categoryTitle = planCategoryTitle(options, tickFont, measure, plotWidth, warnings);
+  if (categoryTitle) catPlan = withCategoryTitle(catPlan, categoryTitle, showCatTickRow);
   if (showCatTickRow) {
     pushAll(warnings, catPlan.warnings);
     // The rank plan carries no lint of its own: the mapping belongs to the
     // caller that can publish it.
-    if (catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
+    if (catPlan.step === 'ranks') warnings.push(categoryRanksLint(categoryNames, band.step));
   }
   const rowHeight = showCatTickRow && keylessLimit
-    ? categoryHeightLimit(cats, theme, measure)
+    ? categoryHeightLimit(cats, theme, measure) + (categoryTitle?.bandHeight ?? 0)
     : undefined;
-  const catBandH = showCatTickRow ? (rowHeight ?? catPlan.rowHeight) + 8 : 0;
+  const catBandH = showCatTickRow || categoryTitle ? (rowHeight ?? catPlan.rowHeight) + 8 : 0;
   // The category row reads under the lowest column and the value or
   // total hanging under it; the plot makes that room.
   const hangingRoom = showCatTickRow && domain.options.labels !== false ? Math.max(measure('0', labelFont).height, gtH) + 4 : 0;
@@ -994,7 +994,7 @@ export function comboPlotArea(
     })));
   const y = linearScale([dLo, dHi], [plot.y + plot.h, plot.y + Math.min(endpointAir, plot.h / 3)]);
   // The engine's own date labels make a date row whatever their words (catPlan.dateNumeric).
-  const dateNumericTicks = catPlan.dateNumeric || isDateNumericTickSequence(cats.map((c) => c.label ?? c.id));
+  const dateNumericTicks = catPlan.dateNumeric || dateNames;
   return {
     frame, leftAxisReserve, rightAxisReserve, axisTitles, topPad, tickFont, labelFont, strongFont, gtH, valueLineRows,
     first: texts.first, last: texts.last, gutters, endpointWidth, band, catPlan,

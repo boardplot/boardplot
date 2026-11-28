@@ -450,6 +450,26 @@ it('steps every tile of a narrow tile map down to the type floor so each value p
   expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
 });
 
+// A category axis title must stay clear of the category names on a narrow chart.
+it.each(['column', 'bar', 'line', 'combo'])('%s keeps the category title on its own line', type => {
+  const fixture = getFixtures(type).find(f => f.id === 'category-axis-title')!;
+  const result = layoutResolvedRequest(resolveChartRequest({
+    type, data: fixture.data, options: { ...fixture.options, size: { width: 320 } },
+  }));
+  if (result.refused) throw new Error(result.warnings[0]?.message);
+  const title = result.labels.find(label => label.kind === 'axisTitle' && !label.hidden && label.text === 'Quarter');
+  const names = result.labels.filter(label => label.kind === 'category' && !label.hidden);
+  expect(title?.lines).toEqual(['Quarter']);
+  expect(names).toHaveLength(3);
+  const rect = title!.rect;
+  if (type === 'bar') {
+    expect(rect.y + rect.h).toBeLessThanOrEqual(Math.min(...names.map(label => label.rect.y)));
+  } else {
+    expect(rect.y).toBeGreaterThanOrEqual(Math.max(...names.map(label => label.rect.y + label.rect.h)));
+    expect(rect.x + rect.w).toBeCloseTo(result.plot.x + result.plot.w);
+  }
+});
+
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
 it('draws a dot value-axis title inside its fixed canvas', () => {
   const request = { type: 'dot', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [10, 20] }] },

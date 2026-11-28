@@ -9,7 +9,7 @@ import type { Theme } from '../../types/theme';
  */
 
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
-import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
+import { AXIS_TITLE_GAP, measureValueAxisWidth, planCategoryTitle, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
 import { authoredDateTicks, dayCategories, type CalendarInfo } from '../../calendarLabels';
 import { requestMemo } from '../../layoutPlan';
 import type { DateTickInterval } from '../../dateFormat';
@@ -17,7 +17,7 @@ import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../f
 import { percentCellsOnly } from '../../annotatePass';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
-import { needsMonthTicks, planCategoryRow, rotatedLeftOverhang, type CategoryRowInput, type CategoryRowPlan } from '../../label/categoryRow';
+import { needsMonthTicks, planCategoryRow, rotatedLeftOverhang, withCategoryTitle, type CategoryRowInput, type CategoryRowPlan } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY } from '../../label/solver';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
@@ -914,7 +914,7 @@ export function linePlotArea(
   const ratioTierPrepared = prepareRatioTier(options.ratioTier, cats, seriesNorm, theme, measure, Math.max(10, frame.plot.w - axis.valueAxisReserve), flatNumerator ? domain.fmt : undefined, options.target, notApplicableGlyph(options.strings), options.locale?.language);
   warnings.push(...ratioTierPrepared.warnings);
   const row = categoryRow(env, domain, text, reserves, frame, axis.valueAxisReserve, warnings);
-  const { catPlan, categoryOverhang, categoryRightOverhang, crossesBetween, intervalTicks, endRoom, sideEndRoom } = row;
+  const { categoryOverhang, categoryRightOverhang, crossesBetween, intervalTicks, endRoom, sideEndRoom } = row;
   const xTicks = row.xTicks;
   // Read from annList, not options.annotations: bump drops the value-arithmetic
   // kinds, and reserving headroom for a bracket never drawn is dead space.
@@ -941,6 +941,9 @@ export function linePlotArea(
   // The plot's x extent is known before its head band: the header rows only move it down.
   const plotX = frame.plot.x + (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) + categoryOverhang;
   const plotW = Math.max(10, frame.plot.w - (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) - categoryOverhang - categoryRightOverhang);
+  const showCategoryTickRow = text.kindSetting('category') !== false && cats.length > 0;
+  const categoryTitle = !domain.x && planCategoryTitle(options, text.tickFont, measure, plotW, warnings);
+  const catPlan = categoryTitle ? withCategoryTitle(row.catPlan, categoryTitle, showCategoryTickRow) : row.catPlan;
   const n = cats.length;
   const grid = domain.population ?? domain.timeline;
   const span = categorySpan(insetRange(plotX, plotW, categoryInsetOf(options)), grid?.span ?? n, crossesBetween, endRoom);
@@ -986,10 +989,9 @@ export function linePlotArea(
   const headInPlot = frame.legend !== undefined && frame.legend.rect.y + frame.legend.rect.h <= frame.plot.y;
   // The tick band reserves what its labels measure; no tick row reserves
   // nothing. The ratio-tier branch adds the tier's caption gap on top.
-  const showCategoryTickRow = text.kindSetting('category') !== false && cats.length > 0;
   if (showCategoryTickRow) pushAll(warnings, catPlan.warnings);
   const categoryTickGap = domain.isArea && !crossesBetween && axis.axisShown ? Math.max(6, measure('0', text.secondaryFont).height / 2 + 4) : 6;
-  const categoryTickReserve = showCategoryTickRow ? catPlan.rowHeight + categoryTickGap + 2 : 0;
+  const categoryTickReserve = showCategoryTickRow || categoryTitle ? catPlan.rowHeight + categoryTickGap + 2 : 0;
   const categoryBandHeight = ratioTierPrepared.tier
     ? 6 + catPlan.rowHeight + ratioTierMetrics.categoryCaptionGap - theme.space.tierGap
     : categoryTickReserve;

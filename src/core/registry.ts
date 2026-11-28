@@ -1,5 +1,6 @@
 import type { ParetoDerived } from './charts/pareto/layout';
 import { PLAN_ONLY } from './layoutPlan';
+import { categoryTitleDropped } from './label/categoryWarnings';
 import { defaultMeasurer } from './text';
 /**
  * Chart registry. Charts are values; the registry is the single
@@ -886,6 +887,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
       let geo = loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
+      if (options?.categoryAxis?.title && isRefused(geo)) {
+        const { title: _title, ...axis } = options.categoryAxis;
+        const fitted = layoutWithFooter(data, { ...authored, categoryAxis: Object.keys(axis).length ? axis : undefined } as O);
+        if (!isRefused(fitted)) return { ...fitted, warnings: [...fitted.warnings, categoryTitleDropped()] };
+      }
       if (!geo.refused) {
         finishCutLabelNotes(geo);
         reportLabelOmissions(geo, options, data);

@@ -14,3 +14,8 @@ export function categoryCutLint(names: readonly string[], noted: boolean, where 
     detail: { cut: [...names] },
   };
 }
+
+export function categoryTitleDropped(): LintWarning {
+  return { code: 'axis-title-dropped', severity: 'warn', field: ['options', 'categoryAxis', 'title'],
+    message: 'The category axis title was omitted because it does not fit.' };
+}

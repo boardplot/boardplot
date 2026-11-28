@@ -20,7 +20,8 @@ import { wrapText, type FontSpec, type TextMeasurer } from './text';
 import type { OwnerRef } from './types/cell';
 import type { BaseOptions } from './types/options';
 import { PRIORITY, type LabelRequest } from './label/solver';
-import type { AxisGeometry, Geometry, Paint, PlacedLabel, SceneNode } from './types/scene';
+import { categoryTitleDropped } from './label/categoryWarnings';
+import type { AxisGeometry, Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from './types/scene';
 import type { Theme } from './types/theme';
 import { maxOf, minOf } from './arrays';
 
@@ -458,9 +459,31 @@ export function valueAxisUnit(
   return units.size === 1 ? [...units][0] : undefined;
 }
 
-/** Whether a chart's label map lets the value-axis title draw (`labels.axisTitle`, `labels: false`). */
+/** Whether the chart's label settings allow axis titles. */
 export function axisTitleAllowed(labels: BaseOptions['labels']): boolean {
   return labels !== false && labels?.axisTitle !== false;
+}
+
+export interface CategoryTitle {
+  height: number;
+  bandHeight: number;
+  request(x: number, y: number, align: 'start' | 'end'): LabelRequest;
+}
+
+/** A category title takes one tick-font line. It gives up the row when the text is too wide. */
+export function planCategoryTitle(
+  options: Pick<BaseOptions, 'categoryAxis' | 'labels'>, font: FontSpec, measure: TextMeasurer, width: number, warnings: LintWarning[],
+): CategoryTitle | undefined {
+  const text = options.categoryAxis?.title?.trim().replace(/\s+/gu, ' ');
+  if (!text || !axisTitleAllowed(options.labels)) return;
+  const size = measure(text, font);
+  if (size.width > width) {
+    warnings.push(categoryTitleDropped());
+    return;
+  }
+  const title = { text, lines: [text], font, ...size };
+  return { height: size.height, bandHeight: size.height + AXIS_TITLE_GAP,
+    request: (x, y, align) => axisTitleRequest(title, { x, y }, align, 'axis:category:title') };
 }
 
 /**
@@ -502,26 +525,27 @@ export function valueAxisTitleBand(title: ValueAxisTitle | undefined, theme: The
 }
 
 /**
- * A value-axis title as a label request: one seat, start- or
- * end-anchored at x, solved with the chart's other labels at the grand-total
- * priority, so it claims its box before any value label and is published in
- * `geometry.labels`. The axis role at its regular weight rides as the label's font;
- * `applyValueAxisTitleInk` sets the muted ink once the solver has placed it.
+ * Each title has one measured seat. Value titles keep grand-total priority.
+ * A category title yields its seat to the names and values.
  */
-export function valueAxisTitleRequest(
-  title: ValueAxisTitle,
+function axisTitleRequest(
+  title: Pick<ValueAxisTitle, 'text' | 'lines' | 'font' | 'width' | 'height'> & { truncated?: boolean },
   at: { x: number; y: number },
   align: 'start' | 'end',
   id: string,
 ): LabelRequest {
   const rect: Rect = { x: align === 'end' ? at.x - title.width : at.x, y: at.y, w: title.width, h: title.height };
+  const category = id === 'axis:category:title';
   return {
-    id, kind: 'axisTitle', typeRole: 'secondary', owner: {}, text: title.text, lines: title.lines, font: title.font, fontStep: title.font,
-    priority: PRIORITY.grandTotal,
+    id, kind: 'axisTitle', typeRole: category ? 'axis' : 'secondary', owner: {}, text: title.text, lines: title.lines, font: title.font, fontStep: title.font,
+    priority: category ? PRIORITY.interior - 1 : PRIORITY.grandTotal,
+    ...(category ? { align, keepWhenDense: true } : {}),
     ...(title.truncated ? { title: title.text } : {}),
     candidates: [{ slot: 'axisTitle', rect, penalty: 0 }],
   };
 }
+
+export { axisTitleRequest as valueAxisTitleRequest };
 
 /** From a bottom axis title to the tick label beside it in the same row. */
 const TICK_ROW_TITLE_GAP = 12;
