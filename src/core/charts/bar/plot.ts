@@ -328,7 +328,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const nameTrack = options.columnOverrides !== undefined && features.nameTrack
     ? features.nameTrack(options, nameColumn, plot0.w, warnings) : (options as { [NAME_TRACK]?: number })[NAME_TRACK];
   const capW = nameTrack ?? Math.max(24, plot0.w * 0.28);
-  const categoryTitle = planCategoryTitle(options, tickFont, measure, capW, warnings);
+  const categoryTitle = planCategoryTitle(options, tickFont, measure, plot0.w, warnings);
   const annPad = (domain.localAnns.length > 0 || domain.passAnns.some(valueLineHasTargetExtras) ? 26 : 8)
     + (categoryTitle?.bandHeight ?? 0);
   // The title of a drawn value axis sits in its tick row, or under it (barPlotArea).

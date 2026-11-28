@@ -1750,3 +1750,19 @@ describe('the type class step at 720 px', () => {
     } finally { spy.mockRestore(); }
   });
 });
+
+// Adding a category title to a dense grouped column chart at 320 px hid a value label that the chart prints without it.
+it('drops the category title when it would hide a label, and keeps an empty title from changing the chart', () => {
+  const fixture = getFixtures('column').find(f => f.id === 'dense-grouped-10x4')!;
+  const draw = (categoryAxis?: { title: string }) => layoutResolvedRequest(resolveChartRequest({
+    type: 'column', data: fixture.data, options: { ...fixture.options, size: { width: 320 }, ...(categoryAxis ? { categoryAxis } : {}) },
+  }));
+  const plain = draw();
+  const titled = draw({ title: 'Quarter' });
+  if (plain.refused || titled.refused) throw new Error('refused');
+  expect(titled.warnings.map(w => w.code)).toContain('axis-title-dropped');
+  expect(titled.labels.filter(label => label.hidden).length).toBe(plain.labels.filter(label => label.hidden).length);
+  const empty = draw({ title: '' });
+  if (empty.refused) throw new Error('refused');
+  expect(empty.labels.filter(label => label.hidden).length).toBe(plain.labels.filter(label => label.hidden).length);
+});

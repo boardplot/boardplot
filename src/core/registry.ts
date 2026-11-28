@@ -887,10 +887,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
       let geo = loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
-      if (options?.categoryAxis?.title && isRefused(geo)) {
+      if (options?.categoryAxis?.title) {
+        // The title gives way when it would refuse the chart or hide a label the chart prints without it.
         const { title: _title, ...axis } = options.categoryAxis;
-        const fitted = layoutWithFooter(data, { ...authored, categoryAxis: Object.keys(axis).length ? axis : undefined } as O);
-        if (!isRefused(fitted)) return { ...fitted, warnings: [...fitted.warnings, categoryTitleDropped()] };
+        const plain = layoutWithFooter(data, { ...authored, categoryAxis: Object.keys(axis).length ? axis : undefined } as O);
+        const hiddenLabels = (g: typeof geo) => (g as { labels?: { id: string; hidden?: unknown }[] }).labels?.filter(label => label.hidden !== undefined && label.id !== 'axis:category:title').length ?? Infinity;
+        if (!isRefused(plain) && hiddenLabels(plain) < hiddenLabels(geo)) return { ...plain, warnings: [...plain.warnings, categoryTitleDropped()] };
       }
       if (!geo.refused) {
         finishCutLabelNotes(geo);

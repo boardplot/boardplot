@@ -52,7 +52,7 @@ const hasOnly = (value: object, allowed: ReadonlySet<string>): boolean => Object
  */
 export function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): boolean {
   if (!hasOnly(options, SAME_OPTIONS)) return false;
-  if (options.categoryAxis && (!options.categoryAxis.title || !hasOnly(options.categoryAxis, SAME_CATEGORY_AXIS))) return false;
+  if (options.categoryAxis && !hasOnly(options.categoryAxis, SAME_CATEGORY_AXIS)) return false;
   if (options.variant === 'stacked100' || (options.referenceStyle !== undefined && options.referenceStyle !== 'tick')) return false;
   if (options.netLine !== undefined && options.netLine !== true) return false;
   if (options.labels !== undefined && (options.labels === false || !hasOnly(options.labels, SAME_LABELS))) return false;

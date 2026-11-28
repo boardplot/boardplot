@@ -564,7 +564,7 @@ function layoutRows(
     const nameColumn = !noNameColumn && labelOn('category');
     const nameTrack = barNameTrack(options, nameColumn, plot0.w, rowWarnings);
     const catCap = nameTrack ?? Math.max(24, plot0.w * 0.28);
-    const categoryTitle = planCategoryTitle(options, tickFont, measure, catCap, rowWarnings);
+    const categoryTitle = planCategoryTitle(options, tickFont, measure, plot0.w, rowWarnings);
     const headerH = categoryTitle?.bandHeight ?? 0;
     const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH - headerH);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
