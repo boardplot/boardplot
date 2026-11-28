@@ -1158,33 +1158,6 @@ export function annotationArraySchema<T extends z.ZodType>(itemSchema: T) {
   }).describe('Annotations in authored order; explicit ids must be unique within this array.');
 }
 
-/**
- * Dashed/dotted line ink is the engine's scenario
- * channel for PROJECTED data (AC→FC transitions, FC/PL series). An authored
- * `lineStyle` that dashes an ACTUAL series makes the exhibit claim a forecast
- * that is not one, a break of the scenario grammar worse than any layout
- * defect. Reference context lines are exempt: the engine draws them in its
- * own dash and they carry no scenario claim.
- * Data dashes also mark provisional metric-stack values. That mode
- * owns its scoped states and dash geometry; it does not accept lineStyle.
- */
-export function addProjectedDashIssues(
-  ctx: z.RefinementCtx,
-  series: { id: string; lineStyle?: string; scenario?: string; role?: string }[],
-  basePath: (string | number)[] = ['series'],
-): void {
-  series.forEach((entry, index) => {
-    if (entry.lineStyle !== 'dashed' && entry.lineStyle !== 'dotted') return;
-    if (entry.scenario === 'FC' || entry.scenario === 'PL') return;
-    if (entry.role === 'reference') return;
-    ctx.addIssue({
-      code: 'custom',
-      path: [...basePath, index, 'lineStyle'],
-      message: `series '${entry.id}': lineStyle '${entry.lineStyle}' on actual data claims forecast status — dashed/dotted ink marks projected data only; declare scenario 'FC' or 'PL' if the series is projected, use role 'reference' for a context line, or drop lineStyle and let color carry identity`,
-    });
-  });
-}
-
 export const derivedRatioTierSchema = z
   .object({
     id: idSchema.describe('Stable id for the derived ratio tier.'),

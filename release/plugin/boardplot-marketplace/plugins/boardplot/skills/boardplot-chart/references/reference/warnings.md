@@ -221,6 +221,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `cross-between-ignored` | info |  | core/intervalTicks.ts |
 | `css-var-fallback-used` | warn |  | core/colorVariables.ts |
 | `current-value-ignored` | warn |  | bar |
+| `dash-on-actual-data` | warn |  | core/request.ts |
 | `date-axis-unsupported` | warn |  | scatter |
 | `date-format-ambiguous` | warn |  | line, table |
 | `date-format-fiscal-year` | info |  | line, table |

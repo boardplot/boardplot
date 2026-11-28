@@ -26,7 +26,7 @@ import { activeFontTables } from './activeFontTables';
 import { renderSvg, XmlCharError } from '../core/svg/renderSvg';
 import { claimsForChart } from '../core/claims';
 import { adoptThemeObject, isThemeObject, rootContextErrors } from '../core/doc/themeObject';
-import { lintCodes, runDocAdvice, runDocLints } from '../core/lint';
+import { docLintCodes, runDocAdvice, runDocLints } from '../core/lint';
 import { isRecord } from '../core/lint/shared';
 import { aspectDocLints, type HeightVerifier } from '../core/lint/aspect';
 import { spaceDocLints } from '../core/lint/space';
@@ -726,7 +726,7 @@ export function addDocumentLints(
   doc: BoardplotDoc, envelope: DocumentEnvelope,
   drawn: readonly { name: string; chart: DrawnChart; drawsWith?: (changed: Record<string, unknown>, code: string) => boolean }[] = [],
 ): void {
-  const central = new Set<string>(lintCodes);
+  const central = new Set<string>(docLintCodes);
   // A root theme reaches every chart: name each page variable once at its source path.
   const variables = new Set<string>();
   envelope.warnings = envelope.warnings.filter((warning) => !central.has(warning.code) && (warning.code !== 'css-var-fallback-used'

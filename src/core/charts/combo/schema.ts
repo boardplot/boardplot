@@ -6,7 +6,6 @@ import {
   addCanvasBoundsIssues,
   refuseBadgeEvents,
   addCategorySeriesIdIssues,
-  addProjectedDashIssues,
   anomalyOptionSchema,
   averageMarkerSchema,
   baseOptionsSchema,
@@ -57,7 +56,7 @@ const seriesSchema = z.strictObject({
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
   kind: z.enum(['column', 'line', 'area']).optional().describe("Geometry for this series: column by default, or an overlaid line or area."),
   axis: z.enum(['primary', 'secondary']).optional().describe("Default 'primary'. A line or area with 'secondary' draws on a second value scale and warns dual-axis. Columns and series in a combo with a percentage ruler stay on the primary scale."),
-  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern; dashed and dotted strokes require a projected scenario such as FC or PL."),
+  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern of a line or area series. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line."),
   marker: z.enum(['circle', 'square', 'triangle', 'diamond', 'none']).optional().describe("Point symbol; none suppresses point markers."),
   smooth: z.boolean().optional().describe("Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation."),
   interpolateGaps: z.boolean().optional().describe("true draws the line across a missing cell; false breaks it there, so no line suggests a value that is not there. Default false."),
@@ -70,15 +69,7 @@ export const comboDataSchema = z
     series: z.array(seriesSchema).min(1).describe("Series supplying values for each category, with optional reference series for comparisons."),
   })
   .superRefine((data, ctx) => {
-    addCategorySeriesIdIssues(ctx, data, () => {
-      // Only line-kind series draw stroke ink in a combo; lineStyle on columns
-      // and areas never reaches the page, so the dash-semantics refusal
-      // applies exactly where the claim would render.
-      addProjectedDashIssues(
-        ctx,
-        data.series.map((series) => (series.kind === 'line' ? series : { ...series, lineStyle: undefined })),
-      );
-    });
+    addCategorySeriesIdIssues(ctx, data);
   }) as unknown as z.ZodType<ChartData>;
 
 /** A second scale and a percentage ruler have different settings for the right axis. */

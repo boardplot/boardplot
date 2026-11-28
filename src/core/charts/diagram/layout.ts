@@ -50,7 +50,7 @@ import {
   qRect,
   BOX_LABEL_INSET,
 } from './primitives';
-import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
+import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands, type PresetLayout } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
 import { issueTreeEligible, layoutIssueTreeCompact } from './issueTreeCompact';
 import { ARCHITECTURE_PLANS, architectureEligible, architectureFill, layoutArchitecture, type ArchitecturePlans } from './architecture';
@@ -624,13 +624,6 @@ function layoutDiagramPass(
     if ((label.kind as string) === 'diagramCaption' && !label.hidden) mark.captionBox = label.rect;
   }
 
-  const structuralLabelNodes = probe ? [] : labelsToNodes(theme, solvedStructural.placed, (label) =>
-    ['diagramLane', 'diagramGroup', 'diagramBadge'].includes(label.kind as string)
-      ? (labelKinds.get(label.id) === 'diagramBadge' ? badgeFont : labelKinds.get(label.id) === 'diagramLane' || options.variant === 'architecture' ? laneFont : axisFont)
-      : labelKinds.get(label.id) === 'diagramCaption' && org?.captionBoxes ? captionFont
-      : org?.secondaryFont && label.id.startsWith('secondary-label:') ? org.secondaryFont
-      : (label.owner.pointId ? org?.fonts.get(label.owner.pointId) ?? (label.id.startsWith('node-label:') ? nodeFontById(label.owner.pointId) : undefined) : undefined) ?? labelFont,
-  ).flatMap((node) => splitBoldLead(node, boldLeads, emphasisWeight(theme)));
   const reservedForRouting = solvedStructural.placed
     .filter((label) => !label.hidden)
     .map((label) => label.rect);
@@ -719,23 +712,6 @@ function layoutDiagramPass(
     for (const label of solvedEdges.placed) if (label.owner.segmentId !== undefined) label.ink = { token: 'inkMuted' };
   }
   pushAll(warnings, solvedEdges.warnings);
-  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? edgeLabelFont]));
-  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? edgeLabelFont);
-
-  const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
-  const scene = [
-    ...frame.nodes,
-    ...groupScene,
-    ...preset.decorationScene,
-    ...routed.scene,
-    ...nodeScene,
-    ...(org?.overlay ?? []),
-    ...laneGroupLabels,
-    ...nodeLabels,
-    ...badgeScene,
-    ...accessoryLabels,
-    ...edgeLabelNodes,
-  ];
   const labels = [...solvedStructural.placed, ...solvedEdges.placed];
   const a11y = diagramA11y(data, options, preset.readingOrder, preset.edges);
   // A node label that is hidden or would be cut is required content either
@@ -801,6 +777,32 @@ function layoutDiagramPass(
   }
   if (!narrow && !narrowCard && panelTypeClass(options) === undefined) sizing.minWidth = Math.max(sizing.minWidth, DIAGRAM_MIN_WIDTH);
 
+  if (options.variant === 'roadmap' && !org) {
+    placePinnedRoadmapNames(data.nodes, preset, labelRequests, solvedStructural, occupied, structuralCtx, u, arrowheadRects(routed.scene));
+  }
+  const structuralLabelNodes = labelsToNodes(theme, solvedStructural.placed, (label) =>
+    ['diagramLane', 'diagramGroup', 'diagramBadge'].includes(label.kind as string)
+      ? (labelKinds.get(label.id) === 'diagramBadge' ? badgeFont : labelKinds.get(label.id) === 'diagramLane' || options.variant === 'architecture' ? laneFont : axisFont)
+      : labelKinds.get(label.id) === 'diagramCaption' && org?.captionBoxes ? captionFont
+      : org?.secondaryFont && label.id.startsWith('secondary-label:') ? org.secondaryFont
+      : (label.owner.pointId ? org?.fonts.get(label.owner.pointId) ?? (label.id.startsWith('node-label:') ? nodeFontById(label.owner.pointId) : undefined) : undefined) ?? labelFont,
+  ).flatMap((node) => splitBoldLead(node, boldLeads, emphasisWeight(theme)));
+  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? edgeLabelFont]));
+  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? edgeLabelFont);
+  const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
+  const scene = [
+    ...frame.nodes,
+    ...groupScene,
+    ...preset.decorationScene,
+    ...routed.scene,
+    ...nodeScene,
+    ...(org?.overlay ?? []),
+    ...laneGroupLabels,
+    ...nodeLabels,
+    ...badgeScene,
+    ...accessoryLabels,
+    ...edgeLabelNodes,
+  ];
   const geometry: Geometry<DiagramMarks, DiagramDerived> = {
     type: 'diagram',
     size,
@@ -1012,6 +1014,11 @@ interface JoinedLabel {
   secondary: () => LabelRequest;
 }
 
+function nodeLabelClaim(label: PlacedLabel, occupied: OccupiedIndex) {
+  return occupied.hitsWhich(label.rect, 0).find(claim =>
+    claim.kind === 'label' && claim.owner.pointId === label.owner.pointId && sameRect(claim.rect, label.rect));
+}
+
 /**
  * Gives each outside node label its secondary lines once every name has its
  * seat. The taller block takes the first of its seats that is clear of every
@@ -1033,9 +1040,7 @@ function settleJoinedLabels(
   const unplaced: LabelRequest[] = [];
   for (const [id, entry] of joined) {
     const label = byId.get(id);
-    const name = label && !label.hidden
-      ? occupied.hitsWhich(label.rect, 0).find(claim => claim.kind === 'label' && claim.owner.pointId === label.owner.pointId && sameRect(claim.rect, label.rect))
-      : undefined;
+    const name = label && !label.hidden ? nodeLabelClaim(label, occupied) : undefined;
     if (!label || !name) {
       unplaced.push(entry.secondary());
       continue;
@@ -1063,6 +1068,56 @@ function settleJoinedLabels(
     if (node) node.secondaryPrinted = true;
   }
   return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
+}
+
+/** The bounds of each arrowhead the edges drew; the occupied index holds only the edge lines of a roadmap, so a moved name keeps off them here. */
+function arrowheadRects(scene: readonly SceneNode[]): Rect[] {
+  return scene.flatMap(node => {
+    if (node.t !== 'path' || node.part !== 'diagramArrow') return [];
+    const n = node.d.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    const xs = [n[0]!, n[2]!, n[4]!], ys = [n[1]!, n[3]!, n[5]!];
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return [{ x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }];
+  });
+}
+
+/** Once the roadmap fits, a milestone pinned outside its phase can move its whole label without displacing another. */
+function placePinnedRoadmapNames(
+  nodes: readonly DiagramNode[], preset: PresetLayout, requests: readonly LabelRequest[],
+  solved: ReturnType<typeof solveLabels>, occupied: OccupiedIndex, ctx: SolveCtx, u: number, arrowheads: readonly Rect[],
+): void {
+  for (const node of nodes) {
+    if (!node.position || node.kind !== 'milestone') continue;
+    const circle = preset.nodeRects.get(node.id)!;
+    const lane = preset.lanes.find(lane => lane.id === node.laneId)!.bounds;
+    const cx = q(circle.x + circle.w / 2);
+    // The lane bounds round x and width apart, so a pin on the phase edge can fall half a pixel outside them.
+    if (cx >= lane.x - 1 && cx <= lane.x + lane.w + 1) continue;
+
+    const id = `node-label:${node.id}`;
+    const index = solved.placed.findIndex(label => label.id === id);
+    const label = solved.placed[index]!;
+    if (label.hidden || !label.slot.endsWith('InLane')) continue;
+    const claim = nodeLabelClaim(label, occupied);
+    if (!claim) continue;
+    occupied.release!(claim);
+    const request = requests.find(request => request.id === id)!;
+    const candidates = externalCandidates(circle, label.rect.w, label.rect.h, u, true, ctx.plot)
+      .filter(seat => !arrowheads.some(arrow => rectsOverlap(arrow, seat.rect)))
+      .map(seat => ({ ...seat, keepOffLines: true as const }));
+    const retry = solveLabels([{ ...request, text: label.text, lines: label.lines, candidates }], occupied, ctx);
+    const moved = retry.placed[0]!;
+    // The label stays when the move needs a leader (the scene draws none for these labels).
+    if (moved.hidden || moved.leader) {
+      if (!moved.hidden) occupied.release!(nodeLabelClaim(moved, occupied)!);
+      occupied.claim(label.rect, 'label', label.owner);
+      continue;
+    }
+    label.rect = moved.rect;
+    label.slot = moved.slot;
+    label.leader = moved.leader;
+    solved.decisions[index] = retry.decisions[0]!;
+  }
 }
 
 /** The side of the plot centre a ring node sits on: where its label goes. */

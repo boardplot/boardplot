@@ -5,7 +5,6 @@ import { liveWindowOptionsSchema } from '../../live/schema';
 import {
   colorRoleField,
   addCategorySeriesIdIssues, addDuplicateIdIssues,
-  addProjectedDashIssues,
   annotationArraySchema,
   annotationSchema,
   timeAnnotationSchema,
@@ -87,7 +86,7 @@ const seriesSchema = z.strictObject({
   fill: z.string().optional().describe("Explicit CSS fill color for this series; remains authored across theme changes."),
   unit: z.string().optional().describe("Unit of this series' values, used to check shared-scale compatibility. Without a format example, a $k, $m, k or m unit prints its labels whole from 100 up, in place of options.unit."),
   format: formatExample.optional().describe("Format-by-example for this series' labels, for example 1,234 or 1.2%. Overrides options.format."),
-  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern; dashed and dotted strokes require a projected scenario such as FC or PL."),
+  lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line."),
   marker: z.enum(['circle', 'square', 'triangle', 'diamond', 'none']).optional().describe("Point symbol; none suppresses point markers."),
   smooth: z.boolean().optional().describe("Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation."),
   interpolateGaps: z.boolean().optional().describe("true bridges a missing cell with a dashed segment and a hollow ring per missing category; false breaks the line, and an area fill, there, so no line suggests a value that is not there. Stacked variants (stacked-area, stacked100-area) stack a null as zero and do not break. Default false."),
@@ -117,10 +116,7 @@ export const lineDataSchema = z
       ctx.addIssue({ code: 'custom', path: ['categories'], message: 'line needs data.categories, or data.x with options.xAxis for a continuous axis' });
       return;
     }
-    addCategorySeriesIdIssues(ctx, { ...data, categories: data.categories ?? [] }, () => {
-      addProjectedDashIssues(ctx, data.series);
-      addSeriesKindIssues(ctx, data.series, 'line');
-    });
+    addCategorySeriesIdIssues(ctx, { ...data, categories: data.categories ?? [] }, () => addSeriesKindIssues(ctx, data.series, 'line'));
   }) as unknown as z.ZodType<LineChartData>;
 
 /** At most six named levels: past that the column is a table and the reader stops matching names to bands. */

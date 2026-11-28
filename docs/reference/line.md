@@ -105,7 +105,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
 | series[].unit | string |  | Unit of this series' values, used to check shared-scale compatibility. Without a format example, a $k, $m, k or m unit prints its labels whole from 100 up, in place of options.unit. |
 | series[].format | string |  | Format-by-example for this series' labels, for example 1,234 or 1.2%. Overrides options.format. |
-| series[].lineStyle | string |  | Stroke pattern; dashed and dotted strokes require a projected scenario such as FC or PL. One of `'solid'`, `'dashed'`, `'dotted'`. |
+| series[].lineStyle | string |  | Stroke pattern. Dashed and dotted lines on actual data draw with warning dash-on-actual-data. Set scenario FC for a forecast, PL for a plan, or role reference for a context line. One of `'solid'`, `'dashed'`, `'dotted'`. |
 | series[].marker | string |  | Point symbol; none suppresses point markers. One of `'circle'`, `'square'`, `'triangle'`, `'diamond'`, `'none'`. |
 | series[].smooth | boolean |  | Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation. |
 | series[].interpolateGaps | boolean |  | true bridges a missing cell with a dashed segment and a hollow ring per missing category; false breaks the line, and an area fill, there, so no line suggests a value that is not there. Stacked variants (stacked-area, stacked100-area) stack a null as zero and do not break. Default false. |
