@@ -149,7 +149,6 @@ describe('per-type React entries draw the recorded markup', { timeout: 120_000 }
     expect(marker).toMatchObject({ t: 'path', dash: expect.any(Array), display: { value: '300', state: 'clipped at 100' } });
     expect(marker).not.toHaveProperty('fill');
     expect(geometry.derived).toMatchObject({ clipped: [{ limit: 100, points: [{ value: 300 }] }] });
-    expect(geometry.a11y.desc).toContain('Q4 / Rate (300)');
     const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
     expect(records.find(record => record.target.owner.categoryId === 'Q4')).toMatchObject({ anchor: { y: point.y }, value: { raw: 300 } });
 

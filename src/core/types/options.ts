@@ -507,7 +507,7 @@ export interface BaseOptions {
    * report and dashboard (2 under 720 px), 2 for slide and 3 for print.
    * `show` selects what the frame prints. By default it prints authored notes
    * and three caveats: incomplete stack totals, missing values drawn as zero
-   * in stacked area charts, and clipped scatter points. An explicit list with
+   * in stacked area charts, and clipped scatter and line points. An explicit list with
    * 'disclosure' prints the caveats and other disclosures outside the budget.
    * 'method' adds retained method notes, such as the cohort formula.
    * Without `show`, an authored `placement` or a supported `methodNote: true`

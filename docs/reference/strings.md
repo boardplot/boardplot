@@ -116,10 +116,10 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `circleShape` | `circle` | choropleth |
 | `clampedFunnelNote` | `{v1} {v2} below zero shown as 0.` | funnel |
 | `clevelandName` | `Cleveland dot` | dot |
-| `clippedAt` | `clipped at {v1}` | scatter |
+| `clippedAt` | `clipped at {v1}` | clamp |
 | `clippedAtAxis` | `{v1} ({v2})` | scatter |
 | `clippedAtJoin` | ` and at ` | scatter |
-| `clippedPointsNote` | `{v1} clipped at {v2} ({v3}).` | scatter |
+| `clippedPointsNote` | `{v1} clipped at {v2} ({v3}).` | clamp |
 | `close` | `Close` | shared |
 | `closedBands` | `{v1} closed bands` | pyramid |
 | `cohort` | `Cohort` | cohort |
@@ -438,7 +438,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `pieName` | `pie` | pie |
 | `pieNegativeNote` | `Not drawn (negative value, so no total shown): {v1}.` | pie |
 | `plan` | `PL` | shared |
-| `pointsCount` | `{v1} point{v2}` | scatter |
+| `pointsCount` | `{v1} point{v2}` | clamp |
 | `position` | `Position` | a11y-businessRecords |
 | `positiveName` | `Positive` | slope |
 | `positiveTotal` | `Positive total` | shared |
