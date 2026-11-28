@@ -55,8 +55,8 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const activeFit = container ? containerFit(input.type, fit) : undefined;
   const frame = container ? resolveSize(fallbackSize, request.target ?? request.options?.target ?? context.target) : size;
   // A line chart with a zoom aggregate opens on the view the live chart opens on. Its page keys carry the zoom (zoomPageKey).
-  // A container chart needs its measured width for the grain, so no page shows it in the first frame.
-  const zoomed = typeof zoom === 'object' && zoom && zoom.aggregate && canonicalChartType(input.type) === 'line' ? zoom : undefined;
+  // A container chart needs its measured width for the grain: it is prepared as without zoom, and no page with a zoom aggregate shows it in the first frame.
+  const zoomed = typeof zoom === 'object' && zoom && zoom.aggregate && canonicalChartType(input.type) === 'line' && size !== 'container' ? zoom : undefined;
   const resolveFor = (chart: Omit<ChartRequest, 'size'>) => {
     if (zoomed) chart = openingView(chart, zoomed, frame, context);
     return resolveThemeRequest({ ...chart, options: (window ? { ...chart.options, window } : chart.options) as ChartRequest['options'], size: frame }, context);
@@ -70,7 +70,7 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const geometry = adapted ? { ...laidOut, warnings: rowsModule.rewriteWarningFields(laidOut.warnings, adapted.pathMap) } as typeof laidOut : laidOut;
   const mapped = adapted && { rows: { key: rowsKey({ type: resolved.type, data: input.data }, rows, columns), data: adapted.spec.data,
     reading: { rows: adapted.rows, ignoredColumns: adapted.ignoredColumns, states: adapted.states } } };
-  const inputKeys = window || (zoomed && container) ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, resolved, resolveFor, 'theme' in theme, zoomed);
+  const inputKeys = window ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, resolved, resolveFor, 'theme' in theme, zoomed);
   const prepared = { ...prepareChartRender(resolved, geometry), ...mapped, ...(inputKeys.length ? { inputKeys } : {}) };
   if (geometry.refused) return { ...prepared, fit: activeFit, records: [], ...theme };
   const records = interactionRecords({ request: resolved, geometry, scope: resolved.scope, claims: claimsForChart(resolved.type, geometry) });
