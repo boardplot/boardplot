@@ -13,7 +13,7 @@ import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
 import { NormalizeError } from './normalize/shared';
-import { scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx, typeClassCap, type TargetTypeClass } from './target';
+import { narrowIsOff, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx, typeClassCap, type TargetTypeClass } from './target';
 export { typeClassCap, withTypeClassCap } from './target';
 import type { RenderTarget } from './types/options';
 import { AUTHORED_TYPE_SIZE, hasAuthoredTypeSize, type FontSpec } from './text';
@@ -126,7 +126,7 @@ let marginBelow = false;
 
 /** The type class cap and the canvas margin step of the running layout: the part of a layout cache key they set. */
 export function layoutStepKey(): string {
-  return (typeClassCap() ?? '') + (marginBelow ? '<' : '');
+  return (typeClassCap() ?? '') + (marginBelow ? '<' : '') + (narrowIsOff() ? '!' : '');
 }
 
 /**

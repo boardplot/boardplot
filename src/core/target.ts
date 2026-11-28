@@ -34,8 +34,17 @@ export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
 /** The chart types that take the narrow dashboard class. The others keep their sizes under 400 px. */
 const NARROW_TYPES = new Set(['line', 'bar', 'waterfall', 'column']);
 
+let narrowOff = false;
+/** Runs a layout with the narrow dashboard class off: a card the narrow sizes refuse can draw in the usual sizes. */
+export function withoutNarrow<T>(run: () => T): T {
+  const outer = narrowOff;
+  narrowOff = true;
+  try { return run(); } finally { narrowOff = outer; }
+}
+export const narrowIsOff = (): boolean => narrowOff;
+
 export function narrowDashboard(target: RenderTarget | undefined, width: number, type: string): boolean {
-  return target === 'dashboard' && width < 400 && NARROW_TYPES.has(type);
+  return !narrowOff && target === 'dashboard' && width < 400 && NARROW_TYPES.has(type);
 }
 
 let classCap: TargetTypeClass | undefined;

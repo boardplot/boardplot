@@ -8,7 +8,7 @@ import { loadedDeferred } from './deferred';
 import { INTERACTIVE_LAYOUT } from './footer';
 import { askedNotesOffWarning, shownNoteKinds, withAuthorNotesOnly } from './notes';
 import { canonicalChartType, getChart, type DiscardRepair } from './registry';
-import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
+import { ACCEPTANCE_PROBE, CARD_MIN_WIDTH, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { localeMarksWarnings } from './localeMarks';
@@ -19,7 +19,7 @@ import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
 import type { TableOptions } from './types/table';
 import { DEFAULT_PRESET, inMarginStepBand, layoutStepKey, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
-import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
+import { DEFAULT_TARGET, floorTextScale, narrowDashboard, resolveTargetSize, withoutNarrow } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { AUTHORED_TYPE_SIZE, defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
@@ -295,7 +295,16 @@ export function tableViewportFrame(request: ResolvedChartRequest): { width: numb
   });
 }
 
+/** A card the narrow dashboard sizes refuse draws in the usual sizes when those fit: a chart that drew before is never refused by smaller text. */
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
+  const narrow = layoutNarrowRequest(request);
+  if (!isRefused(narrow) || request.size.width < CARD_MIN_WIDTH || !narrowDashboard(request.target, request.size.width, request.type)
+    || panelTypeClass(request.options) !== undefined) return narrow;
+  const usual = withoutNarrow(() => layoutNarrowRequest(request));
+  return isRefused(usual) ? narrow : usual;
+}
+
+function layoutNarrowRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
