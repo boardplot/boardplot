@@ -298,7 +298,7 @@ export function tableViewportFrame(request: ResolvedChartRequest): { width: numb
 /** A card the narrow dashboard sizes refuse draws in the usual sizes when those fit: a chart that drew before is never refused by smaller text. */
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const narrow = layoutNarrowRequest(request);
-  if (!isRefused(narrow) || request.size.width < CARD_MIN_WIDTH || !narrowDashboard(request.target, request.size.width, request.type)
+  if (!isRefused(narrow) || request.size.width + SIZE_TOLERANCE < CARD_MIN_WIDTH || !narrowDashboard(request.target, request.size.width, request.type)
     || panelTypeClass(request.options) !== undefined) return narrow;
   const usual = withoutNarrow(() => layoutNarrowRequest(request));
   return isRefused(usual) ? narrow : usual;
