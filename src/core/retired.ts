@@ -44,6 +44,7 @@ type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly
 const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
+  { at: 'options.secondaryAxis.acknowledge', use: "A combo line or area with axis: 'secondary' draws a second value scale and warns dual-axis." },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
   // Unused options and data fields.
@@ -193,6 +194,13 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
   for (const key of ['animate', 'debug']) {
     if (readAt(chart, ['options', key]) !== undefined) next = setAt(next, ['options', key], undefined);
   }
+  // An empty secondaryAxis config draws like an omitted one, including after its retired flag is removed.
+  if (Object.hasOwn(chart.options, 'secondaryAxis') && isRecord(chart.options.secondaryAxis)) {
+    const path = ['options', 'secondaryAxis'];
+    const axis = chart.options.secondaryAxis;
+    if (Reflect.ownKeys(axis).every(key => key === 'acknowledge')) next = setAt(next, path, undefined);
+    else if (Object.hasOwn(axis, 'acknowledge')) next = setAt(next, [...path, 'acknowledge'], undefined);
+  }
   const ignore = (field: string[], severity: 'warn' | 'info' = 'warn', on: string = type, does?: string) => {
     next = setAt(next, field, undefined);
     const dotted = field.join('.');
@@ -208,11 +216,12 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
     if (types.includes(type) && value !== undefined && !refused) ignore(field, 'warn', type, does);
   }
   // Most requests carry none of these settings: leave before any table is read.
-  const authored = Object.keys(chart.options);
+  const currentOptions = readAt(next, ['options']) as Record<string, unknown>;
+  const authored = Object.keys(currentOptions);
   if (!Object.hasOwn(chart, 'annotations') && !authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
   if (authored.some((key) => IGNORED_OPTION_KEYS.has(key))) {
     for (const key of schemaRefusedKeys(type).options) {
-      if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
+      if (IGNORED_OPTION_KEYS.has(key) && currentOptions[key] !== undefined) ignore(['options', key]);
     }
   }
   const axis = chart.options.valueAxis;

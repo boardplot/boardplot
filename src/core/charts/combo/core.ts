@@ -34,7 +34,7 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   openingPlot: plainComboOpening,
   sizing: chartSizing('combo'),
   title: 'Combo',
-  summary: 'Stacked columns with line/area overlays; gated, tick-synced secondary axis',
+  summary: 'Stacked columns with line and area overlays and an optional second value scale',
   layout: (data, options) => withEventsDescribed(layoutCombo(prepareFractionData(data), options as ComboOptions | undefined), options),
   notesBoundByWidth(data, options, geometry, noted) {
     const measure = options.measure ?? defaultMeasurer;

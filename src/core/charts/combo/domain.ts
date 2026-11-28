@@ -80,32 +80,14 @@ function normalizeComboData(data: ChartData): { cats: Category[]; seriesNorm: No
   return { cats, seriesNorm: series };
 }
 
-/**
- * The right-hand axis. The percent ruler is a RELABELLING of the primary
- * domain, not a second scale. `acknowledge` and `ruler` make opposite claims
- * about what the right-hand axis means, so both together resolve to neither
- * — picking one silently would change the chart's analytical statement.
- * The secondary axis is gated (explicit acknowledge; always lint-warned),
- * and column-kind series cannot leave the shared stack scale.
- */
+/** A percent ruler relabels the primary scale. Otherwise, a line or area can request its own scale. */
 function comboAxisGate(options: ComboOptions, seriesNorm: readonly NormSer[], columns: NormSer[], lines: NormSer[], warnings: LintWarning[]) {
   const secOpt = options.secondaryAxis as
-    | { acknowledge?: true; ruler?: AxisRuler; domain?: [number, number]; format?: string; show?: boolean }
+    | { ruler?: AxisRuler; domain?: [number, number]; format?: string; show?: boolean }
     | undefined;
   const rulerRequested = secOpt?.ruler;
-  let acknowledged = secOpt?.acknowledge === true;
   let ruler: { total: number; intervals: number } | undefined;
-  if (rulerRequested && acknowledged) {
-    acknowledged = false;
-    warnings.push({
-      code: 'combo-ruler-conflict',
-      severity: 'error',
-      message:
-        'secondaryAxis.acknowledge (an independent second scale) and secondaryAxis.ruler ' +
-        '(a relabelling of the primary scale) contradict each other — both refused',
-      suggest: 'choose one: acknowledge for genuinely independent units, ruler for a share of a total',
-    });
-  } else if (rulerRequested) {
+  if (rulerRequested) {
     if (!Number.isFinite(rulerRequested.total) || rulerRequested.total <= 0) {
       warnings.push({
         code: 'combo-ruler-total-invalid',
@@ -115,6 +97,20 @@ function comboAxisGate(options: ComboOptions, seriesNorm: readonly NormSer[], co
       });
     } else {
       ruler = { total: rulerRequested.total, intervals: Math.max(1, Math.round(rulerRequested.ticks ?? 5)) };
+    }
+  }
+  if (ruler) {
+    const demoted = seriesNorm.filter(s => s.role !== 'reference' && s.axis === 'secondary');
+    if (demoted.length > 0) {
+      for (const s of demoted) s.axis = 'primary';
+      const ids = demoted.map(s => `'${s.id}'`).join(', ');
+      warnings.push({
+        code: 'secondary-axis-ignored',
+        severity: 'warn',
+        message: `secondaryAxis.ruler takes precedence and keeps ${ids} on the primary scale.`,
+        suggest: `Remove axis: 'secondary' from ${ids} to make the primary scale explicit.`,
+        field: ['data', 'series', seriesNorm.indexOf(demoted[0]!), 'axis'],
+      });
     }
   }
   for (const s of columns) {
@@ -129,33 +125,13 @@ function comboAxisGate(options: ComboOptions, seriesNorm: readonly NormSer[], co
     }
   }
   const secondaryRequested = lines.filter((s) => s.axis === 'secondary');
-  let secondaryActive = false;
-  if (secondaryRequested.length > 0) {
-    if (!acknowledged) {
-      // The refusal: the CLI, MCP, React and the library layout (isRefused)
-      // all refuse on it. The series move to the primary scale only so the
-      // refused layout still completes; no path draws it.
-      for (const s of secondaryRequested) s.axis = 'primary';
-      const ids = secondaryRequested.map((s) => `'${s.id}'`).join(', ');
-      warnings.push({
-        code: 'dual-axis-unacknowledged',
-        severity: 'error',
-        message:
-          `series ${ids} ${secondaryRequested.length === 1 ? 'requests' : 'request'} the secondary axis ` +
-          'without options.secondaryAxis.acknowledge — a dual-axis chart is refused unless acknowledged',
-        suggest:
-          'for genuinely independent units, set options.secondaryAxis = { acknowledge: true }; ' +
-          `for a share of a total, remove axis: 'secondary' from ${ids} and set options.secondaryAxis.ruler`,
-        field: ['data', 'series', seriesNorm.indexOf(secondaryRequested[0]!), 'axis'],
-      });
-    } else {
-      secondaryActive = true;
-      warnings.push({
-        code: 'dual-axis',
-        severity: 'warn',
-        message: `secondary axis in use — dual-axis charts invite misreading; ${secOpt?.domain ? 'the secondary scale follows its authored domain' : 'tick rows are synced to the primary axis'}`,
-      });
-    }
+  const secondaryActive = secondaryRequested.length > 0;
+  if (secondaryActive) {
+    warnings.push({
+      code: 'dual-axis',
+      severity: 'warn',
+      message: `secondary axis in use — dual-axis charts invite misreading; ${secOpt?.domain ? 'the secondary scale follows its authored domain' : 'tick rows are synced to the primary axis'}`,
+    });
   }
   return { secOpt, ruler, secondaryRequested, secondaryActive };
 }
@@ -177,7 +153,7 @@ function primaryLinesUnlabelled(options: ComboOptions, lines: readonly NormSer[]
 /**
  * The series drawn against one scale declare one unit. The
  * primary scale carries options.unit, else the first unit a series on it
- * declares; an acknowledged secondary axis its own. The first series that
+ * declares; the secondary scale carries its own unit. The first series that
  * declares another is refused with its path and the fix combo supports.
  */
 function comboUnitConflicts(options: ComboOptions, seriesNorm: NormSer[], dataSeries: NormSer[], secondaryActive: boolean, warnings: LintWarning[]): void {
@@ -191,7 +167,7 @@ function comboUnitConflicts(options: ComboOptions, seriesNorm: NormSer[], dataSe
     const s = scale.series[conflict.index]!;
     warnings.push(unitConflictRefusal(conflict, s.id, seriesNorm.indexOf(s), scale.name, s.kind === 'column' || scale.secondary
       ? `give the ${scale.secondary ? 'secondary' : 'column'} series one unit, or show the measure in its own chart`
-      : `move series '${s.id}' to the secondary axis (axis: 'secondary', secondaryAxis: { acknowledge: true }) and title it in axisTitles.secondary`, scale.unit));
+      : `set axis: 'secondary' on series '${s.id}' and title its scale in axisTitles.secondary`, scale.unit));
   }
 }
 
@@ -268,8 +244,7 @@ function comboStacks(cats: Category[], columnSeries: NormSer[]) {
 /**
  * The value lines a combo draws on one axis, as an extent. The chart has two
  * value axes and a line names the one it sits on (default primary). A
- * secondary line is drawn only once that axis is acknowledged, so it counts
- * only then.
+ * secondary line counts only when the chart draws a second value scale.
  */
 function axisValueLines(
   annotations: readonly Annotation[] | undefined,
@@ -384,7 +359,7 @@ function latticeTicks(lo: number, hi: number, rows: number): { step: number; fro
 
 /**
  * The secondary domain, its tick COUNT synced to the primary, and the
- * right-hand ticks: one descriptor for both the acknowledged secondary scale
+ * right-hand ticks: one descriptor for both the independent secondary scale
  * and the ruler, so both reserve and claim through the same emit.
  */
 function rightAxis(
@@ -435,7 +410,7 @@ function rightAxis(
     secondaryDomain = [roundTick(s0), roundTick(s0 + step2 * (nTicks - 1))];
   }
   const secFmtSrc = secondaryRequested.find((s) => s.format)?.format;
-  // The acknowledged right axis can carry its own format-by-example (ticks only — data labels keep series
+  // The right axis can carry its own format-by-example (ticks only — data labels keep series
   // and scale formats). Without any explicit format, an all-percent secondary
   // group ('%' unit or pct cells) prints percent ticks instead of naked counts
   // — a reader cannot know "0 / 1 / 2" means percent otherwise.
@@ -629,11 +604,9 @@ const FLAT_LINE_SHARE = 0.02;
 /**
  * Warn about each primary line that lies flat on the scale it shares with
  * larger series. A line without any move (a target or plan rule) is meant
- * flat and stays quiet. The fix puts the line on an acknowledged secondary
- * axis. The engine never moves it there itself: a second scale needs the
- * author's acknowledge.
+ * flat and stays quiet. The fix puts the line on its own value scale.
  */
-function warnFlatLines(data: ChartData, options: ComboOptions, dataSeries: readonly NormSer[], primary: { dLo: number; dHi: number },
+function warnFlatLines(data: ChartData, dataSeries: readonly NormSer[], primary: { dLo: number; dHi: number },
   secondaryActive: boolean, warnings: LintWarning[]): void {
   const span = primary.dHi - primary.dLo;
   if (!(span > 0) || dataSeries.length < 2) return;
@@ -649,14 +622,9 @@ function warnFlatLines(data: ChartData, options: ComboOptions, dataSeries: reado
     warnings.push({
       code: 'line-flat-on-scale', severity: 'warn',
       message: `line '${s.id}' spans ${share}% of the value scale it shares with larger series, so it draws flat and its moves are not visible`,
-      suggest: `put '${s.id}' on its own scale: axis: 'secondary' and options.secondaryAxis.acknowledge: true`,
+      suggest: `Set axis: 'secondary' on '${s.id}' to draw it on its own value scale.`,
       field: ['data', 'series', index],
-      fix: [
-        { op: 'add', path: `/data/series/${index}/axis`, value: 'secondary' },
-        options.secondaryAxis === undefined || 'ruler' in options.secondaryAxis
-          ? { op: 'add', path: '/options/secondaryAxis', value: { acknowledge: true } }
-          : { op: 'add', path: '/options/secondaryAxis/acknowledge', value: true },
-      ],
+      fix: [{ op: 'add', path: `/data/series/${index}/axis`, value: 'secondary' }],
     });
   }
 }
@@ -695,7 +663,7 @@ function zeroAlignedAxes(
 }
 
 /**
- * Whether a combo draws the dual-axis anatomy: an acknowledged
+ * Whether a combo draws the dual-axis anatomy: an active
  * secondary scale the author did not pin, and the option or, without it,
  * the theme switch. A pinned secondary domain (pareto's 0-100 %) keeps the
  * plain dual axis.
@@ -833,7 +801,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const { secondaryActive } = gate;
   comboUnitConflicts(options, seriesNorm, dataSeries, secondaryActive, warnings);
   // Exhibit-wide format raster, one raster PER SCALE GROUP and
-  // computed AFTER the axis gate above: an acknowledged secondary axis is a
+  // computed after choosing the axes: an active secondary axis is a
   // different scale in a different unit, and its precision must not leak
   // into the primary labels (units sold at 48.3 do not turn revenue columns
   // into "323.0"). Demoted secondary series share the primary scale claim
@@ -843,7 +811,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // scale (a 36.2% margin line does not turn €m columns into "55.0").
   // The unit rule reads each group's unit, as column reads options.unit:
   // the primary group options.unit, else the unit its series share; the
-  // acknowledged secondary group the unit its series share.
+  // secondary group the unit its series share.
   const rasterFor = (axis: 'primary' | 'secondary') => {
     const group = seriesNorm.filter((s) => (s.axis ?? 'primary') === axis);
     // A series that names no unit reads in the unit its group names, as the unit check reads it ("24M" beside "$m" revenue).
@@ -999,7 +967,8 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const floated = lineBandScaleInput && !shared
     ? floatOver((options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
   if (floated) primary = floated.primary;
-  warnFlatLines(data, options, dataSeries, primary, secondaryActive, warnings);
+  // The flat-line fix needs a second scale, which a percentage ruler overrides.
+  if (!gate.ruler) warnFlatLines(data, dataSeries, primary, secondaryActive, warnings);
   // A negative value on either scale: the zeros share a gridline.
   const aligned = secondaryActive && !shared && !gate.secOpt?.domain && pinnedBy.length === 0 && negative
     ? zeroAlignedAxes(primary, { lo: sLoRaw, hi: sHiRaw })

@@ -43,7 +43,7 @@ const categorySchema = categorySchemaOf({
 });
 
 /** Positional cells or point-keyed { categoryId, value } entries;
- *  `kind` switches column/line/area, `axis` requests the gated secondary. */
+ *  `kind` selects the geometry and `axis` selects the value scale. */
 const seriesSchema = z.strictObject({
   valueKind: valueKindSchema,
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
@@ -56,7 +56,7 @@ const seriesSchema = z.strictObject({
   unit: z.string().optional().describe("Unit shown with this series values and used to check shared-scale compatibility."),
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
   kind: z.enum(['column', 'line', 'area']).optional().describe("Geometry for this series: column by default, or an overlaid line or area."),
-  axis: z.enum(['primary', 'secondary']).optional().describe("Value scale used by this series; secondary requires a declared secondaryAxis."),
+  axis: z.enum(['primary', 'secondary']).optional().describe("Default 'primary'. A line or area with 'secondary' draws on a second value scale and warns dual-axis. Columns and series in a combo with a percentage ruler stay on the primary scale."),
   lineStyle: z.enum(['solid', 'dashed', 'dotted']).optional().describe("Stroke pattern; dashed and dotted strokes require a projected scenario such as FC or PL."),
   marker: z.enum(['circle', 'square', 'triangle', 'diamond', 'none']).optional().describe("Point symbol; none suppresses point markers."),
   smooth: z.boolean().optional().describe("Use monotone interpolation when true or linear interpolation when false; omission inherits chart interpolation."),
@@ -81,14 +81,11 @@ export const comboDataSchema = z
     });
   }) as unknown as z.ZodType<ChartData>;
 
-/** The right-hand axis is EITHER an independent acknowledged scale OR a
- *  relabelling of the primary one; the union refuses both at the schema edge
- *  for the same reason the TS type does. Only combo widens `secondaryAxis`
- *  beyond the shared `{ acknowledge: true }`. */
+/** A second scale and a percentage ruler have different settings for the right axis. */
+const legacySecondaryAxisSchema = baseOptionsSchema.shape.secondaryAxis.unwrap();
 const secondaryAxisSchema = z.union([
-  z
-    .object({
-      acknowledge: z.literal(true).describe("Explicit acknowledgement that the right axis uses an independent scale."),
+  legacySecondaryAxisSchema
+    .extend({
       domain: z
         .tuple([z.number(), z.number()])
         .optional()
@@ -104,9 +101,9 @@ const secondaryAxisSchema = z.union([
         .describe("false keeps the independent scale and draws no right tick column: the secondary series is read from its labelled values and the secondary axis title, which sits at the right edge. Default true.").meta({ default: true }),
     })
     .strict()
-    .describe('Opt in to a genuinely independent second scale (always lint-warned).'),
-  z
-    .object({
+    .describe('Customize the second value scale a line or area series uses.'),
+  legacySecondaryAxisSchema
+    .extend({
       ruler: z
         .object({
           of: z.literal('primary').describe("Use the primary axis positions for the percentage ruler."),
@@ -122,7 +119,7 @@ const secondaryAxisSchema = z.union([
         .strict().describe("Percentage ruler derived from the primary scale and a declared total."),
     })
     .strict()
-    .describe('Relabel the primary domain as a share of a total; no second scale is created.'),
+    .describe('Relabel the primary scale as a share of a total. All series use the primary scale.'),
 ]);
 
 /** ComboOptions = BaseOptions — series.kind does the switching. */
@@ -137,7 +134,7 @@ export const comboOptionsSchema = z
     anomaly: anomalyOptionSchema.optional().describe("Flag exceptional periods of the combo's one line series against a visible, named corridor on that line's axis, with column's rule: 'mad' flags |x − c| / (1.4826 × MAD) > k (c is 0 under the default baseline 'zero', the median under 'median'), 'threshold' flags values outside authored bounds. The corridor rules carry their numbers, each flagged point gets a marker beyond it and prints its value, the legend keys the marker and the corridor, and a footnote states the rule. Needs exactly one line-kind series. Under a window or zoom the rule keeps every source period."),
     labelDensity: baseOptionsSchema.shape.labelDensity.describe("Default 'smart': every column total stays eligible. A chart with more than 12 categories, or with most totals wider than the band, ranks the first, last, highest and lowest (ties: the first) first. The other totals then use only their natural seat above the column; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every total on the bounded one-step rule and names any that finds no seat. 'full' treats all totals alike and names every one that finds no seat. Seats stay inside the plot band and one step from the natural seat. Reading records keep every value."),
     labels: baseOptionsSchema.shape.labels.describe("Line end labels default to the value alone at both ends; point: ['series', 'absolute'] adds the series name. Authored point content applies to both ends. On stacked columns, segment: ['absolute', 'percent'] prints value and share in each segment, and a value its segment cannot hold is named in the note line; grandTotal: false hides stack totals. A single column series prints its values as grandTotal labels, so grandTotal: false hides them and keeps the line values; point governs line values only. Combo has no labels.growth: the growth statements of the dual-axis anatomy are dualAxis.growth."),
-    secondaryAxis: secondaryAxisSchema.optional().describe("Independent acknowledged secondary scale, or a percentage relabeling of the primary scale. An independent secondary scale returns the warning dual-axis."),
+    secondaryAxis: secondaryAxisSchema.optional().describe("Options for the second value scale drawn when a line or area sets axis: 'secondary'. Boardplot warns dual-axis when that scale is drawn. A percentage ruler takes precedence and keeps all series on the primary scale."),
     axisTitles: z.object({
       primary: z.string().trim().min(1).optional().describe("Visible title above the primary value axis."),
       secondary: z.string().trim().min(1).optional().describe("Visible title above the active secondary value axis."),
@@ -147,7 +144,7 @@ export const comboOptionsSchema = z
       .optional()
       .describe('Interpolation for line/area series; per-series smooth overrides it.'),
     dualAxis: z.strictObject({
-      anatomy: z.boolean().optional().describe("true draws the dual-axis anatomy on an acknowledged secondary scale the author did not pin. Default: the theme's valueAxis.dualAxis, else false.").meta({ 'x-boardplot-defaultDependsOn': ['theme'] }),
+      anatomy: z.boolean().optional().describe("true draws the dual-axis anatomy when a series uses an unpinned second value scale. The default comes from the theme's valueAxis.dualAxis and falls back to false.").meta({ 'x-boardplot-defaultDependsOn': ['theme'] }),
       growth: z.boolean().optional().describe("With the anatomy, states each series' growth from its first to its last complete value beyond the right ticks, bold in the series' text ink, on one line with the series name up to its first comma ('+128% Units sold'); the name goes under the figure when one line would take more than a fifth of the canvas width. A partial category is no end, and the name then says the span. On a canvas narrower than 600 px the statements move to one note line ('Units sold +128%, Revenue +33%, 2019–2024.') and the plot keeps the width. Default false.").meta({ default: false }),
     }).optional().describe("Dual-axis anatomy: both scales from zero with one interval count and shared gridlines, maxima chosen so the line runs above the columns (the columns shrink to a quarter of the plot when that is the only way; when no pair keeps the line above, the columns keep the lower 55% of the plot with the left ticks stopping at the column top, and the line floats in the band above on its own scale from its low to its high, with no right ticks and its ends, low and high printed, every point up to 8 categories, and the unit title over the top left tick; info lint dual-axis-line-floated. The line floats only when those values print or an anomaly on it prints its flagged values: valueLabels 'none', 'last' or 'ends', or line point labels off, keep the plain dual axis with its right ticks), axis titles with a swatch of their series, column values inside the column top, the line's values above their points on a halo (every point up to 8 categories, else the first and last). Column values the line still covers are dropped; when one value is wider than its column, every column value sits above its column instead (labels.grandTotal: false hides them). With valueLabels 'all' (the anatomy's default up to 8 categories) every value is labelled, so neither tick column is drawn and the axis titles key both series in one row from the left; valueAxis.show or secondaryAxis.show brings the ticks back, and so does a value that finds no seat. Authored valueAxis.min or max, or a negative value, keep the plain dual axis and report the info lint dual-axis-anatomy-off."),
     valueLabels: z

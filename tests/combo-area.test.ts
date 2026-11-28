@@ -35,8 +35,8 @@ it('closes secondary area paths and occupied fills at their own zero', () => {
   // SVG bytes for these three invented controls (re-recorded when Helvetica Neue moved to the Liberation Sans widths, for the 280 px compact floor in data-bp-sizing, and when the area moved behind the columns), hashed without the engine stamp.
   const hashes: Record<string, string> = {
     primary: 'c3d8758f7051fdf10b532043abfcc60f09621bbce1adb99566b8cf0a34fd3cc6',
-    aligned: '510a551b1e71d1c20cdfa6b041ab212db31ddf224ad7d6f3b767dace026370c7',
-    positive: '64d36dd9eb1da928a65f33c804c02628bf27bddad8da252357ce2d35631061bc',
+    aligned: 'acd71b1a1efc79a3c6874b0325e0cb1220d07ecca24c21b4234c9c7675866d51',
+    positive: '6f9a7b11ed90e2c3d5654eefdc4195725c5a9c637f3405622ef80f82d57bde08',
   };
   for (const [name, geometry] of Object.entries(controls)) {
     expect(stampFreeSha(renderSvg(geometry as unknown as Geometry, resolveTheme())), name).toBe(hashes[name]);
@@ -241,7 +241,6 @@ it('warns when a line lies flat on the scale it shares with larger columns', () 
   const warning = geometry.warnings.find((w) => w.code === 'line-flat-on-scale');
   expect(warning?.fix).toEqual([
     { op: 'add', path: '/data/series/1/axis', value: 'secondary' },
-    { op: 'add', path: '/options/secondaryAxis', value: { acknowledge: true } },
   ]);
 });
 

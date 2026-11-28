@@ -73,7 +73,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
       meaning: 'left | right, default right. Side of the plot the label sits on.',
       types: ['column', 'combo', 'line', 'mekko', 'pvm', 'scatter', 'variance', 'waterfall'],
     },
-    axis: { meaning: 'primary | secondary, default primary. Scale of value; secondary needs an acknowledged secondary axis.', types: ['combo'] },
+    axis: { meaning: "primary | secondary, default primary. A line or area series on axis: 'secondary' draws a second value scale and warns dual-axis. A percentage ruler keeps all series on the primary scale.", types: ['combo'] },
     tolerance: {
       meaning: 'number | { low, high }. A number shades that distance on both sides of the line; low and high shade an authored corridor. On column, bar and dot the key names the band with its bounds, "Target range: 95 to 105"; without a key the band prints its bounds itself.',
       types: ['bar', 'bullet', 'column', 'combo', 'dot', 'line', 'mekko', 'pvm', 'scatter', 'slope', 'variance', 'waterfall'],
@@ -154,7 +154,7 @@ function describeAnnotation(kind: AnnotationKind, type: string) {
       break;
     case 'valueLine':
       anchors = ['from', 'to'].map(field => ({ field, type: 'categoryId', required: false }));
-      notes = ['No anchor is required. Value defaults to mean. Scoped means are line-only: seriesId and paired from/to compute a primary-axis mean and limit its stroke to those bands; other types refuse scope fields for a mean. Numeric values cannot use scope fields except as a category clip with tolerance or attainment. A secondary-axis line needs an acknowledged secondary scale and an explicit numeric value. Optional tolerance shades a value-axis band; optional attainment fills between the line and resolved actuals.'];
+      notes = ["No anchor is required. Value defaults to mean. Scoped means are line-only: seriesId and paired from/to compute a primary-axis mean and limit its stroke to those bands; other types refuse scope fields for a mean. Numeric values cannot use scope fields except as a category clip with tolerance or attainment. A secondary-axis annotation needs a numeric value and a combo series drawn on axis: 'secondary'. Optional tolerance shades a value-axis band; optional attainment fills between the line and resolved actuals."];
       break;
     case 'indicator100':
       notes = ['No anchor is required. The chart needs a value scale that can represent 100.'];

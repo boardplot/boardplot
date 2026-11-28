@@ -237,7 +237,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   valueAxis: 'Value-axis conventions. Each switch is off when absent; an explicit chart option wins.',
   'valueAxis.titles': "A drawn value axis without an authored title takes 'Measure, unit' from subtitle.measure and the axis unit (line, column, bar, pareto), where the drawn subtitle does not already print that unit.",
   'valueAxis.includeZero': 'Default for valueAxis.includeZero on line charts, so their value axis starts at zero.',
-  'valueAxis.dualAxis': 'A combo with an acknowledged secondary axis draws the dual-axis anatomy; the combo option dualAxis wins.',
+  'valueAxis.dualAxis': 'Draws the dual-axis anatomy on an unpinned second value scale in a combo chart. The combo option dualAxis.anatomy takes precedence.',
   'valueAxis.gridDash': "The gridlines of a value axis: 'solid' (default), 'dotted' (dash.dotted) or 'dashed' (dash.reference).",
   'labels.ink': "Ink of the value and category labels on the page: 'ink' (default) or 'muted', the grey inkMuted. A highlighted mark's labels keep the full ink; labels inside a fill keep their contrast ink.",
   interaction: 'Optional host interaction paint tokens. They change paint only; chart geometry is unaffected.',

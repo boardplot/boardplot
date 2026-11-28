@@ -400,18 +400,17 @@ export interface AxisRuler {
   ticks?: number;
 }
 
-/**
- * Mutually exclusive by construction: `acknowledge` opts in to a genuinely
- * independent second scale, `ruler` declares there is no second scale at all.
- * Supplying both is a contradiction about what the right-hand axis MEANS, so
- * the union makes it a type error (and combo refuses both at runtime).
- */
-export type AcknowledgedSecondaryAxis = { acknowledge: true };
-export type SecondaryAxisOptions =
-  | (AcknowledgedSecondaryAxis & {
+export type AcknowledgedSecondaryAxis = {
+  /** @deprecated Remove this flag. Boardplot accepts and ignores it and warns `option-deprecated`. */
+  acknowledge?: true;
+};
+
+/** Settings for an independent second value scale or a percentage ruler on the primary scale. */
+export type SecondaryAxisOptions = AcknowledgedSecondaryAxis & (
+  | {
       ruler?: never;
       /**
-       * Pin the acknowledged secondary domain (data may only WIDEN it, never
+       * Pin the secondary domain (data may only WIDEN it, never
        * be clipped). Used by the pareto chart: the cumulative
        * share axis is pinned to [0, 100] so the percent ladder reads exact
        * shares while the bar axis stays independently economy-capped.
@@ -427,8 +426,9 @@ export type SecondaryAxisOptions =
        * from its labelled values and the secondary axis title. Default true.
        */
       show?: boolean;
-    })
-  | { acknowledge?: never; ruler: AxisRuler };
+    }
+  | { ruler: AxisRuler }
+);
 
 export interface TopNOptions {
   n: number;
@@ -606,15 +606,7 @@ export interface BaseOptions {
   legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
   valueAxis?: ValueAxisOptions;
   categoryAxis?: CategoryAxisOptions;
-  /**
-   * The SHARED surface is acknowledge-only, because that is what
-   * `schema/shared.ts` accepts. The `ruler` variant lives on ComboOptions,
-   * whose own schema widens it (`combo/index.ts` secondaryAxisSchema) — and
-   * it has to, because the react-surface check enumerates every declared
-   * option against the runtime and catches `secondaryAxis.ruler` declared on
-   * all 27 charts while 26 of them reject it. Declarations follow the
-   * runtime; the runtime is never widened to match a declaration.
-   */
+  /** Retired flag shape for saved specs. ComboOptions adds the second scale and ruler settings. */
   secondaryAxis?: AcknowledgedSecondaryAxis;
   /** `x` is refused: no chart type shares an x scale. */
   scaleGroup?: { x?: never; y?: string; id?: string };
@@ -1224,13 +1216,13 @@ export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAx
   window?: Pick<LiveWindowOptions, 'last'>;
   /** Flag exceptional periods of the one line series against a named corridor, with column's rule. */
   anomaly?: AnomalySpec;
-  /** Combo is the one type whose schema accepts the percent `ruler` form. */
+  /** A line or area with `axis: 'secondary'` draws a second value scale and warns `dual-axis`. A percentage ruler keeps all series on the primary scale. */
   secondaryAxis?: SecondaryAxisOptions;
-  /** Titles above active axes; acknowledged secondary charts infer unique series names and units. */
+  /** Titles above the active value axes. */
   axisTitles?: { primary?: string; secondary?: string };
   /** Combo's line/area series share the line family's interpolation contract. */
   interpolate?: LineInterpolation;
-  /** The dual-axis anatomy on an acknowledged, unpinned secondary scale. */
+  /** The dual-axis anatomy on an unpinned second value scale. */
   dualAxis?: { anatomy?: boolean; growth?: boolean };
   /** Which line points print their value, as on the line chart; default 'last' ('ends' under the dual-axis anatomy). The key row names the series. */
   valueLabels?: ValueLabelMode;

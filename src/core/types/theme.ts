@@ -528,7 +528,7 @@ export interface Theme {
     titles?: boolean;
     /** Default for `valueAxis.includeZero` on line charts. */
     includeZero?: boolean;
-    /** A combo with an acknowledged secondary axis draws the dual-axis anatomy (`dualAxis` option). */
+    /** Draw the dual-axis anatomy on an unpinned second value scale in a combo chart. `dualAxis.anatomy` takes precedence. */
     dualAxis?: boolean;
     /** The gridlines of a value axis: 'solid' (absent), 'dotted' (`dash.dotted`) or 'dashed' (`dash.reference`). */
     gridDash?: 'solid' | 'dotted' | 'dashed';

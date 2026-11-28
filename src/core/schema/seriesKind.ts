@@ -4,7 +4,7 @@ import * as z from 'zod';
 
 const KINDS = ['column', 'line', 'area'] as const;
 const AXES = ['primary', 'secondary'] as const;
-const SECOND_AXIS_GUIDANCE = "For a second axis, use type 'combo', set each series' kind to 'line' or 'column', and set options.secondaryAxis: { acknowledge: true }.";
+const SECOND_AXIS_GUIDANCE = "Use type 'combo' with kind: 'line' or 'area' and axis: 'secondary' on the series that needs a second value scale. The combo chart draws the scale and warns dual-axis.";
 
 /** Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. */
 export const seriesKindField = z.enum(KINDS).optional().describe('Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused.');

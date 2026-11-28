@@ -1,10 +1,9 @@
 /**
  * Combo fixtures — examples: a time-series combination (grey revenue
- * columns + blue units-sold line on an acknowledged, tick-synced secondary
- * axis) and the stacked-columns-plus-margin%-line CFO exhibit. Torture set covers the unacknowledged
- * secondary-axis gate (downgrade + error warning), a line/area-only combo,
- * 12 dense monthly categories, and negative columns with a line crossing
- * the baseline. Every fixture auto-enters the invariant suite.
+ * columns + blue units-sold line on a second value scale) and the
+ * stacked-columns-plus-margin%-line CFO exhibit. The torture set covers a
+ * line/area-only combo, 12 dense monthly categories, and negative columns
+ * with a line crossing the baseline.
  */
 
 import { registerFixtures } from '../../../fixtures/registry';
@@ -14,7 +13,7 @@ import type { Fixture } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ComboOptions } from '../../types/options';
 
-/** Shared by the acknowledged example and the unacknowledged torture twin. */
+/** Annual revenue and units sold for the dual-axis examples. */
 const revenueUnitsData: ChartData = {
   categories: [
     { id: '2019', label: '2019', date: '2019-12-31' },
@@ -44,7 +43,6 @@ const revenueUnitsData: ChartData = {
 /** The tick-synced dual axis with both tick columns, which the coverage twins of the example keep. */
 const revenueUnitsTickOptions: ComboOptions = {
   interpolate: 'linear',
-  secondaryAxis: { acknowledge: true },
   axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k' },
   valueAxis: { show: true },
   title: 'Units grow four times as fast as revenue as mix shifts to entry models',
@@ -64,7 +62,7 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     // drawn; the axis titles key both series in one row; the growth rates
     // stand beside the line end, or in a note line on a card.
     id: 'revenue-units-secondary',
-    title: 'Revenue columns + units-sold line on acknowledged secondary axis, every value labelled',
+    title: 'Revenue columns and a units-sold line on separate scales, every value labelled',
     kind: 'example',
     tags: ['interaction'],
     hover: { owner: { categoryId: '2019', seriesId: 'revenue' } },
@@ -200,16 +198,13 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     },
   },
   {
-    id: 'secondary-unacknowledged',
-    title: 'Refusal example: a line on its own scale without an acknowledged secondary axis',
-    kind: 'torture',
-    refuses: { code: 'dual-axis-unacknowledged' },
+    id: 'revenue-units-separate-scales',
+    title: 'Revenue columns and a units-sold line with separate value axes',
+    kind: 'example',
     data: revenueUnitsData,
     options: {
-      // NO secondaryAxis gate: the CLI, MCP, React and the library layout
-      // refuse the chart with the error-severity 'dual-axis-unacknowledged' lint.
       valueAxis: { show: true },
-      title: 'Unacknowledged dual axis is refused',
+      title: 'Units sold more than double from 2019 to 2024',
       subtitle: { measure: 'Revenue and units sold', period: '2019–2024' },
       unit: '$m',
       legend: 'bottom',
@@ -437,7 +432,7 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
   {
     // the dual-axis anatomy switched on by the theme, not the chart.
     id: 'theme-dual-axis-anatomy',
-    title: 'A theme draws every acknowledged dual axis with its anatomy',
+    title: 'The theme enables the dual-axis anatomy',
     kind: 'example',
     tags: ['feature:theme'],
     data: revenueUnitsData,
