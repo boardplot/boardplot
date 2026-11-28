@@ -908,7 +908,7 @@ export function scorecard(shard = 0, shards = 1, only = undefined) {
 // Keep a fixture's adjacent widths together for S2. Stable ownership also detects
 // a removed fixture or setting when checking only one CI shard.
 export function outcomeShard(item, shards) {
-  const group = item.setting === 'default' || item.setting === 'fixed=400x300' ? 'fixture' : item.setting.split(':')[0];
+  const group = item.setting === 'default' || item.setting === 'fixed=400x300' || item.setting === 'fixed=narrow-card' ? 'fixture' : item.setting.split(':')[0];
   return createHash('sha256').update(`${item.fixture}/${group}`).digest().readUInt32BE(0) % shards;
 }
 
