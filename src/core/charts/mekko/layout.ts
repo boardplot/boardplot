@@ -242,7 +242,7 @@ function assembleMekkoGeometry(input: {
           }
         : {}),
     },
-    a11y: a11yDescription(env.options, ['Mekko chart', 'Mekko-Diagramm'], [structureCount('series', domain.series.length, undefined, env.options), structureCount('columns', cats.length, undefined, env.options)], {
+    a11y: a11yDescription(env.options, ['Mekko chart', 'Mekko-Diagramm'], [structureCount('series', domain.series.length, undefined, env.options), structureCount('columns', domain.mode === 'percent' ? domain.validCount : cats.length, undefined, env.options)], {
       counts: [domain.mode === 'percent' && (domain.nm.size > 0 || domain.na.size > 0)
           ? structureCount('columns', domain.validCount, chartString(env.options, 'validColumns', { v1: domain.validCount }))
           : structureCount('columns', cats.length, undefined, env.options), structureCount('series', domain.series.length, undefined, env.options)],

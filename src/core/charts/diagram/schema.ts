@@ -236,7 +236,7 @@ const insetSchema = z.strictObject({
     label: textSchema(60).describe('Row name, at most 60 Unicode code points.'),
     value: textSchema(24).describe('Row value as text, at most 24 Unicode code points.'),
   })).min(1).max(12).optional().describe('Up to 12 short rows.'),
-  heading: z.literal(false).optional().describe('false draws no panel title, with its height and gap gone. The title stays the accessible name.'),
+  heading: z.literal(false).optional().describe('false draws no panel title, with its height and gap gone.'),
   columnOverrides: columnOverridesOption('diagram', ['width', 'align']).describe('Settings of the rows\' two columns: label, value.'),
 }).refine((inset) => inset.kpis !== undefined || inset.rows !== undefined, { message: 'an inset needs kpis or rows' })
   .describe('Architecture only: a detail panel after a rule, beside the exhibit from 800 px and under it below that.');
