@@ -227,6 +227,38 @@ describe('root key fixes', () => {
       });
     }
   });
+
+  // A typo in the document locale can silently change the number marks on every chart.
+  it('reports an unknown locale key at the document root', () => {
+    const spec = { version: 1, locale: { decimal: ',', thousnds: ' ' }, charts: [{ name: 'sales', ...chart }] };
+    const finding = expect.objectContaining({ code: 'unknown-option', path: '/locale/thousnds' });
+    expect(render({ spec, return: ['svg'] }).body).toMatchObject({ ok: false, errors: [finding] });
+    expect(() => beginSpecParse(spec)).toThrow(expect.objectContaining({ errors: [finding] }));
+  });
+});
+
+// A panel that sets only its language must keep the document's number marks in the chart and the grid legend.
+it('inherits document number marks in grids with automatic and explicit columns', () => {
+  const panel = {
+    id: 'sales', type: 'treemap',
+    data: { items: [
+      { id: 'a', group: 'east', value: 1345.6 },
+      { id: 'b', group: 'east', value: 200.1 },
+      { id: 'c', group: 'west', value: 450.3 },
+    ] },
+    options: { format: '0.0', locale: 'fr', legend: 'none' },
+  };
+  const charts = [1, [1]].map((columns, index) => ({
+    name: `sales-${index}`, type: 'grid', data: { panels: [panel] }, options: { columns, legend: 'top' },
+  }));
+  const spec = { version: 1, locale: { decimal: ',', thousands: '.' }, charts };
+  const drawn = render({ spec, return: ['svg'] }).body as any;
+  expect(drawn.ok).toBe(true);
+  expect(drawn.charts).toHaveLength(2);
+  for (const { svg } of drawn.charts) {
+    expect(svg).toContain('>1.345,6<');
+    expect(svg).toContain('>1.545,7<');
+  }
 });
 
 describe('football-field row without a range', () => {

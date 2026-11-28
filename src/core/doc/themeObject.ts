@@ -25,8 +25,10 @@ import type { LintWarning } from '../types/scene';
 import { linkThemeShapeRules } from '../themeShapeRules';
 import { retiredThemeKeyWarning, withoutRetiredThemeKeys } from '../retired';
 import { themeShape } from '../normalize/optionShapes';
-import { baseOptionsSchema, diagnosedSafeParse } from '../schema/shared';
+import { baseOptionsSchema, diagnosedSafeParse, localeObjectSchema } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
+import { unknownKeys } from '../schema/unknownKeys';
+import { wordUnknownKeys } from '../schema/unknownKeyWords';
 
 // Links the theme checks `resolveTheme` runs over a patched theme, so a spec
 // with `theme.overrides` validates synchronously in every entry that holds
@@ -34,6 +36,8 @@ import { flattenIssues } from '../schema/flattenIssues';
 // drops a bare import of a module that package.json does not list as
 // side-effectful, and then validation throws `DeferredCoreError`.
 linkThemeShapeRules();
+
+const localeOptionKeys = { locale: Object.fromEntries(Object.keys(localeObjectSchema.shape).map(key => [key, 0 as const])) };
 
 type AdoptedTheme =
   | { ok: true; name: string; ref: ThemeRef; warnings: LintWarning[] }
@@ -120,6 +124,10 @@ export function rootContextErrors(root: { theme?: unknown; locale?: unknown }): 
     if (!parsed.success) {
       for (const issue of flattenIssues(parsed.error.issues)) {
         errors.push({ code: 'invalid-locale', message: issue.message, path: toJsonPointer(['locale', ...issue.path.map(String)]), docs: 'docs/reference/options.md#options' });
+      }
+    } else {
+      for (const key of unknownKeys({ locale: root.locale }, { tree: localeOptionKeys })) {
+        errors.push({ ...wordUnknownKeys([key], localeOptionKeys)[0]!, path: toJsonPointer(key.path), docs: 'docs/reference/options.md#options' });
       }
     }
   }

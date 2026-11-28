@@ -1,7 +1,7 @@
 import { lazy, Suspense, useContext, useRef, useEffect, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { chartString } from '../core/strings/ui';
 import { resolveSize } from '../core/normalize/shared';
-import { normalizeOptionShapes } from '../core/normalize/optionShapes';
+import { mergeLocale, normalizeOptionShapes } from '../core/normalize/optionShapes';
 import type { OptionsInput } from '../core/types/optionInput';
 import type { BaseOptions } from '../core/types/options';
 import type { Size } from '../core/geometry';
@@ -80,12 +80,12 @@ export function LayoutRefusal(props: PlaceholderFrame & { refusals: readonly Ref
 export function LoadingPlaceholder({ failure, failed, kind, findings, children, result, renderRefused, ...frame }: PlaceholderFrame & RefusalProps & { theme?: ThemeRef | Theme; failure?: string; failed?: boolean; kind?: ReaderProps['kind']; findings?: readonly DocumentFinding[]; children?: ReactNode; result?: RefusedLayout }): ReactElement {
   const settings = useContext(BoardplotThemeContext);
   const options = normalizeOptionShapes('', { options: frame.options }).chart.options as Pick<BaseOptions, 'title' | 'source' | 'size' | 'locale' | 'target'> | undefined;
-  const locale = options?.locale ?? settings?.locale;
+  const locale = mergeLocale(settings?.locale, options?.locale);
   const wording = { locale, strings: settings?.strings };
   if (failure !== undefined) return <ReaderBox {...frame} kind="spec-error" findings={[{ code: 'chunk-load-failed', message: failure }]} />;
   const target = options?.target ?? settings?.target;
   const size = frame.size ?? resolveSize(options?.size, target);
-  const reader = kind && !failed ? readerText({ kind, result, renderRefused, children }, typeof locale === 'string' ? locale : locale?.language, settings?.strings) : undefined;
+  const reader = kind && !failed ? readerText({ kind, result, renderRefused, children }, locale?.language, settings?.strings) : undefined;
   const busy = failed ? 'load-failed' : reader ? 'card' : 'loading';
   return <div role="status" dir={settings?.direction ?? 'ltr'} {...{
     [`data-bp-${busy}`]: reader ? undefined : '',

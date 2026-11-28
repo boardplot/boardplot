@@ -39,7 +39,8 @@ export function TypedColumn() {
 // The opt-in spec type catches a misspelled chart name while the component still takes external JSON.
 export function SpecInputs({ externalSpec }: { externalSpec: unknown }) {
   const chart = { type: 'column', data } satisfies BoardplotSpec;
-  const envelope = { version: 1, charts: [{ ...chart, name: 'sales' }] } satisfies BoardplotSpec;
+  // A typed document must accept the locale object that sets its charts' number marks.
+  const envelope = { version: 1, locale: { decimal: ',', thousands: '.' }, charts: [{ ...chart, name: 'sales' }] } satisfies BoardplotSpec;
   // @ts-expect-error 'columns' is not a chart type.
   void ({ type: 'columns', data } satisfies BoardplotSpec);
   // @ts-expect-error Use the scenario code 'AC' in a typed spec.
