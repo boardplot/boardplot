@@ -1770,6 +1770,8 @@ function drawTable({ table: props, checkKeys, linked }: DrawnTableProps): ReactE
   const rowShared: SharedRowProps = {
     reuseGrid,
     palette: tableOptions.palette,
+    locale: tableOptions.locale,
+    strings: tableOptions.strings,
     rowIndices,
     columnIndices,
     isTree,
@@ -1831,11 +1833,11 @@ function drawTable({ table: props, checkKeys, linked }: DrawnTableProps): ReactE
     <figure ref={displayRef} className="bp-table" data-bp-chart="table" data-bp-table-theme={themeScope} data-bp-motion={provider?.motion} data-bp-mount={tableOptions.mountCollapsed === false ? 'open' : undefined} data-bp-density={drawnDensity} data-bp-mode={frame.mode === 'compact' ? 'compact' : undefined} data-bp-fill-height={fillHeight ? '' : undefined} style={figureStyle}>
       <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} freshMount={freshMount} />
       {/* `legend: 'none'` drops the key row, as on the SVG. */}
-      <TableCaption frame={frame} theme={theme}
+      <TableCaption frame={frame} theme={theme} keyLabel={chartString(tableOptions, 'legendKey')}
         keyEntries={tableOptions.legend === 'none' ? [] : heatKey(columns, heatLanes, theme, tableOptions.strings, tableOptions.locale?.language)}
         arrowEntries={tableOptions.legend === 'none' ? [] : arrowKey(columns, rows, tableOptions.locale?.language)} />
       <p id={summaryId} className="bp-summary">{frame.summary}</p>
-      <TableColumnToggles toggles={toolbar ? table.columnToggles : []} visibility={columnVisibility} onToggle={toggleColumns} />
+      <TableColumnToggles toggles={toolbar ? table.columnToggles : []} visibility={columnVisibility} onToggle={toggleColumns} label={chartString(tableOptions, 'columnGroups')} />
       {pageHead ? (
         // Page mode (`stickyLabels.head: 'page'`): the live head sits OUTSIDE the box that scrolls sideways, so the page
         // scroll can pin it; an overflow ancestor would capture `position: sticky`. The head box follows the body's
@@ -1897,12 +1899,13 @@ function scrollBoxTo(box: HTMLElement, left: number, behavior: ScrollBehavior | 
 }
 
 /** Keep controls above the table so hiding a column group cannot hide its toggle. */
-function TableColumnToggles({ toggles, visibility, onToggle }: {
+function TableColumnToggles({ toggles, visibility, onToggle, label }: {
   toggles: ResolvedTable['columnToggles'];
   visibility: Record<Id, boolean>;
   onToggle: (id: Id) => void;
+  label: string;
 }): ReactElement | null {
-  return toggles.length ? <div className="bp-col-toolbar" role="group" aria-label="Column groups">
+  return toggles.length ? <div className="bp-col-toolbar" role="group" aria-label={label}>
     {toggles.map(toggle => <button
       key={toggle.id}
       type="button"
@@ -1915,13 +1918,14 @@ function TableColumnToggles({ toggles, visibility, onToggle }: {
   </div> : null;
 }
 
-function TableCaption({ frame, keyEntries, arrowEntries, theme }: {
+function TableCaption({ frame, keyEntries, arrowEntries, theme, keyLabel }: {
   frame: ReturnType<typeof tableFrame>;
   /** The heat lane's swatch key, drawn under the subtitle as the SVG frame draws it. */
   keyEntries: readonly HeatKeyEntry[];
   /** The arrow shapes the grid draws, keyed in the same row. */
   arrowEntries: readonly ArrowKeyEntry[];
   theme: Theme;
+  keyLabel: string;
 }): ReactElement | null {
   const keyed = keyEntries.length + arrowEntries.length > 0;
   if (!frame.title && !frame.subtitle && !keyed) return null;
@@ -1931,7 +1935,7 @@ function TableCaption({ frame, keyEntries, arrowEntries, theme }: {
     </span> : null}
     {frame.title && frame.subtitle ? ' ' : null}
     {frame.subtitle ? <span className="bp-subtitle">{inlineBold(frame.subtitle.segments.map((segment) => segment.text).join(''), theme, theme.type.subtitle.weight ?? 400)}</span> : null}
-    {keyed ? <span className="bp-key" role="list" aria-label="Key">
+    {keyed ? <span className="bp-key" role="list" aria-label={keyLabel}>
       {keyEntries.map((entry) => <span key={entry.id} role="listitem">
         <i aria-hidden="true" style={{ background: resolvePaint(entry.fill, theme) }} />{entry.label}
       </span>)}
@@ -2298,6 +2302,8 @@ function headCellStyle(
 interface SharedRowProps {
   reuseGrid: boolean;
   palette?: string;
+  locale?: TableOptions['locale'];
+  strings?: TableOptions['strings'];
   rowIndices: ReadonlyMap<Id, number>;
   columnIndices: ReadonlyMap<Id, number>;
   isTree: boolean;
@@ -2560,7 +2566,7 @@ function TableGridRow({ rowIndex, final, ...content }: GridRowProps): ReactEleme
 
 /** A row that moves changes its accessible index and keeps its cells. */
 const TableRowCells = memo(function TableRowCells({
-  reuseGrid, palette, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
+  reuseGrid, palette, locale, strings, oneLineLabel, row, columnIndices, light, floating, columns, hiddenColumns, collapsed, hidden,
   barMaxima, heatLanes, sparkDomains, sparkWidths, theme, measure, groupMarks, levelNouns, childCounts,
   inlineVisibility, onToggleRow, staticMarks, labelLead, filler, focus, pinned, trackColumn, columnEdges,
   figures, liteSlots, columnPlan, foldable, toggles, selects, foldsOnRow,
@@ -2569,7 +2575,7 @@ const TableRowCells = memo(function TableRowCells({
 }): ReactElement {
   // Opt-in marks show open and closed groups without a control.
   const mark = toggles
-    ? <TreeToggle row={row} collapsed={collapsed} hidden={hidden} onToggleRow={onToggleRow} />
+    ? <TreeToggle row={row} collapsed={collapsed} hidden={hidden} onToggleRow={onToggleRow} locale={locale} strings={strings} />
     : foldable && staticMarks ? <OutlineMark collapsed={collapsed} /> : null;
   const rowLabel = columns.find((column) => column.kind === 'rowLabel')!;
   const childCount = childCounts.get(row.id) ?? 0;
@@ -3076,6 +3082,8 @@ interface TreeToggleProps {
   collapsed: boolean;
   hidden: boolean;
   onToggleRow: (rowId: Id) => void;
+  locale?: TableOptions['locale'];
+  strings?: TableOptions['strings'];
 }
 
 /**
@@ -3106,14 +3114,14 @@ function expandableCellProps(row: ResolvedRow, collapsed: boolean, onToggleRow: 
  * rotation and no triangle — the glyph says what it does at a glance and the
  * row does not shift when it changes.
  */
-function TreeToggle({ row, collapsed, hidden, onToggleRow }: TreeToggleProps): ReactElement {
+function TreeToggle({ row, collapsed, hidden, onToggleRow, locale, strings }: TreeToggleProps): ReactElement {
   return (
     <button
       type="button"
       className="bp-tree-toggle"
       data-bp-toggle-row=""
       aria-expanded={!collapsed}
-      aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${row.label}`}
+      aria-label={chartString({ locale, strings }, collapsed ? 'expandRow' : 'collapseRow', { label: row.label })}
       tabIndex={hidden ? -1 : undefined}
       onClick={(event) => {
         event.stopPropagation();

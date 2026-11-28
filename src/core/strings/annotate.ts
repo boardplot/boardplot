@@ -1,12 +1,16 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "deltaVs": "vs {reference}",
+  "perAnnum": "p.a.",
   // reader-facing wording linked only by its consumers.
   "seriesSpan": "{v1} to {v2}",
   // author-facing warning, the same on a category axis and a time axis.
   "cagrStartNotPositive": "cagr '{v1}': the start value is not positive, so no growth rate is defined",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "deltaVs": "vs {reference}",
+  "perAnnum": "p.a.",
   // reader-facing wording linked only by its consumers.
   "seriesSpan": "{v1} zu {v2}",
   // author-facing warning, the same on a category axis and a time axis.

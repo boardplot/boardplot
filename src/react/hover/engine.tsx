@@ -789,7 +789,7 @@ export function TableCard({ record, width, theme, palette, locale, measure, dire
     if (variant === 'sparkline') {
       if (table === undefined || columns === undefined) return undefined;
       return tableSparklineCard({
-        record, table, columns, theme, canvas, occupied, forbidden, tableBounds, direction, pointer,
+        record, table, columns, theme, canvas, occupied, forbidden, tableBounds, direction, locale, pointer,
         ...(palette === undefined ? {} : { palette }),
         ...(placed ? { target: anchor } : {}), measure,
         ...(inlineVisibility === undefined ? {} : { inlineVisibility }),

@@ -688,7 +688,7 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
   const valueLines = drawnValueLines(options.annotations, meanY);
   refuseClampedValueLines(clamp, valueLines, env.axisFmt.y);
   const noPositionNote = noPosition.length === 0 ? undefined
-    : disclosureNote(chartString(options, 'noPositionNote', { v1: chartString(options, 'pointsCount', { v1: noPosition.length, v2: noPosition.length === 1 ? '' : 's' }), v2: noPosition.join(', ') }));
+    : disclosureNote(chartString(options, 'noPositionNote', { v1: chartString(options, 'pointsCount', { v1: noPosition.length }), v2: noPosition.join(', ') }));
   // The points the chart does not draw: the minCount drop and the points with no x or y.
   const omitted = [...(dropped ? [dropped.note] : []), ...(noPositionNote ? [noPositionNote] : [])];
   const derivedNotes = [...omitted, ...(clamp?.notes ?? [])];

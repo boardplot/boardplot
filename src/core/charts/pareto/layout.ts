@@ -288,7 +288,7 @@ export function layoutPareto(
       suggest: `set topN: { n: ${ranked.length} } to keep every cause as its own column, or another topN.n to cut the tail elsewhere`,
     });
   }
-  const topN = options.topN ?? (autoFold === undefined ? undefined : { n: autoFold, rest: true as const, restLabel: 'Rest' });
+  const topN = options.topN ?? (autoFold === undefined ? undefined : { n: autoFold, rest: true as const, restLabel: chartString(options, 'paretoRest') });
   if (topN?.threshold !== undefined) {
     warnings.push({
       code: 'pareto-topn-threshold-unsupported',
@@ -303,7 +303,7 @@ export function layoutPareto(
     let restId = 'rest';
     while (seen.has(restId)) restId = `_${restId}`;
     const value = dropped.reduce((sum, d) => sum + d.value, 0);
-    const name = topN.restLabel ?? 'Rest';
+    const name = topN.restLabel ?? chartString(options, 'paretoRest');
     // The member count is not optional here. It is the denominator of the
     // concentration verdict, and a reader cannot see how many causes are
     // hidden inside one column. Nothing leaves the ink without a trace.

@@ -58,6 +58,7 @@ export interface FrameTextInput {
   notes?: BaseOptions['notes'];
   /** The author wrote `notes.show` (not only `methodNote: true` or a `notes.placement`): its disclosures print outside the line budget. */
   notesShowAuthored?: boolean;
+  locale?: BaseOptions['locale'];
   strings?: BaseOptions['strings'];
   /** The composed notes in order, each with its kind. */
   footnotes: readonly FrameTextNote[];
@@ -314,7 +315,7 @@ export function frameText(input: FrameTextInput): FrameText {
   });
   return {
     ...(input.title ? { title: input.title } : {}),
-    ...(input.subtitle ? { subtitle: subtitleText(input.subtitle, input.unit) } : {}),
+    ...(input.subtitle ? { subtitle: subtitleText(input.subtitle, input.unit, { locale: input.locale, strings: input.strings }) } : {}),
     placement, footMeasure, entries, printed, sourceText, sourceOff, sourceBlock, pointer: pointerAt(k), sourceLines,
     creditInFrame, pointerOn, noteList, unprinted, warnings, countable, marked,
   };
@@ -416,12 +417,12 @@ function isRatioUnit(unit: string): boolean {
   return normalized === 'x' || normalized === '×' || normalized === 'ratio';
 }
 
-export function subtitleUnitClause(unit: string, measure: string): string {
+export function subtitleUnitClause(unit: string, measure: string, options?: Pick<BaseOptions, 'locale' | 'strings'>): string {
   if (isRatioUnit(unit)) {
     if (/\bper\b/i.test(measure)) return '';
     return /\bratio\b/i.test(measure) ? ' (×)' : ' ratio (×)';
   }
-  return measureNamesUnit(unit, measure) ? '' : ` in ${unit}`;
+  return measureNamesUnit(unit, measure) ? '' : chartString(options, 'inUnitClause', { v1: unit });
 }
 
 /**
@@ -485,7 +486,7 @@ export interface SubtitleText {
  * Compose the subtitle line: "<company> · <measure> in <unit> · <period> · <scenarios>".
  * The unit clause follows `subtitleUnitClause`.
  */
-export function subtitleText(authored: Subtitle, unit: string | undefined): SubtitleText {
+export function subtitleText(authored: Subtitle, unit: string | undefined, options?: Pick<BaseOptions, 'locale' | 'strings'>): SubtitleText {
   const sub = hasBold(authored.measure) || hasBold(authored.company ?? '') || hasBold(authored.period ?? '')
     ? { ...authored, measure: markBold(authored.measure),
       ...(authored.company ? { company: markBold(authored.company) } : {}),
@@ -493,7 +494,7 @@ export function subtitleText(authored: Subtitle, unit: string | undefined): Subt
   // Three runs max: everything before the measure, the bold measure, and
   // one merged trailing segment — all inside a single text node.
   let trailing = '';
-  if (frameRendersUnit({ subtitle: authored, unit })) trailing += subtitleUnitClause(unit!, sub.measure);
+  if (frameRendersUnit({ subtitle: authored, unit })) trailing += subtitleUnitClause(unit!, sub.measure, options);
   if (sub.period) trailing += ` · ${sub.period}`;
   if (sub.scenarios && sub.scenarios.length > 0) trailing += ` · ${formatScenarios(sub.scenarios)}`;
   const segments: { text: string; bold: boolean }[] = [];

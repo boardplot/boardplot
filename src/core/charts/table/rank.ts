@@ -4,7 +4,7 @@
  * and claims stay on the existing path.
  */
 import { NormalizeError } from '../../normalize/shared';
-import { localeStrings } from '../../strings';
+import { chartString } from '../../strings';
 import type { Id } from '../../types/cell';
 import type {
   ResolvedColumn,
@@ -185,7 +185,7 @@ function foldSiblings(
   const before = rebuilt.slice(0, lastData + 1).filter((row, index) => !dataIdx.includes(index) || keptIds.has(row.id));
   const after = rebuilt.slice(lastData + 1);
   const label =
-    (topN.restLabel ?? 'Others') + (topN.showRestCount ? ` (${dropped.length})` : '');
+    (topN.restLabel ?? chartString(undefined, 'others')) + (topN.showRestCount ? ` (${dropped.length})` : '');
   const id = othersIdFor(parentId, used);
   generatedOthers.add(id);
   // Others closes the data block, so a result or driver authored after the
@@ -216,7 +216,7 @@ export function foldTableTopN(
     original,
     ranked,
     // The rest row takes the table language's word unless the author names it.
-    { ...topN, restLabel: topN.restLabel ?? localeStrings(options.locale?.language).others },
+    { ...topN, restLabel: topN.restLabel ?? chartString(options, 'others') },
     usedIds(data.rows),
     generatedOthers,
   );

@@ -158,6 +158,7 @@ export function tableFrame(
     source: options.source,
     // The core line budget: notes.maxLines, else the target default, in wrapped lines of the React footer.
     notes: { ...options.notes, show: shownNoteKinds(options) as never }, notesShowAuthored: options.notes?.show !== undefined,
+    locale: options.locale,
     strings: { ...localeStrings(language), ...options.strings },
     footnotes: [
       ...tableFootnotes(table, rows, columns, language).map((note) => ({ text: note, meta: { kind: 'disclosure' as const } })),

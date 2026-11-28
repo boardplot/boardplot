@@ -64,7 +64,7 @@ interface FunnelNumbers extends Pick<FunnelDerived, 'stageTotals' | 'conversions
 
 /** The footnote a clamped value needs, so a 0 never hides a negative input. */
 export function clampedNote(clamped: number, options?: import('../../types/options').BaseOptions): string[] {
-  return clamped === 0 ? [] : [disclosureNote(chartString(options, 'clampedFunnelNote', { v1: clamped, v2: clamped === 1 ? 'value' : 'values' }))];
+  return clamped === 0 ? [] : [disclosureNote(chartString(options, 'clampedFunnelNote', { v1: clamped }))];
 }
 
 export function deriveFunnel(

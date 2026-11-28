@@ -289,7 +289,7 @@ export function categoryRecords(ctx: RecordContext): InteractionRecord[] | undef
     return periods?.[index] === undefined ? category : { ...category, label: periods[index] };
   });
   // Slope 'diverging' draws each negative share as its own series (`<id>:negative`), so it reads its own values.
-  const negName = (ctx.request.options as { diverging?: { labels?: { negative?: string } } }).diverging?.labels?.negative ?? 'Negative';
+  const negName = (ctx.request.options as { diverging?: { labels?: { negative?: string } } }).diverging?.labels?.negative ?? chartString(ctx.request.options, 'negativeName');
   const drawn = ctx.request.type === 'slope' && (ctx.request.options as { variant?: string }).variant === 'diverging'
     ? (data.series as SlopeSeries[]).flatMap((item): RecordSeries[] => item.role !== 'reference' && Array.isArray(item.negative)
       ? [item, { ...item, id: `${item.id}:negative`, label: `${item.label ?? item.id} (${negName})`,

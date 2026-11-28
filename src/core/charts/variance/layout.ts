@@ -1658,7 +1658,7 @@ export function layoutVariance(
         : {}),
     },
     a11y: {
-      title: accessibleTitle(options.title, `${tierName}: ${modeName} vs ${refSeries.label}`),
+      title: accessibleTitle(options.title, chartString(options, 'varianceTitle', { v1: tierName, v2: modeName, v3: refSeries.label })),
       counts: [structureCount('categories', cats.length, undefined, options)],
       desc: a11yDesc,
     },

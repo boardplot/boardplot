@@ -17,7 +17,7 @@ export const EN = {
   "suppressedReading": "suppressed",
   "notMeaningfulReading": "not meaningful",
   "notApplicableReading": "not applicable",
-  "mapStateCount": "{v1} listed region{v2} {v3} and use{v4} a distinct pattern. ",
+  "mapStateCount": "{v1} listed {v1|region is|regions are} {v3} and {v1|uses|use} a distinct pattern. ",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.

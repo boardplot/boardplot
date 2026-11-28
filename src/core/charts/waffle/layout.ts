@@ -995,10 +995,10 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
     },
     a11y: {
       title: accessibleTitle(options.title, chartString(options, 'waffleTitle', { v1: panels.map((panel) => panel.label).join(', ') })),
-      counts: [structureCount('panels', n, chartString(options, 'panelsCount', { v1: n, v2: n === 1 ? 'panel' : 'panels' })), structureCount('series', series.length, chartString(options, 'seriesCount', { v1: series.length })), ...(square ? [] : [structureCount('cells', cellCount, undefined, options)])],
+      counts: [structureCount('panels', n, chartString(options, 'panelsCount', { v1: n })), structureCount('series', series.length, chartString(options, 'seriesCount', { v1: series.length })), ...(square ? [] : [structureCount('cells', cellCount, undefined, options)])],
       desc: square
-        ? chartString(options, 'waffleSquareDesc', { v1: n, v2: n === 1 ? 'panel' : 'panels', v3: series.length, v4: reading.join(' '), v5: reference && !(reference.categoryId !== undefined && n === 1) ? chartString(options, 'waffleReferenceDesc', { v1: reference.categoryId !== undefined ? chartString(options, 'otherPanels') : chartString(options, 'eachPanel'), v2: reference.label }) : '' })
-        : chartString(options, 'waffleCellsDesc', { v1: n, v2: n === 1 ? 'panel' : 'panels', v3: series.length, v4: grid.rows, v5: grid.columns, v6: cellCount, v7: formatAutomaticPercent(cellShare, autoDecimals(cellShare), false, options.locale?.language), v8: reading.join(' ') }),
+        ? chartString(options, 'waffleSquareDesc', { v1: n, v3: series.length, v4: reading.join(' '), v5: reference && !(reference.categoryId !== undefined && n === 1) ? chartString(options, 'waffleReferenceDesc', { v1: reference.categoryId !== undefined ? chartString(options, 'otherPanels') : chartString(options, 'eachPanel'), v2: reference.label }) : '' })
+        : chartString(options, 'waffleCellsDesc', { v1: n, v3: series.length, v4: grid.rows, v5: grid.columns, v6: cellCount, v7: formatAutomaticPercent(cellShare, autoDecimals(cellShare), false, options.locale?.language), v8: reading.join(' ') }),
     },
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   }, panels.flatMap((panel) => panel.segments.filter((segment) => segment.cells > 0).map((segment) => claimId('waffle:cells', panel.categoryId, segment.seriesId))));

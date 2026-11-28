@@ -3,13 +3,13 @@ import { chartStrings } from '../strings';
 export const EN = {
   // reader-facing wording linked only by its consumers.
   "waffleTitle": "Waffle chart: {v1}",
-  "panelsCount": "{v1} {v2}",
+  "panelsCount": "{v1} {v1|panel|panels}",
   "seriesCount": "{v1} series",
-  "waffleSquareDesc": "Waffle chart of share squares, {v1} {v2} and {v3} series: each panel is a square for 100%, and the area of its solid square is the share. {v4}{v5}",
+  "waffleSquareDesc": "Waffle chart of share squares, {v1} {v1|panel|panels} and {v3} series: each panel is a square for 100%, and the area of its solid square is the share. {v4}{v5}",
   "waffleReferenceDesc": " A dashed outline in {v1} marks the reference, {v2}.",
   "otherPanels": "the other panels",
   "eachPanel": "each panel",
-  "waffleCellsDesc": "Waffle chart, {v1} {v2} and {v3} series, each panel a {v4} × {v5} grid of {v6} cells; one cell is {v7}. {v8}",
+  "waffleCellsDesc": "Waffle chart, {v1} {v1|panel|panels} and {v3} series, each panel a {v4} × {v5} grid of {v6} cells; one cell is {v7}. {v8}",
   "waffleCellsReading": "{v1} = {v2} of {v3} cells",
   "waffleWholeReading": "{v1} of the whole",
   "noValue": "no value",

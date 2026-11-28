@@ -1123,8 +1123,8 @@ export function layoutFunnel(
     derived: { stageTotals, conversions, ...(worstDrop ? { worstDrop } : {}) },
     a11y: {
       title: accessibleTitle(options.title, chartString(options, 'funnelTitle', { v1: first.label, v2: last.label })),
-      counts: [structureCount('stages', stages.length, chartString(options, 'stagesCount', { v1: stages.length, v2: stages.length === 1 ? '' : 's' }))],
-      desc: chartString(options, 'funnelDesc', { v1: stages.length, v2: stages.length === 1 ? '' : 's', v3: a11yParts.join('; ') }),
+      counts: [structureCount('stages', stages.length, chartString(options, 'stagesCount', { v1: stages.length }))],
+      desc: chartString(options, 'funnelDesc', { v1: stages.length, v3: a11yParts.join('; ') }),
     },
     warnings,
     paintWarningRules,

@@ -2,7 +2,7 @@ import { chartStrings } from '../strings';
 
 export const EN = {
   // reader-facing wording linked only by its consumers.
-  "pieHiddenSlices": "{v1} {v2} not labelled",
+  "pieHiddenSlices": "{v1} {v1|slice|slices} not labelled",
   "pieDesc": "{v1} chart, {v2} slices of {v3}, total {v4}. ",
   "pieDescNoTotal": "{v1} chart, {v2} slices of {v3}. ",
   "pieNegativeNote": "Not drawn (negative value, so no total shown): {v1}.",

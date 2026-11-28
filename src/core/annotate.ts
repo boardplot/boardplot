@@ -926,7 +926,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
   const measured = measureCagr(input, ann, id, (warning) => s.warnings.push(warning));
   if (!measured) return;
   const { a, b, fromRef, toRef, years, rate } = measured;
-  const suffix = ann.suffix ?? 'p.a.';
+  const suffix = ann.suffix ?? chartString({ locale: input.locale, strings: input.strings }, 'perAnnum');
   const rateText = `${ann.format ? s.run.fmtSigned(rate) : percentChangeText(s, 'cagr', rate)} ${suffix}`.trim();
   // A rate read off one series of several says whose it is. Its
   // period leads when asked for, and by default when the chart carries
@@ -1237,7 +1237,7 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
     const label = authored(s, 'delta', computed, ann.text, computed);
     return drawSpanBracket(s, comparisonAnchor(vsAnchor) ?? vsAnchor, comparisonAnchor(at) ?? at, label.text, id, 'delta', label.computed, derivation);
   }
-  const label = authored(s, 'delta', acrossRows && vsAnchor.label ? `${computed} vs ${vsAnchor.label}` : computed, ann.text, computed);
+  const label = authored(s, 'delta', acrossRows && vsAnchor.label ? `${computed} ${chartString({ locale: input.locale, strings: input.strings }, 'deltaVs', { reference: vsAnchor.label })}` : computed, ann.text, computed);
   const seat = acrossRows ? { ...at, x: (at.x + vsAnchor.x) / 2 } : at;
   calloutLabel(s, ann, seat, label.text, 'delta', tone, label.computed, derivation);
 }

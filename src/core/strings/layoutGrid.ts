@@ -7,6 +7,7 @@ export const EN = {
   "gridChartsDesc": "{v1}: {v2}.{v3}",
   "alignedExhibit": "Aligned multi-tier exhibit",
   "chartGrid": "Chart grid",
+  "valueInCategory": "{series} in {category}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -15,6 +16,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "gridChartsDesc": "{v1}: {v2}.{v3}",
   "alignedExhibit": "Ausgerichtete Darstellung mit mehreren Ebenen",
   "chartGrid": "Diagrammraster",
+  "valueInCategory": "{series} in {category}",
 };
 
 export const { chartString } = chartStrings(EN, DE);

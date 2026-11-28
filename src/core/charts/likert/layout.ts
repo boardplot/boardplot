@@ -1162,7 +1162,7 @@ export function layoutLikert(
     },
     a11y: {
       title: accessibleTitle(opts.title, chartString(opts, 'likertTitle', { v1: items.length, v2: scale.length })),
-      counts: [structureCount('statements', items.length, chartString(opts, 'statementsCount', { v1: items.length, v2: items.length === 1 ? '' : 's' })), structureCount('scale-points', scale.length, chartString(opts, 'scalePointsCount', { v1: scale.length }))],
+      counts: [structureCount('statements', items.length, chartString(opts, 'statementsCount', { v1: items.length })), structureCount('scale-points', scale.length, chartString(opts, 'scalePointsCount', { v1: scale.length }))],
       desc: describe(),
     },
     // Resolved from the rebound rules, so a fresh render warns as a repaint in its theme does.
@@ -1232,7 +1232,7 @@ export function layoutLikert(
   }
 
   function describe(): string {
-    const lead = chartString(opts, 'likertDescStart', { v1: items.length, v2: items.length === 1 ? '' : 's', v3: scale.length, v4: labelOf(0), v5: labelOf(scale.length - 1) });
+    const lead = chartString(opts, 'likertDescStart', { v1: items.length, v3: scale.length, v4: labelOf(0), v5: labelOf(scale.length - 1) });
     const convention =
       neutralMode === 'split'
         ? chartString(opts, 'likertSplitDesc', { v1: labelOf(neutralIndex), v2: sideWords.boundary })

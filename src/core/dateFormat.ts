@@ -10,6 +10,7 @@
  */
 
 import { dateNames } from './dateNames';
+import { chartString as dateWordString } from './strings/dateWords';
 import { readDateFormat } from './dateFormatRead';
 import { parseISODate, utcDate } from './isoDate';
 
@@ -48,7 +49,7 @@ export function formatDate(date: Date, pattern: string, language?: string): stri
       case 'MMMMM': return names.months[date.getUTCMonth()]![0]!;
       case 'Q': return String(quarterOf(date));
       case 'QQ': return `Q${quarterOf(date)}`;
-      case 'QQQ': return `Quarter ${quarterOf(date)}`;
+      case 'QQQ': return dateWordString({ locale: { language } }, 'quarterWord', { n: String(quarterOf(date)) });
       case 'w': return String(isoWeek(date));
       case 'ww': return String(isoWeek(date)).padStart(2, '0');
       case 'yy': return String(date.getUTCFullYear() % 100).padStart(2, '0');

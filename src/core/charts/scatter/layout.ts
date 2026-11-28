@@ -110,7 +110,7 @@ function scatterDescription(input: {
   return (
     chartString(options, 'scatterDescStart', { v1: chartString(options, input.bubbleMode ? 'bubbleName' : 'scatterName'), v2: input.pointCount }) +
     (input.groupNames.length
-      ? chartString(options, 'scatterGroupDesc', { v1: input.groupNames.length, v2: input.groupNames.length === 1 ? '' : 's', v3: input.groupNames.join(', ') })
+      ? chartString(options, 'scatterGroupDesc', { v1: input.groupNames.length, v3: input.groupNames.join(', ') })
       : '') +
     chartString(options, 'scatterAxesDesc', { v1: axisFmt.x(extent.xMin), v2: axisFmt.x(extent.xMax), v3: input.log.x ? chartString(options, 'logScaleClause') : '', v4: axisFmt.y(extent.yMin), v5: axisFmt.y(extent.yMax), v6: input.log.y ? chartString(options, 'logScaleClause') : '' }) +
     (input.biggest
@@ -311,11 +311,11 @@ function assembleScatterGeometry(input: {
     a11y: {
       title: accessibleTitle(env.options.title, chartString(env.options, 'scatterTitle', { v1: bubbleMode ? chartString(env.options, 'bubbleName') : chartString(env.options, 'scatterName'), v2: pts.length })),
       counts: [structureCount('points', pts.length, undefined, env.options),
-        ...(domain.shownGroups.length ? [structureCount('groups', domain.shownGroups.length, chartString(env.options, 'groupsCount', { v1: domain.shownGroups.length, v2: domain.shownGroups.length === 1 ? '' : 's' }))] : []),
+        ...(domain.shownGroups.length ? [structureCount('groups', domain.shownGroups.length, chartString(env.options, 'groupsCount', { v1: domain.shownGroups.length }))] : []),
         ...(quadrants ? QUADRANT_BOXES.map(box => structureCount('points', quadrants.counts[box], `${quadrantBoxName(box, env.options)} ${quadrants.counts[box]}`)) : []),
         ...(zonesDerived ? [zonesDerived.kind === 'grid' ? structureCount('cells', zonesDerived.cellCount!, chartString(env.options, 'gridCellsCount', { v1: zonesDerived.cellCount })) : structureCount('regions', zonesDerived.regionCount!, chartString(env.options, 'authoredRegionsCount', { v1: zonesDerived.regionCount }))] : []),
-        ...(clamp?.records ?? []).map(record => structureCount('points', record.count, chartString(env.options, 'pointsCount', { v1: record.count, v2: record.count === 1 ? '' : 's' }))),
-        ...(dropped ? [structureCount('points', dropped.count, chartString(env.options, 'pointsCount', { v1: dropped.count, v2: dropped.count === 1 ? '' : 's' }))] : []),
+        ...(clamp?.records ?? []).map(record => structureCount('points', record.count, chartString(env.options, 'pointsCount', { v1: record.count }))),
+        ...(dropped ? [structureCount('points', dropped.count, chartString(env.options, 'pointsCount', { v1: dropped.count }))] : []),
         ...domain.trends.map(fit => structureCount('points', fit.n, undefined, env.options)),
         ...(domain.frontier ? [structureCount('points', domain.frontier.ids.length, undefined, env.options)] : [])],
       desc: a11yDesc,

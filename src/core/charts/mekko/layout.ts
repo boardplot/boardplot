@@ -178,9 +178,9 @@ function mekkoDescription(env: MekkoEnv, domain: MekkoDomain): string {
       widthText +
       chartString(env.options, 'mekkoInvalidDesc', { v1: cats
         .flatMap((c, ci) => (domain.invalidAt(ci) || totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnShownText(env, domain, ci)}`]))
-        .join(', ') || 'none', v2: cats
+        .join(', ') || chartString(env.options, 'none'), v2: cats
         .filter((_, ci) => domain.invalidAt(ci))
-        .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : 'n/a'})`)
+        .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : chartString(env.options, 'notApplicable')})`)
         .join(', ') });
   }
   // Each total as its label states it (a bar mekko's total is the bar's value).

@@ -677,7 +677,7 @@ function layoutPiePass(
       footnotes: [
         ...authoredNotes(options),
         ...(negatives.length ? [disclosureNote(chartString(options, 'pieNegativeNote', { v1: negatives.join(', ') }))] : []),
-        ...valueNoteLine(chartString(options, 'pieHiddenSlices', { v1: named.size, v2: named.size === 1 ? 'slice' : 'slices' }), [...named.values()], options),
+        ...valueNoteLine(chartString(options, 'pieHiddenSlices', { v1: named.size }), [...named.values()], options),
       ],
       legend: legendInput,
       theme,

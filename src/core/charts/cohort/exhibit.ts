@@ -642,7 +642,7 @@ function buildExhibit(
   const needsUnit = options.unitShown !== true && !carriesUnit(formatValue(1, 0)) &&
     !(subtitleUnit && carriesUnit(drawnSubtitle));
   // The unit costs no line: it joins the key caption or the header's corner cell.
-  const unitCaption = carriesUnit(measureName) ? measureName : `${measureName}${subtitleUnitClause(unit, measureName)}`;
+  const unitCaption = carriesUnit(measureName) ? measureName : `${measureName}${subtitleUnitClause(unit, measureName, options)}`;
   const totalGap = style === 'stepped' && derived.total ? 6 : 0;
   const trackFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: tableEmphasis(theme) };
   // Field heads (the corner and the size head) print in the table family's head face; period heads are values and keep theirs.
@@ -859,7 +859,7 @@ function buildExhibit(
   };
 
   const keyShowsUnit = showSteppedLegend && (keyCaption !== undefined || (scope === 'classic' && carriesUnit(caption)));
-  const cornerTexts = [unitCaption, subtitleUnitClause(unit, '').trim(), unit];
+  const cornerTexts = [unitCaption, subtitleUnitClause(unit, '', options).trim(), unit];
   const headPaint = headInk();
   const periodHeadAlign = headAlignOf('periods', 'middle');
   const periodCellAlign = alignOf('periods', 'middle');

@@ -5,6 +5,7 @@
  */
 
 import { chartTheme } from '../chartEnv';
+import { chartString as dateWordString } from '../../strings/dateWords';
 import { parseISODate } from '../../dateFormat';
 import { NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { compareText, defaultMeasurer } from '../../text';
@@ -220,7 +221,9 @@ function ganttCalendar(items: NormItem[], cadenceDays: number[], options: GanttO
     });
   }
   // A start-day head names each week by the day it starts on, under the month tier.
-  const tier = startDay && granularity === 'weeks' ? { ...TIERS.weeks, minorFmts: ['d'] } : TIERS[granularity];
+  const tier = granularity !== 'weeks' ? TIERS[granularity]
+    : startDay ? { ...TIERS.weeks, minorFmts: ['d'] }
+      : { ...TIERS.weeks, minorFmts: [`'${dateWordString(options, 'weekPrefix').replaceAll("'", '')}'w`] };
   const d0Day = dataSpan ? dataStart : dayNum(floorTo(tier.minor, dateFromDay(minDay)));
   const d1Day = dataSpan ? dataEnd : dayNum(ceilTo(tier.minor, dateFromDay(maxDay)));
 

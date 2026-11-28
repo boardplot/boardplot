@@ -221,7 +221,7 @@ export function layoutGrid(data: GridData, options: GridOptions = {}): LayoutRes
   let geometry = layoutGridPass(data, options, groups);
   for (let round = 0; round < 2; round++) {
     if (geometry.refused) return geometry;
-    const unprinted = unprintedPanelValues(data, geometry);
+    const unprinted = unprintedPanelValues(data, geometry, options);
     if (unprinted.every((item) => named.includes(item))) break;
     named = [...new Set([...named, ...unprinted])];
     geometry = layoutGridPass(data, { ...options, [PANEL_VALUE_NOTE]: named } as GridOptions, groups);
@@ -230,7 +230,7 @@ export function layoutGrid(data: GridData, options: GridOptions = {}): LayoutRes
 }
 
 /** "APAC in Q1 12": each value a panel hid, named by its series and category, the panel's title first when several panels hide one. */
-function unprintedPanelValues(data: GridData, geometry: { labels: readonly PlacedLabel[] }): string[] {
+function unprintedPanelValues(data: GridData, geometry: { labels: readonly PlacedLabel[] }, options: GridOptions): string[] {
   const byPanel = data.panels.map((panel) => {
     // Likert owns its complete named-share disclosure, including in a panel.
     if (panel.type === 'likert') return { title: panel.title ?? panel.id, items: [] };
@@ -248,7 +248,7 @@ function unprintedPanelValues(data: GridData, geometry: { labels: readonly Place
     const items = geometry.labels
       .filter((label) => label.id.startsWith(prefix) && label.hidden && label.kind === 'segment' && /\d/.test(label.text))
       .sort((a, b) => order(unprefix(a.owner.categoryId)) - order(unprefix(b.owner.categoryId)))
-      .map((label) => `${nameOf(panelData?.series, unprefix(label.owner.seriesId))} in ${nameOf(panelData?.categories, unprefix(label.owner.categoryId))} ${label.text}`);
+      .map((label) => `${chartString(options, 'valueInCategory', { series: nameOf(panelData?.series, unprefix(label.owner.seriesId)), category: nameOf(panelData?.categories, unprefix(label.owner.categoryId)) })} ${label.text}`);
     return { title: panel.title ?? panel.id, items };
   }).filter((entry) => entry.items.length > 0);
   return byPanel.flatMap((entry) => (byPanel.length > 1 ? entry.items.map((item) => `${entry.title}: ${item}`) : entry.items));

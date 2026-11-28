@@ -1,4 +1,5 @@
 import { chartString } from '../../strings/bullet';
+import { chartString as annotateString } from '../../strings/annotate';
 import { breakUnsupported } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
@@ -1820,7 +1821,7 @@ export function layoutBullet(
       const v = !shown('actual') ? '' : row.value !== null ? ` ${f(row.value)}` : ` ${chartString(options, 'notApplicable')}`;
       const t =
         row.target !== null
-          ? (shown('target') ? ` vs ${targetWord(options)} ${f(row.target)}` : '') +
+          ? (shown('target') ? ` ${annotateString(options, 'deltaVs', { reference: `${targetWord(options)} ${f(row.target)}` })}` : '') +
             (deltaVsTarget[row.id] !== undefined && shown('gap')
               ? ` (${deltaText(row, deltaVsTarget[row.id]!)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[deltaTone(row, deltaVsTarget[row.id]!)])})`
               : '')

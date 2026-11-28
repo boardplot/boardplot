@@ -12,6 +12,7 @@
 
 import { formatDate } from './dateFormat';
 import { localeStrings } from './strings';
+import { chartString as uiString } from './strings/zoom';
 import { parseISODate } from './isoDate';
 import { NormalizeError } from './normalize/shared';
 import { resolveTimes, timeTicks, zoneClock, type TimeStep, type ZoneClock } from './timeAxis';
@@ -238,17 +239,12 @@ function bucketLabel(start: number, grain: ZoomGrain, language?: string): string
   }
 }
 
-const BUCKET_WORDS = {
-  en: {
-    grain: { minute: 'Per-minute', hour: 'Hourly', day: 'Daily', week: 'Weekly', month: 'Monthly', quarter: 'Quarterly', year: 'Yearly' },
-    rule: { sum: 'sums', mean: 'means', last: 'last values', min: 'minimums', max: 'maximums' },
-    covers: 'Covers', to: 'to', of: 'of', days: 'days', hours: 'hours', minutes: 'min',
-  },
-  de: {
-    grain: { minute: 'Minütliche', hour: 'Stündliche', day: 'Tägliche', week: 'Wöchentliche', month: 'Monatliche', quarter: 'Vierteljährliche', year: 'Jährliche' },
-    rule: { sum: 'Summen', mean: 'Mittelwerte', last: 'letzte Werte', min: 'Minima', max: 'Maxima' },
-    covers: 'Umfasst', to: 'bis', of: 'von', days: 'Tagen', hours: 'Std.', minutes: 'Min.',
-  },
+const GRAIN_KEY = {
+  minute: 'zoomGrainMinute', hour: 'zoomGrainHour', day: 'zoomGrainDay', week: 'zoomGrainWeek',
+  month: 'zoomGrainMonth', quarter: 'zoomGrainQuarter', year: 'zoomGrainYear',
+} as const;
+const RULE_KEY = {
+  sum: 'zoomRuleSum', mean: 'zoomRuleMean', last: 'zoomRuleLast', min: 'zoomRuleMin', max: 'zoomRuleMax',
 } as const;
 
 /**
@@ -273,8 +269,8 @@ function wallDate(instant: number, zone: string): Date {
  * 7 Jan 2024 (5 of 7 days)", else clock times with hours or minutes, such as
  * "2 Oct 00:00 to 2 Oct 12:00 (12 of 24 hours)".
  */
-function coverText(from: number, to: number, start: number, end: number, grain: ZoomGrain, zone: string, language?: string): string {
-  const words = language?.toLowerCase().startsWith('de') ? BUCKET_WORDS.de : BUCKET_WORDS.en;
+function coverText(from: number, to: number, start: number, end: number, grain: ZoomGrain, zone: string, language?: string, strings?: Record<string, string>): string {
+  const words = { locale: { language }, strings };
   const midnight = (instant: number) => { const wall = wallDate(instant, zone); return wall.getUTCHours() === 0 && wall.getUTCMinutes() === 0; };
   const daily = GRAIN_MS[grain.unit] >= GRAIN_MS.day && midnight(from) && midnight(to);
   const unit = daily ? GRAIN_MS.day : GRAIN_MS[grain.unit] >= GRAIN_MS.day || (to - from) % 3_600_000 === 0 ? 3_600_000 : 60_000;
@@ -289,17 +285,17 @@ function coverText(from: number, to: number, start: number, end: number, grain: 
   const whole = Math.round((end - start) / unit);
   // Whole days name the last covered day; clock times name the end.
   const last = daily ? to - unit : to;
-  const span = name(from) === name(last) ? name(from) : `${name(from)} ${words.to} ${name(last)}`;
-  return `${span} (${count} ${words.of} ${whole} ${daily ? words.days : unit === 3_600_000 ? words.hours : words.minutes})`;
+  const span = name(from) === name(last) ? name(from) : `${name(from)} ${uiString(words, 'zoomTo')} ${name(last)}`;
+  return `${span} (${count} ${uiString(words, 'zoomOf')} ${whole} ${uiString(words, daily ? 'zoomDays' : unit === 3_600_000 ? 'zoomHours' : 'zoomMinutes')})`;
 }
 
 /** The note a bucketed view prints, so a monthly sum never reads as a reading: "Monthly sums", "Monthly: Orders sums, Visits means". */
-function bucketNote(grain: ZoomGrain, rules: { label: string; rule: ZoomAggregate }[], language?: string): string {
-  const words = language?.toLowerCase().startsWith('de') ? BUCKET_WORDS.de : BUCKET_WORDS.en;
+function bucketNote(grain: ZoomGrain, rules: { label: string; rule: ZoomAggregate }[], language?: string, strings?: Record<string, string>): string {
+  const words = { locale: { language }, strings };
   const kinds = new Set(rules.map((r) => r.rule));
   return kinds.size === 1
-    ? `${words.grain[grain.unit]} ${words.rule[rules[0]!.rule]}`
-    : `${words.grain[grain.unit]}: ${rules.map((r) => `${r.label} ${words.rule[r.rule]}`).join(', ')}`;
+    ? `${uiString(words, GRAIN_KEY[grain.unit])} ${uiString(words, RULE_KEY[rules[0]!.rule])}`
+    : `${uiString(words, GRAIN_KEY[grain.unit])}: ${rules.map((r) => `${r.label} ${uiString(words, RULE_KEY[r.rule])}`).join(', ')}`;
 }
 
 /** The kinds a coarser view keeps: they stand at a time, not on a reading. */
@@ -343,12 +339,15 @@ export function zoomSpec(spec: ZoomSpec, axis: ZoomAxis, range: [number, number]
   // An edge bucket the readings cover only in part: under a sum, a minimum or a maximum it reads as a drop or a rise.
   const marks = spec.data.series.some((s) => COVERAGE_RULES.has(ruleOf(s.id)));
   const firstReading = axis.xs[0]!, lastReading = axis.xs[axis.xs.length - 1]!;
+  const zoomStrings = inheritedStrings || spec.options?.strings
+    ? { ...inheritedStrings, ...(spec.options?.strings as Record<string, unknown> | undefined) } as Record<string, string>
+    : undefined;
   const covers = new Map<number, string>();
   if (marks) {
     for (const k of keep) {
       const start = starts[k]!, end = starts[k + 1]!;
       const from = Math.max(start, firstReading), to = Math.min(end, lastReading + axis.native);
-      if (members[k]!.length && (from > start || to < end)) covers.set(k, coverText(from, to, start, end, drawn, axis.zone, language));
+      if (members[k]!.length && (from > start || to < end)) covers.set(k, coverText(from, to, start, end, drawn, axis.zone, language, zoomStrings));
     }
   }
   const series = spec.data.series.map((s, si) => {
@@ -368,13 +367,12 @@ export function zoomSpec(spec: ZoomSpec, axis: ZoomAxis, range: [number, number]
   }
   if (options.footnotes !== false) {
     const rules = spec.data.series.map((s) => ({ label: String(s.label ?? s.id), rule: ruleOf(s.id) }));
-    options.footnotes = [...(options.footnotes as string[] | undefined) ?? [], bucketNote(drawn, rules, language)];
+    options.footnotes = [...(options.footnotes as string[] | undefined) ?? [], bucketNote(drawn, rules, language, zoomStrings)];
   }
   if (typeof options.rebase100 === 'object') delete options.rebase100;
   if (covers.size) {
-    const words = language?.toLowerCase().startsWith('de') ? BUCKET_WORDS.de : BUCKET_WORDS.en;
     const fields = (options.detailFields as { key: string }[] | undefined) ?? [];
-    if (!fields.some((f) => f.key === COVERS_KEY)) options.detailFields = [...fields, { key: COVERS_KEY, label: words.covers }];
+    if (!fields.some((f) => f.key === COVERS_KEY)) options.detailFields = [...fields, { key: COVERS_KEY, label: uiString({ locale: { language }, strings: zoomStrings }, 'zoomCovers') }];
     // A part-covered bucket is partial, not running: its note says "partial", not "to date".
     // The host's strings (a BoardplotTheme provider) count as authored: their toDate wins.
     const strings = options.strings as Record<string, unknown> | undefined;

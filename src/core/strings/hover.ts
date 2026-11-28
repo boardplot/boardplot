@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "rangeTo": "{from} to {to}",
   // reader-facing wording linked only by its consumers.
   "valueWithheld": "Value withheld",
   "ofValueClause": " of {v1}",
@@ -14,8 +15,10 @@ export const EN = {
   "cardTabHint": "Press Tab to reach the card.",
   "weekOf": "Week of {v1}",
   "totalLabel": "Total",
+  "cardDetails": "Details",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "rangeTo": "{from} bis {to}",
   // reader-facing wording linked only by its consumers.
   "valueWithheld": "Wert zurückgehalten",
   "ofValueClause": " von {v1}",
@@ -29,6 +32,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "cardTabHint": "Tab führt in die Karte.",
   "weekOf": "Woche ab {v1}",
   "totalLabel": "Summe",
+  "cardDetails": "Details",
 };
 
 export const { chartString } = chartStrings(EN, DE);

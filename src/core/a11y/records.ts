@@ -40,10 +40,10 @@ function recordsOf(context: RecordContext): InteractionRecord[] {
     record.value = currency(record.value);
     record.fields = record.fields.map(field => ({ ...field, value: currency(field.value) }));
     record.comparisons = record.comparisons.map(comparison => ({ ...comparison,
-      current: currency(comparison.current), reference: currency(comparison.reference), delta: currency(comparison.delta),
+      current: currency(comparison.current), reference: currency(comparison.reference), delta: currency(comparison.delta), percent: currency(comparison.percent),
     }));
     if (record.share) record.share = { ...record.share,
-      numerator: currency(record.share.numerator), denominator: currency(record.share.denominator),
+      numerator: currency(record.share.numerator), denominator: currency(record.share.denominator), percent: currency(record.share.percent),
     };
   }
   return withExhibitPercentFormat(records, ctx.geometry.scene);

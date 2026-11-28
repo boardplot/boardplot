@@ -172,6 +172,7 @@ export interface LabelCardLayout extends LabelCardContent {
   side?: CardSide;
   /** The seat meets the points' path (`LabelCardInput.path`): the card lets the pointer through to the points under it. */
   overPath?: boolean;
+  locale?: string;
 }
 
 export type LabelCardGeometry = Pick<Geometry, 'type' | 'size' | 'scene' | 'legend' | 'a11y' | 'sizing' | 'mode'>;
@@ -187,7 +188,7 @@ export function labelCardGeometry(layout: LabelCardLayout): LabelCardGeometry {
       tx: (node.tx ?? 0) - x,
       ty: (node.ty ?? 0) - y,
     })),
-    a11y: { title: layout.rows[0]?.text ?? 'Details', desc: layout.accessibleText },
+    a11y: { title: layout.rows[0]?.text ?? chartString({ locale: layout.locale }, 'cardDetails'), desc: layout.accessibleText },
   };
 }
 
@@ -1279,7 +1280,7 @@ export function layoutLabelCardContent(input: LabelCardInput, content: LabelCard
   const seat = input.follow && input.pointer
     ? { placement: 'pointer' as const, rect: followSeat(input.pointer, width, height, input.chart ?? canvas, input.boundary), decisions: [] }
     : placeLabelCard(input, width, height);
-  return { ...content, rows, ...seat,
+  return { ...content, rows, ...seat, ...(input.locale === undefined ? {} : { locale: input.locale }),
     scene: rows.length ? cardScene(input, rows, seat.rect, measured, content.accessibleText) : [] };
 }
 

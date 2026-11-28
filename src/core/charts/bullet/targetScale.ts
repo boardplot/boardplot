@@ -707,7 +707,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   });
   const describeRow = (row: TargetScaleRow, index: number): string => {
     const share = shares[index];
-    const value = input.valueText(row) ?? 'n/a';
+    const value = input.valueText(row) ?? chartString(options, 'notApplicable');
     const delta = input.deltaVsTarget[row.id];
     return `${row.label}${hidden('actual') ? '' : ` ${value}`}` +
       (share === undefined ? '' : `,${hidden('share') ? '' : ` ${shareText(share)} ${chartString(options, 'ofTarget', { v1: target })},`} ${input.targetText(row)}`) +

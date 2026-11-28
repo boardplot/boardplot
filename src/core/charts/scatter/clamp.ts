@@ -212,7 +212,7 @@ export function planScatterClamp(
         limitText,
         count: beyond.length,
         points: beyond,
-        note: disclosureNote(chartString(input.options, 'clippedPointsNote', { v1: chartString(input.options, 'pointsCount', { v1: beyond.length, v2: beyond.length === 1 ? '' : 's' }), v2: limitText, v3: axisName(axis, input.axisTitles) })),
+        note: disclosureNote(chartString(input.options, 'clippedPointsNote', { v1: chartString(input.options, 'pointsCount', { v1: beyond.length }), v2: limitText, v3: axisName(axis, input.axisTitles) })),
       });
     }
   }
@@ -295,7 +295,7 @@ export function applyMinCount<T extends ClampablePoint>(
       count: dropped.length,
       points: dropped.map((point) => ({ id: point.id, label: point.label, count: point.count as number })),
       // The note names the points it dropped.
-      note: disclosureNote(chartString(options, 'droppedPointsNote', { v1: chartString(options, 'pointsCount', { v1: dropped.length, v2: dropped.length === 1 ? '' : 's' }), v2: thresholdText, v3: dropped.map((point) => point.label).join(', ') })),
+      note: disclosureNote(chartString(options, 'droppedPointsNote', { v1: chartString(options, 'pointsCount', { v1: dropped.length }), v2: thresholdText, v3: dropped.map((point) => point.label).join(', ') })),
     },
   };
 }
@@ -468,7 +468,7 @@ export function clampDescription(
         .join(', ');
       const rest = record.points.length - NAMED;
       return (
-        chartString(options, 'clippedPointsDesc', { v1: chartString(options, 'pointsCount', { v1: record.count, v2: record.count === 1 ? '' : 's' }), v2: side, v3: record.limitText }) +
+        chartString(options, 'clippedPointsDesc', { v1: chartString(options, 'pointsCount', { v1: record.count }), v2: side, v3: record.limitText }) +
         chartString(options, 'clippedPointsEdge', { v1: edge, v2: named, v3: rest > 0 ? chartString(options, 'moreInTable', { v1: rest }) : '' })
       );
     })

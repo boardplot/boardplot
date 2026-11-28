@@ -8,6 +8,7 @@
  */
 
 import { linePath } from '../../core/svgPath';
+import { chartString as hoverString } from '../../core/strings/hover';
 import { joinSentences } from '../../core/strings';
 import { boxGap, type Rect } from '../../core/geometry';
 import { cutWithTitle, fitText, lineBox } from '../../core/label/fitText';
@@ -52,6 +53,7 @@ interface TableSparklineCardInput {
   forbidden?: readonly Rect[];
   tableBounds?: Rect;
   direction?: 'ltr' | 'rtl';
+  locale?: string;
   measure?: TextMeasurer;
   inlineVisibility?: Readonly<Record<Id, boolean>>;
 }
@@ -292,7 +294,7 @@ export function tableSparklineCard(input: TableSparklineCardInput): TableSparkli
     [row.label, spanText].filter(Boolean).join(', '),
     valueText,
     ...lines.map((line) => line.text),
-    `${first.label} to ${last.label}`,
+    hoverString({ locale: input.locale }, 'rangeTo', { from: first.label, to: last.label }),
   ]);
   return {
     rect,

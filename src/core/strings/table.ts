@@ -42,6 +42,10 @@ export const EN = {
   "tableLowerBetterGood": "Lower is better for {columns}: there, the good tone marks {where}.",
   "dimswitchLabels": "Labels",
   "dimswitchRange": "Range",
+  "columnGroups": "Column groups",
+  "legendKey": "Key",
+  "expandRow": "Expand {label}",
+  "collapseRow": "Collapse {label}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording of the table and the charts that draw through it (dimswitch).
@@ -85,6 +89,10 @@ const DE: { [K in keyof typeof EN]: string } = {
   "tableLowerBetterGood": "Niedriger ist besser bei {columns}: dort markiert der günstige Ton Werte {where}.",
   "dimswitchLabels": "Bezeichnungen",
   "dimswitchRange": "Zeitraum",
+  "columnGroups": "Spaltengruppen",
+  "legendKey": "Legende",
+  "expandRow": "{label} aufklappen",
+  "collapseRow": "{label} zuklappen",
 };
 
 export const { chartString } = chartStrings(EN, DE);

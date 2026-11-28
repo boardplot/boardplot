@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "inUnitClause": " in {v1}",
   // reader-facing wording linked only by its consumers.
   cutLabels: 'Full text of shortened labels',
   listedInNote: 'Listed in note {n}',
@@ -9,6 +10,7 @@ export const EN = {
   listedInNotes: 'Full text is in the notes list',
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "inUnitClause": " in {v1}",
   // reader-facing wording linked only by its consumers.
   cutLabels: 'Vollständiger Text gekürzter Beschriftungen',
   listedInNote: 'In Anmerkung {n} aufgeführt',

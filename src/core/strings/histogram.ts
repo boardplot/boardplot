@@ -17,6 +17,7 @@ export const EN = {
   "histogramOpenBinMax": "≥ {v1} (max {v2})",
   "histogramOpenClause": "open bin ≥ {v1}",
   "histogramOpenMethod": "{v1} bins of {v2} from {v3} ({v4}{v5}); each bin includes its lower bound; the open last bin holds every value of {v6} and above{v7}.",
+  "histogramCountInBin": "{count} in {bin}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -32,6 +33,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "histogramOpenBinMax": "≥ {v1} (max. {v2})",
   "histogramOpenClause": "offene Klasse ≥ {v1}",
   "histogramOpenMethod": "{v1} {v1|Klasse|Klassen} mit Breite {v2} ab {v3} ({v4}{v5}); jede Klasse enthält ihre untere Grenze; die offene letzte Klasse enthält alle Werte ab {v6}{v7}.",
+  "histogramCountInBin": "{count} in {bin}",
 };
 
 export const { chartString } = chartStrings(EN, DE);

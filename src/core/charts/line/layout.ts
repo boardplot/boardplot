@@ -609,7 +609,7 @@ function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: L
           .map((category) => category.label ?? category.id)
           .join(', ') || chartString(domain.options, 'none'), v2: cats
           .filter((category) => nmCats100.has(category.id) || naCats100.has(category.id))
-          .map((category) => `${category.label ?? category.id} (${nmCats100.has(category.id) ? 'n.m.' : 'n/a'})`)
+          .map((category) => `${category.label ?? category.id} (${nmCats100.has(category.id) ? 'n.m.' : chartString(domain.options, 'notApplicable')})`)
           .join(', ') })
       : '';
   const fanDesc = fan
@@ -631,7 +631,7 @@ function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: L
     (marks.gapFills
       ? chartString(domain.options, 'lineDifferenceDesc', { v1: options.gapFill!.between[0], v2: options.gapFill!.between[1] })
       : '') +
-    (marks.targets ? chartString(domain.options, 'lineTargetsDesc', { v1: marks.targets.length, v2: marks.targets.length === 1 ? '' : 's' }) : '') +
+    (marks.targets ? chartString(domain.options, 'lineTargetsDesc', { v1: marks.targets.length }) : '') +
     (marks.phases
       ? chartString(domain.options, 'linePhasesDesc', { v1: marks.phases.length })
       : '') +
@@ -639,7 +639,7 @@ function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: L
     (bumpDerived
       ? chartString(domain.options, 'lineRanksDesc', { v1: bumpDerived.maxRank, v2: chartString(domain.options, bumpDerived.direction === 'higherIsBetter' ? 'higherBetter' : 'lowerBetter') }) +
         (bumpDerived.ties.length > 0
-          ? chartString(domain.options, 'lineRankTies', { v1: bumpDerived.ties.length, v2: bumpDerived.ties.length === 1 ? '' : 's' })
+          ? chartString(domain.options, 'lineRankTies', { v1: bumpDerived.ties.length })
           : '')
       : '') +
     (endpointDesc
@@ -939,9 +939,9 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
       titleCounts: [structureCount('periods', cats.length, undefined, domain.options)],
       counts: [...(domain.anomaly?.model?.counts ?? []), structureCount('series', domain.drawnSeries.length, undefined, domain.options), structureCount('categories', domain.cats.length, undefined, domain.options),
         ...(domain.refSeries.length ? [structureCount('reference-series', domain.refSeries.length, chartString(domain.options, 'referenceSeriesCount', { v1: domain.refSeries.length }))] : []),
-        ...(marks.targets ? [structureCount('markers', marks.targets.length, chartString(domain.options, 'targetMarkersCount', { v1: marks.targets.length, v2: marks.targets.length === 1 ? '' : 's' }))] : []),
+        ...(marks.targets ? [structureCount('markers', marks.targets.length, chartString(domain.options, 'targetMarkersCount', { v1: marks.targets.length }))] : []),
         ...(marks.phases ? [structureCount('phases', marks.phases.length, chartString(domain.options, 'lifecyclePhasesCount', { v1: marks.phases.length }))] : []),
-        ...(domain.bumpDerived?.ties.length ? [structureCount('groups', domain.bumpDerived.ties.length, chartString(domain.options, 'tiedGroupsCount', { v1: domain.bumpDerived.ties.length, v2: domain.bumpDerived.ties.length === 1 ? '' : 's' }))] : [])],
+        ...(domain.bumpDerived?.ties.length ? [structureCount('groups', domain.bumpDerived.ties.length, chartString(domain.options, 'tiedGroupsCount', { v1: domain.bumpDerived.ties.length }))] : [])],
       desc: a11yDesc,
       // A compact card below its plot floor leaves the rebase note off the page; the notes list keeps it.
       ...(domain.rebaseCompact ? { compactNotes: [rebaseNotes(domain.rebaseSuppressed, options).join(' ')] } : {}),

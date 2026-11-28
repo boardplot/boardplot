@@ -640,7 +640,7 @@ export function layoutHistogram(
   if (tailBins.length > 0 && options.labels !== false) {
     tail = tailBins.slice(0, 3).map((index): Annotation => ({
       kind: 'callout', id: `tail-${binId(index)}`, at: binId(index), preferSide: 'above',
-      text: `${countFmt(counts[index]!)} in ${binLabels[index]}`,
+      text: chartString(options, 'histogramCountInBin', { count: countFmt(counts[index]!), bin: binLabels[index]! }),
     }));
     const withTail = frequencyAxisShown
       ? delegateOptions(true, tail)

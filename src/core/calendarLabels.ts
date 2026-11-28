@@ -11,6 +11,7 @@
  * labels always win, and nothing changes unless every category has a date.
  */
 import { DATE_TICK_STRIDES, planDateTicks, type DateTickInterval } from './dateFormat';
+import { chartString as dateWordString } from './strings/dateWords';
 import { dateNames } from './dateNames';
 import { wordLanguage } from './numberMarks';
 import { parseISODate, utcDate } from './isoDate';
@@ -145,7 +146,7 @@ function deriveCalendar(categories: readonly Raw[], language?: string, yearRow =
     const base = unit === 'year' ? String(year)
       : unit === 'quarter' ? `Q${Math.floor(date.getUTCMonth() / 3) + 1}`
         : unit === 'month' ? month
-          : unit === 'week' ? (de ? `KW ${week}` : `W${week}`)
+          : unit === 'week' ? `${dateWordString({ locale: { language } }, 'weekPrefix')}${week}`
             : de ? `${day}. ${month}` : us ? `${month} ${day}` : `${day} ${month}`;
     if (inRow && unit === 'day') calendar.weekday = `${daysShort[date.getUTCDay()]!} ${base}`;
     const named = `${base}${us && unit === 'day' ? ',' : ''} ${year}`;

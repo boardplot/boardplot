@@ -357,7 +357,15 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     scrollListener.current = onScrollChange;
     const scrollReported = useRef(false);
     const scrollLabel = useRef('');
-    scrollLabel.current = typeof (options as { title?: unknown }).title === 'string' && (options as { title: string }).title ? (options as { title: string }).title : `${type} chart`;
+    const scrollOptions = {
+      locale: (options as { locale?: { language?: string } | string }).locale ?? provider?.locale,
+      strings: providerStrings || (options as { strings?: Record<string, string> }).strings
+        ? { ...providerStrings, ...(options as { strings?: Record<string, string> }).strings } as Record<string, string>
+        : undefined,
+    };
+    scrollLabel.current = typeof (options as { title?: unknown }).title === 'string' && (options as { title: string }).title
+      ? (options as { title: string }).title
+      : chartString(scrollOptions, 'chartScrollName', { type });
     const live = scrolls ? scroller : null;
     useEffect(() => {
       // A chart that stops scrolling (a wider box) reports the empty state once, so a host drops its fade.

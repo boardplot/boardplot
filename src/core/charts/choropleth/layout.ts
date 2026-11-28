@@ -1135,7 +1135,7 @@ function layoutMapPass(
         structureCount('regions', missingCount, chartString(options, 'listedRegions', { v1: missingCount })),
         ...(drawnUnlistedCount ? [structureCount('regions', drawnUnlistedCount, undefined, options)] : []),
         ...(smallIds.size ? [structureCount('regions', smallIds.size, chartString(options, 'regionsCount', { v1: smallIds.size }))] : []),
-        ...(missingCount && chipOnlyNoData.length ? [structureCount('regions', chipOnlyNoData.length, chartString(options, 'regionsPlural', { v1: chipOnlyNoData.length, v2: chipOnlyNoData.length === 1 ? '' : 's' }))] : [])],
+        ...(missingCount && chipOnlyNoData.length ? [structureCount('regions', chipOnlyNoData.length, chartString(options, 'regionsPlural', { v1: chipOnlyNoData.length }))] : [])],
       desc:
         chartString(options, 'mapEqualArea', { v1: pack.regions.length }) +
         (scale.min === null
@@ -1151,7 +1151,7 @@ function layoutMapPass(
         geoStateSummary(visibleStates, options) +
         (missingCount === 0 ? '' : chipOnlyNoData.length === 0
           ? chartString(options, 'mapMissingHatch')
-          : chartString(options, 'mapSmallMissing', { v1: chipOnlyNoData.length, v2: chipOnlyNoData.length === 1 ? ' is' : 's are', v3: chipOnlyNoData.length === 1 ? 'ies' : 'y' })) +
+          : chartString(options, 'mapSmallMissing', { v1: chipOnlyNoData.length })) +
         (overlayResult.descriptions.length
           ? chartString(options, 'overlaysSentence', { v1: overlayResult.descriptions.join(' ') })
           : '') +

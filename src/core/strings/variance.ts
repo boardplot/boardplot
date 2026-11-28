@@ -18,6 +18,7 @@ export const EN = {
   "absoluteVariance": "absolute variance",
   "relativeVariance": "relative variance",
   "integratedVariance": "integrated variance",
+  "varianceTitle": "{v1}: {v2} vs {v3}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -37,6 +38,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "absoluteVariance": "absolute Varianz",
   "relativeVariance": "relative Varianz",
   "integratedVariance": "integrierte Varianz",
+  "varianceTitle": "{v1}: {v2} ggü. {v3}",
 };
 
 export const { chartString } = chartStrings(EN, DE);

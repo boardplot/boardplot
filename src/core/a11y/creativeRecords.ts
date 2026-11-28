@@ -1,4 +1,5 @@
 import { chartString } from '../strings/a11y-creativeRecords';
+import { chartString as hoverString } from '../strings/hover';
 import { chartString as creativeString } from '../strings/creative';
 import type { CreativeDerived, CreativeMarks } from '../charts/creative/layout';
 import { tablePlan } from '../charts/creative/tablePlan';
@@ -45,7 +46,7 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
         ...(drawn.delta && drawn.value !== drawn.median ? [{ key: 'delta', label: deltaLabel, value: printedChange(deltas.find(delta => delta.key === key)) }] : []),
         ...(drawn.median || drawn.delta ? [
           { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
-          { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(`${data.comparison.startDate} to ${data.comparison.endDate}`) },
+          { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(hoverString(ctx.request.options, 'rangeTo', { from: data.comparison.startDate, to: data.comparison.endDate })) },
         ] : []),
       ],
     });

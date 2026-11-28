@@ -1830,7 +1830,7 @@ function planTornado(
       // is now stated, which is the repo's n.m. convention on the one channel
       // that can carry it.
       (droppedDrivers.length > 0
-        ? chartString(options, 'missingDriversDesc', { v1: droppedDrivers.length, v2: droppedDrivers.length === 1 ? '' : 's', v3: droppedDrivers.join(', '), v4: droppedDrivers.length === 1 ? 'is' : 'are', v5: droppedDrivers.length === 1 ? 'one is' : 'at least one is' })
+        ? chartString(options, 'missingDriversDesc', { v1: droppedDrivers.length, v3: droppedDrivers.join(', ') })
         : ''),
   };
 }

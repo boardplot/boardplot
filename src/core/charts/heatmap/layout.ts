@@ -1907,7 +1907,7 @@ export function layoutHeatmap(
     if (valence && rows.some((r) => r.direction === 'lowerIsBetter')) {
       // The poles show the verdict at full strength: probe values of ±1
       // painted near white whenever the matrix reached past ±1.
-      return [item('worse', 'Worse', valencePaint('bad', true, 0)), item('even', 'Even', fillPaint(0, null, true)), item('better', 'Better', valencePaint('good', true, 0))];
+      return [item('worse', chartString(options, 'valenceWorse'), valencePaint('bad', true, 0)), item('even', chartString(options, 'valenceEven'), fillPaint(0, null, true)), item('better', chartString(options, 'valenceBetter'), valencePaint('good', true, 0))];
     }
     // Round values strictly between two ends, a third of a step clear of both.
     const between = (from: number, to: number, step: number) => {

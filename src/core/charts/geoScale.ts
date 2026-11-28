@@ -590,6 +590,6 @@ export function geoStateCounts(states: Iterable<NamedColumnState>, options?: Pic
   const values = [...states];
   return NAMED_COLUMN_STATES.flatMap(state => {
     const count = values.filter(value => value === state).length;
-    return count ? [structureCount('regions', count, chartString(options, 'mapStateCount', { v1: count, v2: count === 1 ? ' is' : 's are', v3: chartString(options, { suppressed: 'suppressedReading', nm: 'notMeaningfulReading', na: 'notApplicableReading' }[state] as 'suppressedReading' | 'notMeaningfulReading' | 'notApplicableReading'), v4: count === 1 ? 's' : '' }))] : [];
+    return count ? [structureCount('regions', count, chartString(options, 'mapStateCount', { v1: count, v3: chartString(options, { suppressed: 'suppressedReading', nm: 'notMeaningfulReading', na: 'notApplicableReading' }[state] as 'suppressedReading' | 'notMeaningfulReading' | 'notApplicableReading') }))] : [];
   });
 }

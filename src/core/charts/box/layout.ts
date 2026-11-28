@@ -478,7 +478,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // method statement must not also turn off a disclosure that data is missing.
   const withheldNote =
     withheldTotal > 0
-      ? disclosureNote(chartString(options, 'boxWithheldNote', { v1: withheldTotal, v2: withheldTotal === 1 ? '' : 's', v3: chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[whiskerRule]), v4: withheldTotal === 1 ? 'is' : 'are', v5: withheldTotal === 1 ? 'is' : 'are' }))
+      ? disclosureNote(chartString(options, 'boxWithheldNote', { v1: withheldTotal, v3: chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[whiskerRule]) }))
       : undefined;
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const frameResult = solveFrame(
@@ -617,7 +617,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const medianWanted = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
   const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
   const medianBodyW = medianWanted ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
-  const medianHeadFit = medianWanted ? fitHead(overrides?.median?.label ?? 'Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
+  const medianHeadFit = medianWanted ? fitHead(overrides?.median?.label ?? chartString(options, 'boxMedianHead'), headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
   const medianNaturalW = medianHeadFit ? Math.max(medianHeadFit.w, medianBodyW) : 0;
   const medianColW = !medianHeadFit ? 0 : N_BAND_GAP + (overrides?.median?.width === undefined ? medianNaturalW
     : authoredTrackWidth('median', overrides.median.width, medianNaturalW, plot0.w - catBandTotal - nBandTotal - N_BAND_GAP - bracketRoom - parkRoom - plotKeeps, warnings));
@@ -1238,7 +1238,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     if (labelOn('point') && row.median !== null && row.state !== 'points') {
       // The first figure names the statistic, as a first tick names its unit:
       // a bare number above a box reads as anything from a mean to a total.
-      const text = `${index === firstMedianRow && !medianCol ? 'Median ' : ''}${statText(row, 'median')}`;
+      const text = `${index === firstMedianRow && !medianCol ? `${chartString(options, 'boxMedianHead')} ` : ''}${statText(row, 'median')}`;
       const textSize = measure(text, labelFont);
       const medianX = x(row.median);
       // EVERY candidate clears this row's OWN dots.

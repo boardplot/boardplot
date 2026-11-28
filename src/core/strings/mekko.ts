@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "none": "none",
   // reader-facing wording linked only by its consumers.
   "mekkoTitle": "Mekko chart: {v1} by {v2} categories",
   "validColumns": "{v1} valid composition columns",
@@ -20,6 +21,7 @@ export const EN = {
   "netValue": "net {v1}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "none": "keine",
   // reader-facing wording linked only by its consumers.
   "mekkoTitle": "Mekko-Diagramm: {v1} nach {v2} {v2|Kategorie|Kategorien}",
   "validColumns": "{v1} {v1|gültige Anteilssäule|gültige Anteilssäulen}",

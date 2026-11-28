@@ -46,6 +46,7 @@ export function stringsPage(tables) {
   return [`<!-- ${HEADER} -->`, '',
     '# Built-in words', '',
     `Every word a chart prints itself can be replaced in \`options.strings\`, or for all charts in \`BoardplotTheme\`. This page lists all ${found.size} keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.`, '',
+    'The words of a hover card, an accessible description and the date names of a calendar axis follow the chart language and take no replacement from `options.strings` yet.', '',
     'A word with a field in braces, such as `{count}`, keeps the field in the replacement. A word written for a plural, such as `{v1|slice|slices}`, keeps that form.', '',
     '| Key | English default | Table |', '|---|---|---|', ...rows, ''].join('\n');
 }

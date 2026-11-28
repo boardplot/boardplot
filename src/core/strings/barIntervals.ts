@@ -15,7 +15,7 @@ export const EN = {
   "inverseClause": ", inverse",
   "baseOutsideClause": ", base outside the swing",
   "inverseDriversDesc": " {v1} of {v2} drivers are inverse: their high input produces the lower output.",
-  "missingDriversDesc": " {v1} further driver{v2} — {v3} — {v4} not shown: not measurable, because a one-at-a-time swing needs both case outputs and {v5} missing.",
+  "missingDriversDesc": " {v1} further {v1|driver|drivers} — {v3} — {v1|is|are} not shown: not measurable, because a one-at-a-time swing needs both case outputs and {v1|one is|at least one is} missing.",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.

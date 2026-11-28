@@ -10,6 +10,7 @@ export const EN = {
   "kpiSparkDesc": ". Trend over {v1} periods{v2}",
   "attainmentNonpositive": ", {v1} attainment not meaningful because the reference is nonpositive",
   "lowerBetterHint": " · lower is better",
+  "kpiName": "KPI",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -21,6 +22,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "kpiSparkDesc": ". Verlauf über {v1} {v1|Periode|Perioden}{v2}",
   "attainmentNonpositive": ", Zielerreichung {v1} nicht aussagekräftig, da die Referenz nicht positiv ist",
   "lowerBetterHint": " · niedriger ist besser",
+  "kpiName": "KPI",
 };
 
 export const { chartString } = chartStrings(EN, DE);

@@ -1,12 +1,14 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "negativeName": "Negative",
   // reader-facing wording linked only by its consumers.
   "date": "Date",
   "footnote": "Footnote",
   "shareOfTotal": "Share of total",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "negativeName": "Negativ",
   // reader-facing wording linked only by its consumers.
   "date": "Datum",
   "footnote": "Fußnote",

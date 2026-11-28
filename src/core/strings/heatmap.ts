@@ -28,6 +28,9 @@ export const EN = {
   "heatmapLeadHigh": "{v1} high",
   "blankCells": "Blank cells: {v1}.",
   "blankNoData": "Blank cells: no data.",
+  "valenceWorse": "Worse",
+  "valenceEven": "Even",
+  "valenceBetter": "Better",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -56,6 +59,9 @@ const DE: { [K in keyof typeof EN]: string } = {
   "heatmapLeadHigh": "{v1} Hoch",
   "blankCells": "Leere Zellen: {v1}.",
   "blankNoData": "Leere Zellen: keine Daten.",
+  "valenceWorse": "Schlechter",
+  "valenceEven": "Ausgeglichen",
+  "valenceBetter": "Besser",
 };
 
 export const { chartString } = chartStrings(EN, DE);

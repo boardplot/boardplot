@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "none": "none",
   // reader-facing wording linked only by its consumers.
   "band": "Band",
   "start": "Start",
@@ -26,7 +27,6 @@ export const EN = {
   "bulletShadingDesc": " Background bands shade from darker grey (poor) to lighter grey (good); rows where lower is better invert the shading.",
   "bulletSeparateScale": " Each row is drawn on its own scale, so bar lengths compare within a row, not across rows.",
   "bulletTitle": "Bullet chart: {v1} KPIs vs {v2}",
-  "none": "none",
   "horizontal": "horizontal",
   "top": "top",
   "left": "left",
@@ -59,6 +59,7 @@ export const EN = {
   "noTarget": "no {v1}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "none": "keine",
   // reader-facing wording linked only by its consumers.
   "band": "Band",
   "start": "Start",
@@ -84,7 +85,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "bulletShadingDesc": " Hintergrundbänder reichen von dunklerem Grau (schlecht) bis hellerem Grau (gut). Zeilen mit günstigeren niedrigen Werten kehren die Schattierung um.",
   "bulletSeparateScale": " Jede Zeile nutzt ihre eigene Skala. Balkenlängen sind innerhalb einer Zeile vergleichbar, aber nicht zwischen Zeilen.",
   "bulletTitle": "Bullet-Diagramm: {v1} {v1|KPI|KPIs} vs {v2}",
-  "none": "keine",
   "horizontal": "horizontal",
   "top": "oben",
   "left": "links",

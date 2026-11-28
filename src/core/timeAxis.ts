@@ -7,6 +7,7 @@
 
 import { dateNames } from './dateNames';
 import { numberMinus, wordLanguage } from './numberMarks';
+import { chartString as dateWordString } from './strings/dateWords';
 import { NormalizeError } from './normalize/shared';
 import { parseTimeText } from './isoTime';
 
@@ -474,7 +475,7 @@ export function formatTimePattern(ms: number, clock: ZoneClock, pattern: string,
       case 'd': return String(wall.getUTCDate());
       case 'Q': return String(Math.floor(wall.getUTCMonth() / 3) + 1);
       case 'QQ': return `Q${Math.floor(wall.getUTCMonth() / 3) + 1}`;
-      case 'QQQ': return `Quarter ${Math.floor(wall.getUTCMonth() / 3) + 1}`;
+      case 'QQQ': return dateWordString({ locale: { language } }, 'quarterWord', { n: String(Math.floor(wall.getUTCMonth() / 3) + 1) });
       case 'HH': return pad2(hour);
       case 'H': return String(hour);
       case 'hh': return pad2(hour % 12 || 12);

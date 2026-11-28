@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "negativeName": "Negative",
   // reader-facing wording linked only by its consumers.
   "slopeDesc": "Slope chart, {v1} series from {v2} to {v3}. ",
   "seriesUnchanged": "All series unchanged.",
@@ -23,9 +24,9 @@ export const EN = {
   "slopeFoldSum": "summed to {v1} at {v2} and ",
   "slopeFoldEnd": "{v1} at {v2}.",
   "positiveName": "Positive",
-  "negativeName": "Negative",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "negativeName": "Negativ",
   // reader-facing wording linked only by its consumers.
   "slopeDesc": "Steigungsdiagramm, {v1} {v1|Reihe|Reihen} von {v2} bis {v3}. ",
   "seriesUnchanged": "Alle Reihen unverändert.",
@@ -48,7 +49,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "slopeFoldSum": "zusammen {v1} bei {v2} und ",
   "slopeFoldEnd": "{v1} bei {v2}.",
   "positiveName": "Positiv",
-  "negativeName": "Negativ",
 };
 
 export const { chartString } = chartStrings(EN, DE);

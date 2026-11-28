@@ -3,8 +3,8 @@ import { chartStrings } from '../strings';
 export const EN = {
   // reader-facing wording linked only by its consumers.
   "funnelTitle": "Funnel: {v1} to {v2}",
-  "stagesCount": "{v1} stage{v2}",
-  "funnelDesc": "Funnel chart with {v1} stage{v2}. {v3}.",
+  "stagesCount": "{v1} {v1|stage|stages}",
+  "funnelDesc": "Funnel chart with {v1} {v1|stage|stages}. {v3}.",
   "funnelUndefined": "{v1}: not defined, the previous stage is zero.",
   "totalCvr": "Total conversion",
   "stepCvr": "Step conversion",
@@ -21,7 +21,7 @@ export const EN = {
   "funnelIncreaseDesc": " ({v1} → {v2}: stage total increased; conversion percentage not shown)",
   "funnelConversionDesc": " ({v1} → {v2}: {v3} conversion)",
   "stageCvrDesc": "{v1} {v2}; stage CVR {v3}; total CVR {v4}",
-  "clampedFunnelNote": "{v1} {v2} below zero shown as 0.",
+  "clampedFunnelNote": "{v1} {v1|value|values} below zero shown as 0.",
   "biggestDrop": "Biggest drop: {v1}",
   "dropValue": "Drop {v1}",
   "stagePair": "{v1} to {v2}",

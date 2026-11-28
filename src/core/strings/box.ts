@@ -6,7 +6,7 @@ export const EN = {
   "boxBriefNoPoints": "Whiskers: 1.5 × IQR; values beyond them are not drawn.",
   "boxHighlight": "Filled box: {v1}, highlighted.",
   "boxSmallSample": "Groups with fewer than 5 observations draw every value as a filled dot instead of a box.",
-  "boxWithheldNote": "{v1} observation{v2} outside the whisker rule ({v3}) {v4} not drawn and {v5} excluded from the value axis, so the spread shown is narrower than the data (showOutliers: false).",
+  "boxWithheldNote": "{v1} {v1|observation|observations} outside the whisker rule ({v3}) {v1|is|are} not drawn and {v1|is|are} excluded from the value axis, so the spread shown is narrower than the data (showOutliers: false).",
   "boxTitle": "Distribution comparison across {v1} groups",
   "boxWithheldCount": "{v1} of them are not drawn",
   "boxDescStart": "Box plot, {v1}. ",
@@ -34,6 +34,7 @@ export const EN = {
   "boxSmallN": "{v1} · too few for a box",
   "boxValuesCount": "{v1} values",
   "boxValuesSpan": "{v1} values, {v2} to {v3}",
+  "boxMedianHead": "Median",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -69,6 +70,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "boxSmallN": "{v1} · zu wenige für eine Box",
   "boxValuesCount": "{v1} {v1|Wert|Werte}",
   "boxValuesSpan": "{v1} {v1|Wert|Werte}, {v2} bis {v3}",
+  "boxMedianHead": "Median",
 };
 
 export const { chartString } = chartStrings(EN, DE);

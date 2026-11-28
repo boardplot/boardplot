@@ -1,4 +1,5 @@
 import { chartString } from '../../strings/kpi';
+import { chartString as annotateString } from '../../strings/annotate';
 import { chipPaints } from '../table/chips';
 import { eyebrowFont, figureRole } from '../cardRoles';
 import { structureCount } from '../../structureCounts';
@@ -323,7 +324,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
           : fmtSigned(deltaAbs);
     // A delta always names what it is measured against: the scenario, or
     // else the reference value itself.
-    const suffix = ` vs ${deltaScenario ?? fmt(vs)}`;
+    const suffix = ` ${annotateString(options, 'deltaVs', { reference: deltaScenario ?? fmt(vs) })}`;
     deltaText = `${body}${suffix}`;
     deltaBody = body;
     comparisonShows.push(changeShows(0, mode, pct, deltaAbs));
@@ -1177,7 +1178,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     marks,
     derived,
     a11y: {
-      title: accessibleTitle(options.title, data.label ? chartString(options, 'kpiTitle', { v1: data.label }) : 'KPI'),
+      title: accessibleTitle(options.title, data.label ? chartString(options, 'kpiTitle', { v1: data.label }) : chartString(options, 'kpiName')),
       counts: [...(sparkDrawable ? [structureCount('periods', sparkVals.length, undefined, options)] : [])],
       desc: `${data.label ? `${data.label} ` : ''}${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
     },

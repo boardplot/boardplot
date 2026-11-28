@@ -5,6 +5,7 @@
  */
 
 import { requestMemo } from '../../layoutPlan';
+import { chartString as annotateString } from '../../strings/annotate';
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
@@ -1198,7 +1199,7 @@ function seriesCagrs(
     }
     // A span narrower than the chart names its period, as a CAGR annotation's label does.
     const period = fi !== 0 || ti !== cats.length - 1 ? ` ${from.label ?? from.id}–${to.label ?? to.id}:` : '';
-    const text = `${s.label}${period} ${formatWithSpec(rate, spec ?? rates!)} p.a.`;
+    const text = `${s.label}${period} ${formatWithSpec(rate, spec ?? rates!)} ${annotateString(options, 'perAnnum')}`;
     const ref = (end: string, category: Category) => `${end}:categoryId=${category.id}/seriesId=${s.id}`;
     out.set(s.id, {
       text,

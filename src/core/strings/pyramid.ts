@@ -1,6 +1,7 @@
 import { chartStrings } from '../strings';
 
 export const EN = {
+  "inUnitClause": " in {v1}",
   // reader-facing wording linked only by its consumers.
   "ofAllClause": ", {v1} of all",
   "pyramidDesc": "Population pyramid: {v1} (left) and {v2} (right) across {v3} ordered bands, ",
@@ -10,7 +11,6 @@ export const EN = {
   "pyramidTotals": " {v1} totals {v2}{v3}, {v4} totals {v5}{v6}, grand total {v7}{v8}. ",
   "pyramidShares": "Bars are shares of that grand total across both groups, so the two sides do not each sum to 100%. ",
   "pyramidCounts": "Bars are counts{v1}. ",
-  "inUnitClause": " in {v1}",
   "pyramidTitle": "Population pyramid: {v1} vs {v2}",
   "orderedBands": "{v1} ordered bands",
   "closedBands": "{v1} closed bands",
@@ -26,6 +26,7 @@ export const EN = {
   "bandWidthClause": " {v1}-wide",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "inUnitClause": " in {v1}",
   // reader-facing wording linked only by its consumers.
   "ofAllClause": ", {v1} von allen",
   "pyramidDesc": "Bevölkerungspyramide: {v1} (links) und {v2} (rechts) über {v3} {v3|geordnete Klasse|geordnete Klassen}, ",
@@ -35,7 +36,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "pyramidTotals": " {v1} ergibt {v2}{v3}, {v4} ergibt {v5}{v6}, Gesamtsumme {v7}{v8}. ",
   "pyramidShares": "Balken zeigen Anteile an der Gesamtsumme beider Gruppen. Die Seiten ergeben jeweils nicht 100 %. ",
   "pyramidCounts": "Balken zeigen Anzahlen{v1}. ",
-  "inUnitClause": " in {v1}",
   "pyramidTitle": "Bevölkerungspyramide: {v1} vs {v2}",
   "orderedBands": "{v1} {v1|geordnete Klasse|geordnete Klassen}",
   "closedBands": "{v1} {v1|geschlossene Klasse|geschlossene Klassen}",

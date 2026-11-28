@@ -46,6 +46,7 @@ export const EN = {
   "paretoTop": "Top {v1}{v2}",
   "outsideTop": "Outside top {v1}",
   "numberCount": "{v1}",
+  "paretoRest": "Rest",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -93,6 +94,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "paretoTop": "Oberste {v1}{v2}",
   "outsideTop": "Außerhalb der obersten {v1}",
   "numberCount": "{v1}",
+  "paretoRest": "Rest",
 };
 
 export const { chartString } = chartStrings(EN, DE);
