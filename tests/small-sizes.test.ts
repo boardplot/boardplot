@@ -748,7 +748,7 @@ it('names the size that render draws in measure', () => {
   const steps = ['Fix lead qualification', 'Shorten the demo wait', 'Simplify legal terms', 'Launch referral scheme'].map((label, index) => ({
     id: `p${index}`, kind: 'step', shape: { kind: 'chevron' }, label, caption: `Sales ops, ${index + 4} weeks`, badge: { text: 'Sales ops', role: 'accent' }, order: index + 1, role: 'primary' }));
   const card = { type: 'diagram', data: { nodes: steps }, options: { variant: 'linear-process', title: 'Four steps take 28 weeks and start with lead qualification', subtitle: 'Owner and duration for each step', source: 'Invented plan', target: 'dashboard' } };
-  const narrow = { ...card, options: { ...card.options, size: { width: 438 } } };
+  const narrow = { ...card, options: { ...card.options, size: { width: 360 } } };
   const floor = (cliMeasure({ spec: narrow }).body as { minWidth: number }).minWidth;
   const refused = (render({ spec: narrow }).body as { errors: { code: string; fix: { value: { width: number } }[] }[] }).errors[0]!;
   expect(refused.code).toBe('size-below-floor');
@@ -1694,8 +1694,8 @@ it('draws a KPI, a pie and a column below 280 px when their content fits, and re
     expect(at('column', quarters, { title: 'Revenue grows' }, width, 200).refused, `column ${width}`).toBeFalsy();
   }
   expect(at('pie', slices, {}, 240, 240).refused).toBeFalsy();
-  // A pie whose circle and labels need 224 px names that width.
-  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 224 } } }] });
+  // A pie whose circle and labels need 212 px in the narrow text sizes names that width.
+  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 212 } } }] });
   const hundred = { categories: Array.from({ length: 100 }, (_, i) => `Item ${i + 1}`), series: [{ id: 's', label: 'Count', values: Array.from({ length: 100 }, (_, i) => 1 + (i % 13)) }] };
   expect(at('column', hundred, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 280 } } }] });
   expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
