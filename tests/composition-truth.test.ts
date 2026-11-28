@@ -518,26 +518,6 @@ describe('bartable Total row', () => {
     expect(totals({ ...base, panels: [panel({})], columns: [column({ format: '1.0' }), { ...column({ format: '1.0x' }), id: 'm' }] }).text).toEqual(['total:c=9.0', 'total:p=30.5']);
     // A cascade splits its panel total, so a percent format there keeps the sum.
     expect(totals({ ...base, series: [{ id: 's' }], panels: [panel({ format: '1.0%' })] }, { variant: 'cascade' }).text).toEqual(['total:p=30.5%']);
-    // The defaulted empty Total of a '%' unit must not drop the combined-share readout the author asked for.
-    const shares = getChart('bartable')!.layout({ ...base, panels: [panel({ unit: '%', values: { s: [50, 30, 20] } })] } as BarTableData, { size: { width: 900 }, combinedShare: { rows: ['a', 'b'] } });
-    expect(noteTexts(requireGeometry(shares)).join(' ')).toContain('80 of 100');
-  });
-
-  it('lists the rows the shared scale leaves as a sliver, with their parts, in one note ', () => {
-    const bartable = getChart('bartable')!;
-    const fixture = getFixtures('bartable').find((entry) => entry.id === 'null-and-long-labels')!;
-    const geometry = requireGeometry(bartable.layout(fixture.data, { ...bartable.defaults, ...fixture.options }));
-    // Footer rule: the note is in the notes list. One note of at most two lines per
-    // shared scale, each listed row with its parts, and "and N more" for the rows past two lines.
-    // The narrower Roles panel leaves Plant C a sliver there too, so that scale gets its own note.
-    // Measured in the 11 px the footer draws, all three rows fit the two lines.
-    const notes = noteTexts(geometry).filter((note) => note.startsWith('Too short to compare'));
-    expect(notes).toHaveLength(2);
-    expect(notes[0]).toContain('Plant A 2,400 (Energy 1,200, Labour 800, Freight 400)');
-    expect(notes[0]).toContain('Plant C 1,900 (Energy 900, Labour 700, Freight 300)');
-    expect(notes[0]).toContain('Plant D');
-    expect(notes[0]).not.toMatch(/more\.$/);
-    expect(notes[1]).toContain('Plant C 12 (Energy 2, Labour 9, Freight 1)');
   });
 
   it('gives every printed Total a record, an open Total included', () => {
@@ -600,13 +580,11 @@ describe('pareto joined remainder record', () => {
     expect(column.members).toEqual([{ categoryId: 'c' }, { categoryId: 'd' }]);
   });
 
-  // A rest bucket above the scale word printed 1,800.0 in the method note beside a 1.80k column.
-  it('prints the bucket in the column and the method note in one authored scale', () => {
+  it('prints the bucket in the authored scale', () => {
     const items = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, value: 600 }));
-    const request = resolveChartRequest({ type: 'pareto', data: { items }, options: { format: '1.2k', topN: { n: 2 }, methodNote: true } } as never);
+    const request = resolveChartRequest({ type: 'pareto', data: { items }, options: { format: '1.2k', topN: { n: 2 } } } as never);
     const geometry = requireGeometry(layoutResolvedRequest(request));
     expect(geometry.labels.find((label) => label.id === 'grandTotal:rest')?.text).toBe('1.8k');
-    expect(geometry.frame.noteList?.map((note) => note.text).join(' ')).toContain('1.8k in total');
   });
 });
 

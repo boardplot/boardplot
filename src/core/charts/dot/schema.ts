@@ -66,14 +66,10 @@ export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .boolean()
     .optional()
     .describe("Dumbbell only: prints the gap, second series minus first, signed in a column right of the plot under a head such as 'Gap, pp' (pp for percent values). A highlighted row prints bold. Default false. The column stays off below 576 px canvas width."),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe('Default false. true adds the method footnote that names the marker inside a range as its supplied mid-point. A supplied range.mid is drawn and keyed either way.'),
   range: z.strictObject({
     label: z.string().min(1).optional().describe("The key entry for the drawn ranges, naming the interval, for example 'Peer range, min to max' or 'Interquartile range'. Default 'Range'."),
     values: z.boolean().optional().describe('Default false. true prints each range\'s low and high value beside its caps.'),
-    midLabel: z.string().min(1).optional().describe("The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others."),
+    midLabel: z.string().min(1).optional().describe("The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'."),
   }).optional().describe('What the drawn ranges are: their key entry and, on request, their bounds as numbers.'),
 }) as unknown as z.ZodType<DotOptions>;
 

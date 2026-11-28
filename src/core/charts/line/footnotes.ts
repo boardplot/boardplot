@@ -3,8 +3,6 @@ import { stringFields } from '../../strings';
  * The frame footnotes of a line exhibit: the ones the engine derives first,
  * then the author's own. Kept out of `layoutLine` so a new derived note is
  * one argument here.
- * The bump ranking note is a method note and needs `methodNote: true`;
- * a fan gap and a folded near-zero tail change what the reader sees and stay.
  */
 
 import { authoredNotes, moreListedText, noteCap } from '../../frame';
@@ -12,10 +10,8 @@ import type { FontSpec, TextMeasurer } from '../../text';
 import { partialFootnotes } from '../../partialPeriod';
 import type { Id } from '../../types/cell';
 import type { Category } from '../../types/data';
-import { bumpMethodNote } from './bump';
 import { fanGapNote, type FanResolved } from './fan';
 import type { BumpDerived } from './layout';
-import { nearZeroTailNote, type NearZeroTail } from './nearZero';
 import type { LineOptions } from './types';
 import { caveatNote, disclosureNote } from '../../notes';
 
@@ -31,11 +27,8 @@ export function lineFrameFootnotes(input: {
   /** Every running value prints the to-date words: no note names the period. */
   partialNamed?: boolean;
   bumpDerived: BumpDerived | undefined;
-  nearZeroTail: NearZeroTail | undefined;
   options: LineOptions;
   footer: { width: number; font: FontSpec; measure: TextMeasurer };
-  /** 100% categories withheld because their parts mix signs. */
-  mixedSign?: readonly Category[];
   /** stacked-area categories with a missing part drawn as zero. */
   incompleteStack?: readonly Category[];
   rebaseSuppressed?: readonly { series: string; period: string; zero: boolean }[];
@@ -43,20 +36,15 @@ export function lineFrameFootnotes(input: {
   /** Ranked entities bump.focus leaves undrawn. */
   bumpOmitted?: readonly { id: string; label: string }[];
 }): string[] {
-  const { fan, cats, bumpDerived, nearZeroTail, options } = input;
-  const mixed = input.mixedSign ?? [];
+  const { fan, cats, bumpDerived, options } = input;
   const rebase = rebaseNotes(input.rebaseSuppressed ?? [], options);
   return [
     ...partialFootnotes(cats, options.strings, input.running, input.partialNamed),
     ...missingStackNote(cats, input.incompleteStack ?? [], options, input.footer).map(caveatNote),
     ...missingStackNote(cats, input.knownParts ?? [], options, input.footer, options.strings!.knownPartsShares!),
     ...(options.mode === 'compact' && rebase.length ? [rebase.join(' ')] : rebase).map(disclosureNote),
-    // The n.m. at the baseline says what; this line says why.
-    ...(mixed.length > 0 ? [disclosureNote(stringFields(options.strings!.mixedShares!, { categories: mixed.map(c => c.label ?? c.id).join(', ') }))] : []),
     ...fanGapNote(fan, cats, options.strings),
     ...bumpOmittedNote(input.bumpOmitted ?? [], bumpDerived, cats, options),
-    ...(options.methodNote === true ? bumpMethodNote(bumpDerived, options.format, options.strings) : []),
-    ...nearZeroTailNote(nearZeroTail),
     ...authoredNotes(options),
   ];
 }

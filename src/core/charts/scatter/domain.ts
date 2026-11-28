@@ -7,7 +7,6 @@ import { chartString } from '../../strings/scatter';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { numericViewportRange } from '../../viewport';
-import { numberRange } from '../../format';
 import {
   MAGNITUDE_DIVISOR,
   RULE_SET,
@@ -45,7 +44,7 @@ import {
   type ScatterClampPlan,
 } from './clamp';
 import type { Disclosed, NormGroup, NormPt, ScatterDomain, ScatterEnv } from './model';
-import { logAxesOf, logDomain, refuseNonPositiveOnLog, type LogAxes } from './logAxis';
+import { logAxesOf, logDomain, refuseNonPositiveOnLog } from './logAxis';
 import { deriveQuadrants } from './quadrants';
 import { planFrontier } from './frontier';
 import { fitScatterTrends, trendRateTexts } from './trend';
@@ -630,23 +629,6 @@ function tickAlignedAxis(lo: number, hi: number, padShare = TICK_END_PAD): { dom
   return { domain: [round(best.lo), round(best.hi)], ticks: Array.from({ length: count + 1 }, (_, i) => round(best!.lo + i * best!.step)) };
 }
 
-/** A log axis cannot start at zero, so only a linear one is noted. */
-function zeroBaselineNotes(dx: [number, number], dy: [number, number], fmt: ScatterEnv['axisFmt'], log: LogAxes, options: ScatterEnv['options']): string[] {
-  const [dxLo, dxHi] = dx;
-  const [dyLo, dyHi] = dy;
-  const baselineNotes: string[] = [];
-  const horizontalNonZero = !log.x && (dxLo > 0 || dxHi < 0);
-  const verticalNonZero = !log.y && (dyLo > 0 || dyHi < 0);
-  if (horizontalNonZero || verticalNonZero) {
-    const axes = [
-      ...(horizontalNonZero ? [`x ${numberRange(fmt.x(dxLo), fmt.x(dxHi))}`] : []),
-      ...(verticalNonZero ? [`y ${numberRange(fmt.y(dyLo), fmt.y(dyHi))}`] : []),
-    ];
-    baselineNotes.push(disclosureNote(chartString(options, 'axesNonzero', { v1: axes.join(', ') })));
-  }
-  return baselineNotes;
-}
-
 function refuseZoneThresholdsOutsideDomain(options: ScatterStrategyOptions, dx: [number, number], dy: [number, number]): void {
   if (!options.zones?.grid) return;
   for (const [axis, thresholds, lo, hi] of [
@@ -728,7 +710,6 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     );
   }
   const axes = scatterAxisDomain({ xMin, xMax, yMin, yMax, bubbleMode, clamp, valueLines }, env, warnings);
-  const baselineNotes = zeroBaselineNotes(axes.dx, axes.dy, env.axisFmt, env.log, env.options);
   refuseZoneThresholdsOutsideDomain(options, axes.dx, axes.dy);
   const quadrants = deriveQuadrants(pts, bubbleMode, axes.dx, axes.dy, env, warnings);
   refuseClampedQuadrants(clamp, pts, quadrants.derived);
@@ -763,7 +744,6 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     ...(axes.stepTicks ? { stepTicks: ticks?.y ?? axes.stepTicks } : {}),
     ...(axes.evenGrid ? { evenGrid: axes.evenGrid } : {}),
     annotations: axes.annotations,
-    baselineNotes,
     derivedNotes,
     omitted,
     quadrants,

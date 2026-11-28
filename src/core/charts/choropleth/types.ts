@@ -71,8 +71,6 @@ export type ChoroplethOptions = Omit<BaseOptionsFor<'choropleth'>, 'labels'> & {
   rowOrder?: string[];
   /** Rename a region in the table and on the map. */
   rowOverrides?: Record<string, { label?: string }>;
-  /** Default false. true adds the label-policy note; the pack's disclaimer stays on the source line and the inset scale note prints regardless. */
-  methodNote?: boolean;
   /** Title of the colour key; default 'Measure, unit' from subtitle.measure and unit, else the unit. */
   keyTitle?: string;
   /** What each overlay tone marks, for its key entry, e.g. { warn: 'Behind plan' }. */

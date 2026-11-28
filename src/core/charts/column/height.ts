@@ -7,7 +7,7 @@ import { speculate } from '../band/keylessFit';
 import { resolveColumnDomain } from './domain';
 import { columnPaints } from './paints';
 import { columnPlotArea, solveColumnFrame } from './plot';
-import { beforeUnprintedLabelNote, comparableOptions, DENSITY_VALUES, freedChromeOf, LEGEND_HEIGHT, plotChromeFloor, UNIT_LINE, NOTED_LABELS } from '../../frame';
+import { beforeUnprintedLabelNote, comparableOptions, freedChromeOf, LEGEND_HEIGHT, plotChromeFloor, UNIT_LINE } from '../../frame';
 import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { LOCALE_STRINGS, localeStrings, withLocaleStrings } from '../../strings';
 import { defaultMeasurer } from '../../text';
@@ -27,7 +27,7 @@ import { TARGET_SIZE } from '../../target';
 import { requestMemo } from '../../layoutPlan';
 
 const openingOptions = new Set(['size', 'variant', 'referenceStyle', 'mode', 'target', 'measure', 'title', 'unit', 'source', 'theme', 'locale', 'strings', 'legend', 'footnotes', 'authoredFootnotes']);
-const openingMarkers = new Set([AUTO_LEGEND, LEGEND_HEIGHT, TARGET_SIZE, DENSITY_VALUES, PLOT_SHARE, LOCALE_STRINGS, REMOVED_NAMES, AUTHORED_EXAMPLES, UNIT_LINE]);
+const openingMarkers = new Set([AUTO_LEGEND, LEGEND_HEIGHT, TARGET_SIZE, PLOT_SHARE, LOCALE_STRINGS, REMOVED_NAMES, AUTHORED_EXAMPLES, UNIT_LINE]);
 type StackOpening = { plot: number; freed: number; part: number; certifiedChrome: number };
 
 /** These plain stacks keep the same values, scale and series colors when the axis appears. */
@@ -55,7 +55,7 @@ export function stackedOpening(data: ChartData, options: ColumnOptions, size: { 
   // A speculative failure belongs to the ordinary drawing if it reaches that case.
   return speculate(() => {
     const state = [size.width, size.height, layoutStepKey(), currentSmallValues(), formatScopeKey(options), staticFrame.countable].join(':');
-    const shape = { ...comparableOptions(plain, DENSITY_VALUES), footnotes: options.footnotes };
+    const shape = { ...comparableOptions(plain), footnotes: options.footnotes };
     const prior = requestMemo<{ shape: object; answer: StackOpening }[]>(data, 'column-opening:' + state, () => []);
     const saved = prior.find(entry => sameContent(entry.shape, shape));
     if (saved) return saved.answer;
@@ -102,8 +102,8 @@ export function stackedNoteCount(data: ChartData, options: ColumnOptions, fixed:
     || Object.entries(options).some(([key, value]) => value !== undefined && !openingOptions.has(key))) return false;
   const plain = beforeUnprintedLabelNote(options);
   if (!plain || Object.getOwnPropertySymbols(plain).some(key => !openingMarkers.has(key)) || !simpleMissingStack(data)) return false;
-  const held = (options as ColumnOptions & { [NOTED_LABELS]?: ReadonlySet<string> })[NOTED_LABELS];
-  const collisions = noted.filter(label => label.kind !== 'segment' && !held?.has(label.id));
+
+  const collisions = noted.filter(label => label.kind !== 'segment');
   if (!collisions.length || collisions.some(label => label.kind !== 'grandTotal' || label.hidden !== 'collision')
     || noted.some(label => label.kind !== 'segment' && label.kind !== 'grandTotal')) return false;
 
@@ -112,9 +112,9 @@ export function stackedNoteCount(data: ChartData, options: ColumnOptions, fixed:
     // Plot share changes the stored chrome floor, which this proof does not read.
     // The prepared source-size and scale state still belong to the comparison.
     const examples = (plain as { [AUTHORED_EXAMPLES]?: ReadonlySet<string> })[AUTHORED_EXAMPLES];
-    const shape = { ...comparableOptions(plain, PLOT_SHARE), size, footnotes: fixed.footnotes, held: held && [...held],
+    const shape = { ...comparableOptions(plain, PLOT_SHARE), size, footnotes: fixed.footnotes,
       lost: collisions.map(label => label.id), ...(examples ? { [AUTHORED_EXAMPLES]: [...examples] } : {}) };
-    const state = JSON.stringify([size.width, size.height, options.legend, options.mode, held?.size, layoutStepKey(),
+    const state = JSON.stringify([size.width, size.height, options.legend, options.mode, layoutStepKey(),
       currentSmallValues(), formatScopeKey(options), staticFrame.countable]);
     const proven = requestMemo<object[]>(data, 'column-taller-notes:' + state, () => []);
     if (proven.some(entry => sameContent(entry, shape))) return true;

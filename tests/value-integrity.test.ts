@@ -345,7 +345,7 @@ it('keeps variance actual labels within their own column or reports their omissi
     expect(label.rect.x + label.rect.w).toBeLessThanOrEqual(bar.rect.x + bar.rect.w);
   }
   // A missing seat must use the existing omission warning.
-  expect(geometry.warnings.map((warning: any) => warning.code)).toContain('values-in-note');
+  expect(geometry.warnings.map((warning: any) => warning.code)).toContain('label-hidden');
 });
 
 // The largest variance sat in a valley between taller columns: both seats over its cap were blocked, and it lost

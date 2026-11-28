@@ -862,7 +862,7 @@ fixtures.push({
   options: {
     ...cycleTime.options,
     showOutliers: false,
-    methodNote: true,
+    notes: { show: ['note', 'disclosure'] },
     size: { width: 720, height: 511 },
     title: 'Mobile tickets run slowest, with a median of 10.2 days',
   },

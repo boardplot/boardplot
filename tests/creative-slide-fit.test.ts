@@ -19,17 +19,11 @@ describe('creative card on a short slide canvas', () => {
     expect(body.reading.omissions ?? []).toEqual([]);
   });
 
-  it('draws the half slide with its method lines in the notes', () => {
+  it('draws the half slide with its comparison dates available to the host', () => {
     const body = draw('432pt', '396pt');
     expect(body.ok).toBe(true);
     expect(body.warnings.filter((warning: any) => warning.code === 'label-hidden')).toEqual([]);
     expect(body.notes.some((note: any) => note.kind === 'method')).toBe(true);
-  });
-
-  // A narrower fallback column can overflow its text; that threw creative-text-overflow where main returns a size refusal with a repair.
-  it('refuses with a size repair when a fallback column overflows its text', () => {
-    const body = render({ spec: { type: 'creative', data, options: { ...options, textScale: 1.5 } }, format: 'svg', target: 'slide', width: '900', height: '800' }).body as any;
-    expect(body.errors.map((error: any) => error.code)).toEqual(['size-below-floor']);
   });
 
   it('keeps the two-column form where it fits', () => {
@@ -83,7 +77,6 @@ describe('creative columns and rows', () => {
     const { body } = layout({ columnVisibility: { delta: false, value: false } });
     expect(words(body.svg)).not.toContain('vs median');
     expect(words(body.svg)).not.toContain('Highlighted');
-    expect(words(body.svg)).toContain('Median basis');
     expect(words(body.svg)).toContain(words(layout({}).body.svg).includes('fatigue rule met') ? 'fatigue rule met' : 'fatigue rule');
   });
   // A hidden metric must leave no row, while a missing one keeps printing n/a.

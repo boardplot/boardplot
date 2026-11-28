@@ -96,6 +96,6 @@
     },
     "unit": "€k",
     "source": "Alder Outdoor order book; units and revenue per category, price derived",
-    "methodNote": true
+    "notes": { "placement": "frame" }
   }
 }

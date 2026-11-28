@@ -97,12 +97,11 @@ it('prints the shares of a narrow last mekko column in the gutter at 375 px', ()
   expect(body.reading.omissions.filter((omission: any) => omission.labelId.endsWith(':latam'))).toEqual([]);
 });
 
-// Prevents measure from naming the height before the note growth: a card sized from it drew 465 px and sent labels to the note.
-it('measures the height the note growth draws', () => {
+// Prevents a card with long category names from drawing at a different height to its measurement.
+it('measures the height a dense combo draws', () => {
   const fixture = getFixtures('combo').find(f => f.id === 'ranked-campaigns-key-shown')!;
   const spec = { type: 'combo', data: fixture.data, options: { ...fixture.options, size: { width: 320 } } };
   const body = render({ spec }).body as any;
-  expect(body.size.height).toBeGreaterThan(465);
   expect(measure(spec as never).naturalHeight).toBe(body.size.height);
 });
 
@@ -920,22 +919,17 @@ it('draws a pinned slope under its 270 px floor while its plot keeps 80 px', () 
   expect(draw(minimum.height).refused).toBeUndefined();
 });
 
-// Prevents a pinned Pareto from dropping a value without a trace: the note's own line took plot
-// height, a further total lost its seat, and neither the chart nor the note showed it.
-it('names or counts every value a pinned Pareto hides', () => {
+// A pinned Pareto can leave value labels without room. The reading must identify them.
+it('lists every value label omitted by a pinned Pareto', () => {
   const f = getFixtures('pareto').find((x) => x.id === 'revenue-concentration')!;
+  const options = { ...f.options, target: 'dashboard', size: { width: 320, height: 353 } };
   const geo = getChart('pareto')!.layout(f.data as never,
-    { ...f.options, target: 'dashboard', size: { width: 320, height: 353 } } as never) as Geometry & { refused?: boolean };
+    options as never) as Geometry & { refused?: boolean };
   expect(geo.refused).toBeUndefined();
   const hidden = geo.labels.filter((l) => l.hidden !== undefined && l.hidden !== 'redundant' && ['point', 'grandTotal'].includes(l.kind));
   expect(hidden.length).toBeGreaterThan(0);
-  expect(hidden.filter((l) => !l.noted).map((l) => l.id)).toEqual([]);
-  // A re-run that refuses keeps the last note: no value is marked noted that the drawn note neither names nor counts.
-  const spike = getFixtures('pareto').find((x) => x.id === 'torture-pareto-spike')!;
-  const capped = getChart('pareto')!.layout(spike.data as never,
-    { ...spike.options, target: 'report', size: { width: 320, height: 425 }, notes: { maxListed: 2 } } as never) as Geometry;
-  const drawn = (capped.frame.noteList ?? []).map((n) => n.text).join(' ');
-  expect(capped.labels.filter((l) => l.hidden && l.noted && !l.noteCounted && !drawn.includes(l.text)).map((l) => l.id)).toEqual([]);
+  const body = render({ spec: { type: 'pareto', data: f.data, options }, return: ['reading'] }).body as { reading: { omissions: { labelId: string }[] } };
+  expect(body.reading.omissions.map(item => item.labelId)).toEqual(expect.arrayContaining(hidden.map(label => label.id)));
 });
 
 // A series is named on the chart when a drawn text it owns (an end name or its key entry) holds its name.

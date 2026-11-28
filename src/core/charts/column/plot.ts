@@ -28,7 +28,7 @@ import {
   type FrameInput,
   type FrameResult,
   type LegendItemInput,
-  authoredFootnoteCount, authoredNotes, caveatNoteLine, noteLine, shareUnitOptions } from '../../frame';
+  authoredFootnoteCount, authoredNotes, caveatNoteLine, shareUnitOptions } from '../../frame';
 import { copyFrame, staticFrame } from '../../footer';
 import { zeroLifts } from '../../formatPrecision';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
@@ -57,8 +57,7 @@ import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve } from './anom
 import { segmentHatchGround } from './marks';
 import { referenceMarkerKey } from '../band/ticks';
 import { netLineName } from '../band/stacks';
-import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from '../combo/categoryRanks';
-import { disclosuresShown, rankKeyShown } from '../../notes';
+import { disclosuresShown } from '../../notes';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { textScaleOf } from '../../typeFloors';
@@ -77,7 +76,6 @@ export const TILED_BANDS = Symbol('tiledBands');
  * columns, which the note line names. Set by
  * `layoutColumn` on its second pass; authored JSON cannot.
  */
-export const SEGMENT_NOTE = Symbol('segmentNote');
 /** Internal option: the rank mapping or the cut names the category row gave to the notes. */
 export const CATEGORY_NOTES = Symbol('categoryNotes');
 /**
@@ -341,11 +339,6 @@ function columnFrameFurniture(domain: ColumnDomain, paints: ColumnLegendPaints, 
   return { margin, legend, narrowGutters };
 }
 
-export interface ColumnNoteRows {
-  furniture?: ColumnStaircaseMemo['furniture'];
-  rows: FrameWidthMeasurements;
-}
-
 interface ColumnHeightFrame {
   transferable?: boolean;
   stacks: ColumnDomain['stacks'];
@@ -365,7 +358,6 @@ export function solveColumnFrame(
   warnings: LintWarning[],
   eventKey?: FrameBand,
   memo?: ColumnStaircaseMemo,
-  noteRows?: ColumnNoteRows,
 ): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size, measure } = domain;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -394,11 +386,10 @@ export function solveColumnFrame(
       entries!.splice(entries!.indexOf(measured), 1);
     } else measured = undefined;
   }
-  const furniture = measured?.furniture ?? (!eventKey && (memo?.furniture ?? noteRows?.furniture));
+  const furniture = measured?.furniture ?? (!eventKey && memo?.furniture);
   const { margin, legend, narrowGutters } = furniture || columnFrameFurniture(domain, paints, warnings, eventKey);
   if (furniture) pushAll(warnings, furniture.warnings);
   else if (!eventKey && memo && !reuse) memo.furniture = { margin, legend, narrowGutters, warnings: warnings.slice(before) };
-  if (noteRows && !eventKey && !noteRows.furniture) noteRows.furniture = { margin, legend, narrowGutters, warnings: warnings.slice(before) };
   if (privateTrial && search && content && !measured) {
     measured = { stacks: domain.stacks, width: size.width, axis: !!domain.va.show, options: content,
       furniture: { margin, legend, narrowGutters, warnings: warnings.slice(before) }, rows: {} };
@@ -420,7 +411,7 @@ export function solveColumnFrame(
       measure,
     },
     claims,
-    measured?.rows ?? noteRows?.rows,
+    measured?.rows,
   );
   if (reuse) {
     memo.plotHeightAt = measured?.rows.plotHeightAt;
@@ -435,9 +426,6 @@ export function solveColumnFrame(
 export function columnValueNotes(domain: ColumnDomain): string[] {
   const { options } = domain;
   return [
-    // Above 8 values the note counts them against all drawn values.
-    ...noteLine(options.strings!.valuesNotOnColumns!, (options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE] ?? [], options,
-      domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
     ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
     ...knownPartsNote(domain),
     ...domain.shareNotes,
@@ -762,7 +750,7 @@ function columnBand(
       // A cut name takes a note mark only where its note prints.
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
-      ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
+      ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
       ...ticked?.plan,
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
@@ -780,10 +768,9 @@ function columnBand(
   };
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const input = rowInput(b, ticked, rotate);
-    const plan = withCategoryRanks(planCategoryRow(input), measure, cats.map((c) => c.label ?? c.id),
-      (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    const plan = planCategoryRow(input);
     if (!stair && memo?.heightAxes && b === width.band && rotate === undefined && !ticked && input.everyName
-      && !rankKeyShown(options) && !domain.highlights.size && !cats.some(c => c.role === 'total' || c.date !== undefined)) {
+      && !domain.highlights.size && !cats.some(c => c.role === 'total' || c.date !== undefined)) {
       retainRotation(input, measuredRotatedNames(input));
     }
     // Rotated total and highlighted names need their drawn width for the row height and left overhang.
@@ -814,7 +801,7 @@ function columnBand(
   };
   // The band must be final before return. Authored footnote warnings retain their order.
   if (dimensionsOnly) {
-    if (!authored && !rankKeyShown(options) && !domain.highlights.size
+    if (!authored && !domain.highlights.size
       && !cats.some(c => c.role === 'total' || c.date !== undefined || c.footnote !== undefined)) {
       const input = rowInput(band);
       if (input.everyName) retainRotation(input, openingRotatedNames(input));
@@ -898,9 +885,9 @@ export function columnPlotArea(
   // plot, and a corridor whose rule went missing is the silent lie this
   // preset exists to prevent. Wrapped against the frame width, which is
   // already known and does not depend on this reserve.
-  const ruleOn = domain.anomaly !== undefined && kindSetting(options, 'valueLine') !== false;
+  const ruleText = options.anomaly?.label ?? '';
+  const ruleOn = ruleText !== '' && kindSetting(options, 'valueLine') !== false;
   // The rule sentence AS RENDERED: it carries its own suppression trace.
-  const ruleText = ruleOn ? `${domain.anomaly!.rule}${domain.corridorNote}` : '';
   const ruleWrap = ruleOn ? fitText(ruleText, tickFont, Math.max(80, frame.plot.w - 8), 4, measure, { target: options.target, textScale: textScaleOf(options), typeRole: 'footnote' }) : undefined;
   const ruleH = ruleWrap ? ruleWrap.lines.length * tickFont.size * 1.2 + 6 : 0;
   // A drawn value axis carries its "Measure, unit" title in
@@ -921,7 +908,6 @@ export function columnPlotArea(
   const quietBand = warnings.length === bandWarnings && zeroLifts.count === bandLifts;
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan().warnings);
-  if (showCatRow && catPlan().step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
   const categoryTitle = options.categoryAxis?.title ? catPlan().title : undefined;
   const rowHeight = showCatRow && keylessLimit
     ? categoryHeightLimit(cats, theme, measure) + (categoryTitle?.bandHeight ?? 0)

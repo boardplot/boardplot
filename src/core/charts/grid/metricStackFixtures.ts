@@ -127,7 +127,7 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
   },
   {
     id: 'metric-stack-empty-averages',
-    title: 'A focus stack compares two quarters without an averages sentence',
+    title: 'A focus stack compares two quarters at 360 px',
     kind: 'example',
     data: {
       categories: categories.slice(3, 9),
@@ -141,7 +141,7 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
       ],
       windows: { grain: 'month', base: periods[1]!, compare: periods[2]! },
     },
-    options: { title: 'Starts and completions rise', stack: { variant: 'focus' }, size: { width: 360 }, strings: { stackAverages: '' } },
+    options: { title: 'Starts and completions rise', stack: { variant: 'focus' }, size: { width: 360 } },
   },
   {
     id: 'metric-stack-category-labels',

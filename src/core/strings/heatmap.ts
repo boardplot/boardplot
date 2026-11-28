@@ -8,11 +8,7 @@ export const EN = {
   "stateSuppressed": "Suppressed",
   "stateNm": "Not meaningful",
   "stateNa": "Not applicable",
-  "heatmapBaseNote": "Hatched {v1}: base below n = {v2}, read with care.",
-  "circles": "circles",
-  "cellsLower": "cells",
   // The note under a bubble matrix that prints values in its largest circles only.
-  "heatmapTopValuesNote": "Values shown in the largest circles.",
   // The callout under a value matrix whose story value has no room in its cell ("Aug low").
   "heatmapLeadLow": "{v1} low",
   "heatmapLeadHigh": "{v1} high",
@@ -27,11 +23,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "stateSuppressed": "Zurückgehalten",
   "stateNm": "Nicht aussagekräftig",
   "stateNa": "Nicht anwendbar",
-  "heatmapBaseNote": "Schraffierte {v1}: Basis unter n = {v2}; vorsichtig lesen.",
-  "circles": "Kreise",
-  "cellsLower": "Zellen",
   // The note under a bubble matrix that prints values in its largest circles only.
-  "heatmapTopValuesNote": "Werte stehen in den größten Kreisen.",
   "heatmapLeadLow": "{v1} Tief",
   "heatmapLeadHigh": "{v1} Hoch",
   "blankCells": "Leere Zellen: {v1}.",

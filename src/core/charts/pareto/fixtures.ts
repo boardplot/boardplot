@@ -269,7 +269,7 @@ fixtures.push(
     title: 'Defect causes with the derivation and the vital few stated',
     tags: ['coverage'],
     // The a4 step (720 x 511) keeps the plot over its 160 px floor under the method note.
-    options: { ...defectCauses.options, methodNote: true, size: { width: 720, height: 511 } },
+    options: { ...defectCauses.options, size: { width: 720, height: 511 } },
   },
   {
     ...defectCauses,

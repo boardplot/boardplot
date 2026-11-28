@@ -377,8 +377,6 @@ export function planColumnValueLabels(
   scene: ColumnMarkGeometry,
   requests: LabelRequest[],
   warnings: LintWarning[],
-  /** Filled with each segment value the note line may name: label id to "Series value (Category)", and the slivers among them. */
-  noted: { items: Map<string, string>; slivers: Set<string> } = { items: new Map(), slivers: new Set() },
   /** Filled with the digit seats of slivers (digitSeat), when the caller seats them after every other label. */
   digits?: DigitSeats,
   onHiddenRow?: () => void,
@@ -409,8 +407,6 @@ export function planColumnValueLabels(
     const sliverOrder: string[] = [];
     const seats: LabelRequest[] = [];
     const noShare = new Set<string>();
-    const items = new Map<string, string>();
-    const sliverIds = new Set<string>();
     const out: LabelRequest[] = [];
     let anyShare = false;
     const canStep = hasCompleteTextWidths(measure) && segment
@@ -453,9 +449,6 @@ export function planColumnValueLabels(
       const inTotal = onePart && domain.gtContent != null;
       if (sliver && !hl && owedHere && !inTotal) { slivers.push(`${s.label} in ${c.label ?? c.id}`); sliverOrder.push(`segment:${s.id}:${c.id}`); }
       const note = `${s.label} ${text} (${noteName(c)})`;
-      if (owedHere) items.set(`segment:${s.id}:${c.id}`, note);
-      // An authored 'minimal' drops this value at its gate anyway: the author's choice, not a loss the note names.
-      if (sliver && !hl && owedHere && domain.density !== 'minimal') sliverIds.add(`segment:${s.id}:${c.id}`);
       const priority =
         val.priority ??
         PRIORITY.interior + Math.min(99, Math.abs(v)) + (hl ? PRIORITY.highlightBonus : 0);
@@ -488,6 +481,7 @@ export function planColumnValueLabels(
         ...(hl ? { protect: hl } : {}),
         // The sliver gate passes the highlighted value, which the solver drops last.
         redundant: val.labelOverride === false || (sliver && !hl),
+        ...(sliver && !hl && owedHere && domain.density !== 'minimal' ? { owed: true } : {}),
         ...(restHidden ? restValueHiding(note) : {}),
         candidates: seatsOrBox(acrossValueLines(segmentLabelCandidates(
           'vertical',
@@ -513,7 +507,7 @@ export function planColumnValueLabels(
       }
 
     }
-    return { slivers, sliverOrder, seats, tooWide, pending, noShare, items, sliverIds, out, anyShare };
+    return { slivers, sliverOrder, seats, tooWide, pending, noShare, out, anyShare };
   };
   let stepped: FontSpec | undefined;
   let done = pass();
@@ -524,15 +518,16 @@ export function planColumnValueLabels(
     done = pass(stepped);
   }
   const { slivers, tooWide, pending, noShare, anyShare } = done;
-  for (const [id, note] of done.items) noted.items.set(id, note);
-  for (const id of done.sliverIds) noted.slivers.add(id);
   pushAll(requests, done.out);
-  // Segment values print in every column or in none: where one is wider
-  // than its column, none prints and the notes list names them.
+  // Keep the segment label row consistent when a value is wider than its column.
   if (tooWide.length > 0) {
-    const hidden = new Set(pending.filter((entry) => !entry.authored).map((entry) => entry.id));
-    for (const request of requests) if (hidden.has(request.id)) request.redundant = true;
-    for (const entry of pending) if (hidden.has(entry.id) && entry.owed) noted.slivers.add(entry.id);
+    const hidden = new Map(pending.filter(entry => !entry.authored).map(entry => [entry.id, entry.owed]));
+    for (const request of requests) {
+      const owed = hidden.get(request.id);
+      if (owed === undefined) continue;
+      request.redundant = true;
+      if (owed) request.owed = true;
+    }
     warnings.push({
       code: 'segment-labels-hidden',
       severity: 'info',
@@ -557,7 +552,7 @@ export function planColumnValueLabels(
 function anomalyRuleRequest(domain: ColumnDomain, area: ColumnArea, requests: LabelRequest[], warnings: LintWarning[]): void {
   const { anomaly } = domain;
   const { tickFont, frame, plot } = area;
-  if (!anomaly) return;
+  if (!anomaly || !area.ruleText) return;
   if (!area.ruleOn) {
     warnings.push({
       code: 'label-hidden',
@@ -596,7 +591,7 @@ function anomalyRuleRequest(domain: ColumnDomain, area: ColumnArea, requests: La
     // Same annotation id as the reserve claim, so the solver treats that
     // claim as this label's own instead of as a collision.
     owner: { annotationId: 'anomaly:rule' },
-    text: anomaly.rule,
+    text: area.ruleText,
     lines: ruleLines,
     ...(wrapped.title !== undefined ? { title: wrapped.title } : {}),
     typeRole: 'footnote', font: tickFont,

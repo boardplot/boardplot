@@ -9,7 +9,7 @@ import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout 
 import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
-import { COMPACT_SOURCE_LINES, beforeUnprintedLabelNote, packedComboNoteItems, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
+import { COMPACT_SOURCE_LINES, beforeUnprintedLabelNote, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
 import { withSourceLineCheck } from './frameText';
 import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER_TOLERANCE } from './aspect';
@@ -17,7 +17,7 @@ import { isVarianceTier } from './grid/varianceTiers';
 import { isRefused } from './schema/refusals';
 import { AUTO_LEGEND } from './legendPolicy';
 import { copyFrame, LIVE_NOTE_SHOW, liveFooterExtra, partNeedOf, staticFrame } from './footer';
-import { rankKeyShown, shownNoteKinds, withEngineNotes } from './notes';
+import { disclosuresShown, shownNoteKinds, withEngineNotes } from './notes';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
 import { defaultMeasurer, isCachedTextMeasurer, type TextMeasurer, withWrappedTexts } from './text';
 import { maxOf } from './arrays';
@@ -384,9 +384,12 @@ let shareRead = false;
 export const DIGIT_SEAT = Symbol('boardplot.digitSeat');
 export interface DigitSeated { [DIGIT_SEAT]?: { noted: boolean; lineH: number } }
 
-/** A value the note names, or one only its digit seat holds where the note would name it. */
+/** A value that lost its regular seat, or one held in the chart's last-resort digit seat. */
 function notedForSize(label: PlacedLabel): boolean {
-  return label.noted === true || (label as DigitSeated)[DIGIT_SEAT]?.noted === true;
+  return label.noted === true || (label as DigitSeated)[DIGIT_SEAT]?.noted === true
+    || (!label.printedIn && ((label.hidden === 'redundant' && label.kind === 'segment' && label.owed)
+      || (label.hidden === 'collision' && (label.kind === 'segment' || label.kind === 'grandTotal'
+        || label.owner.pointId !== undefined || label.id.startsWith('quadrant:caption:')))));
 }
 
 /**
@@ -1110,7 +1113,7 @@ function withPlotFloorWarning<M extends object, DV extends object>(result: Layou
   const height = plotFloorHeight(result, target);
   // Notes the author opted into (notes.show 'disclosure') never take the plot under its floor:
   // the chart refuses with the height that seats both.
-  if (result.sizing && rankKeyShown(options) && result.frame.noteList?.some((note) => note.kind === 'disclosure' && note.inFrame)) {
+  if (result.sizing && disclosuresShown(options) && result.frame.noteList?.some((note) => note.kind === 'disclosure' && note.inFrame)) {
     return sizeRefusal(result.type, title, result.size, { ...result.sizing, minHeight: height, measuredMinHeight: Math.min(result.sizing.measuredMinHeight, height) });
   }
   result.warnings.push({
@@ -1134,10 +1137,6 @@ function withPlotFloorWarning<M extends object, DV extends object>(result: Layou
  */
 /** The most an automatic card height grows past its floor so that no label goes to the note. */
 export const NOTE_GROWTH_SHARE = 0.25;
-
-/** Only a rejected note-count midpoint can discard its drawing. The size object belongs to this one trial. */
-export const scatterNoteLimit = new WeakMap<object, number>();
-export const SCATTER_NOTE_LIMIT_EXCEEDED = Symbol();
 
 function grownForNotes<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, first: LayoutResult<M, DV>, compact = false,
@@ -1232,18 +1231,7 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   while (high - low > 1) {
     const mid = Math.floor((low + high) / 2);
     const size = { width, height: mid };
-    const dotTrial = definition.type === 'scatter' && !options?.story && (options?.measure ?? defaultMeasurer) === defaultMeasurer;
-    if (dotTrial) scatterNoteLimit.set(size, goal);
-    let probe: LayoutResult<M, DV>;
-    try {
-      probe = at(mid, size);
-    } catch (error) {
-      if (error !== SCATTER_NOTE_LIMIT_EXCEEDED) throw error;
-      low = mid;
-      continue;
-    } finally {
-      if (dotTrial) scatterNoteLimit.delete(size);
-    }
+    const probe = at(mid, size);
     if (noted(probe) > goal || short(probe)) low = mid;
     else { best = probe; high = mid; }
   }
@@ -2122,10 +2110,7 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
   memoKeyData = data;
   let optionsKey: string;
   try {
-    const note = definition.type === 'combo' && options && (options.measure ?? defaultMeasurer) === defaultMeasurer
-      ? packedComboNoteItems(options) : undefined;
-    const parts = note ? new Map<PropertyKey, MemoKeyPart>([[note.key, note]]) : keys?.parts;
-    optionsKey = memoKey(keyed, 0, parts);
+    optionsKey = memoKey(keyed, 0, keys?.parts);
   } catch (error) {
     if (error !== MEMO_KEY_TOO_LONG) throw error;
     return fitSize(definition, data, options, compactFallback);

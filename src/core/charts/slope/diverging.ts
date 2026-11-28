@@ -231,10 +231,8 @@ export function layoutDivergingSlope(
     const span = lo === hi ? restFmt(lo) : numberRange(restFmt(lo), restFmt(hi));
     notes.push(disclosureNote(chartString(options, 'slopeResponseRest', { v1: posName, v2: negName, v3: span })));
   }
+
   const low = panels.filter((p) => p.g.lowBase);
-  if (low.length > 0) {
-    notes.push(disclosureNote(chartString(options, 'slopeBaseNote', { v1: minBase, v2: low.map((p) => `${p.label}: n = ${p.g.n![0]} / ${p.g.n![1]}`).join('; ') })));
-  }
 
   // ---- frame ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });

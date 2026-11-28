@@ -206,13 +206,12 @@ it('thins values and names to every second category plus the latest value where 
 });
 
 // A value without a seat refused the whole stack, so a width between two drawn widths was refused.
-it('drops a value that finds no seat on a 286 px phone card, with a warning and a note', () => {
+it('warns when a value finds no seat on a 286 px phone card', () => {
   const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-volume')!;
   const drawn = render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, size: { width: 286 } } } }).body as
     { ok: boolean; warnings: { code: string; detail?: { hidden?: string[] } }[]; notes: { text: string }[] };
   expect(drawn.ok).toBe(true);
   expect(drawn.warnings.find(w => w.code === 'label-hidden')?.detail?.hidden).toContain('conversion:value:2026-09');
-  expect(drawn.notes.some(note => note.text.startsWith('Not labelled on the chart: 2.8'))).toBe(true);
 });
 
 // A stack solved its labels at density 'full' whatever labelDensity said, and refused at every width when line values collided.
@@ -413,29 +412,10 @@ it('never refuses for an authored gutter width, at the cap or past it', () => {
   }
 });
 
-// An empty averages sentence must release its header row while the two comparison windows stay visible.
-it('removes the averages row when the stack averages word is empty', () => {
-  const fixture = metricStackFixtures.find(entry => entry.id === 'metric-stack-empty-averages')!;
-  const header = (strings: { stackAverages?: string }) => {
-    const result = render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, strings } }, return: ['svg'] });
-    expect(result.body, JSON.stringify(result.body.errors)).toMatchObject({ ok: true });
-    return new DOMParser().parseFromString(result.body.svg as string, 'image/svg+xml');
-  };
-  const empty = header({ stackAverages: '' });
-  const normal = header({});
-  const ruleY = (svg: Document) => Number(svg.querySelector('[data-id="stack:header-rule"]')!.getAttribute('y1'));
-  expect(normal.querySelector('[data-id="label:stack:averages"]')).not.toBeNull();
-  expect(empty.querySelector('[data-id="label:stack:averages"]')).toBeNull();
-  expect(empty.querySelector('[data-id="label:stack:focus"]')?.textContent).toBe('Q2 2026');
-  expect(empty.querySelector('[data-id="label:stack:base-window"]')?.textContent).toBe('Q1 2026');
-  expect(ruleY(empty)).toBeLessThan(ruleY(normal));
-});
-
 // The method line named the remaining-per-100 chain after the span that prints it was hidden.
 it('names only the figures that print in the method line', () => {
   const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;
   const line = (columnVisibility: object) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, stack: { columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
-  expect(line({ span: false })).toContain('Left: volume-weighted mature rates<');
   expect(line({ headline: false })).toContain('Left: remaining per 100<');
 });
 

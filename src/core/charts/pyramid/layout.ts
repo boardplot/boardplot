@@ -288,14 +288,10 @@ export function layoutPyramid(
     ? `${boundary(band.from)}+` : `${boundary(band.from)}–${boundary(band.to)}`);
   const footnotes = [
     ...authoredNotes(options),
-    ...pyramidNotes({ options,
-      bandCount: bands.length,
-      bandWidth: bandWidth === null ? null : trim(bandWidth),
-      openTop: openTopBand === null ? null : labelOf(bands[bands.length - 1]!),
-      openFrom: boundary(bands[bands.length - 1]!.from),
-      shareBase: basis === 'shareOfTotal' ? fmtCount(grandTotal) : null,
-      methodNote: options.methodNote === true,
-    }),
+    ...(openTopBand === null ? [] : [disclosureNote(chartString(options, 'openBandRequired', {
+      v1: labelOf(bands[bands.length - 1]!),
+      v2: boundary(bands[bands.length - 1]!.from),
+    }).trim())]),
   ];
 
   const butterflyData: ChartData = {
@@ -737,43 +733,9 @@ function trim(v: number): string {
  * of bands into an "Others" row — the exact structural lie the type exists to
  * prevent.
  */
-/**
- * The band convention is a method note, printed with `methodNote: true`.
- * An open-ended top band and the share base change how the bars read and
- * print regardless.
- */
-function pyramidNotes(input: {
-  options: PyramidOptions;
-  bandCount: number;
-  bandWidth: string | null;
-  openTop: string | null;
-  /** The lower bound of the open top band, as authored. */
-  openFrom: string;
-  shareBase: string | null;
-  methodNote: boolean;
-}): string[] {
-  const { bandCount, bandWidth, openTop, openFrom, shareBase, methodNote, options } = input;
-  const width = bandWidth === null ? '' : chartString(options, 'bandWidthClause', { v1: bandWidth });
-  const share = shareBase === null
-    ? ''
-    : chartString(options, 'pyramidSharesDisclosure', { v1: shareBase });
-  if (methodNote) {
-    return [
-      chartString(options, 'pyramidBandsMethod') +
-        (openTop === null
-          ? chartString(options, 'equalBandsMethod', { v1: bandCount, v2: width })
-          : chartString(options, 'openBandsMethod', { v1: bandCount - 1, v2: width, v3: openTop })) +
-        share,
-    ];
-  }
-  const required = `${openTop === null ? '' : chartString(options, 'openBandRequired', { v1: openTop, v2: openFrom })}${share}`.trim();
-  return required === '' ? [] : [disclosureNote(required)];
-}
-
 function stripPyramidOnly(options: PyramidOptions): ButterflyOptions {
   const {
     basis: _basis,
-    methodNote: _methodNote,
     footnotes: _footnotes,
     ...rest
   } = options as PyramidOptions & { sort?: unknown; sortBy?: unknown; sharedScale?: unknown };

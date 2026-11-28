@@ -36,10 +36,9 @@ import { fittedLabel } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
 import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
-import { formatAutomaticPercent, formatShare, numberRange } from '../../format';
+import { formatAutomaticPercent, numberRange } from '../../format';
 import { fixedHeightCanvas, rowDrivenHeight } from '../../rowCanvas';
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing } from '../../sizing';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { isNumberAlone } from '../../textRole';
 import { fieldHeadFont, fieldHeadText, headInk, headRule, totalGround, totalRule } from '../table/headFace';
 import { tableRuleInk } from '../table/statement';
@@ -66,13 +65,12 @@ import type {
   BarTableData,
   BarTablePlainData,
   BarTableValue,
-  BarTableEnd,
   BarTableDerived,
   BarTableMarks,
   BarTableOptions,
   BarTablePanelDerived,
 } from './types';
-import { disclosureNote, quietMethodNote } from '../../notes';
+import { disclosureNote } from '../../notes';
 import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
@@ -245,7 +243,6 @@ function checkCascade(data: BarTablePlainData, growth: unknown): void {
  * shared scale. The scale is known only once the frame is solved, so
  * a first pass finds them and the table is laid out again with the note.
  */
-const SLIVER_NOTE = Symbol('bartableSliverNote');
 /** A bar shorter than this reads as a sliver beside its panel's longest. */
 const SLIVER_PX = 6;
 /** A part narrower than this keeps at most 1 px of fill beside its 1 px seam: it is hidden. */
@@ -272,16 +269,13 @@ function twoLineNote(lead: string, items: readonly string[], tail: string, font:
  * The combined share of named rows in each summed panel, with its
  * numerator, denominator and, where rows carry ranges, the end each belongs to.
  */
-function combinedShareNotes(
+function combinedShareRows(
   options: BarTableOptions,
-  rows: readonly { id: string; label: string }[],
-  panels: readonly { panel: BarTablePlainData['panels'][number]; rowSums: (number | null)[]; ranges: (BarTableEnd | undefined)[]; fmt: (v: number) => string }[],
-  locale: string | undefined,
-  authored: BarTablePlainData['panels'],
-): string[] {
+  rows: readonly { id: string }[],
+): number[] | undefined {
   const combined = options.combinedShare;
-  if (!combined) return [];
-  const picked = combined.rows.map((id, i) => {
+  if (!combined) return undefined;
+  return combined.rows.map((id, i) => {
     // The schema refuses a repeat; a direct caller gets the same refusal.
     if (combined.rows.indexOf(id) !== i) {
       throw new NormalizeError('bartable-combined-share-row', `options.combinedShare.rows[${i}]`,
@@ -293,29 +287,6 @@ function combinedShareNotes(
         `combinedShare names row '${id}', which the table does not have`, `use one of the row ids: ${rows.map((row) => row.id).join(', ')}`, undefined, ['options', 'combinedShare', 'rows', i]);
     }
     return r;
-  });
-  // The panels form shades the combined rows, and the note names them as such.
-  const label = chartString(options, 'combinedShadedLead', { v1: combinedLabel(combined.label, picked.map((r) => rows[r]!.label), options) });
-  // A zero whole has no share: say so instead of printing NaN%.
-  const pct = (part: number, whole: number) => (whole === 0
-    ? chartString(options, 'combinedShareZero')
-    : formatShare((part / whole) * 100, locale));
-  return panels.flatMap((entry, p) => {
-    // Only an authored 'none' drops the readout: a defaulted 'none' (a % unit) still has rows that add.
-    if (authored[p]?.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
-    const unit = entry.panel.unit ? ` ${entry.panel.unit}` : '';
-    const at = (end: 'low' | 'high', r: number) => entry.ranges[r]?.[end] ?? entry.rowSums[r]!;
-    const sumAt = (end: 'low' | 'high', of: readonly number[]) => of.reduce((sum, r) => sum + at(end, r), 0);
-    const all = rows.map((_, r) => r);
-    const name = entry.panel.label ?? entry.panel.id;
-    if (!entry.ranges.some(Boolean)) {
-      const part = sumAt('low', picked);
-      const whole = sumAt('low', all);
-      // The readout the author asked for with combinedShare: printed like a footnote.
-      return [disclosureNote(chartString(options, 'combinedShareNote', { v1: label, v2: entry.fmt(part), v3: entry.fmt(whole), v4: unit, v5: name, v6: pct(part, whole) }))];
-    }
-    const [lowPart, lowWhole, highPart, highWhole] = [sumAt('low', picked), sumAt('low', all), sumAt('high', picked), sumAt('high', all)];
-    return [disclosureNote(chartString(options, 'combinedShareRangeNote', { v1: label, v2: entry.fmt(lowPart), v3: entry.fmt(lowWhole), v4: unit, v5: name, v6: pct(lowPart, lowWhole), v7: entry.fmt(highPart), v8: entry.fmt(highWhole), v9: pct(highPart, highWhole) }))];
   });
 }
 
@@ -521,11 +492,11 @@ export function layoutBarTable(
   );
   // ---- cascade: starts, shares, the bracket and the growth column ----
   // The note also checks the rows: each once, each a row of the table.
-  const shareNotes = combinedShareNotes(options, rows, panels, locale, split.data.panels);
+  const combinedRows = combinedShareRows(options, rows);
   let bracketRows: number[] | undefined;
   if (cascadeOptions && options.combinedShare) {
     // The bracket spans its rows, so they must stand together.
-    bracketRows = options.combinedShare.rows.map((id) => rows.findIndex((row) => row.id === id)).sort((a, b) => a - b);
+    bracketRows = combinedRows!.sort((a, b) => a - b);
     if (bracketRows.some((r, i) => i > 0 && r !== bracketRows![i - 1]! + 1)) {
       throw new NormalizeError('bartable-combined-share-row', 'options.combinedShare.rows',
         'under cascade the combined share prints beside a bracket over its rows, and these rows do not stand together',
@@ -559,18 +530,8 @@ export function layoutBarTable(
   // do not fit a part, so such a panel keeps its end labels alone. A row with a range prints no parts,
   // and one segment is the whole bar, which the end label prints already.
   const partsPrinted = panels.map((entry) => !cascade && series.length > 1 && options.segmentValues !== false && valuesPrinted && entry.spec.decimals <= PART_DECIMALS);
-  // Rounded parts may miss the rounded row sum by one step.
-  const partsMissTotal = panels.some((entry, p) => partsPrinted[p] && entry.rowSums.some((sum, r) => {
-    if (sum === null || entry.ranges[r]) return false;
-    const rounded = series.reduce((acc, s) => acc + roundedNumber(Math.max(0, entry.panel.values[s.id]?.[r] ?? 0), entry.spec), 0);
-    return Math.abs(rounded - roundedNumber(sum, entry.spec)) > 1e-9 * Math.max(1, Math.abs(sum));
-  }));
   const derivedNotes = [
-    // Under cascade the bracket prints the combined share.
-    ...(cascade ? [] : shareNotes),
-    ...(partsMissTotal ? [quietMethodNote(chartString(options, 'partsMissTotal'))] : []),
     ...(blanks.length > 0 ? [disclosureNote(twoLineNote(chartString(options, single ? 'bartableMissingHeading' : 'bartableBlankHeading', { v1: glyph }), blanks, showTotal ? chartString(options, 'bartableBlankTotal') : '', noteFont, noteW, measure, options))] : []),
-    ...((options as { [SLIVER_NOTE]?: string[] })[SLIVER_NOTE] ?? []),
     ...shareRoundingNotes(options, cascade?.adjustments ?? []),
   ];
 
@@ -893,64 +854,23 @@ export function layoutBarTable(
       ? shareLift + shareBox.height + 2 : 0,
   ) : 0;
   const shareHeadH = shareLift > 0 ? shareLift + shareBox!.height : 0;
-  // One shared scale per panel stays; the bars it leaves as slivers
-  // are listed under a line that states the scale, one row per line with its
-  // value and the parts its bar cannot show.
-  // Under cascade each row prints its value and its share, so a sliver loses nothing.
-  if (!cascade && (options as { [SLIVER_NOTE]?: string[] })[SLIVER_NOTE] === undefined) {
-    // `all`: every row the rules below list; `main`: only the bars shorter than SLIVER_PX, the short-bar rule.
-    const notesFor = (rule: 'all' | 'main') => panelTracks.flatMap((track) => {
-      const items = rows.flatMap((row, r) => {
-        const drawn = track.ranges[r]?.high ?? track.stacks[r]!.positive;
-        const range = track.ranges[r];
-        const k = !range ? 1 : track.stacks[r]!.positive > 0 ? range.low / track.stacks[r]!.positive : 0;
-        const values = series.flatMap((s) => {
-          const v = track.panel.values[s.id]?.[r];
-          return typeof v === 'number' && v !== 0 ? [{ s, v: v * k }] : [];
-        });
-        // A row is listed when its bar is a sliver, or when the seams hide one of its parts,
-        // and the note then names the value of every part. A blank sum
-        // prints no number at the bar end, so there a part too short to compare is named as well.
-        const sliver = drawn * track.scale < SLIVER_PX;
-        const thinPart = values.length > 1 && values.some(({ v }) => Math.abs(v) * track.scale < HIDDEN_PART_PX);
-        const blankThin = track.rowSums[r] === null && values.some(({ v }) => Math.abs(v) * track.scale < SLIVER_PX);
-        if (!(drawn > 0 && (sliver || (rule === 'all' && (thinPart || blankThin))))) return [];
-        // A blank sum still has the parts it draws: they are named as such.
-        const known = track.rowSums[r] === null ? chartString(options, 'sliverKnown', { v1: track.fmt(track.stacks[r]!.total) }) : '';
-        const parts = values.map(({ s, v }) => `${s.label ?? s.id} ${track.fmt(v)}`);
-        // The slivers come first, so a note cut to two lines names them before the rows with a thin part.
-        return [{ first: sliver, text: `${row.label} ${track.endTexts[r]}${known}${parts.length > 1 ? ` (${parts.join(', ')})` : ''}` }];
-      }).sort((a, b) => Number(b.first) - Number(a.first)).map((item) => item.text);
-      // One note of at most two lines; the panel is named only when there are several.
-      const scale = panelTracks.length > 1 ? ` ${track.panel.label ?? track.panel.id}` : '';
-      return items.length === 0 ? [] : [twoLineNote(chartString(options, 'sliverNote', { v1: scale, v2: track.fmt(track.max) }), items, '', noteFont, noteW, measure, options)];
-    });
-    const sliverNotes = notesFor('all');
-    if (sliverNotes.length > 0) {
-      const listed = layoutBarTable(authored, { ...options, [SLIVER_NOTE]: sliverNotes } as BarTableOptions);
-      // On a card narrower than the card class, several panels side by side that leave a bar too
-      // short to read draw in the interleaved compact form, which gives each panel the whole width.
-      // The full form reports the card-class width as its floor there, so the registry falls back to
-      // compact. Only where that fallback applies (a host-given size, no authored mode, no
-      // `belowMinimum: 'refuse'`, not a grid panel), so no width that draws refuses.
-      if (panels.length > 1 && !compact && size.width < CARD_CLASS_WIDTH && options.size !== undefined && options.mode === undefined
-        && options.belowMinimum !== 'refuse' && panelTypeClass(options) === undefined
-        && !listed.refused && listed.sizing) {
-        return { ...listed, sizing: { ...listed.sizing, minWidth: Math.max(listed.sizing.minWidth, CARD_CLASS_WIDTH) } };
-      }
-      // An authored height does not grow for a note the frame prints (a static footer grows only for
-      // the notes left out of the frame). When the longer list does not fit it, the chart keeps
-      // the short-bar list, so only short bars need names there.
-      const shortBy = Math.max(listed.sizing?.minHeight ?? 0, listed.frame.minHeight ?? 0) - size.height;
-      const fits = shortBy <= 0.5 && (listed.sizing?.minWidth ?? 0) <= size.width + 0.5;
-      const authoredHeight = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
-      // Each note takes at most two lines: a chart short by more than that refuses with the short-bar list too.
-      const notesCanFit = shortBy <= sliverNotes.length * (2 * lineBox(noteFont) + 8);
-      if (!authoredHeight || fits || !notesCanFit) return listed;
-      const mainNotes = notesFor('main');
-      if (mainNotes.length > 0) return layoutBarTable(authored, { ...options, [SLIVER_NOTE]: mainNotes } as BarTableOptions);
-    }
-  }
+  // Give each panel the full width when the side-by-side form hides its bars.
+  const needsPanelWidth = !cascade && panels.length > 1 && !compact && size.width < CARD_CLASS_WIDTH
+    && options.size !== undefined && options.mode === undefined && options.belowMinimum !== 'refuse'
+    && panelTypeClass(options) === undefined
+    && panelTracks.some((track) => rows.some((_, r) => {
+      const drawn = track.ranges[r]?.high ?? track.stacks[r]!.positive;
+      if (drawn <= 0) return false;
+      const partScale = (!track.ranges[r] ? 1 : track.stacks[r]!.positive > 0
+        ? track.ranges[r]!.low / track.stacks[r]!.positive : 0) * track.scale;
+      const parts = series.flatMap((s) => {
+        const value = track.panel.values[s.id]?.[r];
+        return typeof value === 'number' && value !== 0 ? [Math.abs(value) * partScale] : [];
+      });
+      return drawn * track.scale < SLIVER_PX
+        || (parts.length > 1 && parts.some((width) => width < HIDDEN_PART_PX))
+        || (track.rowSums[r] === null && parts.some((width) => width < SLIVER_PX));
+    }));
 
   // ---- rows ----
   const heads: FittedText[] = [...numberTracks, ...(interleaved ? [] : panelTracks), ...(growthTrack ? [growthTrack] : [])].map((track) => track.headFit);
@@ -1468,7 +1388,7 @@ export function layoutBarTable(
   const interleavedPanelsW = cascade
     ? Math.min(cascadeRest + periodNameFull, 1.5 * cascadeRest)
     : maxOf(panels.map((_, p) => MIN_RUN + endReserves[p]!));
-  const minWidth = size.width - plot.w + (interleaved
+  const contentMinWidth = size.width - plot.w + (interleaved
     ? Math.max(interleavedPanelsW, minSideW + LABEL_GAP + MIN_COMPACT_LABEL)
     : compact
     ? Math.max(compactPanelsW + (cascade ? minSideW : 0), minSideW + LABEL_GAP + MIN_COMPACT_LABEL)
@@ -1476,6 +1396,7 @@ export function layoutBarTable(
 
   // Panels first take the first number head's room over the name track. Where that alone passes the width, the
   // default order draws with a warning: a block order never moves a table to its compact form or a refusal.
+  const minWidth = needsPanelWidth ? Math.max(contentMinWidth, CARD_CLASS_WIDTH) : contentMinWidth;
   if (panelsFirst && numberColumns.length > 0 && minWidth > size.width) {
     const { columnOrder: _order, ...defaultOrder } = options;
     const drawn = layoutBarTable(authored, defaultOrder);

@@ -7,7 +7,6 @@ export const EN = {
   "waffleCellsReading": "{v1} = {v2} of {v3} cells",
   "waffleWholeReading": "{v1} of the whole",
   "noValue": "no value",
-  "noValueNote": "{na} = no value: {v1}",
   // the key line that names the dashed reference outline.
   "referenceKey": "Dashed outline = {label}",
 } as const;
@@ -18,7 +17,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "waffleCellsReading": "{v1} = {v2} von {v3} {v3|Zelle|Zellen}",
   "waffleWholeReading": "{v1} des Ganzen",
   "noValue": "kein Wert",
-  "noValueNote": "{na} = kein Wert: {v1}",
   // the key line that names the dashed reference outline.
   "referenceKey": "Gestrichelter Umriss = {label}",
 };

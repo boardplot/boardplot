@@ -85,7 +85,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     const wholeCard = full && wholeDimSwitchCard(options, full.compiled, full.resolved);
     const wider = forms.wider;
     const projected = projectedCard ?? (wider && form.card && form.hide !== undefined && form.hide > wider.hide && form.periodValues
-      ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide, form.periodValues)
+      ? projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, form.hide)
       : undefined);
     const tail = wider && form.card && form.hide !== undefined && form.hide < wider.hide
       ? periodCardTail(data, options, wider.prepared.compiled, wider.hide, form.hide, figures) : undefined;
@@ -188,7 +188,7 @@ function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, f
   // A measurement tries the same period counts at several widths. Its prepared forms survive those width changes.
   const measuring = (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE];
   if (!measuring && !projection && wider && hide > wider.hide && !forms.prepared.has(`true:${hide}`)) {
-    plan = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide, forms.periodValues);
+    plan = projectDimSwitchCard(data, options, wider.prepared.compiled, wider.hide, hide);
     if (plan) {
       const runOptions = currentFormOptions(plan.options, options, form, data);
       const wideData = wider.prepared.compiled.data;

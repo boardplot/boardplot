@@ -46,11 +46,11 @@ These options are shared across chart types. Each type page names its exceptions
 | unitShown | boolean |  |  | True when the host prints the unit beside the chart: no unit line, no unit beside a kpi value; line end labels, a table head and the legend check treat the unit as shown. Number formatting does not change. Default false. |
 | source | string \| array |  |  | Source credit rendered in the chart frame. An array of strings joins with '; ' in one source line. An empty array prints no source. `**text**` draws bold and a single `*` stays literal. |
 | footnotes | array \| false \| string | `false` (or another value of its type) |  | A string is one footnote. Footnotes in authored order. `**text**` draws bold and a single `*` stays literal. The frame prints them within notes.maxLines and the rest go to the notes list. false leaves printed disclosures, the source line and a required map credit in the frame. |
-| notes | object |  |  | Notes; the footer rule: where the notes under the chart go, how many lines they take, and the note lines for what the drawing leaves out. |
-| notes.maxListed | integer \| string | `'all'` (or another value of its type) | `8` | Items a note line names before it counts the rest, such as "Not labelled on the chart: ... and 236 more". Default: every note line names as many items as fit two footer lines, at most 8, reference lines and line end values first, then the rest in data order, and ends with "and N more"; when no name fits, it counts. 'all' names every item. 0 names none and only counts them, "18 of 36 values". All items stay in the reading and the hover records. |
+| notes | object |  |  | Controls where notes go, how many lines they take and how many items a list disclosure names. |
+| notes.maxListed | integer \| string | `'all'` (or another value of its type) | `8` | Number of items a shared list disclosure names before it counts the rest. Default 8, up to two footer lines. 'all' names every item. 0 shows the count alone. |
 | notes.placement | string | `'frame'`, `'info'`, `'list'` |  | Where the notes go. 'frame' prints notes within maxLines and puts the rest in the notes list. 'list' shows the source line, any required map credit and the pointer alongside the disclosures that print outside maxLines. In React, 'info' shows the source, required credit and printed disclosures with a 'Notes and sources' button for the other notes. SVG and PNG draw 'info' as 'frame'. Defaults are dashboard 'info', slide 'list', and report and print 'frame'. An authored placement without notes.show also enables method notes and other disclosures within maxLines after the author notes. |
 | notes.maxLines | integer |  |  | Visible lines for notes and the source. Required map credits, notes that a drawn mark points at, the default caveats and disclosures enabled by an authored notes.show print outside this limit. Notes that do not fit go to the notes list. The pointer counts them. Report and dashboard default to 3 lines (2 under 720 px wide), slide to 2 and print to 3. |
-| notes.show | string[] | `'note'`, `'method'`, `'disclosure'`, `'ranks'` |  | The kinds of note the frame prints. By default, authored footnotes print within maxLines. Three caveats print outside maxLines when they fit the chart: incomplete stack totals in column and combo charts, missing values drawn as zero in stacked area charts, and clipped scatter points. An explicit list keeps these caveats only if it includes 'disclosure'. 'disclosure' also prints the other reading notes outside maxLines, including keys and unlabelled values. 'method' adds the short form of method notes. 'ranks' adds the rank key for columns whose names do not fit. Without notes.show, methodNote: true or an authored placement also enables method notes and other disclosures within maxLines. Every note stays in the render result's notes list. |
+| notes.show | string[] | `'note'`, `'method'`, `'disclosure'` |  | The kinds of note the frame prints. By default, authored footnotes print within maxLines. Three caveats print outside maxLines when they fit: incomplete stack totals in column and combo charts, missing values drawn as zero in stacked area charts, and clipped scatter points. An explicit list keeps these caveats only if it includes 'disclosure'. 'disclosure' also prints other notes about scale, missing data and changed values outside maxLines. 'method' adds retained method notes, such as the cohort formula. Without notes.show, an authored placement or a supported methodNote: true also enables method notes and other disclosures within maxLines. Every note stays in the render result's notes list. |
 | notes.pointer | boolean |  | `true` | Default true: when the notes list holds notes of the kinds notes.show prints that the frame does not print, the source line ends with "+N notes". false drops it; a live chart that then leaves author notes out warns notes-left-out. |
 | theme | string \| object \| object |  |  | Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses bridge. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
@@ -74,18 +74,11 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.better | string |  |  | Meaning of a better sign-coloured value. |
 | strings.worse | string |  |  | Meaning of a worse sign-coloured value. |
 | strings.positiveTotal | string |  |  | Name of a mixed-sign stack positive boundary. |
-| strings.rangeMidNote | string |  |  | Range method note. |
-| strings.sensitivityNote | string |  |  | Tornado method note. |
-| strings.hatchedBaseNote | string |  |  | Tornado base mismatch note. |
 | strings.missingSwingNote | string |  |  | Tornado missing output note; {drivers} is replaced. |
 | strings.rankOmitted | string |  |  | Focused bump note. |
 | strings.noRank | string |  |  | A missing bump rank. |
-| strings.rankMethod | string |  |  | Bump method note; {direction}, {format}, and {ring} are replaced. |
 | strings.higherBetter | string |  |  | Direction of a bump rank. |
 | strings.lowerBetter | string |  |  | Direction of a bump rank. |
-| strings.rankFormat | string |  |  | Format clause in the bump method note. |
-| strings.rankRing | string |  |  | Tie clause in the bump method note. |
-| strings.nearZeroNote | string |  |  | Note for folded zero line ends. |
 | strings.flagged | string |  |  | Anomaly marker key. |
 | strings.corridor | string |  |  | Anomaly rule key. |
 | strings.corridorBounds | string |  |  | Authored anomaly bounds key. |
@@ -102,7 +95,7 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.lowerBound | string |  |  | Off-scale lower corridor bound. |
 | strings.upperBound | string |  |  | Off-scale upper corridor bound. |
 | strings.undrawnBounds | string |  |  | Off-scale corridor note. |
-| strings.hiddenLabels | string |  |  | Heading of the note for hidden chart labels. |
+| strings.hiddenLabels | string |  |  | Heading for hidden heatmap labels in its accessible description. |
 | strings.noteOne | string |  |  | Pointer to one hidden note. |
 | strings.noteMany | string |  |  | Pointer to hidden notes. |
 | strings.notesAndSources | string |  |  | React notes panel label. |
@@ -122,8 +115,6 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.net | string |  |  | Name before a net total. |
 | strings.incomplete | string |  |  | Marker for partial table aggregates and incomplete 100% bar categories. |
 | strings.range | string |  |  | Key for a range whisker. |
-| strings.valuesNotOnColumns | string |  |  | Note heading for omitted column values. |
-| strings.valuesNotBesideMarks | string |  |  | Note heading for omitted combo values. |
 | strings.knownPartsTotals | string |  |  | Footer heading for incomplete stack totals in column and combo charts. |
 | strings.without | string |  |  | Word before missing stack parts. |
 | strings.and | string |  |  | Word joining missing stack parts. |
@@ -136,13 +127,11 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.baseCase | string |  |  | Tornado spine; {value} is replaced. |
 | strings.swingOutsideBase | string |  |  | Tornado hatch key. |
 | strings.fanGap | string |  |  | Missing uncertainty note; {categories} is replaced. |
-| strings.mixedShares | string |  |  | Mixed-sign share note; {categories} is replaced. |
 | strings.heatBelow | string |  |  | Key label of the bad side of a table's traffic-light heat lane (scale 'status'); default Below average, or Below total under center 'total'. |
 | strings.heatAround | string |  |  | Key label of the warn band of a table's traffic-light heat lane; default Around average, or Around total. |
 | strings.heatAbove | string |  |  | Key label of the good side of a table's traffic-light heat lane; default Above average, or Above total. |
 | strings.bandKey | array |  |  | Words of the bullet worse-to-better band key, worst first, one for each band (2 to 5). A list of another length than the bands keeps the built-in words (Worse ... Better; German with locale.language de). |
-| strings.moreListed | string |  |  | Last item of a capped note line; '{count}' is the number left out. Default 'and {count} more'; a React chart with hover on reads 'and {count} more (tap or hover shows each value)' unless this is set. |
-| strings.cellNote | string |  |  | Waffle note that names the share of one cell; '{value}' becomes the percent, such as 5%. Default 'One cell = {value}'. |
+| strings.moreListed | string |  |  | Last item of a capped note line; '{count}' is the number left out. Default 'and {count} more'. |
 | strings.storyBack | string |  |  | Story Back button; default '‹ Back'. |
 | strings.storyNext | string |  |  | Story Next button; default 'Next ›'. |
 | strings.storyCounter | string |  |  | Story counter, unpadded '{step}' and '{count}'; default '{step} / {count}'. |
@@ -158,18 +147,9 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.gapBelow | string |  |  | Line under a bullet gap that lies below the comparison value; '{v1}' is the comparison word. Default 'below {v1}'. |
 | strings.gapAbove | string |  |  | Line under a bullet gap that lies above the comparison value; '{v1}' is the comparison word. Default 'above {v1}'. |
 | strings.gapOn | string |  |  | Line under a bullet gap of zero; '{v1}' is the comparison word. Default 'on {v1}'. |
-| strings.nearZeroChange | string |  |  | Table n.m. change note. |
-| strings.mixedCoverage | string |  |  | Table n.m. note for a change between totals of different rows. |
 | strings.hiddenPeriods | string |  |  | Dimswitch note for periods left out; {periods} is replaced. |
 | strings.share | string |  |  | Cascade share-column heading. |
 | strings.histogramBins | string |  |  | Histogram binning disclosure; {count}, {about}, {width}, {from}, {to} are replaced. |
-| strings.histogramAbout | string |  |  | Histogram approximation word, including its trailing space. |
-| strings.histogramMethod | string |  |  | Histogram method note; {count}, {width}, {from}, {rule}, {rounding}, {smallSample} are replaced. |
-| strings.histogramRuleCount | string |  |  | Histogram authored bin-count rule name. |
-| strings.histogramRuleWidth | string |  |  | Histogram authored bin-width rule name. |
-| strings.histogramSnapped | string |  |  | Histogram rounded bin-width rule; {rule} is replaced. |
-| strings.histogramRounded | string |  |  | Histogram rounded-number clause, including its separator. |
-| strings.histogramSmallSample | string |  |  | Histogram small-sample clause, including its separator. |
 | strings.missingStack | string |  |  | StackedArea source-null note; {categories} is replaced. |
 | strings.incompleteStacks | string |  |  | Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced. |
 | strings.knownPartsShares | string |  |  | Incomplete 100% stack note without total100; {categories} is replaced. |
@@ -177,7 +157,6 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.rebaseMissing | string |  |  | Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced. |
 | strings.stackFrom | string |  |  | Metric stack focus look: the base value after the change; {v1} is the base value. English from {v1}. |
 | strings.stackAgainst | string |  |  | Metric stack focus look: the word between the focus and the base window in the header line. English against. |
-| strings.stackAverages | string |  |  | Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. |
 | format | string |  |  | Chart-level format-by-example, such as 1,234.5 or 1.2pp. A currency sign comes from here: '$1,234' prints $2,456. Its decimals are preserved; series and cell formats can override it. Without a format, every number prints by the default rule: scale words from 10,000 (cells from 100,000), three digits of the largest value, no more decimals than the data carry. A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale when glued to the number or spaced beside a currency ('$1.2 k'); '12 m/s' and '50 B' keep their unit. A scale inside a currency affix ('USDm 1.2', '1.2 €m') holds that divisor. The example's scale word and decimals hold for every value, totals included: '$1.2M' prints 4 as $0.0M and warns format-hides-values with a finer example. A German or French chart prints the scale in its own words (Mrd., Bio.; Md, Bn). Axis ticks take their digits from their spacing, and a statistic such as a mean takes up to one decimal more. A unit alone ('$M', '€bn', '%', 'x') states the prefix, the suffix and any scale word: the default number rule fills the decimals, and the scale words where the unit names none ('$M' prints 15,060,000 and 14,800,000 as $15.06M and $14.80M). A table column moves the unit into its head and picks the cell precision from the data. Spreadsheet number codes translate to examples with warning format-spreadsheet-code; percent values stay percent points. Direction glyphs (▲/▼, ↑/↓) at the start or end of the example carry a sign. A glyph inside the prefix or unit stays literal text. ± carries a sign. A trailing minus marks negatives, '1st' prints English ordinals, and '1.2E+06' prints scientific notation. With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M. A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%. A separator followed by exactly three digits after a nonzero integer part is a thousands mark: 1.000 groups thousands with a dot and prints decimals with a comma; write 0.000 for three decimals. |
 | detailFields | array |  |  | Label, format, unit and order of the cell details keys, the extra facts a value's hover card lists after it: [{ key: 'deals', label: 'Deals', format: '1,234' }]. Declared keys print first, in this order; a details key it does not declare prints after them, labelled with its key. Default: every key, labelled with itself. |
 | detailFields[].key | string |  |  | The details key in the cells. |

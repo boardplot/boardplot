@@ -11,20 +11,13 @@ import { requireGeometry } from '../src/core/sizing';
 import '../src/core/charts';
 import { claimsForChart } from '../src/core/claims';
 import { assertReconciles, decomposePvm } from '../src/core/charts/pvm/decompose';
-import { chartString } from '../src/core/strings/pvm';
 import { fixtures } from '../src/core/charts/pvm/fixtures';
 import { assertClosingLevel, layoutPvm as layoutPvmRaw } from '../src/core/charts/pvm/layout';
 import { withEngineNotes } from '../src/core/notes';
 import type { PvmData, PvmDerived, PvmOptions } from '../src/core/charts/pvm/types';
 import { NormalizeError } from '../src/core/normalize/shared';
 
-const PVM_METHOD_NOTE_IN_PRICE = chartString(undefined, 'pvmMethodNoteInPrice');
-const PVM_METHOD_NOTE_SEPARATE = chartString(undefined, 'pvmMethodNoteSeparate');
-const PVM_METHOD_NOTE_COMBINED = chartString(undefined, 'pvmMethodNoteCombined');
-const PVM_METHOD_NOTE_COMBINED_SEPARATE = chartString(undefined, 'pvmMethodNoteCombinedSeparate');
 import { getChartDefinition } from '../src/core/registry';
-import { defaultMeasurer } from '../src/core/text';
-import { standardTheme } from '../src/core/theme';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
 
 // Raw layout unit calls use the same note lifetime as the registered chart.
@@ -37,22 +30,6 @@ function options(index: number): PvmOptions {
 
 function laid(index: number, extra: Partial<PvmOptions> = {}) {
   return layoutPvm(fixtures[index]!.data, { ...options(index), ...extra });
-}
-
-function noteNode(geometry: Geometry<object, object>, text: string) {
-  // The frame WRAPS a long footnote to the content width (at most three lines)
-  // rather than running it off the canvas — under the footnote layout step the
-  // method note legitimately spans two lines, so the sentence is matched over
-  // the node's rejoined lines, not line-by-line.
-  return geometry.scene.find(
-    (candidate): candidate is Extract<SceneNode, { t: 'text' }> =>
-      candidate.t === 'text' && candidate.lines.join(' ').includes(text),
-  );
-}
-
-/** Is this exact sentence actually inked on the canvas? */
-function painted(geometry: Geometry<object, object>, text: string) {
-  return noteNode(geometry, text) !== undefined;
 }
 
 /** Independent re-derivation of the contract, from the definitions only. */
@@ -174,36 +151,6 @@ describe('pvm decomposition', () => {
     expect(label?.text).toBe('0');
   });
 
-  it('prints the convention on request, and the note fits the canvas', () => {
-    for (const [index, fixture] of fixtures.entries()) {
-      // Footer rule: method notes go to the notes list by default; this test draws them all in full.
-      const geometry = laid(index, { methodNote: true, notes: { placement: 'frame', show: ['note', 'method'], maxLines: 1000, pointer: false } });
-      const derived = geometry.derived as PvmDerived;
-      const expected =
-        derived.volumeMix === 'combined'
-          ? derived.interaction === 'separate' ? PVM_METHOD_NOTE_COMBINED_SEPARATE : PVM_METHOD_NOTE_COMBINED
-          : derived.interaction === 'separate' ? PVM_METHOD_NOTE_SEPARATE : PVM_METHOD_NOTE_IN_PRICE;
-      expect(derived.methodNote, fixture.id).toBe(expected);
-      // All applicable disclosures are inked, and the frame lays footnotes out on
-      // ONE unwrapped line: a longer sentence silently leaves the canvas
-      // instead of wrapping, so each is measured against the content box.
-      const notes = [derived.methodNote, derived.unitBasisNote, derived.coverageNote].filter(
-        (line): line is string => line !== null,
-      );
-      expect(notes.length, `${fixture.id}: method and coverage, plus unit basis when split`)
-        .toBe(derived.volumeMix === 'combined' ? 2 : 3);
-      for (const text of notes) {
-        const node = noteNode(geometry, text);
-        expect(node, `${fixture.id}: "${text.slice(0, 40)}..." is painted`).toBeDefined();
-        const font = { ...standardTheme.type.footnote, family: standardTheme.type.family };
-        const width = defaultMeasurer(node!.lines[0]!, font).width;
-        expect(node!.x + width, `${fixture.id}: "${text.slice(0, 40)}..." stays on canvas`).toBeLessThanOrEqual(
-          geometry.size.width - node!.x,
-        );
-      }
-    }
-  });
-
   // The page showed both totals but never their difference, so a reader had to subtract.
   it('prints the net change over the closing column, and netChange false removes it', () => {
     const geometry = laid(0);
@@ -222,14 +169,6 @@ describe('pvm decomposition', () => {
     const geometry = layoutPvm({ items } as PvmData, { ...getChartDefinition('pvm')!.defaults, size: { width: 888, height: 396 } } as PvmOptions);
     expect((geometry.derived as PvmDerived).delta).toBe(0);
     expect(geometry.labels.some((label) => label.id.startsWith('net:'))).toBe(false);
-  });
-
-  it('leaves the convention off by default without a warning ', () => {
-    for (const extra of [{ methodNote: undefined }, { methodNote: false }]) {
-      const geometry = laid(0, extra);
-      expect((geometry.derived as PvmDerived).methodNote).toBeNull();
-      expect(geometry.warnings.map((w) => w.code)).not.toContain('pvm-note-hidden');
-    }
   });
 
   it('refuses a step highlight while the effects take their sign\'s colour, and keeps it under a palette', () => {
@@ -325,50 +264,16 @@ describe('pvm unit invariance — the split is not a fact about the business alo
     }
   });
 
-  it('states the unit basis on request; coverage under churn prints regardless ', () => {
-    const geometry = layoutPvm({ ...withNewAndLost, quantityUnit: 'licences' }, { title: 'a', methodNote: true, notes: { show: ['note', 'disclosure'] } });
-    const derived = geometry.derived as PvmDerived;
-    expect(derived.quantityUnit).toBe('licences');
-    expect(derived.unitBasisNote).toContain('quantities counted in licences');
-    expect(derived.unitBasisNote).toContain('their sum does not');
-    // The frame prints one short line; the long notes
-    // join the notes list when the author sets `notes`.
-    expect(painted(geometry, 'Covers the 3 items in both periods; volume and mix at prior prices.')).toBe(true);
-    expect(painted(geometry, derived.unitBasisNote!)).toBe(false);
-    expect(painted(layoutPvm({ ...withNewAndLost, quantityUnit: 'licences' }, { title: 'a', methodNote: true, notes: { show: ['note', 'method'] } }), derived.unitBasisNote!)).toBe(true);
-    // The unit basis is a property of the method, so it goes with the method.
-    // Coverage is not: with items entering and leaving the book the bars speak
-    // for part of the revenue only, and a reader has to be told.
-    const quiet = layoutPvm({ ...withNewAndLost, quantityUnit: 'licences' }, { title: 'a', notes: { show: ['note', 'disclosure'] } });
-    const quietDerived = quiet.derived as PvmDerived;
-    expect(quietDerived.methodNote).toBeNull();
-    expect(quietDerived.unitBasisNote).toBeNull();
-    expect(painted(quiet, derived.unitBasisNote!)).toBe(false);
-    expect(painted(quiet, 'Covers the 3 items in both periods.')).toBe(true);
-    // Full coverage says nothing a reader could misread: a method note too.
-    expect((layoutPvm(allCommon, { title: 'a' }).derived as PvmDerived).coverageNote).toBeNull();
-    expect((layoutPvm(allCommon, { title: 'a', methodNote: true }).derived as PvmDerived).coverageNote).toContain('100.0%');
-  });
-
   it('warns when the counting unit is undeclared, and stops warning once it is', () => {
     const bare = layoutPvm(withNewAndLost, { title: 'a' });
     const warning = bare.warnings.find((w) => w.code === 'pvm-quantity-unit-undeclared');
     expect(warning?.severity).toBe('warn');
     expect(warning?.message).toMatch(/cases rather than units/);
     expect(warning?.suggest).toContain('volumeMix');
-    // With the method notes on, the exhibit states the dependence; it just
-    // cannot name the unit.
-    expect((layoutPvm(withNewAndLost, { title: 'a', methodNote: true }).derived as PvmDerived).unitBasisNote)
-      .toContain('quantities with no common counting unit declared');
-
     const declared = layoutPvm({ ...withNewAndLost, quantityUnit: 'seats' }, { title: 'a' });
     expect(declared.warnings.map((w) => w.code)).not.toContain('pvm-quantity-unit-undeclared');
-    // 'combined' has no unit-dependent boundary, so there is nothing to warn or
-    // disclose — and the method note says which convention is in force.
-    const combined = layoutPvm(withNewAndLost, { title: 'a', volumeMix: 'combined', methodNote: true });
+    const combined = layoutPvm(withNewAndLost, { title: 'a', volumeMix: 'combined' });
     expect(combined.warnings.map((w) => w.code)).not.toContain('pvm-quantity-unit-undeclared');
-    expect((combined.derived as PvmDerived).unitBasisNote).toBeNull();
-    expect((combined.derived as PvmDerived).methodNote).toBe(PVM_METHOD_NOTE_COMBINED);
   });
 
   it('rejects a hallucinated volumeMix value by naming the accepted ones', () => {
@@ -385,16 +290,12 @@ describe('pvm unit invariance — the split is not a fact about the business alo
 });
 
 describe('pvm coverage — how much of the book P/V/M actually speak for', () => {
-  it('measures the common share and prints it on the exhibit', () => {
+  it('measures the common share in each period', () => {
     const geometry = layoutPvm({ ...withNewAndLost, quantityUnit: 'licences' }, { title: 'a', notes: { show: ['note', 'disclosure'] } });
     const derived = geometry.derived as PvmDerived;
     // common = a,b,c: prior 4,500 of 5,250; current 5,550 of 6,450.
     expect(derived.commonPriorShare).toBeCloseTo(4500 / 5250, 12);
     expect(derived.commonCurrentShare).toBeCloseTo(5550 / 6450, 12);
-    expect(derived.coverageNote).toBe(
-      'Price, volume and mix cover the 3 items present in both periods — 85.7% of prior and 86.0% of current revenue.',
-    );
-    expect(painted(geometry, 'Covers the 3 items in both periods.')).toBe(true);
   });
 
   it('warns when most of the book churns, so P/V/M cannot be read as the explanation', () => {
@@ -651,14 +552,6 @@ describe('pvm fail-closed behaviour', () => {
   });
 });
 
-// Volume -454,249 and Mix +444,849 cancel to 2%, so the split between them is the story and rests on the unit.
-describe('pvm method notes where volume and mix cancel', () => {
-  it('prints the convention without methodNote', () => {
-    const index = fixtures.findIndex((fixture) => fixture.id === 'mix-dominates-sign-flip');
-    expect((laid(index, { methodNote: undefined }).derived as PvmDerived).methodNote).not.toBeNull();
-  });
-});
-
 // Price +4,560 drawn grey beside totals in the accent read as nothing.
 describe('pvm effects take their sign colour', () => {
   it('paints a gain and a loss apart unless the theme sets the bridge', () => {
@@ -670,12 +563,12 @@ describe('pvm effects take their sign colour', () => {
 
 describe('pvm valueAxis.break', () => {
   it.each([[320, 468], [400, 452], [480, 445], [720, 465], [960, 495]])(
-    'keeps the whole-axis height at %i px', async (width, redesignHeight) => {
+    'fits within the previous whole-axis height at %i px', async (width, redesignHeight) => {
       const { measure } = await import('../src/index');
       const fixture = fixtures.find(entry => entry.id === 'fy-revenue-bridge')!;
       const result = measure({ type: 'pvm', data: fixture.data, options: { ...fixture.options, valueAxis: { break: false }, notes: { show: ['note', 'disclosure'] }, size: { width } } } as never);
       expect(result.refused).toBeUndefined();
-      expect(Math.abs(result.geometry!.size.height / redesignHeight - 1)).toBeLessThanOrEqual(0.03);
+      expect(result.geometry!.size.height / redesignHeight - 1).toBeLessThanOrEqual(0.03);
       expect(result.geometry!.scene.some(node => node.part === 'barBreak')).toBe(false);
     },
   );

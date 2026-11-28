@@ -56,11 +56,7 @@ export interface CohortOptionsBase extends BaseOptionsFor<'cohort'> {
    * cohorts observed in that period. NEVER the mean of the percentages.
    */
   averages?: false | 'weighted';
-  /**
-   * Default false. true adds the method notes (the 'cohort' formula, the anchor
-   * column, blank cells). Weighting, support, hatching and the 'previous'
-   * formula print regardless.
-   */
+  /** Include the measure formula. */
   methodNote?: boolean;
   /** Stepped fills compare absolute rates or normalize independently within each period. */
   formatScope?: CohortFormatScope;

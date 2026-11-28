@@ -195,9 +195,9 @@ interface RowIntervalPlan {
   /**
    * Frame footnotes the ENGINE owns, appended after the author's own. Only
    * notes a reader needs to read the bars correctly (hatched bars, drivers
-   * not shown); the method notes join them with `methodNote: true`.
+   * not shown).
    */
-  methodNotes?: string[];
+  disclosures?: string[];
   legend?: { options: LegendOptions; items: LegendItemInput[] };
   ranges?: RangeMark[];
   derived: BarDerived;
@@ -502,7 +502,7 @@ function layoutRows(
       // Engine-owned method notes come AFTER the author's, and the author
       // cannot delete them — the basis on which a mark is drawn is not an
       // authoring choice. (likert/layout.ts:766, pyramid/layout.ts:296.)
-      footnotes: [...authoredNotes(options), ...(plan.methodNotes ?? [])],
+      footnotes: [...authoredNotes(options), ...(plan.disclosures ?? [])],
       ...(plan.legend ? { legend: plan.legend } : {}),
       theme,
       measure,
@@ -1229,10 +1229,7 @@ function planFootballField(
       0,
     ) / cells.length;
   if (options.methodNote !== true && ranges.some((range) => range.mid !== undefined)) warnings.push(rangeMidUndrawn());
-  const methodNotes = [
-    ...noteLine(chartString(options, 'footballMethodsLeftOutNote'), leftOut, options).map(disclosureNote),
-    ...(options.methodNote === true && ranges.some((range) => range.mid !== undefined) ? [disclosureNote(options.strings!.rangeMidNote!)] : []),
-  ];
+  const disclosures = noteLine(chartString(options, 'footballMethodsLeftOutNote'), leftOut, options).map(disclosureNote);
 
   return {
     cats,
@@ -1249,7 +1246,7 @@ function planFootballField(
       : {}),
     ranges,
     valueFmt: fmt,
-    ...(methodNotes.length ? { methodNotes } : {}),
+    ...(disclosures.length ? { disclosures } : {}),
     derived: {
       totals,
       order: cats.map((cat) => cat.id),
@@ -1747,11 +1744,7 @@ function planTornado(
       ...(base.label === undefined ? { baseText: fmt(base.value) } : {}),
     },
     ...(legend ? { legend } : {}),
-    methodNotes: [
-      ...(options.methodNote === true ? [options.strings!.sensitivityNote!] : []),
-      ...(ordered.some((row) => !row.straddles)
-        ? [disclosureNote(options.strings!.hatchedBaseNote!)]
-        : []),
+    disclosures: [
       ...(droppedDrivers.length > 0
         ? [
             disclosureNote(stringFields(options.strings!.missingSwingNote!, { drivers: droppedDrivers.join(', ') })),

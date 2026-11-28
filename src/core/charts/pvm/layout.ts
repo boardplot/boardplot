@@ -1,6 +1,6 @@
 import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/pvm';
-import { disclosureNote, engineNote, keepShownNotes } from '../../notes';
+import { keepShownNotes } from '../../notes';
 /**
  * PVM adapter. A price/volume/mix bridge IS a waterfall: a start
  * total, signed additive effects, an end total. This module therefore adds NO
@@ -39,8 +39,6 @@ import { hostedLayout } from '../../normalize/innerRefusal';
 import {
   PVM_RESIDUAL_TOLERANCE,
   decomposePvm,
-  pvmCoverageNote,
-  pvmUnitBasisNote,
 } from './decompose';
 import type { PvmData, PvmDerived, PvmOptions } from './types';
 import { authoredNotes, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
@@ -77,14 +75,6 @@ export function layoutPvm(
     if (effect.id === 'new') effect.label = options.strings?.newItems ?? effect.label;
     if (effect.id === 'lost') effect.label = options.strings?.lostItems ?? effect.label;
   }
-  // Where Volume and Mix nearly cancel (their sum under a tenth of the
-  // larger), the split between them is the whole story and rests on the
-  // counting unit, so the method notes print whatever methodNote says.
-  const volume = derived.effects.find((effect) => effect.id === 'volume')?.value;
-  const mix = derived.effects.find((effect) => effect.id === 'mix')?.value;
-  const cancels = volume !== undefined && mix !== undefined && Math.sign(volume) === -Math.sign(mix) && volume !== 0 &&
-    Math.abs(volume + mix) < 0.1 * Math.max(Math.abs(volume), Math.abs(mix));
-  const methodNote = options.methodNote === true || cancels;
   const warnings: LintWarning[] = notes.map((note) => ({
     code: note.code,
     severity: note.severity,
@@ -97,29 +87,9 @@ export function layoutPvm(
   const {
     interaction: _interaction,
     volumeMix: _volumeMix,
-    methodNote: _methodNote,
     netChange,
     ...pass
   } = options;
-
-  const note =
-    volumeMix === 'combined'
-      ? interaction === 'separate'
-        ? chartString(options, 'pvmMethodNoteCombinedSeparate')
-        : chartString(options, 'pvmMethodNoteCombined')
-      : interaction === 'separate'
-        ? chartString(options, 'pvmMethodNoteSeparate')
-        : chartString(options, 'pvmMethodNoteInPrice');
-  // The convention and the unit basis are method notes, printed on
-  // request. Coverage is required for interpretation while items enter or
-  // leave the book: price, volume and mix then speak for part of the revenue
-  // only, and bars drawn correctly would be read as the whole.
-  derived.methodNote = methodNote ? note : null;
-  derived.unitBasisNote = methodNote && volumeMix === 'split' ? pvmUnitBasisNote(derived.quantityUnit ?? undefined, options) : null;
-  const partialCoverage = derived.new.length > 0 || derived.lost.length > 0;
-  derived.coverageNote = methodNote || partialCoverage
-    ? pvmCoverageNote(derived.common.length, derived.commonPriorShare, derived.commonCurrentShare, options)
-    : null;
 
   const bridge: WaterfallData = {
     items: [
@@ -131,36 +101,6 @@ export function layoutPvm(
       { id: CURRENT_ID, label: data.currentLabel ?? chartString(options, 'current'), type: 'total', date: data.currentDate },
     ],
   };
-
-  const prices = chartString(options, volumeMix === 'combined' ? 'pvmConventionShortCombined' : 'pvmConventionShort');
-  const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-  const basisShort = derived.unitBasisNote
-    ? chartString(options, 'pvmBasisNote', { v1: derived.quantityUnit ? chartString(options, 'quantityUnit', { v1: derived.quantityUnit }) : chartString(options, 'noCountingUnit') })
-    : null;
-  const coverageShort = chartString(options, 'pvmCoverageShort', { v1: derived.common.length === 1 ? chartString(options, 'oneItem') : chartString(options, 'itemsCount', { v1: derived.common.length }) });
-  // The footer prints ONE short line,
-  // "Covers the 4 items in both periods; volume and mix at prior prices.",
-  // in place of three long method notes. The coverage half is a disclosure:
-  // the reader needs it while items enter or leave the book. The
-  // convention half is what methodNote asks for. Where volume and mix cancel
-  // the unit basis decides the split, so its short form prints too.
-  // The long texts stay in `derived`; they join the notes list only when the
-  // author sets `notes` (a host that builds a notes panel or backup slide),
-  // because static output prints every listed note in full.
-  const convention = interaction === 'separate' ? `${prices}; ${chartString(options, 'pvmPriceAtPriorShort')}` : prices;
-  const shortLine = [
-    ...(partialCoverage ? [coverageShort.replace(/\.$/, '')] : []),
-    ...(methodNote ? [convention] : []),
-  ];
-  const listed = options.notes !== undefined;
-  const footnotes = [
-    ...authoredNotes(options),
-    ...(shortLine.length > 0 ? [disclosureNote(`${capital(shortLine.join('; '))}.`)] : []),
-    ...(cancels && basisShort ? [disclosureNote(basisShort)] : []),
-    ...(listed && methodNote ? [engineNote(note, 'method')] : []),
-    ...(listed && derived.unitBasisNote ? [engineNote(derived.unitBasisNote, 'method')] : []),
-    ...(listed && derived.coverageNote ? [engineNote(derived.coverageNote, 'method')] : []),
-  ];
 
   // A step highlight on a bridge coloured by sign would read as a third kind
   // of step, neither gain nor loss.
@@ -193,7 +133,7 @@ export function layoutPvm(
     ...(options.valueAxis?.break === undefined && baseSwampsSteps(derived)
       ? { valueAxis: { ...options.valueAxis, break: 'auto' as const } }
       : {}),
-  }, footnotes, (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes);
+  }, authoredNotes(options), (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes);
 
   // The bridge is derived data: a waterfall refusal names a pvm option it was handed, or nothing.
   const geometry = hostedLayout(options, hostOptions, () => layoutWaterfall(bridge, hostOptions));

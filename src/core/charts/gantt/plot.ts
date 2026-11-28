@@ -7,7 +7,7 @@ import { chartString } from '../../strings/gantt';
  */
 
 import { spread1DResult } from '../../collide';
-import { frameTextOptions, hiddenNoteWith, normalizeLegendOption, solveFrame, type FrameInput, type FrameResult, type FrameWidthMeasurements, type LegendItemInput, numberedFootnotesWith } from '../../frame';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type FrameResult, type FrameWidthMeasurements, type LegendItemInput, numberedFootnotesWith } from '../../frame';
 import { SWATCH_RESERVE } from '../../label/emit';
 import { separationStroke } from '../../markVisibility';
 import { fitText } from '../../label/fitText';
@@ -284,9 +284,6 @@ export function ganttFrame(
 ): { frame: FrameResult; claims: OccupiedIndex; band: GanttBand } {
   const { size, theme, options, measure, fonts } = env;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-  // Compact framing can omit ordinary notes. Rebuild the shared disclosure
-  // from its item metadata so every dropped task or milestone stays named.
-  const hidden = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: options.notes?.maxListed ?? 'all' } }, []);
   const numbered = numberedFootnotesWith(options, [...domain.eventFootnotes, ...milestoneKey]);
   // Rows, item paints and authored legend options stay fixed during this height search.
   const keyWarnings: LintWarning[] = [];
@@ -300,7 +297,7 @@ export function ganttFrame(
       ...frameTextOptions(options),
       // the event legend's entries are what its badges point at,
       // and they follow the author's own notes.
-      footnotes: [...hidden.footnotes, ...hidden.line, ...domain.eventFootnotes, ...milestoneKey, ...listedKey, ...domain.itemLabelNotes],
+      footnotes: [...authoredNotes(options), ...domain.eventFootnotes, ...milestoneKey, ...listedKey, ...domain.itemLabelNotes],
       numberedFootnotes: numbered,
       numberedDisclosures: keyDisclosed ? milestoneKey.map((_, i) => numbered.length - milestoneKey.length + i + 1) : [],
       pointedNotes: [...frameTextOptions(options).pointedNotes ?? [], ...domain.eventFootnotes, ...milestoneKey],

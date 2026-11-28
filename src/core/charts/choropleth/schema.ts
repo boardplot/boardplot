@@ -56,7 +56,6 @@ export const choroplethOptionsSchema = z
     rowVisibility: rowVisibilityOption('choropleth'),
     rowOrder: rowOrderOption('choropleth'),
     rowOverrides: rowOverridesOption('choropleth'),
-    methodNote: z.boolean().optional().describe("Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless."),
   })
   .superRefine(addCanvasBoundsIssues)
   .superRefine(addGeoLegendNoneIssue)

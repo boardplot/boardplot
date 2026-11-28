@@ -1,9 +1,8 @@
 import { a11yDescription } from '../../a11yDescription';
-import { staticFrame } from '../../footer';
 import { chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/tilemap';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
+import { authoredNotes, frameTextOptions, settledAutoHeight, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, type FrameResult, type LegendItemInput } from '../../frame';
 import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 // By name, not through the '../../geo' barrel, for the reason choropleth/layout.ts gives.
@@ -47,7 +46,7 @@ import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOver
 import type { GeoOverlay } from '../choropleth/overlayTypes';
 import { geoOptionRefusals } from '../choropleth/geoRefusals';
 import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
-import { copyNote, disclosureNote, engineNoteMeta, keepNoteMeta } from '../../notes';
+import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 interface TileLabelVariant {
@@ -73,15 +72,11 @@ const SWATCH_KEY = Symbol('tilemap.swatchKey');
 
 interface TilemapPass {
   options: TilemapOptions;
-  listed?: ReadonlySet<string>;
-  run?: number;
-  omitted?: ReadonlySet<string>;
   heights?: Map<number, number>;
   fixedHeight?: boolean;
   /** The automatic height stopped on a repeated height; the frame is not pinned. */
   stopped?: boolean;
   /** The tiles print codes alone; a note names the value leads and counts the rest above DEFAULT_NOTE_LIMIT. */
-  valuesNoted?: boolean;
   /** The tile size under the stepped key, while a pinned canvas tries the swatch key instead. */
   steppedTile?: number;
   /** The swatch key left smaller tiles than the stepped key: keep the stepped key. */
@@ -91,10 +86,6 @@ interface TilemapPass {
 export function layoutTilemap(
   data: TilemapData,
   options: TilemapOptions = {},
-  /** Overlays whose text an earlier pass could not seat off the other tiles; listed in a note. */
-  listed?: ReadonlySet<string>,
-  run = 0,
-  omitted: ReadonlySet<string> = new Set(),
 ): LayoutResult<TilemapMarks, TilemapDerived> {
   const constraints = (options as TargetSizeOptions)[TARGET_SIZE] as
     (NonNullable<TargetSizeOptions[typeof TARGET_SIZE]> & { [AUTOMATIC_FRAME]?: { width: number; height: number } }) | undefined;
@@ -108,7 +99,7 @@ export function layoutTilemap(
     && (size.width !== constraints.sizePx.width || (automaticFrame !== undefined && size.height !== automaticFrame.height)))
     || (constraints === undefined && options.size !== undefined);
   if (fixedHeight && constraints) constraints.fixed.height = true;
-  let pass: TilemapPass = { options, listed, run, omitted, fixedHeight };
+  let pass: TilemapPass = { options, fixedHeight };
   const sideKey = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? {} : undefined;
   for (let attempt = 0; ; attempt++) {
     const result = layoutTilemapPass(data, pass, attempt === MAX_LAYOUT_PASSES, sideKey);
@@ -141,7 +132,7 @@ function unknownRegionSuggest(id: string, pack: TilePack, idIndex: GeoRegionIdIn
 /** Height and note passes must not grow the call stack. */
 function layoutTilemapPass(
   data: TilemapData,
-  { options, listed, run = 0, omitted = new Set(), heights = new Map(), fixedHeight = false, stopped = false, valuesNoted = false, steppedTile, keepStepped }: TilemapPass,
+  { options, heights = new Map(), fixedHeight = false, stopped = false, steppedTile, keepStepped }: TilemapPass,
   exhausted: boolean, sideKey: { tooNarrowAt?: { width: number; height: number } } | undefined,
 ): LayoutResult<TilemapMarks, TilemapDerived> | TilemapPass {
   // What the schema refuses, refused here for the React entry.
@@ -215,29 +206,8 @@ function layoutTilemapPass(
   const colMin = minOf(pack.regions.map((region) => region.col));
   const rows = maxOf(pack.regions.map((region) => region.row)) - rowMin + 1;
   const cols = maxOf(pack.regions.map((region) => region.col)) - colMin + 1;
-  const omissionLines = valueNoteLine(chartString(options, 'notPrintedTiles'), [...omitted].map(id => {
-    const region = pack.regions.find(region => region.id === id)!;
-    const value = valuesById.get(id);
-    const state = statesById.get(id);
-    return `${region.id} ${state ? geoStateLabel(state, options) : value != null ? fmt(value) : valuesById.has(id) ? chartString(options, 'valueMissing') : chartString(options, 'notInData')}`;
-  }), options);
-  // Tiles too small for their values print codes alone. The note names the leads (the
-  // extremes and any value the title or subtitle names) and, above DEFAULT_NOTE_LIMIT,
-  // counts the rest; the reading lists every value.
-  const valueEntries = pack.regions.flatMap((region) => {
-    const value = valuesById.get(region.id);
-    return value != null && !statesById.has(region.id) ? [{ id: region.id, name: region.name, value, text: `${region.id} ${fmt(value)}` }] : [];
-  });
-  const valueLines = valuesNoted ? tileValueNote(valueEntries, options) : [];
-  if (valueLines.length) pushAll(omissionLines, valueLines);
-  // Fixed canvases and right keys keep their accepted tile area.
-  // The note-list fallback records omissions without taking tile space.
-  // The layout, not the spec, put the key beside the tiles.
   let keyChosen = false;
   let rightKey = legendOptions.position === 'right' || legendOptions.position === 'left';
-  // A stopped automatic height is not a pinned frame. Its note stays in the
-  // frame, so the reported floor holds the note the static footer prints.
-  const listOmissions = !staticFrame.pinned && ((fixedHeight && !stopped) || rightKey || panelTypeClass(options) !== undefined);
   let drawableOverlays = data.overlays ?? [];
   const layoutFrame = () => {
     const overlayLegend = geoOverlayLegend(drawableOverlays, options.overlayTones, options.overlayMeasure, drawableOverlays, options);
@@ -247,9 +217,7 @@ function layoutTilemapPass(
         size,
         margin,
         ...frameTextOptions(options),
-        // Only drawn glyphs can have a key or a label in the tile note.
-        footnotes: [...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote), ...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
-          ...(listOmissions ? [] : omissionLines), ...authoredNotes(options)],
+        footnotes: [...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote), ...authoredNotes(options)],
         // The tile layout is Boardplot's own and carries no third-party data, so the
         // source line names only the author's source. The full attribution stays in
         // the reading and in derived.pack.attribution.
@@ -266,12 +234,6 @@ function layoutTilemapPass(
     if (keyChosen && frameResult.frame.warnings) {
       const kept = frameResult.frame.warnings.filter((warning) => warning.code !== 'legend-beside-plot');
       frameResult.frame.warnings = kept.length ? kept : undefined;
-    }
-    if (listOmissions && omissionLines.length) {
-      frameResult.frame.notes = [...(frameResult.frame.notes ?? []), ...omissionLines];
-      frameResult.frame.noteList = [...(frameResult.frame.noteList ?? []),
-        ...omissionLines.map(text => keepNoteMeta({ n: 0, kind: 'disclosure' as const, text, inFrame: false }, engineNoteMeta(text)))]
-        .map((note, i) => copyNote(note, { n: i + 1 }));
     }
     // The stepped key takes a band above the plot, as the frame's own key row would.
     if (key) {
@@ -348,11 +310,11 @@ function layoutTilemapPass(
   // short for the key's tick row, the swatch list takes its place. The list
   // can wrap to more rows than the stepped bar takes; it stays only where its tiles are larger.
   if (key && fixedHeight && !keepStepped && size.height + SIZE_TOLERANCE < naturalHeight()) {
-    return { options: { ...options, [SWATCH_KEY]: true } as TilemapOptions, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted, steppedTile: frame.tileSize };
+    return { options: { ...options, [SWATCH_KEY]: true } as TilemapOptions, heights, fixedHeight, stopped, steppedTile: frame.tileSize };
   }
   if (steppedTile !== undefined && frame.tileSize < steppedTile) {
     const { [SWATCH_KEY]: _swatch, ...stepped } = options as TilemapOptions & { [SWATCH_KEY]?: true };
-    return { options: stepped, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted, keepStepped: true };
+    return { options: stepped, heights, fixedHeight, stopped, keepStepped: true };
   }
   if (exhausted) {
     // Repair probes must use the advised fixed height.
@@ -399,7 +361,7 @@ function layoutTilemapPass(
       const stoppedHeight = fittingHeights.length ? Math.min(...fittingHeights) : Math.max(...heights.keys(), nextHeight);
       return {
         options: { ...options, size: { width: size.width, height: repeated ? stoppedHeight : nextHeight } },
-        listed, run, omitted, heights, fixedHeight: fixedHeight || repeated, stopped: stopped || (repeated && !fixedHeight), valuesNoted,
+        heights, fixedHeight: fixedHeight || repeated, stopped: stopped || (repeated && !fixedHeight),
       };
     }
     // Keep automatic height growth before deciding which glyphs fit.
@@ -410,7 +372,7 @@ function layoutTilemapPass(
       maxHeight: tallestContentHeight(size.width),
     });
     if (grow !== undefined) return {
-      options: { ...options, size: { width: size.width, height: grow } }, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted,
+      options: { ...options, size: { width: size.width, height: grow } }, heights, fixedHeight, stopped,
     };
     const fitting = fittingOverlays(frame.tileSize);
     if (fitting.length === drawableOverlays.length) break;
@@ -447,10 +409,6 @@ function layoutTilemapPass(
   // under the bold code; otherwise the tiles keep their codes alone.
   const printValues = options.regionValues
     ?? (labelEnabled && valuesFit(pack.regions, valuesById, tileSize, labelTheme, measure, fmt));
-  // Values the tiles leave out are named in a note: run again with it, so the frame holds its lines.
-  if (!printValues && !valuesNoted && options.regionValues === undefined && labelEnabled && valueEntries.length) {
-    return { options, listed, run, omitted, heights: new Map(), fixedHeight, stopped, valuesNoted: true };
-  }
   // Codes print bold where every code fits bold, so one map has one weight.
   const boldCodes = codesFitBold(pack.regions, tileSize, labelTheme, measure);
   // Under an authored format a tile states the text its value line would print, for a value no tile prints.
@@ -517,28 +475,11 @@ function layoutTilemapPass(
   const valueless = options.regionValues
     ? solved.placed.filter((label) => !label.hidden && label.lines?.length === 1 && valuesById.get(label.owner.categoryId!) != null)
     : [];
-  // Fixed repairs and stopped height cycles still owe every hidden label. A
-  // frame below its floor refuses in the size gate: noting its
-  // labels would only add passes to a probe that cannot draw.
-  const belowFloor = panelTypeClass(options) === undefined && size.height + SIZE_TOLERANCE < naturalHeight();
-  const missing = belowFloor ? [] : solved.placed.filter(label => label.hidden || valueless.includes(label));
-  if (missing.some(label => !omitted.has(label.owner.categoryId!))) {
-    return { options, listed, run, omitted: new Set([...omitted, ...missing.map(label => label.owner.categoryId!)]), heights, fixedHeight, stopped, valuesNoted };
-  }
-  const omissionNote = frameResult.frame.noteList?.find(note => note.text.startsWith(`${chartString(options, 'notPrintedTiles')}:`));
-  if (omissionNote) {
-    const omittedIds = [...omitted];
-    for (const label of missing) {
-      label.noted = true;
-      if (omittedIds.indexOf(label.owner.categoryId!) >= noteCap(options, omittedIds.length)) label.noteCounted = true;
-      label.noteLocation = `${chartString(options, 'notPrintedTiles')} (frame.noteList)`;
-    }
-  }
   if (valueless.length) {
     warnings.push({
       code: 'tilemap-values-dropped',
       severity: 'warn',
-      message: `regionValues: ${valueless.length} tile${valueless.length === 1 ? '' : 's'} too small for a value under the code (${valueless.map((label) => label.owner.categoryId).join(', ')}); ${omissionNote ? 'their values are listed in the note' : 'their values show on hover only'}`,
+      message: `regionValues: ${valueless.length} tile${valueless.length === 1 ? '' : 's'} too small for a value under the code (${valueless.map((label) => label.owner.categoryId).join(', ')}); their values show on hover only`,
       suggest: 'give the tile map more room, or a shorter format',
     });
   }
@@ -554,23 +495,12 @@ function layoutTilemapPass(
     // glyph off the tiles, or moves to the note.
     ignoredBaseParts: new Set(),
     adjacentOnly: true,
-    ...(listed ? { textless: listed } : {}),
-  });
-  const lost = overlayResult.labels.filter((label) => label.hidden).map((label) => String(label.id).replace(/^overlay:/, ''));
-  if (lost.length && run < 3) return {
-    options, listed: new Set([...(listed ?? []), ...lost]), run: run + 1, omitted, heights, fixedHeight, stopped, valuesNoted,
-  };
-  const listedOverlays = drawableOverlays.filter((overlay) => listed?.has(overlay.id)).map((overlay) => overlay.id);
-  if (listedOverlays.length) warnings.push({
-    code: 'geo-overlay-label-listed', severity: 'warn',
-    message: `overlay labels moved to the region-coded note because no adjacent slot fits: ${listedOverlays.join(', ')}`,
-    suggest: 'give the tile map more room or shorten the overlay labels',
   });
   pushAll(nodes, overlayResult.nodes);
   pushAll(warnings, overlayResult.warnings);
   if (overlayResult.marks.length) marks.overlays = overlayResult.marks;
 
-  if (automaticHeight && !data.overlays?.length && !listed?.size && omitted.size === 0
+  if (automaticHeight && !data.overlays?.length
     && naturalHeight() === size.height) settledAutoHeight.add(frameResult.frame);
   // A successful automatic layout has fitted its notes and glyphs. Later
   // height probes can repeat that natural frame; refusals keep their fixed
@@ -591,7 +521,7 @@ function layoutTilemapPass(
   // A key column the layout chose must not refuse a canvas that draws with the key row: a column
   // taller than the canvas, or larger tiles that keep glyphs over the codes, leave no smaller lattice.
   if (keyChosen && tooShort && !smallerLattice) {
-    return { options: { ...options, legend: 'top' }, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted };
+    return { options: { ...options, legend: 'top' }, heights, fixedHeight, stopped };
   }
   if (smallerLattice) warnings.push({
     code: 'plot-under-floor', severity: 'warn',
@@ -646,28 +576,6 @@ function layoutTilemapPass(
       decisions: [...solved.decisions, ...overlayResult.decisions],
     },
   };
-}
-
-/**
- * The world grid prints two- and three-letter codes that few readers
- * know, so a static exhibit (PNG, slide) carries the lookup: every code with
- * its country name. The US and EU grids print their standard codes.
- */
-function codeLookup(options: TilemapOptions, pack: ReturnType<typeof getTilePack>): string[] {
-  if (pack.id !== 'world') return [];
-  const entries = [...pack.regions].sort((a, b) => compareText(a.id, b.id)).map((region) => `${region.id} ${region.name}`);
-  return [disclosureNote(chartString(options, 'codesSentence', { v1: entries.join('; ') }))];
-}
-
-/** The note that lists overlay texts moved off the grid, each under its tile's code. */
-function overlayNote(overlays: readonly GeoOverlay[], listed: ReadonlySet<string> | undefined, pack: ReturnType<typeof getTilePack>, idIndex: ReturnType<typeof geoRegionIdIndex>, options: NoteCapOptions): string[] {
-  if (!listed?.size) return [];
-  return noteLine(chartString(options, 'overlays'), overlays.flatMap((overlay, index) => {
-    if (!listed.has(overlay.id)) return [];
-    const regionId = resolveTilemapOverlayRegion(overlay, index, pack.id, idIndex);
-    const code = pack.regions.find((region) => region.id === regionId)?.shortName ?? regionId;
-    return [overlay.label.startsWith(code) ? overlay.label : `${code} ${overlay.label}`];
-  }), options);
 }
 
 function resolveTilemapOverlayAnchor(
@@ -1032,25 +940,6 @@ function valuesFit(
     const code = Math.min(measure(region.shortName, bold).width, measure(region.id, bold).width);
     return Math.max(code, measure(fmt(value), regular).width) <= tile - 4;
   });
-}
-
-/**
- * The note for values the tiles do not print: above DEFAULT_NOTE_LIMIT the
- * leads (highest, lowest, and any value or region the title or subtitle names) come first, then
- * the rest in order; the first 8 by name, then "and N more". `notes.maxListed` wins.
- */
-function tileValueNote(entries: readonly { id: string; name: string; value: number; text: string }[], options: TilemapOptions): string[] {
-  const lead = chartString(options, 'valuesNotPrinted');
-  if (entries.length <= DEFAULT_NOTE_LIMIT) return valueNoteLine(lead, entries.map((entry) => entry.text), options, entries.length);
-  const heading = [options.title, ...(typeof options.subtitle === 'object' && options.subtitle !== null ? Object.values(options.subtitle) : [options.subtitle])]
-    .filter((part): part is string => typeof part === 'string').join(' ');
-  const named = (entry: typeof entries[number]) => [entry.id, entry.name, entry.text.slice(entry.id.length + 1)]
-    .some((token) => heading.includes(token) && new RegExp(`(^|[^\\p{L}\\p{N}.,])${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}]|[.,]\\p{N})`, 'u').test(heading));
-  const values = entries.map((entry) => entry.value);
-  const high = entries.find((entry) => entry.value === maxOf(values))!;
-  const low = entries.find((entry) => entry.value === minOf(values))!;
-  const leads = [...new Set([high, low, ...entries.filter(named)])];
-  return valueNoteLine(lead, [...new Set([...leads, ...entries])].map((entry) => entry.text), options, entries.length);
 }
 
 /** Whether every tile's code fits its tile in bold, as tileLabelPlan measures it. */

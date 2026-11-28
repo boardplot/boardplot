@@ -73,11 +73,6 @@ export interface PyramidOptions extends Omit<BaseOptionsFor<'pyramid'>, 'sort' |
    * on two groups that both carry a `date` plots 'shareOfGroup'.
    */
   basis?: 'count' | 'shareOfTotal' | 'shareOfGroup';
-  /**
-   * Default false. true adds the band convention ([from, to), youngest at the
-   * bottom, equal widths). An open-ended band and the share base print regardless.
-   */
-  methodNote?: boolean;
 }
 
 export interface PyramidDerived {

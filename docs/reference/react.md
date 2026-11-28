@@ -345,18 +345,11 @@ export function Dashboard() {
 | strings.better | string |  |  | Meaning of a better sign-coloured value. |
 | strings.worse | string |  |  | Meaning of a worse sign-coloured value. |
 | strings.positiveTotal | string |  |  | Name of a mixed-sign stack positive boundary. |
-| strings.rangeMidNote | string |  |  | Range method note. |
-| strings.sensitivityNote | string |  |  | Tornado method note. |
-| strings.hatchedBaseNote | string |  |  | Tornado base mismatch note. |
 | strings.missingSwingNote | string |  |  | Tornado missing output note; {drivers} is replaced. |
 | strings.rankOmitted | string |  |  | Focused bump note. |
 | strings.noRank | string |  |  | A missing bump rank. |
-| strings.rankMethod | string |  |  | Bump method note; {direction}, {format}, and {ring} are replaced. |
 | strings.higherBetter | string |  |  | Direction of a bump rank. |
 | strings.lowerBetter | string |  |  | Direction of a bump rank. |
-| strings.rankFormat | string |  |  | Format clause in the bump method note. |
-| strings.rankRing | string |  |  | Tie clause in the bump method note. |
-| strings.nearZeroNote | string |  |  | Note for folded zero line ends. |
 | strings.flagged | string |  |  | Anomaly marker key. |
 | strings.corridor | string |  |  | Anomaly rule key. |
 | strings.corridorBounds | string |  |  | Authored anomaly bounds key. |
@@ -373,7 +366,7 @@ export function Dashboard() {
 | strings.lowerBound | string |  |  | Off-scale lower corridor bound. |
 | strings.upperBound | string |  |  | Off-scale upper corridor bound. |
 | strings.undrawnBounds | string |  |  | Off-scale corridor note. |
-| strings.hiddenLabels | string |  |  | Heading of the note for hidden chart labels. |
+| strings.hiddenLabels | string |  |  | Heading for hidden heatmap labels in its accessible description. |
 | strings.noteOne | string |  |  | Pointer to one hidden note. |
 | strings.noteMany | string |  |  | Pointer to hidden notes. |
 | strings.notesAndSources | string |  |  | React notes panel label. |
@@ -384,15 +377,12 @@ export function Dashboard() {
 | strings.belowSeries | string |  |  | Negative line gap key. |
 | strings.average | string |  |  | Name before a computed mean; English Average, German Ø. |
 | strings.toDate | string |  |  | Text after a partial period name or value. Set to an empty string to omit the words and their space. |
-| strings.stackAverages | string |  |  | Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. |
 | strings.forecast | string |  |  | Key for the forecast pattern. |
 | strings.plan | string |  |  | Key for the plan outline. |
 | strings.forecastHeader | string |  |  | Header at the actual-to-forecast boundary. Keeps the scenario code by default. |
 | strings.net | string |  |  | Name before a net total. |
 | strings.incomplete | string |  |  | Marker for partial table aggregates and incomplete 100% bar categories. |
 | strings.range | string |  |  | Key for a range whisker. |
-| strings.valuesNotOnColumns | string |  |  | Note heading for omitted column values. |
-| strings.valuesNotBesideMarks | string |  |  | Note heading for omitted combo values. |
 | strings.knownPartsTotals | string |  |  | Footer heading for incomplete stack totals in column and combo charts. |
 | strings.without | string |  |  | Word before missing stack parts. |
 | strings.and | string |  |  | Word joining missing stack parts. |
@@ -405,15 +395,12 @@ export function Dashboard() {
 | strings.baseCase | string |  |  | Tornado spine; {value} is replaced. |
 | strings.swingOutsideBase | string |  |  | Tornado hatch key. |
 | strings.fanGap | string |  |  | Missing uncertainty note; {categories} is replaced. |
-| strings.mixedShares | string |  |  | Mixed-sign share note; {categories} is replaced. |
 | strings.storyBack | string |  |  | Host wording for the story back button. |
 | strings.storyNext | string |  |  | Host wording for the story next button. |
 | strings.storyCounter | string |  |  | Host wording for the story counter; default {step} / {count}, without zero padding. |
 | strings.storyStep | string |  |  | Host wording for the story live region position; {step} and {count} print without padding. Defaults to Step {step} of {count} (EN), Schritt {step} von {count} (DE). |
 | strings.axisLow | string |  |  | Host wording for the low end of a scatter qualitative axis. |
 | strings.axisHigh | string |  |  | Host wording for the high end of a scatter qualitative axis. |
-| strings.nearZeroChange | string |  |  | Table n.m. change note. |
-| strings.mixedCoverage | string |  |  | Table n.m. note for a change between totals of different rows. |
 | strings.hiddenPeriods | string |  |  | Dimswitch note for periods left out; {periods} is replaced. |
 | strings.missingStack | string |  |  | StackedArea source-null note; {categories} is replaced. |
 | strings.incompleteStacks | string |  |  | Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced. |

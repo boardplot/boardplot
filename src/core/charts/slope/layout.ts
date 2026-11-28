@@ -484,7 +484,7 @@ function layoutSlopeLines(data: ChartData, options: SlopeOptions, heightOnly = f
       size,
       margin,
       ...frameTextOptions(options),
-      footnotes: [...authoredNotes(options), ...omittedNotes, ...(fold ? [fold.record.note] : [])],
+      footnotes: authoredNotes(options),
       legend: legendInput,
       theme,
       measure,

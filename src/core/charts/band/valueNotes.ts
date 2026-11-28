@@ -1,60 +1,30 @@
-import { dataOrder, markNotedLabels, NOTED_LABELS, withHiddenLabelNote } from '../../frame';
 import { panelTypeClass } from '../../theme';
-import type { ChartData } from '../../types/data';
 import type { BaseOptions } from '../../types/options';
-import { noteName } from '../../calendarData';
+import type { PlacedLabel } from '../../types/scene';
 
 /**
- * The column totals whose seat a combo line end must leave free. The note pass sets it when a
- * line end lifted over the columns took a total's seat: a total drawn on the chart beats one
- * named in a note, and the line end still reads off its axis.
+ * The column totals whose seats a combo line end must leave free.
  */
 const KEEP_TOTAL_SEATS = Symbol('keepTotalSeats');
 
-/** The label kinds a hidden value is named for in the note. */
-const NOTED_KINDS = ['segment', 'grandTotal', 'total', 'category'];
+/** The label kinds that a total may displace. */
+const BAND_LABELS = ['segment', 'grandTotal', 'total', 'category'];
 
-/** a hidden stack value or category needs a printed home at the target font size. */
-export function withBandValueNotes<O extends Pick<BaseOptions, 'target' | 'theme'>, G extends Parameters<typeof markNotedLabels>[0]>(
-  data: ChartData,
+export function keepBandTotals<O extends Pick<BaseOptions, 'target' | 'theme'>, G extends { labels: PlacedLabel[] }>(
   options: O,
-  layout: (options: O, hiddenNote?: true) => G,
-  refreshListNote?: (first: G, before: O, after: O) => boolean,
+  layout: (options: O) => G,
 ): G {
   const first = layout(options);
   let geo = first;
   if (panelTypeClass(options) !== undefined) return geo;
-  // Re-check before a note: a hidden total that a lifted line end displaced draws when that end leaves its seat.
-  // Taken only when every such total draws and no other label the note would name is lost.
+  // Give hidden totals their seats if the line ends can move without losing another label.
   const owed = (label: { kind: string; hidden?: unknown; noted?: boolean }) =>
-    !label.noted && label.hidden === 'collision' && NOTED_KINDS.includes(label.kind);
+    !label.noted && label.hidden === 'collision' && BAND_LABELS.includes(label.kind);
   const totals = new Set(geo.labels.filter(label => label.kind === 'grandTotal' && owed(label)).map(label => label.id));
   if (totals.size > 0 && geo.labels.some(label => label.kind === 'point' && /^aboveColumn\d$/.test(label.slot ?? ''))) {
     const before = new Set(geo.labels.filter(owed).map(label => label.id));
     const kept = layout({ ...options, [KEEP_TOTAL_SEATS]: totals });
     if (kept.labels.every(label => !owed(label) || (before.has(label.id) && !totals.has(label.id)))) geo = kept;
-  }
-  let named = new Map<string, string>();
-  const name = (rows: readonly { id: string; label?: string }[] | undefined, id: string | undefined) => {
-    const row = rows?.find(item => item.id === id);
-    return row ? noteName(row) : id;
-  };
-  for (let pass = 0; pass < 3; pass++) {
-    const missing = geo.labels.filter(label => owed(label) && !named.has(label.id));
-    if (missing.length === 0) break;
-    for (const label of missing) {
-      const series = name(data.series, label.owner.seriesId);
-      const category = name(data.categories, label.owner.categoryId);
-      named.set(label.id, label.noteText ?? (label.kind === 'category' ? label.text :
-        `${series ? `${series} ` : ''}${label.text}${category ? ` (${category})` : ''}`));
-    }
-    const byData = dataOrder(data, geo.labels);
-    named = new Map([...named].sort(([a], [b]) => byData(a, b)));
-    const noteOptions = withHiddenLabelNote(options, named, { data, labels: geo.labels, annotations: (options as { annotations?: unknown }).annotations });
-    if (!(pass === 0 && geo === first && refreshListNote?.(first, options, noteOptions))) {
-      geo = layout(noteOptions, true);
-    }
-    markNotedLabels(geo, (noteOptions as unknown as { [NOTED_LABELS]: ReadonlySet<string> })[NOTED_LABELS], noteOptions);
   }
   return geo;
 }

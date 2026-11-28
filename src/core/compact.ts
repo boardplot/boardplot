@@ -2,7 +2,7 @@ import { DEFAULT_PRESET, libraryPatch, resolveTheme } from './theme';
 import { themeForDensity } from './themeDensity';
 import type { BaseOptions } from './types/options';
 import type { ThemeRef } from './types/theme';
-import { authoredNotes, hiddenNoteLine, withAuthoredFootnotes } from './frame';
+import { authoredNotes, withAuthoredFootnotes } from './frame';
 import { COMPACT_OMITTED_NOTES, staticFrame } from './footer';
 
 /**
@@ -39,8 +39,7 @@ export function omittedCompactNotes(type: string, options: Omit<BaseOptions, 'mo
   const preserveNotes = staticFrame.pinned || type === 'bullet' || hasReplacementNote || !options.title;
   // The moved subtitle and the note naming what the chart did not draw stay on the canvas.
   const moved = (options as { [MOVED_SUBTITLE]?: string })[MOVED_SUBTITLE];
-  const hidden = hiddenNoteLine(options);
-  return preserveNotes ? [] : authoredNotes(options).filter((note) => note !== moved && note !== hidden);
+  return preserveNotes ? [] : authoredNotes(options).filter((note) => note !== moved);
 }
 
 /**

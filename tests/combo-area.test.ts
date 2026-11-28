@@ -293,7 +293,7 @@ it('names and marks the net of a mixed-sign combo stack, and keeps a one-sign to
 });
 
 // A value-note retry could discard the column totals and line labels when the chart computed an average rule.
-it('keeps the chart labels and value note alongside a computed average rule', () => {
+it('keeps the chart labels alongside a computed average rule', () => {
   const categories = Array.from({ length: 11 }, (_, i) => {
     const date = `2025-01-${String(i + 1).padStart(2, '0')}`;
     return { id: date, date };
@@ -310,5 +310,4 @@ it('keeps the chart labels and value note alongside a computed average rule', ()
   const visible = geometry.labels.filter(label => !label.hidden);
   expect(visible.some(label => label.kind === 'grandTotal')).toBe(true);
   expect(visible.some(label => label.kind === 'point')).toBe(true);
-  expect(geometry.warnings.some(warning => warning.code === 'values-in-note')).toBe(true);
 });

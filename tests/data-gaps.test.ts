@@ -83,24 +83,15 @@ it('draws a short fixed-height stack without the default caveat and keeps its wa
   }
 });
 
-// A slide without a caveat must step down its text before giving up the requested method note.
-it('steps down slide text to keep the requested method note', () => {
-  const fixture = getFixtures('line').find(entry => entry.id === 'brand-share-bump')!;
-  const chart = draw('line', fixture.data, { ...fixture.options, target: 'slide', methodNote: true, size: { width: 720, height: 380 } });
-  expect(codes(chart)).toContain('type-stepped');
-  expect(codes(chart)).not.toContain('footnotes-off');
-  expect(chart.frame.noteList).toContainEqual(expect.objectContaining({ kind: 'method', inFrame: true }));
-});
-
 // A default caveat must not take the place of disclosures the author requested on a slide.
 it('keeps requested disclosures when slide text steps down to fit', () => {
   const stack = twoPartStack(['Q1', 'Q2', 'Q3', 'Q4'], [100, 100, 100, 100], [3, null, 2, 4]);
   const data = { ...stack, series: [...stack.series, { id: 'g', label: 'Gamma', values: [50, 50, 50, 50] }] };
   const chart = draw('column', data, { variant: 'stacked', title: 'Sales by tier across four quarters',
-    subtitle: 'USD millions', source: 'Internal', target: 'slide', notes: { placement: 'frame' }, size: { width: 720, height: 260 } });
+    subtitle: 'USD millions', source: 'Internal', target: 'slide', notes: { placement: 'frame' }, size: { width: 720, height: 250 } });
   expect(codes(chart)).toContain('type-stepped');
   expect(codes(chart)).not.toContain('footnotes-off');
-  expect(footer(chart)).toEqual(expect.arrayContaining(['Values not printed on the columns: Beta 3 (Q1), Beta 2 (Q3), Beta 4 (Q4).', stackNote]));
+  expect(footer(chart)).toContain(stackNote);
 });
 
 // A long list of missing parts must leave room for the plot.
@@ -743,13 +734,11 @@ describe('bridged gaps on a line', () => {
 
 // beside an n.m. category, the one valid 100% category drew nothing but two loose shares.
 describe('a lone valid 100% category', () => {
-  it('stands as a short stacked column with its shares on it, and a note says why its neighbour is withheld', () => {
+  it('draws the lone valid category as a short stacked column', () => {
     const categories = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }];
     const geometry = lay('line', { categories, series: [{ id: 's1', label: 'S1', values: [60, 40] }, { id: 's2', label: 'S2', values: [-20, 60] }] }, { variant: 'stacked100-area', valueLabels: 'all' });
     const columns = geometry.scene.filter((node) => node.part === 'segment' && node.owner.categoryId === 'b');
-    // Footer rule: the note is in the notes list, not drawn.
-    const note = noteTexts(geometry).some((text) => text.startsWith('A: n.m.'));
-    expect([columns.length, note]).toEqual([2, true]);
+    expect(columns).toHaveLength(2);
   });
 });
 

@@ -18,7 +18,7 @@ import { canvasMargin, classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVA
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
 import { chartTheme } from '../chartEnv';
-import { rankKeyShown } from '../../notes';
+import { disclosuresShown } from '../../notes';
 import { withValueLabelDefaults } from '../band/valueSelection';
 import { fitsInside } from '../band/labels';
 /** Zod-free column chart registration. */
@@ -152,7 +152,7 @@ export const columnKeyFirst = bandKeyFirst((data, options, opening) => {
     if (!measured) return false;
     const { frame, printedDisclosure } = measured;
     const area = columnPlotArea(domain, frame, warnings, undefined, undefined, undefined, true);
-    if (area.showCatRow && (mayStep || rankKeyShown(options))) {
+    if (area.showCatRow && (mayStep || disclosuresShown(options))) {
       const row = area.catPlan();
       // A numeric date row never makes rank or cut notes. A whole upright row keeps its names
       // at this width, and gives stepToBar nothing to turn into horizontal bars.

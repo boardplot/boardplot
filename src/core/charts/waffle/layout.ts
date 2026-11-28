@@ -17,7 +17,7 @@ import { chartString } from '../../strings/waffle';
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { COMPACT_SOURCE_LINES, authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type CompactSourceOptions, type FrameInput, type LegendItemInput } from '../../frame';
-import { formatAutomaticPercent, shareText } from '../../format';
+import { shareText } from '../../format';
 import { defaultSetSpec, engineNumberSpec, exampleSpec, formatWithSpec, roundedNumber, zeroText, type NumberFormatSpec } from '../../formatSpec';
 import { authoredDecimals } from '../../formatPrecision';
 import { round2, type Rect } from '../../geometry';
@@ -392,13 +392,6 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
     ? { options: legendRequired(options.legend, warnings, 'waffle', theme, 'the segments are named only by their colours'), items }
     : items.length > 0 ? { options: normalizeLegendOption(options.legend, { position: reference ? 'top' : 'bottom' }) ?? { position: 'bottom' }, items } : undefined;
   if (groups.some((group) => group.colorRole) && legend) legend.items = items.filter((item) => (hasRest && item.id === restId) || (reference && item.id === referenceId));
-  // Up to two decimals, no trailing zeros: 5%, 2.5%, 4.76%.
-  const rounded = Math.round(cellShare * 100) / 100;
-  const shareDecimals = Number.isInteger(rounded) ? 0 : Number.isInteger(rounded * 10) ? 1 : 2;
-  // The share of one cell, named when it is not 1% (the 10 × 10 default needs no note).
-  const cellNote = (options.cellNote ?? 'auto') === 'auto' && Math.abs(cellShare - 1) > 1e-9
-    ? [disclosureNote((options.strings?.cellNote ?? 'One cell = {value}').replace('{value}', formatAutomaticPercent(cellShare, shareDecimals, false, options.locale?.language)))] : [];
-  // Use spare width beside a single grid only when the key fits there; authored positions stay.
   const labelFont = eyebrowFont(theme, textScaleOf(options));
   const keyFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   // One panel with several segments: the readout (value and name of each segment and of the rest, and the
@@ -406,16 +399,12 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
   const readout = !lean && !square && panels.length === 1 && series.length > 1 && !authoredKey && !!legend;
   if (readout) legend = undefined;
   const subtotalNotes = subtotal && !readout ? [disclosureNote(`${subtotalText} ${subtotal.label}`)] : [];
-  // The notes say which panels have no value: n/a in the headline, or an empty grid where no headline prints.
-  const missingLabels = panels.filter((panel) => missing(panel)).map((panel) => panel.label);
-  const missingNotes = missingLabels.length === 0 ? [] : [disclosureNote(chartString(options, 'noValueNote', {
-    na: chartString(options, 'notApplicable'), v1: missingLabels.join(', ') }))];
   const measureInFrame = !lean && panels.length === 1 && !options.subtitle && panels[0]!.label !== '';
   const referenceNotes = referenceNote ? [lean ? engineNote(reference!.label, 'note') : disclosureNote(reference!.label)] : [];
   // A fixed frame that hands its source line to the host (COMPACT_SOURCE_LINES 0) has no row for a
   // "+1 note" pointer either: the reference note stays in the notes list, and a static footer prints it.
   const pointerOff = lean && referenceNote && (options as CompactSourceOptions)[COMPACT_SOURCE_LINES] === 0 && authoredNotes(options).length === 0;
-  const frame = solveFrame({ size, margin, ...frameTextOptions(options), ...(measureInFrame ? { subtitle: { measure: panels[0]!.label } } : {}), ...(referenceNote ? { footnotesOff: false } : {}), ...(pointerOff ? { notes: { ...options.notes, pointer: false } } : {}), footnotes: [...authoredNotes(options), ...cellNote, ...referenceNotes, ...subtotalNotes, ...missingNotes], legend, theme, measure }, occupied);
+  const frame = solveFrame({ size, margin, ...frameTextOptions(options), ...(measureInFrame ? { subtitle: { measure: panels[0]!.label } } : {}), ...(referenceNote ? { footnotesOff: false } : {}), ...(pointerOff ? { notes: { ...options.notes, pointer: false } } : {}), footnotes: [...authoredNotes(options), ...referenceNotes, ...subtotalNotes], legend, theme, measure }, occupied);
   // The contrast stroke needs the mark's ground to stay readable in its key.
   const referenceKey = frame.legend?.items.find((item) => item.id === referenceId);
   const referenceSwatch = frame.nodes.find((node) => node.id === referenceKey?.swatchNodeId);

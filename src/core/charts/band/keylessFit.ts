@@ -2,7 +2,7 @@ import { HOST_CLAIMS } from '../../claims/ids';
 import { staticFrame } from '../../footer';
 import type { FrameResult } from '../../frame';
 import { zeroLifts } from '../../formatPrecision';
-import { rankKeyShown, withEngineNotes } from '../../notes';
+import { disclosuresShown, withEngineNotes } from '../../notes';
 import type { ChartOptions } from '../../registry';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { heightOmitted, PLOT_FLOOR_PX } from '../../sizing';
@@ -13,7 +13,7 @@ import type { Geometry } from '../../types/scene';
 
 export function keylessAreaFits(options: ChartOptions, frame: FrameResult, plot: { h: number }, height: number, printedDisclosure: boolean): boolean {
   return (frame.frame.minHeight ?? Infinity) <= height && (frame.frame.plotMinHeight ?? Infinity) <= height
-    && (heightOmitted(options.size) || !rankKeyShown(options) || !printedDisclosure
+    && (heightOmitted(options.size) || !disclosuresShown(options) || !printedDisclosure
       || plot.h >= PLOT_FLOOR_PX[options.target ?? DEFAULT_TARGET]);
 }
 

@@ -50,7 +50,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | points | array | yes | Observations with x/y coordinates and optional bubble sizes. Rows: x,y; optional size,label,group. |
 | points[].id | string | yes | Unique point identity used by labels, annotations and interaction records. |
 | points[].group | string |  | Group id controlling shared legend identity and styling. |
-| points[].label | string |  | Displayed point name. If no point has an authored label, each point defaults to its id. If any point has an authored label, including an empty string, points with omitted labels stay unnamed on the plot and in omission notes. Their ids remain in interaction and data records. |
+| points[].label | string |  | Displayed point name. If no point has an authored label, each point defaults to its id. If any point has an authored label, including an empty string, points with omitted labels stay unnamed on the plot. Their ids remain in interaction and data records. |
 | points[].x | cell | yes | Horizontal coordinate in the x-axis units. |
 | points[].y | cell | yes | Vertical coordinate in the y-axis units. |
 | points[].size | number |  | Bubble magnitude; proportional to area by default, or diameter when sizeBy requests it. |
@@ -104,9 +104,6 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | quadrants.labels.br | string |  |  | Caption for the lower-right quadrant. |
 | quadrants.tint | string | `'none'`, `'alternating'` |  | Neutral checkerboard wash only; good/bad quadrant coloring is not offered because the engine cannot know axis polarity. Use options.highlight for emphasis. |
 | quadrants.captionPlacement | string | `'corner'`, `'centre'` |  | Place quadrant captions in their corner or centre. |
-| quadrants.axisNames | object |  |  | Short axis names for the method note (methodNote: true). With both names and two declared cut points the note is one line: 'Cuts: share at 1 and growth at 8; a point on a cut counts right and above.' Otherwise the full cut-point sentence prints. |
-| quadrants.axisNames.x | string |  |  | Short name of the horizontal axis, e.g. 'share'. |
-| quadrants.axisNames.y | string |  |  | Short name of the vertical axis, e.g. 'growth'. |
 | zones | object |  |  | Authored grid or polygon classifications; cannot be combined with quadrants. |
 | zones.grid (zones branch 1) | object |  |  | Partition strategy zones with ordered x and y cut points. |
 | zones.grid.x (zones branch 1) | array |  |  | Strictly increasing x thresholds partitioning the plot into columns. |
@@ -144,7 +141,6 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | sizeLegend.values | array |  |  | Sizes the key circles show, largest drawn outermost; default round sizes from the data range: the largest in the data range and one half of it or less, none below the smallest bubble. Rings are drawn at the plot's scale and the key row grows to fit them; a ring is at most one eighth of the card height across. A size above the largest bubble is left out with size-legend-value-out-of-range, and with none left the key shows the defaults; a size below the smallest bubble is drawn at scale and named in an info. |
 | sizeLegend.label | string |  |  | Name of the size measure above the key, such as 'Revenue, €bn'. |
 | qualitativeAxes | boolean |  |  | Axes that read as directions, not scales: no tick numbers and no gridlines; each axis prints strings.axisLow ('Lower') and strings.axisHigh ('Higher') at its ends and its title in bold between two arrows, the y axis in a column left of the plot. Needs axisTitles. Positions keep their numeric scale. |
-| methodNote | boolean |  |  | Default false. true adds the method footnotes: axes that do not start at zero, and for quadrants the cut points with their source, the tie rule, the shading, units on a cut point, empty boxes and a divider that falls outside the range. Clipped and dropped points are required for interpretation and print regardless. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 

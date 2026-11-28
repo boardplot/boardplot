@@ -23,8 +23,7 @@ import { structureCount } from '../../structureCounts';
  */
 
 import { formatAutomaticPercent } from '../../format';
-import { engineFormatterFromExample, formatterFromExample } from '../../formatSpec';
-import { ruleFormatter } from '../../numberSets';
+import { engineFormatterFromExample } from '../../formatSpec';
 import { authoredDecimals } from '../../formatPrecision';
 import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { CARD_CLASS_WIDTH } from '../../sizing';
@@ -42,9 +41,8 @@ import { CATEGORY_ROW_FROM_END, CATEGORY_ROW_VERTICAL } from '../../label/catego
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { SECONDARY_FULL_DOMAIN } from '../combo/domain';
 import { HIGHLIGHT_KEY, type HighlightKey } from '../combo/plot';
-import { FORCE_CATEGORY_RANKS } from '../combo/categoryRanks';
 import { authoredNotes, legendRequired, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
-import { disclosureNote, keepShownNotes, rankKeyShown } from '../../notes';
+import { keepShownNotes } from '../../notes';
 import { crowdedTailCut, TAIL_SHARE_PCT } from '../../paretoTail';
 import { emptyIdRecord } from '../../idRecords';
 import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
@@ -460,7 +458,6 @@ export function layoutPareto(
   // Without a format the columns print by the default rule, as combo prints them; a total or a rest
   // bucket is a sum and prints in the set of its parts.
   const sharedFormat = options.format;
-  const fmt = options.format ? fmtOf({ ...options, format: options.format }, plotted.map((p) => p.value)) : ruleFormatter(plotted.map((p) => p.value), options.locale?.language, { unit: options.unit });
   // A zero prints as 0, not in the shared decimals ("0.0" reads as a rounded value).
   const hideRestColumn = topN?.rest === false && restColumnId !== undefined;
   const columnCells: Cell[] = plotted.map(p => hideRestColumn && p.id === restColumnId ? null : (p.fill || p.value === 0
@@ -538,19 +535,7 @@ export function layoutPareto(
     });
   }
 
-  // `methodNote` is off unless the author asks for it. It carries no sort
-  // note: descending order with a cumulative curve IS a Pareto, so stating it
-  // prescribes the reading instead of reporting the data.
-  const footnotes = [
-    ...authoredNotes(options),
-    ...(options.methodNote === true
-      ? methodFootnotes({ options,
-          restBucket, authoredRest: hasAuthoredRest, plotted: plotted.length - (hideRestColumn ? 1 : 0), populationCount, concentrated, vitalFew: vitalFew.length,
-          vitalFewInRest, crossingShare: crossingId === undefined ? 0 : populationShare[crossingId]!, total, threshold, drawCumulative,
-          language: options.locale?.language, fmt,
-        })
-      : []),
-  ];
+  const footnotes = authoredNotes(options);
 
   // The left axis title, as line, column and bar draw it: the authored one,
   // or 'Measure, unit' where the theme derives value-axis titles.
@@ -579,7 +564,7 @@ export function layoutPareto(
     if (request.id === `valueLine:${THRESHOLD_ANNOTATION_ID}` && ruleCarries.size > 0) return [...ruleCarries].flatMap(shareClaims);
     return undefined;
   };
-  const comboOptions: ComboOptions & { [HOST_CLAIMS]?: HostClaims; [FORCE_CATEGORY_RANKS]?: true; defaultFormat?: string; [FIRST_END_BELOW_TOTALS]?: boolean; [CATEGORY_ROW_FROM_END]?: boolean; [CATEGORY_ROW_VERTICAL]?: boolean; [SECONDARY_FULL_DOMAIN]?: readonly [number, number] } = {
+  const comboOptions: ComboOptions & { [HOST_CLAIMS]?: HostClaims; defaultFormat?: string; [FIRST_END_BELOW_TOTALS]?: boolean; [CATEGORY_ROW_FROM_END]?: boolean; [CATEGORY_ROW_VERTICAL]?: boolean; [SECONDARY_FULL_DOMAIN]?: readonly [number, number] } = {
     [SECONDARY_FULL_DOMAIN]: totalScaled ? [0, total] : undefined,
     ...stripParetoOnly(options),
     [HOST_CLAIMS]: claimsOf,
@@ -689,13 +674,6 @@ export function layoutPareto(
     if (hiddenValues(flat) < hiddenValues(geo)) geo = flat;
     else comboOptions[CATEGORY_ROW_VERTICAL] = true;
   }
-  // A cause name is not cut with an ellipsis where the rank key prints
-  // (notes.show lists 'disclosure' or 'ranks'): that row carries rank numbers instead.
-  // Without the key, ranks name nothing, so the cut name stays (its title keeps it whole).
-  if (rankKeyShown(options) && geo.warnings.some((w) => w.code === 'category-labels-truncated')) {
-    comboOptions[FORCE_CATEGORY_RANKS] = true;
-    geo = render([]);
-  }
   // The share the vital few reach prints once. Where the curve's label there lost its seat (a
   // total-scaled curve that starts on a crowded first column), the key carries it.
   const key = (comboOptions as { [HIGHLIGHT_KEY]?: HighlightKey })[HIGHLIGHT_KEY];
@@ -706,27 +684,7 @@ export function layoutPareto(
     curve[at] = { number: cumulativeShare[highlighted.at(-1)!]!, label: false };
     geo = render([]);
   }
-  let unnamed = unnamedColumns(geo, plotted);
-  let noteApplied = false;
-  // a canvas already under its own minimum is refused whatever the
-  // note says. The note would only shrink the plot and raise the minimum the
-  // refusal names, and at that size the names fit and the minimum falls back.
-  const undersized = (geo.frame.plotMinHeight ?? 0) > geo.size.height;
-  for (let pass = 0; !undersized && pass < 3 && unnamed.length > 0; pass++) {
-    const note = disclosureNote(chartString(options, 'paretoUnlabelled', { v1: unnamed
-      .map((u) => `${order.indexOf(u.id) + 1}. ${u.label}`)
-      .join('; ') }));
-    const next = render([note]);
-    const after = unnamedColumns(next, plotted);
-    geo = next;
-    noteApplied = true;
-    if (sameIds(unnamed, after)) {
-      unnamed = after;
-      break;
-    }
-    unnamed = after;
-    noteApplied = false;
-  }
+  const unnamed = unnamedColumns(geo, plotted);
   if (unnamed.length > 0) {
     // The severity is decided by READING THE PAGE, not by whether a footnote
     // was requested: a note long enough to be truncated at the frame's line cap
@@ -742,7 +700,7 @@ export function layoutPareto(
         `${unnamed.map((u) => `'${u.label}'`).join(', ')} — ` +
         (lost.length > 0
           ? `${lost.length} of them are NOT named anywhere on the exhibit`
-          : `named by rank in a footnote${noteApplied ? '' : ' already present'}`),
+          : 'named by rank in a footnote already present'),
       suggest: 'shorten the labels, widen the canvas, or aggregate the tail with topN',
     });
   }
@@ -846,58 +804,6 @@ export function layoutPareto(
   }, unprinted);
 }
 
-interface MethodNoteInput {
-  options: ParetoOptions;
-  restBucket?: ParetoRestBucket;
-  plotted: number;
-  populationCount: number;
-  authoredRest: boolean;
-  concentrated: boolean;
-  vitalFew: number;
-  vitalFewInRest: number;
-  crossingShare: number;
-  total: number;
-  threshold: number | false;
-  drawCumulative: boolean;
-  language?: string;
-  fmt: (v: number) => string;
-}
-
-/** The opt-in method statement, without a sort note. */
-function methodFootnotes(input: MethodNoteInput): string[] {
-  const { restBucket, populationCount, threshold, language, fmt } = input;
-  const rule = threshold === false ? '' : thresholdText(threshold, language);
-  // The verdict is counted on the OBSERVED CAUSES. When a tail was collapsed
-  // the two denominators differ, and the one that decided the verdict is the
-  // one the reader cannot see, so both are printed.
-  const denominator = restBucket
-    ? chartString(input.options, 'observedCausesDrawn', { v1: populationCount, v2: input.plotted })
-    : chartString(input.options, 'observedCauses', { v1: populationCount });
-  // The verdict names the highlight on the chart and the rest lines say what
-  // the columns hold, so they stay in the frame (disclosure); the curve line
-  // is method.
-  return [
-    threshold === false
-      ? chartString(input.options, 'paretoNoThresholdNote')
-      : disclosureNote(input.concentrated
-      ? chartString(input.options, 'paretoHighlightNote', { v1: input.vitalFew, v2: denominator, v3: rule, v4: curveShareText(input.crossingShare), v5: fmt(input.total) }) +
-          (input.vitalFewInRest > 0
-            ? chartString(input.options, 'paretoHiddenHighlights', { v1: input.vitalFewInRest, v2: restBucket!.label })
-            : '') +
-          chartString(input.options, 'paretoReferenceConvention')
-      : input.vitalFew === 0
-      ? chartString(input.options, 'paretoNoReachNote', { v1: rule })
-      : chartString(input.options, 'paretoNoConcentrationNote', { v1: input.vitalFew, v2: denominator, v3: rule, v4: rule })),
-    ...(input.authoredRest ? [disclosureNote(chartString(input.options, 'paretoRestMethod'))] : []),
-    ...(restBucket
-      ? [disclosureNote(chartString(input.options, 'paretoFoldedMethod', { v1: restBucket.label, v2: restBucket.memberIds.length, v3: fmt(restBucket.value), v4: input.authoredRest ? chartString(input.options, 'insideRest') : chartString(input.options, 'lastRegardlessSize'), v5: populationCount }))]
-      : []),
-    input.drawCumulative
-      ? chartString(input.options, 'cumulativeMethodNote')
-      : chartString(input.options, 'cumulativeOffNote'),
-  ];
-}
-
 /** Every string the reader can actually see on the finished exhibit. */
 function pageText(geo: { scene: { t: string; lines?: string[] }[] }): string {
   return geo.scene
@@ -925,15 +831,6 @@ function unnamedColumns(
   return plotted.filter((p) => hidden.has(p.id));
 }
 
-function sameIds(a: PlottedItem[], b: PlottedItem[]): boolean {
-  return a.length === b.length && a.every((x, i) => x.id === b[i]!.id);
-}
-
-/** The authored format over the plotted values. */
-function fmtOf(options: ParetoOptions & { format: string }, values: readonly number[]): (v: number) => string {
-  return formatterFromExample(options.format, options.locale?.language, undefined, values);
-}
-
 /**
  * The threshold is printed EXACTLY as applied. Rounding it for display would
  * make the exhibit certify a rule it did not use: at an applied 80.04 with a
@@ -949,7 +846,6 @@ function stripParetoOnly(options: ParetoOptions): ComboOptions {
   const {
     threshold: _threshold,
     cumulative: _cumulative,
-    methodNote: _methodNote,
     topN: _topN,
     highlight: _highlight,
     footnotes: _footnotes,

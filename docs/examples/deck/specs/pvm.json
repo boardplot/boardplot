@@ -13,4 +13,4 @@
     "subtitle": { "measure": "Revenue bridge", "period": "Q3 FY25 → Q3 FY26" },
     "unit": "€k",
     "source": "Alder Outdoor order book; units and revenue per category, price derived",
-    "methodNote": true } }
+    "notes": { "placement": "frame" } } }

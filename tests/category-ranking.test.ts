@@ -1,3 +1,4 @@
+import { chartNotes } from '../src/core/notes';
 import { expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
@@ -13,7 +14,6 @@ import { lineOptionsSchema } from '../src/core/charts/line/schema';
 import { resolveTable } from '../src/core/charts/table/resolve';
 import { layoutVariance } from '../src/core/charts/variance/layout';
 import { checkItemBudget, ITEM_BUDGET } from '../src/core/itemBudget';
-import { chartNotes } from '../src/core/notes';
 import type { ChartReading } from '../src/core/reading';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { flattenIssues } from '../src/core/schema/flattenIssues';
@@ -79,14 +79,12 @@ it('orders likert statements by net score and refuses segment reordering', () =>
   const data = { scale: [{ id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' as const }, { id: 'a', label: 'Agree' }],
     items: [{ id: 'help', label: 'Helpful service', values: [20, 20, 60] }, { id: 'speed', label: 'Fast service', values: [40, 30, 30] },
       { id: 'care', label: 'Careful service', values: [10, 20, 70] }] };
-  const options = { values: 'counts' as const, size, methodNote: true };
+  const options = { values: 'counts' as const, size };
   const net = layoutLikert(data, { ...options, sortBy: 'net' });
   const desc = layoutLikert(data, { ...options, sort: { categories: 'desc' } });
   const asc = layoutLikert(data, { ...options, sortBy: 'net', sort: { categories: 'asc' } });
   expect(desc.derived.order).toEqual(net.derived.order);
   expect(asc.derived.order).toEqual([...net.derived.order].reverse());
-  expect(chartNotes(desc).some((note) => note.text.includes('sorted by net score, descending'))).toBe(true);
-  expect(chartNotes(asc).some((note) => note.text.includes('descending'))).toBe(false);
   const sheet = layoutLikert(data, { ...options, sortBy: 'net', sort: { categories: 'sheet' } });
   expect(sheet.derived.order).toEqual(['help', 'speed', 'care']);
   expect(sheet.warnings).toContainEqual(expect.objectContaining({ code: 'likert-sort-conflict', severity: 'warn', fix: [{ op: 'remove', path: '/options/sortBy' }] }));

@@ -165,7 +165,7 @@ A line or area series with `axis: 'secondary'` draws a second value scale and wa
 
 ## Value labels and reference labels
 
-Line endpoints and reference labels take seats before column values. Column values stay inside the plot band. They use their natural seat, one shifted seat, then an inside-end seat if one fill can hold them. The default `labelDensity: 'smart'` ranks the first, last, highest and lowest column totals first in a chart with more than 12 categories or with wide totals; the other totals use only their natural seat and are left out of the note when it is taken. Use `labelDensity: 'full'` to treat all totals alike. Reading records keep every value.
+Line endpoints and reference labels take seats before column values. Column values stay inside the plot band. They use their natural seat, one shifted seat, then an inside-end seat if one fill can hold them. The default `labelDensity: 'smart'` ranks the first, last, highest and lowest column totals first in a chart with more than 12 categories or with wide totals; the other totals use only their natural seat. Use `labelDensity: 'full'` to treat all totals alike. Reading records keep every value. The reading lists omitted labels in `omissions`.
 
 ## Sizing
 
@@ -221,8 +221,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | default-series-key | torture | Three series and a line retain their names |
 | counts-fraction-rate | example | Count columns and a fraction rate on its own axis |
 | band-label-headroom-rising-tail | torture | A band label over a rising tail takes headroom above the plot |
-| ranked-campaigns-key-shown | torture | Campaign names too long for their columns read as ranks with the key printed (notes.show) |
-| ranked-campaigns-rank-key-only | torture | Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks) |
+| ranked-campaigns-key-shown | torture | Long campaign names beneath columns with a secondary ROAS axis |
 | area-capacity-behind-columns | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
 | inside-base-values | example | Combo column values inside the base |
 | daily-columns-lines-labels | torture | Two column series and three lines on 60 days with every value label at phone width |

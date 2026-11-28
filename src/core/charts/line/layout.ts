@@ -26,7 +26,7 @@ import { seriesTextPaint, emphasisWeight, dashToken, secondaryFont, strokeToken 
 import { BAND_PAD, GAP_BRACKET_REFUSED, GAP_BRACKET_RESERVE, hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { gapBracketEngine } from '../../annotateGapBracket';
 import { canvasMargin } from '../../theme';
-import { NOTED_LABELS, type InternalFootnoteOptions } from '../../frame';
+import type { InternalFootnoteOptions } from '../../frame';
 import { applyValueAxisTitleInk } from '../../axis';
 import { PARTIAL_KEY, partialIds, saysToDate, toDateFits } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
@@ -917,10 +917,9 @@ function drawLine(data: LineChartData, authoredOptions: import('../../types/opti
   // A value the note line already names stays there.
   if (options.variant === 'bump') {
     const named = new Set(geometry.labels.filter((label) => label.kind === 'series').map((label) => `${label.owner.seriesId}:${label.owner.categoryId}`));
-    const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
     // Since the solver thins a computed row as density, a crowded value drops as density too; 'minimal' asks for that thinning.
     const lost = (label: PlacedLabel) => label.hidden === 'collision' || (label.hidden === 'density' && options.labelDensity !== 'minimal');
-    const folded = new Map(geometry.labels.filter((label) => label.kind === 'point' && lost(label) && !noted?.has(label.id) &&
+    const folded = new Map(geometry.labels.filter((label) => label.kind === 'point' && lost(label) &&
       named.has(`${label.owner.seriesId}:${label.owner.categoryId}`)).map((label) => [label.id, label.text]));
     if (folded.size === 0) return geometry;
     const fold = (values: Map<Id, string>) => layoutLinePass(data, { ...options, [BUMP_FOLDED]: values } as LineOptions);
@@ -947,8 +946,7 @@ function drawLine(data: LineChartData, authoredOptions: import('../../types/opti
   if (options.valueAxis?.show !== undefined) return geometry;
   const ticks = geometry.axes.find((axis) => axis.axis === 'y')?.ticks.filter((tick) => tick.labelId).length ?? 0;
   // A value the note line names is taken off the chart after this pass (markNotedLabels): it counts as hidden.
-  const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
-  const hidden = geometry.labels.some((label) => label.kind === 'point' && (label.hidden || noted?.has(label.id)) && label.owner.seriesId !== undefined);
+  const hidden = geometry.labels.some((label) => label.kind === 'point' && label.hidden && label.owner.seriesId !== undefined);
   return ticks < 3 && hidden ? layoutLinePass(data, { ...options, valueAxis: { ...options.valueAxis, show: true } }) : geometry;
 }
 
@@ -1250,8 +1248,7 @@ function layoutLinePass(
   // that hides no label cannot; one that hides any is laid out once more on the
   // centred room and keeps the side room only if it prints every centred label.
   if (area.sideEndRoom) {
-    const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
-    const visible = (label: PlacedLabel) => label.hidden === undefined && !noted?.has(label.id);
+    const visible = (label: PlacedLabel) => label.hidden === undefined;
     if (geometry.labels.some(label => !visible(label))) {
       const centred = layoutLinePass(data, { ...options, [POINT_LABEL_CENTERED_ROOM]: true } as LineOptions);
       const printed = new Map(geometry.labels.filter(visible).map(label => [label.id, label.text] as const));

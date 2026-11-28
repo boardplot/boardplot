@@ -13,7 +13,7 @@ import { chartString } from '../strings/layoutGrid';
  * stays paint-ready; renderers still add nothing.
  */
 
-import { frameTextOptions, LEFT_OUT_OF_NOTE, valueNoteLine, panelNoteTexts, solveFrame, type FrameInput } from '../frame';
+import { frameTextOptions, LEFT_OUT_OF_NOTE, panelNoteTexts, solveFrame, type FrameInput } from '../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from './gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierChromeFloor, varianceTierWeights } from './varianceTiers';
 import { boundsOf, sameRect, type Rect } from '../geometry';
@@ -23,7 +23,6 @@ import { NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/
 import { mergeLocale } from '../normalize/optionShapes';
 import { captionSizedPanelLayouts, getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
-import { withBlankCategoryLabelsOmitted } from '../calendarData';
 import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize } from './childLayout';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
@@ -146,8 +145,6 @@ function soloPanelReserve(share: GridOptions['sharedAxis'], panels: GridPanel[])
   return hasCaption ? (typeof marginTop === 'number' ? marginTop : 20) : 0;
 }
 
-/** Internal: the note line naming panel values the panels could not print. */
-const PANEL_VALUE_NOTE = Symbol('panelValueNote');
 /**
  * Facet gaps: the one internal set of gaps between grid panels. Not an option and
  * not a schema field; a theme moves them only through `space.tierGap` and `space.facetGap`.
@@ -209,51 +206,8 @@ type GridChild = {
 
 type TierGroup = { slots: Rect[]; children: GridChild[]; sharedX?: number; sharedW?: number };
 
-/**
- * A column panel leaves the values it cannot print to its grid
- * (column/layout.ts), so the grid names them in its note line. The note takes
- * footer height and moves the panels, so the grid is laid out again with it
- * until the named set holds (three passes at most, as a column does).
- */
 export function layoutGrid(data: GridData, options: GridOptions = {}): LayoutResult<GridMarks, GridDerived> {
-  let named: string[] = [];
-  // A disclosure retry changes only the grid footer. Keep aligned variance-tier groups
-  // inside this call. An equal set of panel slots draws the same children and axes.
-  const groups: TierGroup[] | undefined = (options.measure ?? defaultMeasurer) === defaultMeasurer ? [] : undefined;
-  let geometry = layoutGridPass(data, options, groups);
-  for (let round = 0; round < 2; round++) {
-    if (geometry.refused) return geometry;
-    const unprinted = unprintedPanelValues(data, geometry);
-    if (unprinted.every((item) => named.includes(item))) break;
-    named = [...new Set([...named, ...unprinted])];
-    geometry = layoutGridPass(data, { ...options, [PANEL_VALUE_NOTE]: named } as GridOptions, groups);
-  }
-  return geometry;
-}
-
-/** "APAC in Q1 12": each value a panel hid, named by its series and category, the panel's title first when several panels hide one. */
-function unprintedPanelValues(data: GridData, geometry: { labels: readonly PlacedLabel[] }): string[] {
-  const byPanel = data.panels.map((panel) => {
-    // Likert owns its complete named-share disclosure, including in a panel.
-    if (panel.type === 'likert') return { title: panel.title ?? panel.id, items: [] };
-    const prefix = `${panel.id}/`;
-    const panelData = withBlankCategoryLabelsOmitted(panel.data as {
-      categories?: ({ id: string; label?: string } | string)[];
-      series?: { id: string; label?: string }[];
-    } | undefined);
-    const nameOf = (list: ({ id: string; label?: string } | string)[] | undefined, id: string | undefined): string => {
-      const found = list?.find((entry) => (typeof entry === 'string' ? entry : entry.id) === id);
-      return found === undefined ? String(id) : typeof found === 'string' ? found : found.label ?? found.id;
-    };
-    const unprefix = (id: string | undefined) => (id?.startsWith(prefix) ? id.slice(prefix.length) : id);
-    const order = (id: string | undefined) => panelData?.categories?.findIndex((entry) => (typeof entry === 'string' ? entry : entry.id) === id) ?? -1;
-    const items = geometry.labels
-      .filter((label) => label.id.startsWith(prefix) && label.hidden && label.kind === 'segment' && /\d/.test(label.text))
-      .sort((a, b) => order(unprefix(a.owner.categoryId)) - order(unprefix(b.owner.categoryId)))
-      .map((label) => `${nameOf(panelData?.series, unprefix(label.owner.seriesId))} in ${nameOf(panelData?.categories, unprefix(label.owner.categoryId))} ${label.text}`);
-    return { title: panel.title ?? panel.id, items };
-  }).filter((entry) => entry.items.length > 0);
-  return byPanel.flatMap((entry) => (byPanel.length > 1 ? entry.items.map((item) => `${entry.title}: ${item}`) : entry.items));
+  return layoutGridPass(data, options);
 }
 
 function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: TierGroup[]): LayoutResult<GridMarks, GridDerived> {
@@ -292,7 +246,6 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
       size,
       margin,
       ...frameTextOptions(options),
-      ...panelValueFootnotes(options),
       legend: legendInput,
       theme,
       measure,
@@ -1111,12 +1064,3 @@ export function occupiedBounds(geometry: Geometry, measure: TextMeasurer): Rect 
   if (!hasBounds) return geometry.plot;
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
-
-
-/** The grid's footnotes with the note line of panel values appended; unnumbered, since no mark points at it. */
-function panelValueFootnotes(options: GridOptions): Pick<FrameInput, 'footnotes'> | Record<string, never> {
-  const named = (options as { [PANEL_VALUE_NOTE]?: string[] })[PANEL_VALUE_NOTE] ?? [];
-  if (named.length === 0 || options.footnotes === false) return {};
-  return { footnotes: [...(frameTextOptions(options).footnotes ?? []), ...valueNoteLine(chartString(options, 'valuesNotOnColumns'), named, options)] };
-}
-

@@ -132,20 +132,13 @@ export const likertOptionsSchema = baseOptionsSchema
       .enum(['sheet', 'net'])
       .optional()
       .describe("Default 'sheet' keeps statement order; 'net' ranks by net score, descending unless sort.categories supplies the direction or mode. Ties keep authored order."),
-    methodNote: z
-      .boolean()
-      .optional()
-      .describe(
-        'Default false. true adds the method footnotes: the forced-choice centre line, the definition of the net column and the sort order. The neutral treatment and the base of the shares are required for interpretation and print regardless, unless requiredNotes turns them off.',
-      ),
     requiredNotes: z
       .object({
-        neutral: z.boolean().optional().describe("Default true. false drops the note on the neutral treatment; set it when the title or subtitle already states it ('Neutral split across the centre line')."),
-        base: z.boolean().optional().describe("Default true. false drops the note on the base of the shares; set it when the source or a footnote already states it ('n = 882 per statement')."),
+        neutral: z.boolean().optional().describe("Default true. false omits the disclosure listing the shares excluded with neutral: exclude."),
       })
       .strict()
       .optional()
-      .describe('The two notes a reader needs to read the shares print by default. Turn one off only when the exhibit\'s own text already says it.'),
-  }).describe('Statement names and ordinary legend keys use label size. Automatic keys retain footnote size; compact framing retains source, sample bases and required methodology.') as unknown as z.ZodType<LikertOptions>;
+      .describe('Control the disclosure for excluded neutral responses.'),
+  }).describe('Statement names and ordinary legend keys use label size. Automatic keys retain footnote size; compact framing retains source and sample bases.') as unknown as z.ZodType<LikertOptions>;
 
 export { retiredSettings } from './retired';

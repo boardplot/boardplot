@@ -22,7 +22,6 @@ import { marginBracketLayout } from '../../annotateLinks';
 import { lowBaseKeyLabel, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultSetSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { tickFormatter } from '../../axis';
-import { ruleFormatter } from '../../numberSets';
 import { cleanFloat, round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -32,7 +31,7 @@ import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } fro
 import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../claims/ids';
 import type { TickBandDerived } from '../../label/tickRow';
 import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, plotHeightAfter, authoredFootnoteCount, valueNoteLine, DEFAULT_NOTE_LIMIT, HIDDEN_LABEL_LEAD, type KeyRequiredType, type LegendItemInput } from '../../frame';
+import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, plotHeightAfter, authoredFootnoteCount, type KeyRequiredType, type LegendItemInput } from '../../frame';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { sequentialShare } from '../../colorRecipes';
 import { niceBelow, niceStep } from '../../scale';
@@ -197,7 +196,7 @@ export function layoutHeatmap(
   options: HeatmapLayoutOptions = {},
   /** The right gutter the comparison brackets asked for on a first pass. */
   bracketGutter?: number,
-  valueNote?: string,
+  triedLeadCallout = false,
   forceRows: readonly Id[] = [],
   compactKey = false,
 ): Geometry<HeatmapMarks, HeatmapDerived> {
@@ -584,13 +583,9 @@ export function layoutHeatmap(
   // The bubble keys (size and colour) stand in their own strip above the matrix.
   const bubbleKeys = bubble && allValues.length > 0 && panelTypeClass(options) === undefined && options.legend !== 'none';
   const derivedNotes = [
-    ...(topOnly && valueNote === undefined ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
-    ...(valueNote ? [disclosureNote(valueNote)] : []),
     ...(bubble && missingCells ? [disclosureNote(statesPresent.length
       ? (missingLook === 'blank' ? chartString(options, 'blankCells', { v1: noDataNames }) : chartString(options, 'hatchedCells', { v1: noDataNames }))
       : missingLook === 'blank' ? chartString(options, 'blankNoData') : chartString(options, 'hatchedNoData'))] : []),
-    ...(anyLowBase
-      ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: ruleFormatter([options.minBase!], options.locale?.language)(options.minBase!) }))] : []),
   ];
   if (scaleItems && options.legend === 'none') legendOff(warnings, options.heatKey?.chartType ?? 'heatmap', scaleItems.map((item) => item.label));
   const scaleKey = options.legend === 'none' ? undefined : scaleItems;
@@ -924,7 +919,7 @@ export function layoutHeatmap(
   // touchpoint names stand on two tiers, one line each, and a column still holds a readable bubble.
   const keepUpright = bubbleStyle && turnable && !flatHeader(headerPlan) && cols.length >= 2 && colStep >= UPRIGHT_TIER_PITCH && tiered(true);
   if (turnable && !flatHeader(headerPlan) && !keepUpright) {
-    return layoutHeatmap(data, { ...options, [TURNED]: true }, bracketGutter, valueNote, forceRows, compactKey);
+    return layoutHeatmap(data, { ...options, [TURNED]: true }, bracketGutter, triedLeadCallout, forceRows, compactKey);
   }
   // Names that would rotate stagger on two tiers first, and rotation stays the last resort. A
   // name row that stands flat on three lines keeps those lines, and a month row keeps its own thinning.
@@ -988,7 +983,7 @@ export function layoutHeatmap(
   // Use measured cell sides, so a wide sparse matrix can keep its ramp.
   // The value matrix keeps its gradient key at every width.
   if (continuousKey && !keyRight && !valueStyle && cellW < 2 * measure('0', labelFont).height) {
-    return layoutHeatmap(data, options, bracketGutter, valueNote, forceRows, true);
+    return layoutHeatmap(data, options, bracketGutter, triedLeadCallout, forceRows, true);
   }
   // A Harvey cell stands at most twice its ball (the ball is 0.68
   // of the cell's short side), so a pinned frame leaves room below instead of
@@ -1036,7 +1031,7 @@ export function layoutHeatmap(
       chromeH: size.height - gridH,
       rowsH: rows.length * naturalCellH + (rows.length - 1) * CELL_GAP,
     });
-    if (grow !== undefined) return layoutHeatmap(data, { ...options, size: { width: size.width, height: grow } }, bracketGutter, valueNote, forceRows, compactKey);
+    if (grow !== undefined) return layoutHeatmap(data, { ...options, size: { width: size.width, height: grow } }, bracketGutter, triedLeadCallout, forceRows, compactKey);
   }
 
   // ---- assemble scene ----
@@ -1172,11 +1167,12 @@ export function layoutHeatmap(
   const printValues = fitted.every((values) => values.every((value, ci) => value === null || value.fits || constantCol[ci]));
   // The value matrix suppresses every cell number when one misses. Its disclosure restarts layout,
   // so the discarded frame needs only those values in row order, before it builds any cells.
-  if (knownMeasure && valueStyle && cellLabelsOn && !printValues && valueNote === undefined) {
+  if (knownMeasure && valueStyle && cellLabelsOn && !printValues && !triedLeadCallout) {
     for (const r of rows) {
       r.cells.forEach((cell, ci) => { if (cell.v !== null) hiddenCells.push({ r, c: cols[ci]!, v: cell.v }); });
     }
-    if (hiddenCells.length) return withHiddenValueNote();
+    const lead = hiddenCells.length ? leadCallout() : undefined;
+    if (lead) return withLeadCallout(lead);
   }
   const withheld: ClaimedRequest[] = [];
   rows.forEach((r, ri) => {
@@ -1378,7 +1374,10 @@ export function layoutHeatmap(
   // Cohort owns its more specific rate disclosure.
   // The note names the hidden values (up to the shared note limit), and the value
   // matrix prints the story value, its highlighted row's extreme, as a callout under the grid.
-  if (options.heatKey === undefined && omittedValues > 0 && valueNote === undefined) return withHiddenValueNote();
+  if (options.heatKey === undefined && omittedValues > 0 && valueStyle && !triedLeadCallout) {
+    const lead = leadCallout();
+    if (lead) return withLeadCallout(lead);
+  }
 
   // ---- row labels (left band, right-aligned toward the grid) ----
   // The value matrix sets a highlighted row's name bold.
@@ -1535,7 +1534,7 @@ export function layoutHeatmap(
     solveCtx,
   });
   const failedSideNotes = sideNotes.filter(a => annResult.labels.some(l => l.owner.annotationId === a.id && l.hidden !== undefined));
-  if (failedSideNotes.length) return layoutHeatmap(data, options, bracketGutter, valueNote, [...forceRows, ...failedSideNotes.map(a => a.id!)], compactKey);
+  if (failedSideNotes.length) return layoutHeatmap(data, options, bracketGutter, triedLeadCallout, [...forceRows, ...failedSideNotes.map(a => a.id!)], compactKey);
   pushAll(warnings, annResult.warnings);
   // A row note names its cell; a leader around other rows would look like another outline.
   for (const a of rowNotes) {
@@ -1596,7 +1595,7 @@ export function layoutHeatmap(
   // A comparison bracket measures its own gutter for one further pass.
   const reach = brackets.need().right > 0 ? BRACKET_CLEAR + brackets.need().right : 0;
   if (bracketGutter === undefined && reach > gutterRight + 0.5) {
-    return layoutHeatmap(data, options, Math.ceil(Math.min(reach, plot0.w * 0.35)), valueNote, forceRows, compactKey);
+    return layoutHeatmap(data, options, Math.ceil(Math.min(reach, plot0.w * 0.35)), triedLeadCallout, forceRows, compactKey);
   }
 
   // ---- emit ----
@@ -1756,32 +1755,8 @@ export function layoutHeatmap(
     } as Annotation;
   }
 
-  function withHiddenValueNote(): Geometry<HeatmapMarks, HeatmapDerived> {
-    const lead = valueStyle ? leadCallout() : undefined;
-    const next = lead ? { ...options, annotations: [...(options.annotations ?? []), lead] } : options;
-    return layoutHeatmap(data, next, bracketGutter, hiddenValuesNote(lead), forceRows, compactKey);
-  }
-
-  /** One hidden value as the note and the reading name it: "Iberia Aug −3.1". */
-  function hiddenItem(h: { r: NormRow; c: NormCol; v: number }): string {
-    const cell = h.r.cells[cols.indexOf(h.c)]!;
-    return `${h.r.label} ${h.c.label} ${textFor(h.v, cell.pct, cell.meta, h.r) ?? displayFor(h.v, cell.pct, cell.meta, h.r)}`;
-  }
-
-  /**
-   * The note for the hidden values: the matrix's extremes
-   * first, where hidden, then the rest in order; the first 8 by name, then
-   * "and N more". `notes.maxListed` wins; 0 counts them against all values
-   * ("15 of 96 values"). The reading lists every hidden value.
-   */
-  function hiddenValuesNote(lead: Annotation | undefined): string {
-    const heading = (options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
-    // The story value the callout prints under the grid is on the chart: the
-    // note does not name or count it; the reading keeps it.
-    const leadAt = lead && 'at' in lead && typeof lead.at === 'object' && 'seriesId' in lead.at ? lead.at as { seriesId: Id; categoryId: Id } : undefined;
-    const unprinted = hiddenCells.filter((h) => !(leadAt && h.r.id === leadAt.seriesId && h.c.id === leadAt.categoryId));
-    const leads = unprinted.length <= DEFAULT_NOTE_LIMIT ? [] : [vMin, vMax].flatMap((extreme) => unprinted.filter((cell) => cell.v === extreme).slice(0, 1));
-    return valueNoteLine(heading, [...new Set([...leads, ...unprinted])].map(hiddenItem), options, allValues.length)[0] ?? '';
+  function withLeadCallout(lead: Annotation): Geometry<HeatmapMarks, HeatmapDerived> {
+    return layoutHeatmap(data, { ...options, annotations: [...(options.annotations ?? []), lead] }, bracketGutter, true, forceRows, compactKey);
   }
 
   /**

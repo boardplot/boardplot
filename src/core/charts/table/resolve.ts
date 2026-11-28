@@ -1193,8 +1193,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const row = flatById.get(id);
     return row ? signTo(row, null) : folded.hidden.get(id)?.sign ?? 1;
   }, source.rows);
-  if (calcNotes.nearZero) autoFootnotes.add(options.strings?.nearZeroChange ?? localeStrings(options.locale?.language).nearZeroChange);
-  if (calcNotes.mixedCoverage) autoFootnotes.add(options.strings?.mixedCoverage ?? localeStrings(options.locale?.language).mixedCoverage);
   // A ratio off a negative base prints as plain arithmetic, so a reader sees -2 / -17 as 11.8%. The number stays; the lint says it is not n.m.
   for (const { scope, rowId, colId, cells } of calcNotes.negativeBase) {
     const more = cells > 1 ? ` and ${cells - 1} more` : '';
@@ -1261,8 +1259,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const warnings = rawWarnings.slice();
   const records = rawRecords.map(record => ({ ...record }));
   const autoFootnotes = new Set(rawFootnotes);
-  const lowerJudged = new Set<string>();
-  const higherJudged = new Set<string>();
   const rawState = new Map([...rawCells].map(([id, cells]) => [id, new Map(cells)]));
   partitionLeafIds.set(rawState, partitionLeafIds.get(rawCells)!);
   // Ordering is a view of the accounting tree, so a formatted variant cannot reorder the retained model.
@@ -2083,7 +2079,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       const unitOf = (candidate: NumberFormatSpec): number => Math.pow(10, -candidate.decimals) * MAGNITUDE_DIVISOR[candidate.magnitude];
       const displayUnit = Math.min(unitOf(spec), minOf(kids.map((k) => unitOf(specFor(col.id, k.id)))));
       if (Math.abs(roundingGap) > displayUnit * 0.5) {
-        autoFootnotes.add(chartString(options, 'tableRoundingNote'));
         records.push({
           rowId: row.id,
           colId: col.id,
@@ -2334,12 +2329,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           if (polarity && !obj?.tone && band === undefined && !cellRoundsToZero(s.raw, specFor(col.id, row.id))) {
             const goodSign = polarity === 'higherIsBetter' ? 1 : -1;
             tone = Math.sign(s.raw) === goodSign ? 'good' : 'bad';
-            // The measure the direction belongs to: the column's where the
-            // column set it, else the row's; an inline change line ("MoM %")
-            // belongs to the row it sits in.
-            const measure = row.polarity === undefined ? col.label ?? col.id
-              : row.inline === true && row.parentId !== null ? flatById.get(row.parentId)?.label ?? row.label : row.label;
-            (polarity === 'lowerIsBetter' ? lowerJudged : higherJudged).add(measure);
           }
           const mat = col.materiality;
           const threshold = specs.get(col.id)!.suffix.includes('%') ? mat?.pct : mat?.abs;
@@ -2477,12 +2466,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const totalPos = options.totalPosition ?? language.totalPosition;
   const ordered = orderRows(resolvedRows, childrenOf, totalPos);
   ordered.forEach((r, i) => (r.order = i));
-  for (const row of ordered) {
-    if (!generatedOthers.has(row.id) || !row.hasChildren) continue;
-    const members = (treeChildrenOf.get(row.id) ?? []).map((child) => child.label);
-    autoFootnotes.add(chartString(options, 'tableGroupsNote', { group: row.label, members: members.join(', ') }));
-  }
-
   // A heat lane on the 'column' scale (the default) ranks each column against
   // itself, so a low figure in one column can shade darker than a higher one
   // beside it. With two or more such columns nothing else tells the reader, and
@@ -2498,16 +2481,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // `tableFootnotes` restates it for the columns a surface draws.
   const statusNote = statusDirectionNote(resolvedColumns, heatRanges(resolvedColumns, ordered), options.colorblindSafe === true, options.locale?.language);
   if (statusNote !== undefined) autoFootnotes.add(statusNote);
-  // A relative arrow key's percentages are shares of each column's largest change.
-  if (resolvedColumns.some((column) => column.cellEncoding?.type === 'arrow' && column.cellEncoding.scale === 'relative' && column.kind === 'computed' && column.polarity)) {
-    autoFootnotes.add(chartString(options, 'tableArrowNote'));
-  }
-  // A table that colours changes in both directions says which measures read
-  // the other way, so green never has to be guessed.
-  if (lowerJudged.size && higherJudged.size) {
-    const [fewer, word] = lowerJudged.size <= higherJudged.size ? [lowerJudged, 'tableLower' as const] : [higherJudged, 'tableHigher' as const];
-    autoFootnotes.add(chartString(options, options.colorblindSafe === true ? 'tableFavourableGood' : 'tableFavourableGreen', { direction: chartString(options, word), columns: [...fewer].join(', ') }));
-  }
   const footnotes = [...autoFootnotes];
   // The † in the head points at its note, so it prints only where the note does.
   if (headMarksPartial) for (const column of resolvedColumns) if (partialColumnIds.has(column.id)) column.partial = true;
@@ -3309,7 +3282,7 @@ function evaluateTableCalcs(
   noPrevious: 'na' | 'missing' = 'na',
   contributionSign: (id: Id) => number = () => 1,
   authoredRows: TableData['rows'] = [],
-): { nearZero: boolean; mixedCoverage: boolean; negativeBase: NegativeBase[] } {
+): { negativeBase: NegativeBase[] } {
   /** The first cell of each column calc and each row calc that divides by a negative cell. */
   const negativeBase = new Map<string, NegativeBase>();
   const noteNegativeBase = (scope: 'column' | 'row', rowId: Id, colId: Id): void => {
@@ -3319,9 +3292,7 @@ function evaluateTableCalcs(
     else negativeBase.set(key, { scope, rowId, colId, cells: 1 });
   };
   /** Whether a percent change printed n.m. for a near-zero base, so the table adds its note. */
-  let nearZero = false;
   /** Whether a figure printed n.m. because its operands sum different rows. */
-  let mixedCoverage = false;
   // rawState also holds the rows topN.rest false omits; calcs may read them.
   const rowIds = new Set(rawState.keys());
   const calcRows = new Set(flat.filter((row) => row.calc).map((row) => row.id));
@@ -3351,10 +3322,8 @@ function evaluateTableCalcs(
       // different sets of rows: the change between them is no change, so it prints n.m.
       if (res.state === 'value' && comparesMixedRows(col.calc, coverageOf(row.id, states, col.id))) {
         res = { ...res, raw: null, state: 'nm' };
-        mixedCoverage = true;
       }
       states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, states) });
-      if (res.nearZero) nearZero = true;
       if (res.negativeBase && res.state === 'value') noteNegativeBase('column', row.id, col.id);
       pushCalcRecord(records, row.id, col.id, res);
     }
@@ -3403,15 +3372,13 @@ function evaluateTableCalcs(
       // A row calc compares rows the way a column calc compares columns.
       if (res.state === 'value' && comparesMixedRows(calc, coverageOf(row.id, read, col.id))) {
         res = { ...res, raw: null, state: 'nm' };
-        mixedCoverage = true;
       }
       states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
-      if (res.nearZero) nearZero = true;
       if (res.negativeBase && res.state === 'value') noteNegativeBase(ownCalc ? 'column' : 'row', row.id, col.id);
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
-  return { nearZero, mixedCoverage, negativeBase: [...negativeBase.values()] };
+  return { negativeBase: [...negativeBase.values()] };
 }
 
 /** A column calc that is the change between two cells: delta, or sub of two column references. */

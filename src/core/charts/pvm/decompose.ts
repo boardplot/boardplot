@@ -1,11 +1,10 @@
-import { formatAutomaticPercent } from '../../format';
 import { chartString } from '../../strings/pvm';
 /**
  * The price/volume/mix decomposition. This module is the product:
  * the picture is a waterfall the host engine already draws, but a wrong
  * decomposition is invisible to a reader because every bar still adds up.
  *
- * CONVENTION (fixed, and printed on the exhibit as the method note):
+ * CONVENTION:
  *
  *   Partition by quantity presence:
  *     common = q0 > 0 && q1 > 0     lost = q0 > 0 && q1 === 0
@@ -30,7 +29,7 @@ import { chartString } from '../../strings/pvm';
  *
  * WHY THIS CONVENTION. Every PVM split has to book the price x volume
  * interaction SOMEWHERE. This one books it into Price (price read at current
- * volumes) and says so, rather than parking it in an uninterpretable residual.
+ * volumes).
  * `interaction: 'separate'` splits it instead, exactly:
  *   Price_Laspeyres = SUM (p1i - p0i)*q0i
  *   Joint           = SUM (p1i - p0i)*(q1i - q0i)      and  P_L + Joint = Price
@@ -55,14 +54,12 @@ import { chartString } from '../../strings/pvm';
  *   1. `volumeMix: 'combined'` draws ONE `Volume & mix` bar and the whole
  *      decomposition is then unit-invariant, provably (tests/pvm.test.ts
  *      rescales an item by 12 and pins every effect unchanged);
- *   2. `volumeMix: 'split'` (the default) discloses the dependence ON THE
- *      EXHIBIT as its own footnote, names the declared `quantityUnit`, and
- *      warns `pvm-quantity-unit-undeclared` when no unit was declared.
+ *   2. `volumeMix: 'split'` (the default) warns `pvm-quantity-unit-undeclared` when no unit was declared.
  *
  * COVERAGE. Price/Volume/Mix are computed over COMMON items only, so when
  * most of the book churns they describe a sliver while looking like a full
  * explanation. `derived.commonPriorShare` / `commonCurrentShare` carry the
- * fraction, it is printed as its own footnote, and a base below
+ * fraction. A base below
  * PVM_THIN_COMMON_SHARE warns `pvm-thin-common-base`.
  *
  * FX / multi-currency is deliberately NOT approximated here: it needs
@@ -89,35 +86,6 @@ export const PVM_RESIDUAL_TOLERANCE = 1e-9;
  * price/volume/mix to be read as an explanation of the whole change.
  */
 const PVM_THIN_COMMON_SHARE = 0.5;
-
-/**
- * The unit-basis disclosure. Printed on every SPLIT exhibit, because the
- * Volume/Mix boundary is not invariant to the unit each item is counted in and
- * a reader who is not told that will read two bars as facts about the business.
- */
-export function pvmUnitBasisNote(quantityUnit: string | undefined, options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>): string {
-  // With no declared unit the note says so, rather than leave "as supplied" to the reader.
-  const basis = quantityUnit ? chartString(options, 'countedQuantities', { v1: quantityUnit }) : chartString(options, 'noCommonUnit');
-  return (
-    chartString(options, 'pvmSplitNote', { v1: basis }) +
-    chartString(options, 'pvmSplitInvariant')
-  );
-}
-
-/** The coverage disclosure: what fraction of the book price/volume/mix speak for. */
-export function pvmCoverageNote(
-  commonCount: number,
-  priorShare: number,
-  currentShare: number,
-  options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>,
-): string {
-  const pct = (v: number) => formatAutomaticPercent(v * 100, 1, false, options?.locale?.language);
-  const items = commonCount === 1 ? chartString(options, 'oneItem') : chartString(options, 'itemsCount', { v1: commonCount });
-  return (
-    chartString(options, 'pvmCoverageHead', { v1: items }) +
-    chartString(options, 'pvmCoverageShares', { v1: pct(priorShare), v2: pct(currentShare) })
-  );
-}
 
 /**
  * The reconciliation self-audit, exported so the guard itself can be proven to
@@ -423,9 +391,6 @@ export function decomposePvm(
       relativeResidual: residual / scale,
       omittedEffects,
       contributions,
-      methodNote: null,
-      unitBasisNote: null,
-      coverageNote: null,
     },
     notes,
   };

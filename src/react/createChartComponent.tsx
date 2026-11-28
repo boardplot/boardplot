@@ -1,5 +1,4 @@
-import { chartString } from '../core/strings/createChartComponent';
-import { localeStrings } from '../core/strings/createChartComponent';
+import { localeStrings } from '../core/strings';
 /**
  * Generated chart components: one component per registry type,
  * flat props = data + annotations + options, zero per-chart React code.
@@ -230,26 +229,15 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       if (!sharedValueAxis) return stableOptions;
       return { ...stableOptions, valueAxis: { ...stableOptions.valueAxis as object, ...sharedValueAxis } };
     }, [stableOptions, sharedValueAxis]);
-    // A capped note ends "and 236 more". Only a chart with a hover card can say "tap or hover shows each value":
-    // SVG, PNG and PDF output have no hover, so the hint is chosen here and never by the layout.
-    // A prepared chart keeps the layout it was prepared with: its request key covers the strings.
-    // The wording of the chart or of its provider wins over the hint. A print has no hover either.
     const provider = useContext(BoardplotThemeContext);
     const providerStrings = provider?.strings as Record<string, unknown> | undefined;
-    // A chart with a fixed size prints too: the page's print state, not the container's.
-    const printing = usePrinting();
-    const hoverCard = hoverFlags(hover);
-    const hinted = hoverCard !== undefined && hoverCard.card !== false && prepared === undefined && !printing && providerStrings?.moreListed === undefined;
-    const noteOptions = useMemo(() => {
-      const strings = (layoutOptions as { strings?: Record<string, unknown> }).strings;
-      return hinted && strings?.moreListed === undefined ? { ...layoutOptions, strings: { ...strings, moreListed: chartString(layoutOptions, 'hoverMoreListed') } } : layoutOptions;
-    }, [layoutOptions, hinted]);
     // An option the schemas refuse, or a key they do not take, refuses here
     // too, with the CLI's code, path and patch; the
     // layout does not run on it. The props above are React's and never reach it.
     // A BoardplotTheme provider's retired string keys refuse as a chart prop does.
     const optionsRefused = optionRefusals(stableOptions as Record<string, unknown>, type, checkKeys, providerStrings);
     const refusedOptions = mapped.refusals.length ? [...optionsRefused, ...mapped.refusals] : optionsRefused;
+    const printing = usePrinting();
     // Rows without data yet (the chunk loads, failed or refused them): no request is resolved, since a type's
     // preparation reads its data, and the busy box, the failure or the refusal card shows instead.
     const noData = (rows !== undefined || columns !== undefined) && mapped.data === undefined;
@@ -258,7 +246,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const inherited = useMemo(() => ({ strings: providerStrings, language: languageOf(provider?.locale) }), [providerStrings, provider?.locale]);
     // The annotations prop is the chart's options.annotations, unless the spec path recorded the root list.
     const authoredAnnotations = useMemo(() => annotations && withAnnotationOrigins(annotations, ['options', 'annotations']), [annotations]);
-    const zoomed = useZoom({ type, data, annotations: authoredAnnotations, options: noteOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited, hover, onSeriesClick });
+    const zoomed = useZoom({ type, data, annotations: authoredAnnotations, options: layoutOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited, hover, onSeriesClick });
     // A prepared chart attaches the server's layout, which is checked against the current request. Print lays out
     // at once: the browser takes the printed page right after the print listener's render (printLayout.ts).
     // A zoomed view is a new request, so the server's layout no longer matches it and the client lays it out.
@@ -270,7 +258,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // A metric stack's focus look draws the category the pointer or the keyboard rests on as its focus (HoverSurface).
     const [stackFocus, setStackFocus] = useState<string>();
     const focused = useMemo(() => withStackFocus(zoomed.options, stackFocus), [zoomed.options, stackFocus]);
-    const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...focused as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
+    const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...focused as typeof layoutOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, fallback: container ? measured.fallback : undefined, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
     // A cohort refused for width alone draws at the width it needs in a horizontal
     // scroll box, as TableChart scrolls a wide table. A pinned height stays pinned. A prepared
@@ -280,7 +268,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // static image cannot. The full-mode refusal at the same size names the width the whole table needs.
     const leftOut = scrollable && first.geometry !== undefined && !first.geometry.refused && isFullGeometry(first.geometry) && stableOptions.mode !== 'compact'
       && ((first.geometry.derived as { periodsLeftOut?: number[] } | undefined)?.periodsLeftOut?.length ?? 0) > 0;
-    const full = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: asked, mode: 'full' }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
+    const full = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof layoutOptions, size: asked, mode: 'full' }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { fit: resolvedFit, skipLayout: !leftOut, idle: noData, errorAsRefusal: true, linked, defer });
     const refusedWide = (geometry: typeof first.geometry) => geometry?.refused && geometry.size.width + SIZE_TOLERANCE < geometry.sizing.minWidth ? geometry : undefined;
     const short = scrollable ? refusedWide(first.geometry) ?? (leftOut ? refusedWide(full.geometry) : undefined) : undefined;
@@ -296,12 +284,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       : printShort ? printBox(printShort, printShort)
       : short && { width: Math.ceil(short.sizing.minWidth), ...(typeof asked === 'object' && asked.height !== undefined ? { height: asked.height } : {}) };
     useEffect(() => { shownWide.current = wideSize; });
-    const wide = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: wideSize || undefined }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
+    const wide = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof layoutOptions, size: wideSize || undefined }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { fit: printShort || measured.printFill ? 'fill' : resolvedFit, skipLayout: !wideSize, idle: noData, errorAsRefusal: true, linked, defer });
     // A story's step panel can raise the minimum at the larger box: print scales once more, from the minimum found there.
     const printShorter = printShort && wide.geometry?.refused && wide.geometry.warnings.some(isSizeDependentRefusal) ? wide.geometry : undefined;
     // Off print it reads nothing: no resolved request and no copy of the data on every render.
-    const wider = useDeferrableChartLayout(printShorter ? { type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: printBox(printShort!, printShorter) }, annotations: zoomed.annotations as Annotation[] | undefined } : IDLE_REQUEST, {},
+    const wider = useDeferrableChartLayout(printShorter ? { type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof layoutOptions, size: printBox(printShort!, printShorter) }, annotations: zoomed.annotations as Annotation[] | undefined } : IDLE_REQUEST, {},
       { fit: 'fill', skipLayout: !printShorter, idle: !printShorter, errorAsRefusal: true, linked, defer });
     const draws = (layout: typeof wide) => layout.geometry !== undefined && !layout.geometry.refused && isFullGeometry(layout.geometry) && chartRefusals(layout.geometry.warnings).length === 0;
     const scrolls = draws(wide) || (printShorter !== undefined && draws(wider));
@@ -401,14 +389,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     // The export lays out what is on screen: no snapshot while a refusal, the busy box or an older drawing shows.
     const [storyStep, setStoryStep] = useState<string>();
     const shown = !settling && refusals.length === 0 && !resolved.deferred && !resolved.pending && geometry && !geometry.refused ? geometry : undefined;
-    // A picture has no hover: its capped note ends as the static chart's does.
-    const pictured = useMemo(() => {
-      const drawn = resolved.request;
-      if (!drawn || noteOptions === layoutOptions) return drawn;
-      const { strings: { moreListed: _hint, ...strings } = {}, ...options } = drawn.options;
-      return { ...drawn, options: Object.keys(strings).length ? { ...options, strings } : options } as typeof drawn;
-    }, [resolved.request, noteOptions, layoutOptions]);
-    useChartExport(exporter, shown && pictured, zoomed.data, shown?.size, container || scrolls, pinned, storyStep);
+    useChartExport(exporter, shown && resolved.request, zoomed.data, shown?.size, container || scrolls, pinned, storyStep);
     // A column drawn as bars hovers as a bar. One request per layout: a new one each render would report the same hover again.
     const asBar = useMemo(() => resolved.request && drawnRequest(resolved.request, { type: 'bar' }), [resolved.request]);
 

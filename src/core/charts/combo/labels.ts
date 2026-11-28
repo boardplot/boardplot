@@ -33,7 +33,6 @@ import { composedTextRole } from '../../textRole';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { rankValueLabels } from '../band/valueDensity';
 import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
-import { DENSITY_VALUES } from '../../frame';
 import { noteName } from '../../calendarData';
 import { chartString } from '../../strings';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -251,7 +250,6 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const idAt = (ci: number) => `grandTotal:${domain.cats[ci]!.id}`;
   const latest = thinned ? texts.reduce((last, text, ci) => text === null ? last : ci, -1) : -1;
-  const locked = (domain.options as { [DENSITY_VALUES]?: ReadonlySet<string> })[DENSITY_VALUES];
   const protectedAt = (ci: number) => {
     const c = domain.cats[ci]!;
     return ci === latest || texts[ci] == null || nets.has(ci) || negBot[ci]! < 0 || env.highlights.has(c.id) || domain.options.focus?.owner.categoryId === c.id
@@ -383,7 +381,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       typeRole: 'label', font: outerFont,
       ...(rowFont ? { fontStep: rowFont } : {}),
       ...(skips(ci) ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
-      ...(peak?.index === ci && !locked?.has(idAt(ci)) ? { rowPeak: peak.seat } : {}),
+      ...(peak?.index === ci ? { rowPeak: peak.seat } : {}),
       priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0) + (extremeTotals.has(ci) ? EXTREME_TOTAL_BONUS : 0),
       candidates: nearestOwnMarkFirst([
         // An average marker across this seat does not move the total: it

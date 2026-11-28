@@ -10,9 +10,6 @@ export const EN = {
   "worseCapital": "Worse",
   "lower": "lower",
   "higher": "higher",
-  "varianceNmNote": "n.m.: not meaningful, {v1} is zero or negative; the change beside it is absolute{v2}.",
-  "inUnitClause2": ", in {v1}",
-  "beyond": "beyond",
   "absoluteVariance": "absolute variance",
   "relativeVariance": "relative variance",
 } as const;
@@ -26,9 +23,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "worseCapital": "Schlechter",
   "lower": "niedriger",
   "higher": "höher",
-  "varianceNmNote": "n.m.: nicht aussagekräftig, {v1} ist null oder negativ; die Änderung daneben ist absolut{v2}.",
-  "inUnitClause2": ", in {v1}",
-  "beyond": "über",
   "absoluteVariance": "absolute Varianz",
   "relativeVariance": "relative Varianz",
 };

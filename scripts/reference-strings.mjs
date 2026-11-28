@@ -45,7 +45,7 @@ export function stringsPage(tables) {
   const rows = [...found].sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, { text, table }]) => `| ${cell(key)} | ${cell(text)} | ${table} |`);
   return [`<!-- ${HEADER} -->`, '',
     '# Built-in words', '',
-    `Every word a chart prints itself can be replaced in \`options.strings\`, or for all charts in \`BoardplotTheme\`. This page lists all ${found.size} keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.`, '',
+    `Every word a chart prints itself can be replaced in \`options.strings\`, or for all charts in \`BoardplotTheme\`. This page lists all ${found.size} keys with their English default. A retired key still draws with an \`option-deprecated\` warning. An unknown key is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.`, '',
     'A word with a field in braces, such as `{count}`, keeps the field in the replacement. A word written for a plural, such as `{v1|slice|slices}`, keeps that form.', '',
     '| Key | English default | Table |', '|---|---|---|', ...rows, ''].join('\n');
 }

@@ -121,7 +121,7 @@ One form; its chart ID is `creative`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| footnotes | false | `false` |  | false leaves the source line and the method lines (the account-median basis and the fatigue rule) off the card, for a host that shows them in its own frame; the texts stay in frame.source and frame.notes, and the fatigue status line stays on the card. No list of notes is taken. |
+| footnotes | false | `false` |  | false leaves the source line and the comparison dates and authored definitions off the card, for a host that shows them in its own frame; the texts stay in frame.source and frame.notes, and the fatigue status line stays on the card. No list of notes is taken. |
 | columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, value, median, delta. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, value, median, delta. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |

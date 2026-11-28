@@ -6,7 +6,7 @@ import { chartSizing, MIN_COMPACT_PLOT, PLOT_SHARE, sameContent } from '../../si
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer } from '../../text';
 import { canvasMargin, layoutStepKey, REMOVED_NAMES } from '../../theme';
-import { beforeUnprintedLabelNote, comparableOptions, DENSITY_VALUES, freedChromeOf, keylessFrame, LEGEND_HEIGHT, type InternalFootnoteOptions } from '../../frame';
+import { beforeUnprintedLabelNote, comparableOptions, freedChromeOf, keylessFrame, LEGEND_HEIGHT, type InternalFootnoteOptions } from '../../frame';
 import { chartTheme } from '../chartEnv';
 import { fitsInside, INSIDE_MIN_W } from '../band/labels';
 /** Zod-free combo chart registration. */
@@ -15,7 +15,7 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions, ComboOptions } from '../../types/options';
 import { LOCALE_STRINGS, withLocaleStrings } from '../../strings';
-import { rankKeyShown } from '../../notes';
+import { disclosuresShown } from '../../notes';
 import { copyFrame, partNeedOf, staticFrame } from '../../footer';
 import { TARGET_SIZE } from '../../target';
 import { AUTHORED_EXAMPLES, currentSmallValues, formatScopeKey } from '../../formatPrecision';
@@ -24,8 +24,7 @@ import { MARKER_R } from './model';
 import { resolveComboEnv, resolveComboDomain, TOTALS_AXIS } from './domain';
 import { comboPaints, comboPlotArea, solveComboFrame } from './plot';
 import { requestMemo } from '../../layoutPlan';
-import type { FrameGeometry } from '../../types/scene';
-import { layoutCombo, refreshListNotes, type ComboDerived, type ComboMarks } from './layout';
+import { layoutCombo, type ComboDerived, type ComboMarks } from './layout';
 
 export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDerived> = {
   type: 'combo',
@@ -83,7 +82,7 @@ export const comboKeyFirst = bandKeyFirst((data, options, opening) => {
     const { frame, printedDisclosure } = measured;
     const area = comboPlotArea(env, domain, paints, { ...framed, frame }, undefined, warnings, true);
     // An endpoint retry can narrow a nominal category row and add pointed notes for its cut names.
-    if (area.showCatTickRow && rankKeyShown(options) && !area.catPlan.dateNumeric
+    if (area.showCatTickRow && disclosuresShown(options) && !area.catPlan.dateNumeric
       && (domain.lines.length || area.catPlan.step !== 'fit' || !area.catPlan.keep.every(Boolean))) return false;
     // Compact fitting also gates the minimum data-plot height. Date and numeric
     // rows keep the same category identities when endpoint gutters change.
@@ -94,7 +93,7 @@ export const comboKeyFirst = bandKeyFirst((data, options, opening) => {
 
 keylessFitBounds.set(comboCore, comboKeyFirst);
 
-const openingMarkers = new Set<symbol>([AUTO_LEGEND, LEGEND_HEIGHT, TARGET_SIZE, PLOT_SHARE, DENSITY_VALUES,
+const openingMarkers = new Set<symbol>([AUTO_LEGEND, LEGEND_HEIGHT, TARGET_SIZE, PLOT_SHARE,
   AUTHORED_EXAMPLES, REMOVED_NAMES, LOCALE_STRINGS]);
 const openingOptions = new Set(['size', 'title', 'mode', 'secondaryAxis', 'target', 'locale', 'measure', 'theme', 'strings',
   'legend', 'footnotes', 'authoredFootnotes', 'valueLabels']);
@@ -119,14 +118,12 @@ function plainComboOpening(data: ChartData, raw: BaseOptions, size: { width: num
     // The sizing caller can change its target plot share or lock hidden labels.
     // Neither changes the plot that this calculation measures. For a new note,
     // check its real footer at both axis settings before returning the old height.
-    const shape = comparableOptions(plain, DENSITY_VALUES, PLOT_SHARE, AUTHORED_EXAMPLES);
+    const shape = comparableOptions(plain, PLOT_SHARE, AUTHORED_EXAMPLES);
     type Opening = { plot: number; freed: number; part: number };
     const state = `${layoutStepKey()}:${staticFrame.countable}:${currentSmallValues()}:${formatScopeKey(options)}:${size.width}:${size.height}`;
-    const previous = requestMemo<{ shape: object; frames: FrameGeometry[]; answer: Opening }[]>(data, 'combo-opening:' + state, () => []);
+    const previous = requestMemo<{ shape: object; answer: Opening }[]>(data, 'combo-opening:' + state, () => []);
     const saved = previous.find(entry => sameContent(entry.shape, shape));
-    const notes = options.footnotes;
-    if (saved && (!notes || saved.frames.every(frame => refreshListNotes({ frame }, [], notes)))) return saved.answer;
-    const frames: FrameGeometry[] = [];
+    if (saved) return saved.answer;
     const input = withLocaleStrings({ ...options, size });
     const prepared = prepareFractionData(data);
     let answer: { plot: number; freed: number; part: number } | undefined;
@@ -138,7 +135,6 @@ function plainComboOpening(data: ChartData, raw: BaseOptions, size: { width: num
       const paints = comboPaints(env, domain);
       const framed = solveComboFrame(env, domain, paints, warnings);
       if (!framed.frame.legend || framed.frame.deficit || framed.frame.frame.noteList?.some(n => n.inFrame)) return;
-      frames.push(framed.frame.frame);
       const measure = (chosen: typeof domain) => comboPlotArea(env, chosen, paints, {
         ...framed, frame: { ...framed.frame, frame: copyFrame(framed.frame.frame) },
       }, undefined, warnings);
@@ -181,7 +177,7 @@ function plainComboOpening(data: ChartData, raw: BaseOptions, size: { width: num
         if (!agree(measure({ ...domain, options: { ...domain.options, [INSIDE_ENDPOINT_IDS]: ids } as ComboOptions }))) return;
       }
     }
-    if (answer && !notes) previous.push({ shape, frames, answer });
+    if (answer) previous.push({ shape, answer });
     return answer;
   }, undefined);
 }

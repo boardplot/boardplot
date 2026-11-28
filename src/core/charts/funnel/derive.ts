@@ -47,7 +47,6 @@ interface FunnelNumbers extends Pick<FunnelDerived, 'stageTotals' | 'conversions
   /** Per stage, the sum of the values present: bar geometry only, never printed. */
   known: number[];
   /** Steps out of a stage whose total is zero: no rate exists. */
-  undefinedSteps: { fromId: Id; toId: Id }[];
   /** How many negative values were drawn as 0. */
   clamped: number;
   /** Per stage, the total the label prints: the data's own sum, a negative value included; null where a value is missing. */
@@ -114,7 +113,6 @@ export function deriveFunnel(
   const raster = seriesRasterFormatter(options.format, [...values.flat(), ...Object.values(stageTotals), ...(options.format ? [] : Object.values(shownTotals))], locale, options.unit);
   const fmt = options.format ? formatterFromExample(options.format, locale) : raster.fmt;
   const conversions: FunnelDerived['conversions'] = [];
-  const undefinedSteps: FunnelNumbers['undefinedSteps'] = [];
   for (let ci = 0; ci < stages.length - 1; ci++) {
     const from = stages[ci]!;
     const to = stages[ci + 1]!;
@@ -136,7 +134,6 @@ export function deriveFunnel(
         message: `stage '${from.id}' has zero total — conversion to '${to.id}' is undefined`,
         owner: { categoryId: from.id },
       });
-      undefinedSteps.push({ fromId: from.id, toId: to.id });
       continue;
     }
     conversions.push({ fromId: from.id, toId: to.id, rate: toTotal / fromTotal });
@@ -145,7 +142,7 @@ export function deriveFunnel(
   for (const c of conversions) {
     if (c.rate <= 1 && (!worstDrop || c.rate < worstDrop.rate)) worstDrop = c;
   }
-  return { values, known, stageTotals, shownTotals, clampedStages: clampedStage, conversions, undefinedSteps, clamped, raster, ...(worstDrop ? { worstDrop } : {}) };
+  return { values, known, stageTotals, shownTotals, clampedStages: clampedStage, conversions, clamped, raster, ...(worstDrop ? { worstDrop } : {}) };
 }
 
 /** What a stage with no known total prints: the theme's missing glyph, as the table and variance chart do. */

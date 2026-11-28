@@ -1,5 +1,4 @@
 import { a11yDescription } from '../../a11yDescription';
-import { chartString } from '../../strings/sankey';
 /**
  * Sankey. Flows run left to right from sources to ends, in columns (stages).
  * A node's bar is as tall as its flow, max(in, out); a ribbon is as wide as
@@ -16,9 +15,8 @@ import { chartString } from '../../strings/sankey';
 
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, fixedPlotChrome, frameTextOptions, hiddenNoteWith, markNotedLabels, solveFrame } from '../../frame';
+import { authoredNotes, fixedPlotChrome, frameTextOptions, solveFrame } from '../../frame';
 import { shareSetFormatter } from '../../format';
-import { valueNote } from '../../notes';
 import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
 import { pushAll } from '../../arrays';
@@ -58,11 +56,6 @@ const MIN_RIBBON_W = 24;
 /** A word longer than its line breaks with a hyphen, keeping this many letters on each side. */
 const BREAK_KEEP = 3;
 
-/** The lead for the note of unprinted node names. The registry puts it over the locale fill. */
-export function sankeyDefaultStrings(options: SankeyOptions): Record<string, string> {
-  return { hiddenLabels: chartString(options, 'sankeyHiddenLead') };
-}
-
 /** One node's label: one line ("Paid search 420") or name lines over a bold value line. */
 interface LabelText { lines: string[]; oneLine: boolean; w: number; h: number }
 
@@ -81,7 +74,6 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
   const palette = chartPalette(theme, options.palette, warnings);
   const measure = options.measure ?? defaultMeasurer;
   const locale = options.locale?.language;
-  if (options.strings?.hiddenLabels === undefined) options = { ...options, strings: { ...options.strings, ...sankeyDefaultStrings(options) } };
 
   // ---- graph: nodes, links, columns, order ----
   const graph = sankeyGraph(data, options);
@@ -161,18 +153,9 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
   // nodeValue false stops the printing only: the mark keeps valueText for hover and records.
   const printsValue = nodeValue !== false;
 
-  // ---- the note: Other members, then the names too small to print ----
-  const otherNotes = nodes.filter((node) => node.other).map((node) => {
-    const stage = graph.columns[node.column]?.label;
-    const name = stage !== undefined ? `${node.label} (${stage})` : columnCount > 2 ? `${node.label} (${node.column + 1})` : node.label;
-    // A disclosure that names values the drawing does not print: every folded node with its value.
-    const items = node.members!.map((member) => `${member.label} ${fmt(member.value)}`);
-    return valueNote(chartString(options, 'otherMembers', { v1: name, v2: items.join(', ') }), items);
-  });
-  const hiddenNote = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: 'all' } }, []);
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
-  const footnotes = options.footnotes === false ? [] : [...(hiddenNote.line.length === 0 ? authoredNotes(options) : hiddenNote.footnotes), ...otherNotes, ...hiddenNote.line];
+  const footnotes = authoredNotes(options);
   const frame = solveFrame({ size, margin, ...frameTextOptions(options), footnotes, theme, measure }, occupied);
   fixedPlotChrome(frame);
   const plot = frame.plot;
@@ -493,7 +476,6 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
     a11y: a11yDescription(options, 'Sankey', [structureCount('flows', links.length, undefined, options), structureCount('nodes', nodes.length, undefined, options)]),
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
-  markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);
   return geometry;
 
 }

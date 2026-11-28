@@ -28,7 +28,6 @@ describe('chart layout edge cases', () => {
     const body = render({ spec, return: ['svg', 'reading'] }).body as any;
     expect(body.ok).toBe(true);
     expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'slope-too-many-points', severity: 'warn' }));
-    expect(body.reading.notes).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('2024') }));
     const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
     expect(geometry.derived.changes.north).toEqual({ abs: 15, pct: 150 });
     expect(geometry.labels.filter((label: { hidden?: boolean }) => !label.hidden).map((label: { text: string }) => label.text)).not.toContain('900');
@@ -83,21 +82,12 @@ describe('chart layout edge cases', () => {
 
   // methodNote: true printed no note: engine notes are hidden unless notes.show names them,
   // and a composing chart (cohort, pvm) dropped the option before its host's frame saw it.
-  for (const [type, id, kind] of [['cohort', 'logo-retention-method-note', 'method'], ['pvm', 'revenue-bridge-method-note', 'disclosure']] as const) {
+  for (const [type, id, kind] of [['cohort', 'logo-retention-method-note', 'method']] as const) {
     it(`${type} prints the note methodNote asks for (${id})`, () => {
       const notes = layoutFixture(type, id).frame.noteList as { kind: string; inFrame: boolean }[];
       expect(notes.some((note) => note.kind === kind && note.inFrame)).toBe(true);
     });
   }
-
-  // With the asked notes printed, a pinned 400 x 300 map refused (size-below-floor) where it drew before.
-  it('a pinned canvas too small for the notes methodNote asks for draws without them (world-footprint)', () => {
-    const fixture = getFixtures('choropleth').find((f) => f.id === 'world-footprint')!;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'choropleth', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options), size: { width: 400, height: 300 } } } as any) as any) as any;
-    expect(geometry.refused).toBeFalsy();
-    expect(geometry.warnings.some((w: { code: string; message: string }) => w.code === 'footnotes-off' && w.message.includes('methodNote'))).toBe(true);
-  });
 
   // A slide-sized EU map with 27 values left labelled regions without a number anywhere on the page.
   it('an EU map without a value table prints a number on every region label that fits', () => {
@@ -227,7 +217,7 @@ describe('chart layout edge cases', () => {
   // At rank 1 the line's value stood over the column on a leader that ran through the column
   // total's seat, so '40' moved off its column and the two numbers read as one pair.
   it('a line value inside its first column leaves the column total on its column (ranked-campaigns)', () => {
-    const geometry = layoutFixture('combo', 'ranked-campaigns-rank-key-only');
+    const geometry = layoutFixture('combo', 'ranked-campaigns-key-shown');
     const total = geometry.labels.find((label: { id: string }) => label.id === 'grandTotal:c0');
     const column = geometry.scene.find((node: { id: string }) => node.id === 'mark:spend:c0').rect;
     expect(total.hidden).toBeFalsy();
@@ -235,13 +225,6 @@ describe('chart layout edge cases', () => {
     expect(mid).toBeGreaterThan(column.x);
     expect(mid).toBeLessThan(column.x + column.w);
     expect(geometry.labels.find((label: { id: string }) => label.id === 'point:roas:c0').leader).toBeUndefined();
-  });
-
-  // The rank key broke "3." from its name at a line end, and each six ranks repeated "Columns by rank".
-  it('the rank key keeps each rank with its name and names the list once', () => {
-    const notes = layoutFixture('combo', 'ranked-campaigns-rank-key-only').frame.noteList.map((note: { text: string }) => note.text).join(' ');
-    expect(notes.split('Columns by rank').length - 1).toBe(1);
-    expect(notes).toContain('3.\u00a0Display\u00a0campaign\u00a0North');
   });
 
   // "South target 70%" printed its 70 a second time under the name, and the two lines sat on the South line over its +2 point.

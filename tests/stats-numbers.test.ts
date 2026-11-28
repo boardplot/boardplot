@@ -9,7 +9,6 @@ import { layoutLikert, type LikertData } from '../src/core/charts/likert/layout'
 import { layoutPareto, type ParetoData } from '../src/core/charts/pareto/layout';
 import { layoutScatter, type ScatterDerived } from '../src/core/charts/scatter/layout';
 import { layoutPyramid } from '../src/core/charts/pyramid/layout';
-import { chartNotes } from '../src/core/notes';
 import type { PyramidData, PyramidDerived, PyramidOptions } from '../src/core/charts/pyramid/types';
 import { layoutColumn } from '../src/core/charts/column/layout';
 import type { AnomalyColumnOptions } from '../src/core/charts/column/types';
@@ -321,14 +320,6 @@ describe('pyramid', () => {
   const A = [10, 20, 30, 40];
   const B = [12, 22, 28, 38];
 
-  // Prevents a pyramid with methodNote: true from dropping the method note the author asked for.
-  it('prints the band method note in the frame under methodNote: true', () => {
-    const printed = (options: PyramidOptions) => chartNotes(layoutPyramid(doc(FIVE, A, B), { size: { width: 800, height: 520 }, ...options }))
-      .filter((note) => note.inFrame && note.text.includes('The youngest band is at the bottom')).length;
-    expect(printed({ methodNote: true })).toBe(1);
-    expect(printed({})).toBe(0);
-  });
-
   // Prevents a band with no people vanishing from the axis instead of showing as a labelled zero.
   it('keeps an all-zero band visible as a labelled zero and says so at info', () => {
     const { geo, marks } = run(doc(FIVE, [10, 0, 30, 40], [12, 0, 28, 38]));
@@ -402,7 +393,6 @@ describe('anomaly', () => {
     expect(anomaly.flags).toEqual([]);
     expect(geometry.scene.some((node: any) => node.part === 'anomalyCorridor')).toBe(false);
     expect(geometry.scene.some((node: any) => node.part === 'anomalyFlag')).toBe(false);
-    expect(sceneText(geometry)).toContain('MAD is 0');
   });
 });
 

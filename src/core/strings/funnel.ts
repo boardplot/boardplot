@@ -3,7 +3,6 @@ import { chartStrings } from '../strings';
 export const EN = {
   // reader-facing wording linked only by its consumers.
   "stagesCount": "{v1} stage{v2}",
-  "funnelUndefined": "{v1}: not defined, the previous stage is zero.",
   "totalCvr": "Total conversion",
   "stepCvr": "Step conversion",
   // A spanning head over the two short column heads.
@@ -12,7 +11,6 @@ export const EN = {
   "totalCvrShort": "Total",
   "stageIncreased": "↑ increased",
   "stageAdvance": "{v1} advance",
-  "previousStageZero": "not defined: previous stage is zero",
   "advanceProbe": "44% advance",
   "missing": "missing",
   "clampedFunnelNote": "{v1} {v2} below zero shown as 0.",
@@ -23,7 +21,6 @@ export const EN = {
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
   "stagesCount": "{v1} {v1|Stufe|Stufen}",
-  "funnelUndefined": "{v1}: nicht definiert, vorherige Stufe ist null.",
   "totalCvr": "Gesamt-Konversion",
   "stepCvr": "Stufen-Konversion",
   // A spanning head over the two short column heads.
@@ -32,7 +29,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "totalCvrShort": "Gesamt",
   "stageIncreased": "↑ gestiegen",
   "stageAdvance": "{v1} weiter",
-  "previousStageZero": "nicht definiert: vorherige Stufe ist null",
   "advanceProbe": "44% weiter",
   "missing": "fehlend",
   "clampedFunnelNote": "{v1} {v1|Wert|Werte} unter null als 0 gezeigt.",

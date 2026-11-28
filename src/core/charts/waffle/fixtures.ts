@@ -70,17 +70,7 @@ export const fixtures: Fixture<ChartData, WaffleOptions>[] = [
       categories: [{ id: 'sold', label: 'Seats sold' }, { id: 'booked', label: 'Seats booked' }],
       series: [{ id: 'share', label: 'Share', values: [45, 80] }],
     },
-    options: { title: 'Each cell is 5% of the seats', grid: { rows: 4, columns: 5 }, fillFrom: 'top', headline: 'none', cellNote: 'none', source: 'Illustrative data' },
-  },
-  {
-    id: 'coarse-grid-cell-note',
-    title: 'A 4 by 5 grid: one cell is 5%, and the note says so in the host wording',
-    kind: 'example',
-    data: {
-      categories: [{ id: 'sold', label: 'Seats sold' }, { id: 'booked', label: 'Seats booked' }],
-      series: [{ id: 'share', label: 'Share', values: [45, 80] }],
-    },
-    options: { title: 'Four in five seats are booked', grid: { rows: 4, columns: 5 }, cellNote: 'auto', strings: { cellNote: 'Each cell is {value}', source: 'Data' }, locale: { language: 'de' }, source: 'Illustrative data' },
+    options: { title: 'Each cell is 5% of the seats', grid: { rows: 4, columns: 5 }, fillFrom: 'top', headline: 'none', source: 'Illustrative data' },
   },
   {
     id: 'seven-panels-narrow',

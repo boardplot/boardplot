@@ -276,8 +276,6 @@ export function solveScatterFrame(
   keyItems: readonly LegendItemInput[] = [],
   /** Notes only a later pass knows, such as the names the plot could not place. */
   lateNotes: readonly string[] = [],
-  /** The one "Not labelled on the chart" note, with the registry's items and the names; the footnotes it leaves are the authored ones. */
-  hiddenNote?: { footnotes: string[]; line: string[] },
   measurements?: ScatterFrameMeasurements,
 ): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size } = env;
@@ -321,11 +319,9 @@ export function solveScatterFrame(
       margin,
       ...frameTextOptions(options),
       footnotes: [
-        ...(options.methodNote === true ? [...domain.baselineNotes, ...domain.quadrants.notes] : []),
         ...domain.derivedNotes,
         ...lateNotes,
-        ...(hiddenNote?.footnotes ?? authoredNotes(options)),
-        ...(hiddenNote?.line ?? []),
+        ...authoredNotes(options),
       ],
       legend: legendInput,
       theme,

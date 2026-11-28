@@ -161,7 +161,7 @@ An annotation anchor is a category or item id string, or an object with category
 
 ## Dense value labels
 
-The default `labelDensity: 'smart'` keeps every value eligible. In a chart with more than 12 categories, or with most labels wider than the band, the first, last, highest and lowest values (ties: the first) take their seats first, and the note names any of them that finds none. A smaller chart keeps every value on the one-step rule and names any that finds no seat. Other values use only their natural seat beside the mark, and are dropped without a note entry when it is taken. Stacked columns apply this rule to totals. Authored, highlighted and pinned values keep their rank. Use `labelDensity: 'full'` to treat all values alike and name every value without a seat. Labels need a free seat within one step of the natural seat. A value that fits can use an inside-end seat. Reading records keep every value.
+The default `labelDensity: 'smart'` keeps every value eligible. In a chart with more than 12 categories, or with most labels wider than the band, the first, last, highest and lowest values (ties: the first) take their seats first. A smaller chart keeps every value on the one-step rule. Other values use only their natural seat beside the mark. Stacked columns apply this rule to totals. Authored, highlighted and pinned values keep their rank. Use `labelDensity: 'full'` to treat all values alike. Labels need a free seat within one step of the natural seat. A value that fits can use an inside-end seat. Reading records keep every value. The reading lists omitted labels in `omissions`.
 
 ## Sizing
 
@@ -282,8 +282,6 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | iso-days-year-change-de | example | German ISO day ids across a year change |
 | small-drawer | example | A plain column chart in a 480 by 200 drawer |
 | ordered-ramp-rest-apart | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
-| option-notes-max-listed | example | The note line names its first 3 values and counts the rest (notes.maxListed) |
-| option-notes-max-listed-all | torture | The note line names every value (notes.maxListed all) |
 | band-label-headroom-rising-tail | torture | A band label over a rising tail takes headroom above the plot |
 | callout-band-sliver-baseline | torture | A callout leader clears its bar value, a shaded band label centres, a sliver bar keeps the baseline |
 | option-value-labels-extremes | example | Twenty-four months print first, peak, low and last value (valueLabels extremes) |

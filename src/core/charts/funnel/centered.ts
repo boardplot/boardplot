@@ -54,7 +54,6 @@ import type {
 import type { FunnelDerived, FunnelMarks } from './layout';
 import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
 import { composedTextRole } from '../../textRole';
-import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { claimId, withUnprintedClaims } from '../../claims/ids';
@@ -287,7 +286,6 @@ export function layoutCenteredFunnel(
       footnotes: [
         ...authoredNotes(options),
         ...clampedNote(numbers.clamped, options),
-        ...(numbers.undefinedSteps.length ? [disclosureNote(chartString(options, 'funnelUndefined', { v1: na }))] : []),
       ],
       legend: legendOpts ? { options: legendOpts, items: legendItems } : undefined,
       ...(sideKeyOff(options) ? { sideKeyGivesWay: true } : {}),

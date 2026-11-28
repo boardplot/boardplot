@@ -183,7 +183,7 @@ export function layoutFunnel(
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
-  const { values, known, stageTotals, shownTotals, conversions, worstDrop, undefinedSteps, clamped, raster } = deriveFunnel(plotted, stages, options, warnings, data.series);
+  const { values, known, stageTotals, shownTotals, conversions, worstDrop, clamped, raster } = deriveFunnel(plotted, stages, options, warnings, data.series);
   const glyph = missingGlyph(theme);
   const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si, 'values', data.series));
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, raster);
@@ -319,11 +319,9 @@ export function layoutFunnel(
   // instead of a column hundreds of pixels away. It names the share that
   // moves on, since a bare "↓ 44%" reads as a 44 % drop. The rows keep a gap
   // tall enough for it (rowGapFraction below).
-  // Out of a stage of zero no share advances; the gap says so.
-  const steps = [
-    ...conversions.map((conv) => ({ ...conv, text: conv.rate > 1 ? chartString(options, 'stageIncreased') : chartString(options, 'stageAdvance', { v1: fmtPct(conv.rate) }) })),
-    ...undefinedSteps.map((step) => ({ ...step, text: chartString(options, 'previousStageZero') })),
-  ];
+  const steps = conversions.map((conv) => ({ ...conv, text: conv.rate > 1
+    ? chartString(options, 'stageIncreased')
+    : chartString(options, 'stageAdvance', { v1: fmtPct(conv.rate) }) }));
   const captions = new Map(labelOn('point') ? steps.map(({ fromId, text }) => {
     const font = highlightedStep(fromId) ? captionStrong : captionFont;
     const caption: FittedText = { lines: [text], w: measure(text, font).width, h: lineHeight(font) };

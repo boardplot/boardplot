@@ -322,7 +322,6 @@ export function prepareEndpointLabels(input: {
   const endContent: LabelContent | null = input.names === 'end' ? ['series'] : null;
   const built = endContent ? buildEndpointSeeds({ ...input, endUnitSuffix: endUnitSuffix(options, isBump || input.rebased) }) : [];
   const nearZero = planNearZeroTails({
-    strings: options.strings,
     seeds: built,
     endContent,
     pinned: (id) => options.labelPlacements?.[id] !== undefined,

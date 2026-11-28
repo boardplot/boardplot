@@ -70,14 +70,13 @@ function partialPeriodText(periods: DimSwitchPeriod[], options: DimSwitchOptions
 }
 
 function periodNotes(options: DimSwitchOptions, strings: ReturnType<typeof localeStrings>, hidden: DimSwitchPeriod[],
-  star: string, partialText: string, noteFits: boolean, nearZero: boolean): string[] {
+  star: string, partialText: string, noteFits: boolean): string[] {
   const omitted = hidden.map(p => p.label);
   const full = stringFields(strings.hiddenPeriods, { periods: omitted.join(', ') });
   const listed = cappedItems(omitted, { notes: options.notes, strings });
   const short = stringFields(strings.hiddenPeriods, { periods: listed.join(', ') });
   return [
     ...(partialText && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
-    ...(nearZero ? [disclosureNote(strings.nearZeroChange)] : []),
     ...(hidden.length ? [engineNote(full, 'disclosure', short === full ? undefined : short)] : []),
   ];
 }
@@ -250,7 +249,6 @@ interface CardTail {
   rows: Map<string, TableRow>;
   records: Map<string, ComputedCellRecord[]>;
   deferredRows?: Map<string, PeriodRecordRow>;
-  nearZero: boolean;
 }
 export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, source: CompiledDimSwitch, fromHide: number,
   hide: number, figures: CardFigures): CardTail | undefined {
@@ -288,9 +286,7 @@ export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, s
   if (!notes) return undefined;
   const deferred = periodRecordPlans.get(source.computedCells);
   const deferredRows = deferred && new Map(deferred.rows.map(row => [row.id, row]));
-  const running = runningColumns(data);
-  const hasPartialNote = options.strings?.toDate !== '' && periods.some(p => running.has(p.id));
-  return { periods, rows, records, deferredRows, nearZero: notes.length > 1 + Number(hasPartialNote) };
+  return { periods, rows, records, deferredRows };
 }
 
 interface PeriodValues {
@@ -784,7 +780,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     if (m.change!=='pp' || m.format!==undefined || m.unit!==undefined || cell===null || typeof cell!=='object' || typeof cell.v!=='number') return;
     const list=pointChanges.get(m.id) ?? []; list.push({cell,v:cell.v}); pointChanges.set(m.id,list);
   };
-  let nearZeroSeen=form.tail?.nearZero ?? false;
   const totalId=data.dimension.total.id;
   const driverOps = new Map<string, string>();
   for (const m of data.measures) if (m.drivers !== undefined) {
@@ -891,7 +886,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       const windows = needsTotal ? [currentSums, ref, total, refTotal] : [currentSums, ref];
       const col=p.kind ? 'range' : p.id, comparison=comparisonKind==='plan' ? 'pl' : comparisonKind==='prior' ? 'pp' : p.id;
       const comparisonDrawn=!p.kind || drawnBlock.has(comparison);
-      if (delta.nearZero && comparisonDrawn && !(totalHidden && member === totalId)) nearZeroSeen = true;
       if (current.negativeBase || before.negativeBase) warn('ratio-negative-base', m.id, `Measure '${m.id}' divides by a negative number (member '${member}', ${col}), so the ratio prints as plain arithmetic, not n.m.`, 'info');
       // Effect on the statement: the line's signed change, or a driver's share of the change of the line it explains.
       let effect: number | null = null;
@@ -1239,7 +1233,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const noteFits=partialNote!==undefined && !(options as {[PARTIAL_NOTE_OFF]?:boolean})[PARTIAL_NOTE_OFF] && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
   if (partialNote!==undefined && !noteFits) warnings.push(partialNoteWarning(partialNote));
   if (noteFits) tableOptions.footnotes=[...(tableOptions.footnotes || []),partialNote];
-  const notes=periodNotes(options,strings,hidden,star,partialText,noteFits,nearZeroSeen);
+  const notes=periodNotes(options,strings,hidden,star,partialText,noteFits);
   // The table seats a unit affix beside left-aligned text. Under another alignment the unit stays with its label as plain text.
   if ((overrides?.label?.align ?? 'left')!=='left') for (const row of rows) if (row.unitAffix!==undefined) { row.label=`${row.label} ${row.unitAffix}`; delete row.unitAffix; }
   const blockTracks=[
@@ -1309,7 +1303,7 @@ export interface ProjectedDimSwitchCard {
 
 /** A width probe needs the narrower card's columns and notes. Build its raw rows and records only for a full layout. */
 export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions, wider: CompiledDimSwitch,
-  fromHide: number, hide: number, periodValues: DimSwitchPeriodValues): ProjectedDimSwitchCard | undefined {
+  fromHide: number, hide: number): ProjectedDimSwitchCard | undefined {
   const periods = hostPeriods(data, options);
   if (!(fromHide > 0 && hide > fromHide && hide < periods.length)) return undefined;
   if (data.dimension.sums || options.rowVisibility?.[data.dimension.total.id] === false || options.bars === false
@@ -1333,25 +1327,9 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
   if (previousPartial.length && options.columnHeads === false) return undefined;
   const partial = partials(visible);
   const strings = { ...localeStrings(options.locale?.language), ...options.strings };
-  const previousNotes = (wider.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES]!;
-  // A partial card always has an omitted-period note, optionally preceded by the partial and near-zero disclosures.
-  const hadPartialNote = strings.toDate !== '' && previousPartial.length > 0;
-  const nearZero = previousNotes.length > 1 + Number(hadPartialNote);
-  if (nearZero) {
-    // A period's own change can keep the disclosure. Where only a block comparison or a removed period might
-    // have caused it, compile the card and let its comparison windows settle the note.
-    let stillSeen = false;
-    for (const byMember of periodValues.values()) {
-      for (const values of byMember.values()) {
-        if (values.some((value, index) => index >= hide && value.delta.nearZero)) { stillSeen = true; break; }
-      }
-      if (stillSeen) break;
-    }
-    if (!stillSeen) return undefined;
-  }
   const partialText = partialPeriodText(partial, options, strings.toDate);
   const star = partialText && disclosuresShown(options) && options.columnHeads !== false ? '*' : '';
-  const notes = periodNotes(options, strings, periods.slice(0, hide), star, partialText, false, nearZero);
+  const notes = periodNotes(options, strings, periods.slice(0, hide), star, partialText, false);
   const dropped = new Set(periods.slice(fromHide, hide).map(p => p.id));
   const columns = wider.data.columns.filter(col => !dropped.has(col.id));
   const cardOptions = { ...wider.options, [ENGINE_NOTES]: notes };

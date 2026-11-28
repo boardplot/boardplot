@@ -130,9 +130,8 @@ describe('calc states (zero-baseline must scream, not vanish)', () => {
     expect(cell('normal', 'd').raw).toBeCloseTo(10);
     expect(cell('normal', 'd').displayed).toBe('+10.0%');
   });
-  it('prints the change off a base above zero that prints as 0, and n.m. with the near-zero note off a zero base', () => {
+  it('prints the change off a positive base that rounds to zero', () => {
     expect([cell('tiny', 'plan').displayed, cell('tiny', 'd').displayed]).toEqual(['0.0', '+10.0%']);
-    expect(r.table.footnotes).toContain('n.m.: not meaningful, the base is near zero.');
   });
 });
 
@@ -276,7 +275,7 @@ describe('rounding honesty (no fabrication)', () => {
     expect(r.table.rows.find((x) => x.id === 'p')!.cells.v!.displayed).toBe('2.5');
     expect(r.table.footnotes).toHaveLength(0);
   });
-  it('detects a real display gap and footnotes it — values unchanged', () => {
+  it('keeps a correctly rounded total when the printed parts do not add up', () => {
     const data: TableData = {
       columns: [
         { id: 'label', kind: 'rowLabel' },
@@ -296,7 +295,6 @@ describe('rounding honesty (no fabrication)', () => {
     // children display 1 + 1; parent 2.8 displays 3 — the honest footnote
     expect(r.table.rows.find((x) => x.id === 'p')!.cells.v!.displayed).toBe('3');
     expect(r.table.rows.find((x) => x.id === 'a')!.cells.v!.displayed).toBe('1');
-    expect(r.table.footnotes).toContain('Figures may not add due to rounding.');
   });
 });
 

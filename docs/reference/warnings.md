@@ -201,7 +201,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `column-visibility-ref-unknown` | warn |  | table |
 | `combo-ruler-total-exceeded` | warn |  | combo |
 | `combo-ruler-total-invalid` | error |  | combo |
-| `compact-notes-omitted` | info |  | core/frame.ts, core/sizing.ts |
+| `compact-notes-omitted` | info |  | core/sizing.ts |
 | `comparison-shared-scale` | warn |  | bullet |
 | `compute-ref-computed` | error |  | table |
 | `compute-ref-cycle` | error |  | table |
@@ -389,7 +389,6 @@ Every code a render, a measure or a React chart can return, read from the source
 | `geo-diverging-polarity-defaulted` | info |  | core/charts/geoScale.ts |
 | `geo-key-overflow` | error |  | choropleth |
 | `geo-overlay-collision` | warn |  | choropleth |
-| `geo-overlay-label-listed` | warn |  | tilemap |
 | `geo-overlay-measure-unnamed` | warn |  | choropleth |
 | `geo-overlay-no-space` | error, warn |  | choropleth, tilemap |
 | `geo-overlay-tone-unnamed` | warn |  | choropleth |
@@ -515,8 +514,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `label-part-unavailable` | warn |  | band, column |
 | `label-position-unsupported` | error |  | band |
 | `label-spread-overflow` | warn |  | core/collide.ts |
-| `label-truncated` | warn |  | core/frame.ts |
-| `labels-as-ranks` | info |  | combo |
+| `label-truncated` | warn |  | core/registry.ts |
 | `labels-auto-off` | info |  | scatter |
 | `labels-exhibit-unsupported` | warn |  | cohort |
 | `labels-truncated` | warn |  | core/registry.ts |

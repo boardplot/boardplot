@@ -2,18 +2,8 @@ import { chartStrings } from '../strings';
 
 export const EN = {
   // reader-facing wording linked only by its consumers.
-  "boxBriefPoints": "Whiskers: 1.5 × IQR; circles: outliers beyond them.",
-  "boxBriefNoPoints": "Whiskers: 1.5 × IQR; values beyond them are not drawn.",
-  "boxHighlight": "Filled box: {v1}, highlighted.",
-  "boxSmallSample": "Groups with fewer than 5 observations draw every value as a filled dot instead of a box.",
   "boxWithheldNote": "{v1} observation{v2} outside the whisker rule ({v3}) {v4} not drawn and {v5} excluded from the value axis, so the spread shown is narrower than the data (showOutliers: false).",
   "boxWithheldCount": "{v1} of them are not drawn",
-  "boxTukeyNoPoints": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = most extreme values within 1.5×IQR; values beyond those fences are not drawn; n per group shown.",
-  "boxTukeyPoints": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = most extreme values within 1.5×IQR; dots = outliers beyond those fences; n per group shown.",
-  "boxMinmaxNoPoints": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = minimum and maximum, so no value is separated as an outlier; n per group shown.",
-  "boxMinmaxPoints": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = minimum and maximum, so no value is separated as an outlier; n per group shown.",
-  "boxP10P90NoPoints": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = 10th and 90th percentile (type-7); the outer deciles are not drawn; n per group shown.",
-  "boxP10P90Points": "Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = 10th and 90th percentile (type-7); dots = the outer deciles, which every sample has by construction and which are not outliers; n per group shown.",
   "boxBeyondNountukey": "outliers",
   "boxBeyondNounminmax": "values outside the whiskers",
   "boxBeyondNounp10p90": "values outside the 10th–90th percentile range",
@@ -29,18 +19,8 @@ export const EN = {
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
-  "boxBriefPoints": "Antennen: 1,5 × IQR; Kreise: Ausreißer außerhalb davon.",
-  "boxBriefNoPoints": "Antennen: 1,5 × IQR; Werte außerhalb davon werden nicht gezeichnet.",
-  "boxHighlight": "Gefüllte Box: {v1}, hervorgehoben.",
-  "boxSmallSample": "Gruppen mit weniger als 5 Beobachtungen zeigen jeden Wert als gefüllten Punkt statt einer Box.",
   "boxWithheldNote": "{v1} {v1|Beobachtung|Beobachtungen} außerhalb der Antennenregel ({v3}) {v1|wird|werden} nicht gezeichnet und {v1|ist|sind} aus der Wertachse ausgeschlossen. Die gezeigte Streuung ist daher enger als die Daten (showOutliers: false).",
   "boxWithheldCount": "{v1} davon nicht gezeichnet",
-  "boxTukeyNoPoints": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = äußerste Werte innerhalb 1,5×IQR; Werte außerhalb dieser Grenzen werden nicht gezeichnet; n je Gruppe gezeigt.",
-  "boxTukeyPoints": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = äußerste Werte innerhalb 1,5×IQR; Punkte = Ausreißer außerhalb dieser Grenzen; n je Gruppe gezeigt.",
-  "boxMinmaxNoPoints": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = Minimum und Maximum. Kein Wert wird als Ausreißer getrennt gezeigt; n je Gruppe gezeigt.",
-  "boxMinmaxPoints": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = Minimum und Maximum. Kein Wert wird als Ausreißer getrennt gezeigt; n je Gruppe gezeigt.",
-  "boxP10P90NoPoints": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = 10. und 90. Perzentil (Typ 7); äußere Dezile werden nicht gezeichnet; n je Gruppe gezeigt.",
-  "boxP10P90Points": "Box: Q1–Q3 (Typ-7-Quantile); Linie = Median; Antennen = 10. und 90. Perzentil (Typ 7); Punkte = äußere Dezile. Jede Stichprobe hat sie. Sie sind keine Ausreißer; n je Gruppe gezeigt.",
   "boxBeyondNountukey": "Ausreißer",
   "boxBeyondNounminmax": "Werte außerhalb der Antennen",
   "boxBeyondNounp10p90": "Werte außerhalb des 10.–90. Perzentils",

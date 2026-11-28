@@ -64,7 +64,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       neutral: 'split',
       summary: 'net',
       sortBy: 'net',
-      // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
       // 'method' prints the split-neutral note: the centre line is not the agree/disagree boundary here.
       notes: { show: ['note', 'method', 'disclosure'] },
@@ -76,7 +75,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       legend: 'bottom',
       source: 'Employee pulse survey, n = 900 per statement',
       // The source states the base, so it does not print twice.
-      requiredNotes: { base: false },
     },
   },
   {
@@ -102,9 +100,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       values: 'counts',
       summary: 'net',
       sortBy: 'net',
-      // The one fixture that shows the likert method notes; it prints the disclosures too.
-      methodNote: true,
-      // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
       title: 'Manager behaviours — forced-choice scale',
       subtitle: { measure: 'Share of responses', period: 'FY25 review cycle' },
@@ -134,7 +129,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       neutral: 'exclude',
       summary: 'net',
       sortBy: 'net',
-      // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
       notes: { show: ['note', 'disclosure'] },
       title: 'Customer effort by journey step',
@@ -324,13 +318,11 @@ fixtures.push({
   },
 });
 
-// Footer rule: the author's note and the engine's
-// one-line method notes in the frame, the long method texts and the
-// disclosure in the notes list behind "+N notes".
+// This fixed chart keeps its authored survey note.
 fixtures.push({
   ...engagement,
   kind: 'torture', id: 'engagement-notes-pinned',
-  title: 'The engagement survey with its net and base pinned as one-line method notes under the author note',
+  title: 'The engagement survey with a fixed height and an authored footnote',
   tags: ['coverage'],
   options: {
     ...engagement.options!,

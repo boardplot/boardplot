@@ -38,8 +38,6 @@ export interface HistogramOptions extends BaseOptionsFor<'histogram'> {
   bins?: BinSpec;
   /** Snap an 'auto' width onto the {1, 2, 2.5, 5} ladder. Default true. */
   binSnap?: boolean;
-  /** Default false: the footnote states n only. true adds the binning rule, width and interval convention. */
-  methodNote?: boolean;
 }
 
 export interface Binning {

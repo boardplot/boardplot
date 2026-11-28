@@ -32,7 +32,7 @@ const SAME_OPTIONS = new Set<Exclude<keyof AnomalyColumnOptions | 'measure' | 's
   'measure', 'sizeFloor', 'authoredFootnotes', 'footnotesOff',
 ]);
 /** The wording keys a bar prints as a column does. moreListed ends a capped note, and a React chart with hover sets it itself. */
-const SAME_STRINGS = new Set(['net', 'average', 'others', 'toDate', 'hiddenLabels', 'valuesNotOnColumns', 'aboveZero', 'belowZero', 'knownPartsTotals', 'moreListed']);
+const SAME_STRINGS = new Set(['net', 'average', 'others', 'toDate', 'hiddenLabels', 'aboveZero', 'belowZero', 'knownPartsTotals', 'moreListed']);
 const SAME_VALUE_AXIS = new Set(['show', 'min', 'includeZero']);
 const SAME_CATEGORY_AXIS = new Set(['title']);
 const SAME_LABELS = new Set(['restSeries']);

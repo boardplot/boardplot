@@ -1123,11 +1123,9 @@ fixtures.push({
   annotations: [{ kind: 'band', from: 'd28', to: 'd33', label: 'After a press article', tone: 'muted' }],
 });
 
-// notes.show with 'disclosure' prints the engine's notes: names that fit neither
-// flat nor at 45° read as ranks, and the rank key prints under the chart.
 fixtures.push({
   id: 'ranked-campaigns-key-shown',
-  title: 'Campaign names too long for their columns read as ranks with the key printed (notes.show)',
+  title: 'Long campaign names beneath columns with a secondary ROAS axis',
   kind: 'torture',
   data: {
     categories: Array.from({ length: 16 }, (_, i) => ({ id: `c${i}`, label: `${['Paid social', 'Paid search', 'Display', 'Affiliate'][i % 4]} campaign ${['North', 'South', 'East', 'West'][Math.floor(i / 4)]}` })),
@@ -1136,23 +1134,7 @@ fixtures.push({
       { id: 'roas', label: 'ROAS', kind: 'line', axis: 'secondary', values: Array.from({ length: 16 }, (_, i) => 1.5 + ((i * 7) % 20) / 10) },
     ],
   },
-  options: { title: 'Spend and ROAS by campaign', size: { width: 480 }, notes: { show: ['note', 'disclosure'] }, source: 'Invented example' },
-});
-
-// notes.show 'ranks' prints the rank key alone: the same campaigns read as
-// ranks with their key, and "Not labelled on the chart" stays in the notes list.
-fixtures.push({
-  id: 'ranked-campaigns-rank-key-only',
-  title: 'Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks)',
-  kind: 'torture',
-  data: {
-    categories: Array.from({ length: 16 }, (_, i) => ({ id: `c${i}`, label: `${['Paid social', 'Paid search', 'Display', 'Affiliate'][i % 4]} campaign ${['North', 'South', 'East', 'West'][Math.floor(i / 4)]}` })),
-    series: [
-      { id: 'spend', label: 'Spend', kind: 'column', values: Array.from({ length: 16 }, (_, i) => 40 + ((i * 17) % 60)) },
-      { id: 'roas', label: 'ROAS', kind: 'line', axis: 'secondary', values: Array.from({ length: 16 }, (_, i) => 1.5 + ((i * 7) % 20) / 10) },
-    ],
-  },
-  options: { title: 'Spend and ROAS by campaign', size: { width: 480 }, notes: { show: ['note', 'ranks'] }, source: 'Invented example' },
+  options: { title: 'Spend and ROAS by campaign', size: { width: 480 }, source: 'Invented example' },
 });
 
 // An area behind columns: the columns, the corridor and the launch period all

@@ -76,10 +76,6 @@ export const paretoOptionsSchema = baseOptionsSchema
       .boolean()
       .optional()
       .describe('Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default: on when a vital few reaches the threshold and no valueAxis.min or max is set; off for a flat distribution, whose columns would shrink to a sliver. false caps the column axis on the columns alone and the curve rides its own 0-100% scale.'),
-    methodNote: z
-      .boolean()
-      .optional()
-      .describe('Footnotes stating the derivation and the vital-few set. Default false: the reader gets the exhibit, not a method statement.'),
   }) as unknown as z.ZodType<ParetoOptions>;
 
 export { retiredSettings } from './retired';
