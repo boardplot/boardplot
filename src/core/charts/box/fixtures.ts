@@ -943,4 +943,24 @@ fixtures.push({
   options: { title: 'Both depots deliver in about 17 days', unit: 'days', source: 'Illustrative data', size: { width: 720 }, columnOverrides: { label: { width: 150 }, n: { width: 90 } } },
 });
 
+fixtures.push({
+  id: 'latency-distribution-log',
+  title: 'Response time distributions and outliers on a log axis',
+  kind: 'example',
+  data: {
+    groups: [
+      { id: 'local', label: 'Local', observations: [2, 4, 5, 7, 9, 13, 20, 30, 40, 55, 220] },
+      { id: 'remote', label: 'Remote', observations: [8, 15, 20, 30, 40, 65, 90, 140, 180, 300, 900] },
+    ],
+  },
+  options: {
+    title: 'Median response time is 13 ms locally and 65 ms remotely',
+    unit: 'ms',
+    valueAxis: { log: true, min: 1, gridlines: true },
+    axisTitles: { primary: 'Response time (ms, log scale)' },
+    source: 'Illustrative response times',
+    size: { width: 720 },
+  },
+});
+
 registerFixtures('box', fixtures);

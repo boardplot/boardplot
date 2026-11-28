@@ -2,44 +2,18 @@ import { NormalizeError } from '../../normalize/shared';
 import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
 import type { Category, LineChartData } from '../../types/data';
 import type { NormSer } from './context';
-import { annotationRef } from '../../types/annotations';
+import { dropLog, nonpositive, nonpositiveAnnotation, validateLogBounds, validateLogSeriesValues, validateLogValueLine } from '../logAxis';
 import { lineMeans } from './means';
 import type { LineOptions } from './types';
-
-const dropLog = [{ op: 'remove' as const, path: '/options/valueAxis/log' }];
 
 function conflict(path: string, reason: string, fix: JsonPatchOperation[] = dropLog): never {
   throw new NormalizeError('log-line-conflict', path, reason, 'remove valueAxis.log or the incompatible option', fix, path.split('.'));
 }
 
-function nonpositive(path: (string | number)[], value: number | string, pointer = path): never {
-  const name = path.map((part, index) => typeof part === 'number' ? `[${part}]` : `${index ? '.' : ''}${part}`).join('');
-  throw new NormalizeError('log-nonpositive', name,
-    `${name} is ${value}; a log scale has no place for zero or a negative value`,
-    'use a value above zero or remove valueAxis.log', dropLog, pointer);
-}
-
-/** A field of an annotation: named and pointed at where the author wrote it. One without an origin keeps its drawn position as its name and gets no pointer. */
-function annotationField(ann: unknown, index: number, field: (string | number)[], value: number): never {
-  const { segments } = annotationRef(ann, index);
-  return segments.length ? nonpositive([...segments, ...field], value) : nonpositive(['options', 'annotations', index, ...field], value, []);
-}
-
 /** Check source positions before a continuous x axis sorts the readings. */
 export function validateLineLogSource(options: LineOptions, data: LineChartData): void {
   if ((options.valueAxis?.log !== true && options.valueAxis?.log !== 'y') || !Array.isArray(data?.series)) return;
-  data.series.forEach((series, si) => {
-    if (!Array.isArray(series.values)) return;
-    series.values.forEach((raw, ci) => {
-      const keyed = raw !== null && typeof raw === 'object' && 'categoryId' in raw && 'value' in raw;
-      const cell = keyed ? raw.value : raw;
-      const value = typeof cell === 'number' ? cell : cell && typeof cell === 'object'
-        ? ('number' in cell ? cell.number : 'pct' in cell ? cell.pct : undefined) : undefined;
-      if (typeof value === 'number' && value <= 0) {
-        nonpositive(['data', 'series', si, 'values', ci, ...(keyed ? ['value'] : [])], value);
-      }
-    });
-  });
+  validateLogSeriesValues(data.series);
 }
 
 /** Refuse values and options that cannot be drawn on the vertical log axis. */
@@ -56,11 +30,7 @@ export function validateLineLog(options: LineOptions, series: NormSer[]): void {
   if (va.percent) conflict('options.valueAxis.percent', 'valueAxis.percent turns the line into a 100% stacked area, which needs a zero baseline');
   if (options.trend) conflict('options.trend', 'a fitted straight trend in data units bends on a log axis');
   if (options.phases) conflict('options.phases', 'phases fill the area under a line and require a zero baseline');
-  for (const key of ['min', 'max'] as const) {
-    const value = va[key];
-    if (value !== undefined && value <= 0) nonpositive(['options', 'valueAxis', key], value);
-  }
-  if (va.includeZero) nonpositive(['options', 'valueAxis', 'includeZero'], 'true');
+  validateLogBounds(va);
   series.forEach((s, si) => {
     s.vals.forEach((cell, ci) => {
       if (cell.v !== null && cell.v <= 0) nonpositive(['data', 'series', si, 'values', ci], cell.v);
@@ -79,16 +49,11 @@ export function validateLineLog(options: LineOptions, series: NormSer[]): void {
     }
   });
   options.annotations?.forEach((ann, i) => {
-    if (ann.kind === 'valueLine' && typeof ann.value === 'number' && ann.value <= 0) annotationField(ann, i, ['value'], ann.value);
+    if (ann.kind === 'valueLine') validateLogValueLine(ann, i);
     if (ann.kind === 'band' && (ann.style === 'corridor' || ann.style === 'tolerance' || ann.style === 'attainment')) {
       for (const key of ['value', 'low', 'high'] as const) {
         const value = ann[key];
-        if (value !== undefined && value <= 0) annotationField(ann, i, [key], value);
-      }
-    }
-    if (ann.kind === 'valueLine' && typeof ann.tolerance === 'object') {
-      for (const key of ['low', 'high'] as const) {
-        if (ann.tolerance[key] <= 0) annotationField(ann, i, ['tolerance', key], ann.tolerance[key]);
+        if (value !== undefined && value <= 0) nonpositiveAnnotation(ann, i, [key], value);
       }
     }
   });
@@ -106,6 +71,6 @@ export function validateLogTolerances(options: LineOptions, series: NormSer[], c
       : undefined;
     const value = typeof ann.value === 'number' ? ann.value : scope && 'value' in scope ? scope.value : meanValue;
     const sourceIndex = sourceAnnotations?.indexOf(ann) ?? i;
-    if (value !== undefined && value - ann.tolerance <= 0) annotationField(ann, sourceIndex < 0 ? i : sourceIndex, ['tolerance'], value - ann.tolerance);
+    if (value !== undefined && value - ann.tolerance <= 0) nonpositiveAnnotation(ann, sourceIndex < 0 ? i : sourceIndex, ['tolerance'], value - ann.tolerance);
   });
 }

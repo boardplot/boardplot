@@ -49,6 +49,7 @@ One form; its chart ID is `box`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| valueAxis.log | boolean \| string | `'x'` (or another value of its type) |  | Set true or 'x' for a horizontal log10 value axis. Values and bounds must be positive. Equal ratios occupy equal distances. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, n, median. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
@@ -62,7 +63,7 @@ One form; its chart ID is `box`.
 | methodNote | boolean |  | `false` | Default false. true adds the footnote stating the quartile definition and the Tukey whisker rule. A 'minmax' or 'p10p90' whisker rule changes what whiskers and dots mean, so its note prints regardless, as do the small-n dot note and the note on withheld observations. |
 | boxValues | string | `'median'`, `'all'` | `'median'` | Default 'median': each box prints its median. 'all' also prints Q1 and Q3 under the box edges and the whisker ends under the caps, so a quartile or percentile reads as a number. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -101,6 +102,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | twelve-teams-median-column | example | Twelve dense rows print their medians in one column beside n |
 | outliers-axis-break | example | A value-axis break across the empty range keeps two far outliers visible |
 | column-overrides | example | columnOverrides sets the name and n columns |
+| latency-distribution-log | example | Response time distributions and outliers on a log axis |
 
 ## Not for
 

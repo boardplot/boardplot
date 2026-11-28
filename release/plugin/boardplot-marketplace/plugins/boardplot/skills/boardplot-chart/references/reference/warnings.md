@@ -45,7 +45,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `average-marker-scope` | warn |  | combo |
 | `axis-break-height-order` | warn | yes | core/axisBreakOrder.ts |
 | `axis-break-invalid` | error | yes | core/axisBreakInvalid.ts |
-| `axis-break-unsupported` | warn |  | bar, box, core/charts/chartEnv.ts, core/grid/layoutGrid.ts, grid |
+| `axis-break-unsupported` | warn | yes | bar, box, core/charts/chartEnv.ts, core/grid/layoutGrid.ts, grid |
 | `axis-title-dropped` | warn |  | scatter |
 | `bad-anchor` | warn |  | core/annotate.ts, core/annotateTargets.ts, core/eventLane.ts, gantt, pie, waterfall |
 | `band-attainment-empty` | warn |  | core/annotateTargets.ts |
@@ -489,7 +489,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-name` | not stated at the site |  | core/doc/document.ts |
 | `invalid-number` | error |  | core/normalize/shared.ts, dimswitch, kpi |
 | `invalid-option` | error |  | butterfly, react/RefusalBoundary.tsx |
-| `invalid-options` | error | yes | bullet, choropleth, cohort, core/charts/geoScale.ts, core/doc/chartValidation.ts, core/schema/refusals.ts, diagram, heatmap, react/TableChart.tsx, sparkline, status, table |
+| `invalid-options` | error | yes | bullet, choropleth, cohort, core/charts/geoScale.ts, core/charts/logAxis.ts, core/doc/chartValidation.ts, core/schema/refusals.ts, diagram, heatmap, react/TableChart.tsx, sparkline, status, table |
 | `invalid-range` | error |  | core/rangeRules.ts, gantt |
 | `invalid-react-options` | not stated at the site |  | react/specValidation.ts |
 | `invalid-roadmap` | error |  | diagram |
@@ -576,8 +576,8 @@ Every code a render, a measure or a React chart can return, read from the source
 | `locale-marks-unset` | info |  | core/localeMarks.ts |
 | `log-axis-unnamed` | info |  | line, scatter |
 | `log-line-conflict` | error | yes | line |
-| `log-nonpositive` | error | yes | line, scatter |
-| `log-tick-step-zero` | warn |  | line |
+| `log-nonpositive` | error | yes | core/charts/logAxis.ts, scatter |
+| `log-tick-step-zero` | warn |  | core/charts/logAxis.ts |
 | `lollipop-one-series` | error |  | dot |
 | `mark-below-effective-min` | warn |  | core/lint/type.ts |
 | `mark-ink-invisible` | warn |  | core/themeRules.ts |
@@ -903,7 +903,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `text-clipped` | warn |  | core/textClip.ts |
 | `text-size-and-scale` | error |  | core/typeFloors.ts |
 | `theme-name-reserved` | error |  | core/doc/themeObject.ts, core/theme.ts |
-| `tick-step-ignored` | warn |  | band, core/scale.ts, line, scatter |
+| `tick-step-ignored` | warn |  | band, core/charts/logAxis.ts, core/scale.ts, scatter |
 | `tilemap-legend-required` | warn |  | core/frame.ts |
 | `tilemap-no-values` | info |  | tilemap |
 | `tilemap-unknown-region` | warn |  | tilemap |
@@ -989,7 +989,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `unsupported-metric` | error |  | core/live/window.ts |
 | `unsupported-ordering` | error |  | core/live/window.ts |
 | `unsupported-shape` | error |  | core/live/window.ts, react/prepareEngine.ts |
-| `value-axis-bounds-expanded` | warn |  | line |
+| `value-axis-bounds-expanded` | warn |  | core/charts/logAxis.ts |
 | `value-axis-dropped` | warn |  | butterfly |
 | `value-axis-max-ignored` | warn | yes | core/scale.ts |
 | `value-axis-min-ignored` | warn | yes | core/scale.ts |

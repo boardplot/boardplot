@@ -3,6 +3,7 @@ import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/index';
+import { requireGeometry } from '../src/core/sizing';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { paintColor, registerTheme, resolveTheme } from '../src/core/theme';
 import { layoutGrid } from '../src/core/charts/grid/layout';
@@ -668,6 +669,61 @@ it('shares one value-axis break across bar panels', () => {
   expect(result.refused).toBeFalsy();
   expect(result.warnings.map((warning) => warning.code)).not.toContain('scale-break-incompatible');
   expect((result as Geometry).derived).toHaveProperty('sharedYDomains.grid:y');
+});
+
+// Log dot panels can be refused when a grid assigns them bounds inferred from a linear scale.
+it('keeps horizontal log dot panels out of shared value scales', () => {
+  const draw = (scaleGroup?: { y: string }) => layoutResolvedRequest(resolveChartRequest({
+    type: 'grid',
+    data: { panels: [
+      { id: 'a', type: 'dot', title: 'Service A', data: { categories: ['Fast', 'Slow'], series: [{ id: 's', values: [0.85, 1000000] }] },
+        options: { scaleGroup, valueAxis: { log: 'x' } } },
+      { id: 'b', type: 'dot', title: 'Service B', data: { categories: ['Fast', 'Slow'], series: [{ id: 's', values: [10, 500] }] },
+        options: { scaleGroup, valueAxis: { log: 'x' } } },
+    ] },
+    options: { title: 'Latency across services', unit: 'ms' },
+  }));
+  expect(draw().refused).toBeFalsy();
+  const grouped = draw({ y: 'latency' });
+  expect(grouped.refused).toBeFalsy();
+  expect(grouped.warnings.map((warning) => warning.code)).toContain('scale-log');
+});
+
+// A log dot facet must keep its tick labels and vertical gridlines when it leaves a scale group.
+it('draws a value axis in each log dot facet', () => {
+  const panel = (id: string, min: number, max: number) => ({
+    id, type: 'dot', data: { categories: ['A', 'B'], series: [{ id: 's', values: [min, max] }] },
+    options: { format: '1,234', scaleGroup: { y: 'shared' }, valueAxis: { log: 'x', show: true, min, max } },
+  });
+  const grid = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'grid', data: { panels: [panel('left', 1, 100), panel('right', 100, 10000)] },
+    options: { columns: 2, sharedAxis: 'none', size: { width: 900 } },
+  })));
+  const labels = grid.scene.flatMap((node) => node.t === 'text' && node.part === 'tick' && node.id.startsWith('right/') ? node.lines : []);
+  expect(labels).toEqual(expect.arrayContaining(['100', '10,000']));
+  const lines = grid.scene.filter((node) => node.part === 'gridline' && node.id.startsWith('right/'));
+  expect(lines.length).toBeGreaterThan(0);
+  expect(lines.every((line) => line.t === 'line' && line.x1 === line.x2)).toBe(true);
+});
+
+// A log box facet must leave the two linear dot facets on their shared scale for either log setting.
+it('keeps the linear scale group when a box facet uses log true or x', () => {
+  const scaleGroup = { y: 'shared' };
+  const dot = (id: string, values: number[]) => ({
+    id, type: 'dot', data: { categories: ['A', 'B'], series: [{ id: 's', values }] },
+    options: { scaleGroup, valueAxis: { show: true } },
+  });
+  for (const log of [true, 'x'] as const) {
+    const box = {
+      id: 'box', type: 'box', data: { groups: [{ id: 'sample', observations: [10, 12, 20, 40, 100] }] },
+      options: { scaleGroup, valueAxis: { log } },
+    };
+    const grid = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'grid', data: { panels: [dot('low', [1, 5]), dot('high', [100, 500]), box] },
+      options: { columns: 3, sharedAxis: 'none', size: { width: 1200 } },
+    })));
+    expect(grid.derived, `log: ${log}`).toHaveProperty('sharedYDomains.shared', [1, 500]);
+  }
 });
 
 // A shared value domain must map equal value steps to equal pixel heights in mixed panels.

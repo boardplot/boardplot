@@ -38,13 +38,14 @@ import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { numberRange, seriesValueDecimals } from '../../format';
 import { ruleFormatter } from '../../numberSets';
-import { defaultSetSpec, engineFormatterFromExample, formatterFromExample, formatWithSpec, statisticFormatter } from '../../formatSpec';
+import { defaultSetSpec, engineNumberSpec, exampleSpec, formatterFromExample, formatWithSpec, statisticFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { applyAxisBounds, bandScale, brokenLinearScale, crossesLinearBreak, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { horizontalLogAxis, horizontalLogTicks, logScale, logValueDomain, nonpositive } from '../logAxis';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { breakStyleRefusal } from '../band/breakOrder';
 import { authoredNotes, frameTextOptions, solveFrame, plotHeightAfter, authoredFootnoteCount, fixedPlotChrome } from '../../frame';
@@ -125,9 +126,18 @@ function boxAxisBreak(
   drawnValues: readonly number[],
   rows: readonly BoxGroupDerived[],
   axisShown: boolean,
+  log: boolean,
   warnings: LintWarning[],
 ): LinearBreak | undefined {
   if (!requested || typeof requested !== 'object') return undefined;
+  if (log) {
+    warnings.push({
+      code: 'axis-break-unsupported', severity: 'warn', message: 'box valueAxis.break applies only to a linear axis. The log axis is drawn without the break.',
+      suggest: 'remove valueAxis.break to keep the log scale, or remove valueAxis.log to use the break',
+      field: ['options', 'valueAxis', 'break'], fix: [{ op: 'remove', path: '/options/valueAxis/break' }],
+    });
+    return undefined;
+  }
   const asked = requested as LinearBreak;
   const spans = rows.flatMap((row) =>
     row.state === 'box' || row.state === 'median-only' ? [[row.whiskerLow!, row.q1!], [row.q1!, row.q3!], [row.q3!, row.whiskerHigh!]] : []);
@@ -154,9 +164,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
+  const va = options.valueAxis ?? {};
+  const log = horizontalLogAxis('box', va);
   // An observation is the author's value and prints as the example reads; the statistics and the axis ticks are the engine's numbers and keep their earlier rule.
   const authoredFmt = options.format ? formatterFromExample(options.format, options.locale?.language) : undefined;
-  const engineFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language) : undefined;
+  const engineSpec = options.format ? engineNumberSpec(exampleSpec(options.format, options.locale?.language)) : undefined;
+  const engineFmt = engineSpec ? (value: number) => formatWithSpec(value, engineSpec) : undefined;
   const labelsOff = options.labels === false;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -178,6 +191,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const showOutliers = options.showOutliers ?? true;
   const showObservations = options.showObservations ?? 'small-n';
   const methodNote = options.methodNote === true;
+
+  if (log) {
+    data.groups.forEach((group, gi) => group.observations.forEach((value, oi) => {
+      if (value <= 0) nonpositive(['data', 'groups', gi, 'observations', oi], value);
+    }));
+  }
 
   // ---- derived, computed here and never trusted from input ----------------
   const summaries = data.groups.map((group) =>
@@ -302,9 +321,6 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       ['transpose', options.transpose],
       ['bandFraction', options.bandFraction],
       ['secondaryAxis', options.secondaryAxis],
-      // The value axis is a plain linear read of the observations; the knobs
-      // below would each change what the spread MEANS, so they are refused
-      // out loud rather than silently ignored.
       ['valueAxis.tickStep', options.valueAxis?.tickStep],
       ['valueAxis.includeZero', options.valueAxis?.includeZero],
       ['valueAxis.percent', options.valueAxis?.percent],
@@ -318,7 +334,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       code: 'box-option-ignored',
       severity: 'warn',
       message: `box ignores ${ignored.join(', ')}`,
-      suggest: 'row height is derived from the label furniture it must fit; the value axis is a plain linear read of the observations',
+      suggest: 'row labels set the row height. Use valueAxis.min and max to widen the range of the observations.',
     });
   }
   for (const row of rows) {
@@ -394,10 +410,10 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // mark and printed under it, so the box and whisker scale keeps its width.
   // Only a beyond-whisker value is parked (never a box, whisker or small-n
   // dot), only one distinct value, and only where no authored axis maximum or
-  // break, hidden axis or comparison bracket asks for the plain linear read.
+  // break, hidden axis or comparison bracket needs the full range. A log axis positions every outlier.
   let parked: number | undefined;
   const beyondValues = drawnBeyond.flatMap((points) => points.map((point) => point.value));
-  if (options.valueAxis?.show !== false && options.valueAxis?.max === undefined && typeof options.valueAxis?.break !== 'object' && !options.annotations?.length && beyondValues.length > 0) {
+  if (!log && va.show !== false && va.max === undefined && typeof va.break !== 'object' && !options.annotations?.length && beyondValues.length > 0) {
     const top = maxOf(beyondValues);
     const neededOnScale = rows.some((row, index) =>
       ((row.state === 'box' || row.state === 'median-only') &&
@@ -408,13 +424,23 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     if (!neededOnScale && rest.length > 0 && top - lo > 0 && top - maxOf(rest) > PARK_SHARE * (top - lo)) parked = top;
   }
   const domainValues = parked === undefined ? drawnValues : drawnValues.filter((value) => value !== parked);
-  let rawLo = minOf(domainValues);
-  let rawHi = maxOf(domainValues);
-  [rawLo, rawHi] = applyAxisBounds([rawLo, rawHi], [rawLo, rawHi], options.valueAxis, warnings);
-  if (rawLo === rawHi) {
-    const pad = Math.max(1, Math.abs(rawLo) * 0.1);
-    rawLo -= pad;
-    rawHi += pad;
+  const extent: [number, number] = [minOf(domainValues), maxOf(domainValues)];
+  let domain: [number, number];
+  if (log) {
+    domain = logValueDomain(extent[0], extent[1], va, warnings).domain;
+  } else {
+    let [rawLo, rawHi] = applyAxisBounds(extent, extent, va, warnings);
+    if (rawLo === rawHi) {
+      const pad = Math.max(1, Math.abs(rawLo) * 0.1);
+      rawLo -= pad;
+      rawHi += pad;
+    }
+    domain = niceDomain(rawLo, rawHi, 5, {
+      dataExtent: [rawLo, rawHi],
+      maxWasteFraction: 0.15,
+      maxTotalWasteFraction: 0.2,
+      preserveDataSideOfZero: true,
+    });
   }
 
   // ---- frame ---------------------------------------------------------------
@@ -612,21 +638,13 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     w: Math.max(20, plot0.w - catBandTotal - nBandTotal - bracketRoom),
     h: availH,
   };
-  const [dLo, dHi] = niceDomain(rawLo, rawHi, 5, {
-    dataExtent: [rawLo, rawHi],
-    // Two-sided domain: the SUM of both wastes is bounded by the 0.80
-    // envelope floor (1 − 0.80); per-side stays at the 0.15 headroom cap.
-    maxWasteFraction: 0.15,
-    maxTotalWasteFraction: 0.2,
-    preserveDataSideOfZero: true,
-  });
   // The scale range is inset by the point radius so a dot sitting exactly on
   // the domain edge is still painted inside the plot rect.
   // A parked value keeps its strip inside the plot rect, right of the value scale.
   const scaleEnd = plot.x + plot.w - parkRoom;
   const range: [number, number] = [plot.x + POINT_R, scaleEnd - (parked === undefined ? POINT_R : 0)];
-  const activeBreak = boxAxisBreak(options.valueAxis?.break, [dLo, dHi], drawnValues, rows, options.valueAxis?.show !== false, warnings);
-  const x = activeBreak ? brokenLinearScale([dLo, dHi], range, activeBreak) : linearScale([dLo, dHi], range);
+  const activeBreak = boxAxisBreak(va.break, domain, drawnValues, rows, axisShown, log, warnings);
+  const x = activeBreak ? brokenLinearScale(domain, range, activeBreak) : (log ? logScale : linearScale)(domain, range);
   const parkX = scaleEnd + PARK_GAP;
   /** Painted x of a dot: the parked value sits in its strip, every other value on the scale. */
   const xp = (value: number): number => (parked !== undefined && value === parked ? parkX : x(value));
@@ -649,19 +667,14 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const nodes: SceneNode[] = [...frameResult.nodes];
   const axes: Geometry['axes'] = [];
   if (axisShown) {
+    const axisLayout = { scale: x, plot, orient: 'x' as const, gridlines: options.valueAxis?.gridlines ?? false, theme, measure, canvasWidth: size.width };
     const axis = layoutValueAxis(
       {
-        scale: x,
-        plot,
-        orient: 'x',
+        ...axisLayout,
         // A value run under 320 px reads three figures, not five.
         ...(scaleEnd - plot.x < 320 ? { tickCount: 3 } : {}),
-        gridlines: options.valueAxis?.gridlines ?? false,
-        format: axisFmt,
-        ...(observationSpec ? { formatSpec: observationSpec } : {}),
-        theme,
-        measure,
-        canvasWidth: size.width,
+        ...(log ? horizontalLogTicks(axisLayout, occupied, engineSpec ?? observationSpec!, tickFont, va)
+          : { format: axisFmt, formatSpec: observationSpec }),
       },
       occupied,
     );

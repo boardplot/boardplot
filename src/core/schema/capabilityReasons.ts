@@ -45,12 +45,12 @@ const VALUE_AXIS_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_CAPABILITY, st
   break:
     'only bar, box, column, histogram and waterfall draw a value-axis break; this type would accept it and draw an unbroken axis. Drop break, or draw the data as a column or bar chart',
   log:
-    'only line and scatter draw a log scale; bars and columns would distort mark lengths. Drop log, or plot the data as a line or scatter',
+    'only line, scatter, dot and box draw a log scale',
 };
 
 export const VALUE_AXIS_ONLY_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_ONLY, string>> = {
   box:
-    'a box axis is a plain linear read of the observations; only show, min, max, gridlines and break apply',
+    'a box value axis accepts show, min, max, gridlines, break and log',
   sankey:
     'a sankey has no value axis; node heights and ribbon widths share one scale, and the node labels carry the numbers',
   waterfall:
@@ -139,9 +139,14 @@ export function notImplemented(key: string, type: string, suggest: string): stri
 const SLOPE_REVERSE_REASON =
   "a slope draws no value axis to reverse. Ranks with 1 on top are a bump chart: type 'line' with variant 'bump', and bump.direction 'lowerIsBetter' ranks the smallest value first. A numeric scale flips on type 'line' with valueAxis.reverse";
 
+const BAR_LOG_ALTERNATIVE = 'plot the data as a dot chart for a bar-like comparison on a log scale, or use valueAxis.break for a broken axis';
+
 /** The schema's reason for refusing the valueAxis sub-key `key` on `type`. */
 export function valueAxisReason(type: string, key: string, why: 'only' | 'capability'): string {
   if (type === 'slope' && key === 'reverse') return SLOPE_REVERSE_REASON;
+  if (key === 'log' && (type === 'bar' || type === 'column')) {
+    return `${VALUE_AXIS_REASONS.log}. Bars and columns would distort mark lengths. Drop log, ${BAR_LOG_ALTERNATIVE}.`;
+  }
   return why === 'only'
     ? VALUE_AXIS_ONLY_REASONS[type as keyof typeof VALUE_AXIS_ONLY]
     : VALUE_AXIS_REASONS[key as keyof typeof VALUE_AXIS_CAPABILITY];
@@ -223,7 +228,7 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
     slope: "for ranks with 1 on top, draw type 'line' with options.variant 'bump' and options.bump.direction 'lowerIsBetter'; to flip a numeric scale, draw type 'line' with options.valueAxis.reverse",
   },
   'valueAxis.break': { '*': "type 'column', 'bar', 'box', 'histogram' and 'waterfall' draw a break; draw the data as type 'column' or 'bar' to cut a tall value" },
-  'valueAxis.log': { '*': "type 'line' and type 'scatter' draw log scales" },
+  'valueAxis.log': { '*': VALUE_AXIS_REASONS.log, bar: BAR_LOG_ALTERNATIVE, column: BAR_LOG_ALTERNATIVE },
   'scaleGroup.x': { '*': 'options.scaleGroup.y shares the value scale; no chart type shares an x scale' },
   'window.decimate': { '*': 'keep options.window.last, or narrow the periods with options.viewDomain' },
   'window.maxPoints': { '*': 'keep options.window.last, or narrow the periods with options.viewDomain' },

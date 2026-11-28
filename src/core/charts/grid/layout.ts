@@ -864,7 +864,7 @@ function layoutLegacyGrid(
   // gridlines, which every panel of the row then draws.
   const sharedAxis = facets && sharedYGroup(groupResult.panels) !== null && groupResult.panels.every((panel) => {
     const axis = panel.options?.valueAxis;
-    return isRecord(axis) && axis.show === true;
+    return isRecord(axis) && axis.show === true && ownYScale(panel) === undefined;
   });
   const rowCaption = facets ? normalized.rowCaption : undefined;
   // Facets with their own value axes (grid.facets) take the tight heading band; facets read
@@ -3027,13 +3027,14 @@ function resolveSharedYDomains(
 }
 
 /**
- * Why a panel keeps its own y scale (scatter): it caps its vertical axis with
- * `valueAxis.clamp`, or draws it on a log scale, which no linear panel can share.
+ * A panel keeps its own scale when it caps its vertical axis with `valueAxis.clamp`
+ * or draws its value axis on a log scale.
  */
 function ownYScale(panel: GridPanelSpec): 'clamp' | 'log' | undefined {
   const valueAxis = panel.options?.valueAxis;
   if (!isRecord(valueAxis)) return undefined;
-  if (valueAxis.log === true || valueAxis.log === 'y' || valueAxis.log === 'both') return 'log';
+  if (valueAxis.log === true || valueAxis.log === 'y' || valueAxis.log === 'both' ||
+      (valueAxis.log === 'x' && (panelValueAxis(panel) === 'x' || getChart(panel.type)?.type === 'box'))) return 'log';
   const clamp = valueAxis.clamp;
   if (!isRecord(clamp)) return undefined;
   const y = isRecord(clamp.y) ? clamp.y : {};
@@ -3061,7 +3062,7 @@ function leaveClampedPanelsOut(groups: Map<string, number[]>, panels: GridPanelS
       warnings.push({
         code: `scale-${reason}`,
         severity: 'warn',
-        message: `panel ${names} ${reason === 'clamp' ? 'caps its vertical axis with valueAxis.clamp' : 'draws its vertical axis on a log scale'}, so it keeps its own y scale and leaves y scale group '${group}'`,
+        message: `panel ${names} ${reason === 'clamp' ? 'caps its vertical axis with valueAxis.clamp' : 'draws its value axis on a log scale'}, so it keeps its own y scale and leaves y scale group '${group}'`,
         suggest: `drop valueAxis.${reason} to share the scale, or take the panel out of scaleGroup.y`,
       });
     }

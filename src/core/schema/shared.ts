@@ -1232,7 +1232,7 @@ export const valueAxisSchema = z
     tickStep: z.number().positive().optional().describe('Positive linear value-axis tick step. Ticks stand at multiples of the step and the domain extends to the next multiples without cutting data. Dot keeps its domain ends when at least two multiples fit inside. Steps giving fewer than 1 or more than 20 intervals use nice ticks and warn tick-step-ignored. Scatter applies it to Y only and warns on a log Y axis. Box ignores it with a warning; pareto and types without independent value-axis ticks refuse it.'),
     includeZero: z.boolean().optional().describe('Include zero in the value domain; zero-based marks can require it even when false.'),
     percent: z.boolean().optional().describe('Request the chart percent-axis or percentage presentation where supported; meanings and support follow the chart-specific schema.'),
-    log: z.union([z.boolean(), z.enum(['x', 'y', 'both'])]).optional().describe("A log10 scale on scatter and line. Scatter takes 'x', 'y', 'both' or true; line takes 'y' or true on its vertical axis. Ticks print numbers in the chart format at 1, 2 and 5 of each decade (3, 4, 6 and 8 too under one decade), down to the decades alone where labels would touch. Without authored bounds the domain normally ends on the nearest round number past the data. Every value on a log axis must be above zero. Line area and bump variants, percent, trend and phases cannot use a log axis."),
+    log: z.union([z.boolean(), z.enum(['x', 'y', 'both'])]).optional().describe("A log10 value axis for line, scatter, dot and box. Use true or 'x' for dot and box. Use true or 'y' for the vertical axis on line and scatter. Scatter also takes 'x' and 'both'. Ticks print numbers in the chart format at 1, 2 and 5 of each decade (3, 4, 6 and 8 too under one decade), down to the decades alone where labels would touch. Without authored bounds the domain normally ends on the nearest round number past the data. Every value on a log axis must be above zero. Line area and bump variants, percent, trend and phases cannot use a log axis."),
     reverse: z.boolean().optional().describe('Reverse the value-axis direction on line and scatter; box ignores it with a warning, and every other type refuses it.'),
     gridlines: z.boolean().optional().describe('Show value-axis gridlines where supported; default false.'),
     break: z.union([z.literal('auto'), z.literal(false), z
@@ -1705,6 +1705,10 @@ export function narrowValueAxis<S extends z.ZodObject>(type: string, base: S) {
     const [, noBreak, authoredBreak] = valueAxisSchema.shape.break.unwrap().options;
     refusals.break = z.union([noBreak, authoredBreak]).optional()
       .describe('No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm.');
+  }
+  if (type === 'dot' || type === 'box') {
+    refusals.log = z.union([z.boolean(), z.literal('x')]).optional()
+      .describe("Set true or 'x' for a horizontal log10 value axis. Values and bounds must be positive. Equal ratios occupy equal distances.");
   }
   return Object.keys(refusals).length ? base.safeExtend(refusals) : base;
 }

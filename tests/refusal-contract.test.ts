@@ -15,6 +15,7 @@ import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -91,6 +92,97 @@ function cliErrors(type: string, options: Record<string, unknown>, data = getFix
 }
 
 describe('refusal contract', () => {
+  // A linear axis or a median computed after taking logarithms places the mark at the wrong value.
+  it.each(['dot', 'box'])('places %s marks on evenly spaced decade ticks', (type) => {
+    const data = type === 'dot'
+      ? { categories: ['a', 'b', 'c'], series: [{ id: 'time', values: [10, 100, 1000] }] }
+      : { groups: [{ id: 'sample', observations: [10, 25, 40, 60, 140, 240, 340, 9000] }] };
+    const options = { size: { width: 720 }, valueAxis: { log: true, max: 10000 } };
+    expect(getChartSchemas(type)!.optionsSchema.safeParse(options).success).toBe(true);
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options })));
+    const ticks = geometry.axes.find(axis => axis.axis === 'x')!.ticks;
+    const at = (value: number) => ticks.find(tick => tick.at === value)!.pos;
+    expect(at(100) - at(10)).toBeCloseTo(at(1000) - at(100), 5);
+    expect(at(10000) - at(1000)).toBeCloseTo(at(100) - at(10), 5);
+    const mark = geometry.scene.find(node => node.id === (type === 'dot' ? 'dot:time:b' : 'box:median:sample'));
+    expect(mark?.t === 'circle' ? mark.cx : mark?.t === 'line' ? mark.x1 : undefined).toBeCloseTo(at(100), 5);
+  });
+
+  // Dropping a decade endpoint leaves values near that end of a narrow log axis without their nearest tick.
+  it('keeps decade endpoints when the inner ticks of a log value axis are crowded', () => {
+    const cases = [
+      { type: 'dot', title: 'Cost by tier', width: 320,
+        data: (max: number) => ({ categories: ['Alpha', 'Beta'], series: [{ id: 's', values: [1.5, max] }] }) },
+      { type: 'box', title: 'Cost spread', width: 300,
+        data: (max: number) => ({ groups: [{ id: 'a', label: 'Long Service Name', observations: [1.5, 10, 100, 1000, max] }] }) },
+    ];
+    for (const { type, title, width, data } of cases) {
+      const options = { title, size: { width }, format: '$1,234', valueAxis: { log: true } };
+      for (const max of [90000, 95000]) {
+        const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data: data(max), options })));
+        const ticks = geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.at);
+        expect(ticks, `${type} with a maximum of ${max}`).toContain(1);
+        expect(ticks, `${type} with a maximum of ${max}`).toContain(100000);
+        expect(ticks, `${type} with a maximum of ${max}`).not.toContain(10000);
+      }
+    }
+  });
+
+  // An inward-anchored automatic end label must not displace the last decade as the chart gets wider.
+  it('prints the last log decade when the end label anchors inward', () => {
+    const values = [9000000, 10000000, 40000000, 70000000, 100000000];
+    const cases = [
+      { type: 'box', data: { groups: [{ id: 'a', label: 'Region A', observations: values }] } },
+      { type: 'dot', data: { categories: ['Region A', 'B', 'C', 'D', 'E'], series: [{ id: 's', values }] }, labels: { point: false } },
+    ];
+    for (const { type, data, labels } of cases) {
+      for (const width of [450, 480]) {
+        const options = { size: { width }, format: '$1,234', labels, valueAxis: { log: true, gridlines: true } };
+        const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options })));
+        const ticks = geometry.scene.flatMap((node) => node.t === 'text' && node.part === 'tick' ? node.lines : []);
+        expect(ticks, `${type} at ${width} px`).toContain('$100,000,000');
+      }
+    }
+  });
+
+  // An ignored reference series must not cause a log dot chart to refuse or shift the position of a plotted error.
+  it('validates log values only in the plotted dot series', () => {
+    const options = { title: 'Dot with ignored reference', valueAxis: { log: true } };
+    const reference = { id: 'r', label: 'Ref', role: 'reference', values: [0, 50] };
+    const plot = (values: number[]) => render({ spec: {
+      type: 'dot', options,
+      data: { categories: ['a', 'b'], series: [reference, { id: 'd', label: 'Data', values }] },
+    } }).body;
+    expect(plot([10, 100])).toMatchObject({
+      ok: true, warnings: expect.arrayContaining([expect.objectContaining({ code: 'reference-ignored' })]),
+    });
+    expect(plot([10, 0])).toMatchObject({
+      ok: false, errors: [expect.objectContaining({ code: 'log-nonpositive', path: '/data/series/1/values/1' })],
+    });
+  });
+
+  // A log chart must identify the zero or negative reading that it cannot place.
+  it.each(['dot', 'box'])('refuses non-positive %s data with the line chart repair', (type) => {
+    for (const value of [0, -5]) {
+      const data = type === 'dot'
+        ? { categories: ['a', 'b'], series: [{ id: 'time', values: [10, value] }] }
+        : { groups: [{ id: 'sample', observations: [10, value] }] };
+      const { body } = render({ spec: { type, data, options: { valueAxis: { log: true } } } });
+      expect(body).toMatchObject({ ok: false, errors: [{
+        code: 'log-nonpositive', path: type === 'dot' ? '/data/series/0/values/1' : '/data/groups/0/observations/1',
+        fix: [{ op: 'remove', path: '/options/valueAxis/log' }],
+      }] });
+    }
+  });
+
+  // Logarithmic mark lengths distort bar and column comparisons, so the refusal names two usable alternatives.
+  it.each(['bar', 'column'])('refuses log on %s and suggests a dot chart or an axis break', (type) => {
+    const data = { categories: ['a'], series: [{ id: 'time', values: [10] }] };
+    expect(render({ spec: { type, data, options: { valueAxis: { log: true } } } }).body).toMatchObject({
+      ok: false, errors: [{ path: '/options/valueAxis/log', message: expect.stringMatching(/only line, scatter, dot and box draw a log scale.*[Bb]ars and columns would distort mark lengths.*dot chart.*valueAxis\.break/) }],
+    });
+  });
+
   it('names a way out for every key a published schema or capability table refuses', () => {
     const failures: string[] = [];
     for (const type of TYPES) {

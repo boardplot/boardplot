@@ -24,7 +24,7 @@ import type { AxisGeometry, Geometry, Paint, PlacedLabel, SceneNode } from './ty
 import type { Theme } from './types/theme';
 import { maxOf, minOf } from './arrays';
 
-interface ValueAxisInput {
+export interface ValueAxisInput {
   scale: LinearScale;
   plot: Rect;
   /** 'y' = vertical value axis at the left; 'x' = horizontal at the bottom. */
@@ -51,6 +51,18 @@ interface ValueAxisInput {
   keepTopTick?: boolean;
   /** Canvas width, for an x axis: an end label centred past it anchors inward. */
   canvasWidth?: number;
+}
+
+/** Centre bottom labels unless an end label would leave the canvas or hit an existing claim. */
+export function valueAxisTickLabelX(plot: Rect, font: FontSpec, occupied: OccupiedIndex, canvasWidth = Infinity, mirrored = false) {
+  return (pos: number, width: number, index: number, count: number): number => {
+    const centred = pos - width / 2;
+    const end = count > 1 && (index === 0 || index === count - 1);
+    if (!end) return centred;
+    const box = { x: centred, y: plot.y + plot.h + 6, w: width, h: font.size * (font.lineHeight ?? 1.2) };
+    const inside = centred >= 0 && centred + width <= canvasWidth;
+    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, mirrored ? count - 1 - index : index, count, true);
+  };
 }
 
 /**
@@ -336,21 +348,9 @@ export function layoutValueAxis(input: ValueAxisInput, occupied: OccupiedIndex):
   const formatTick = input.formatSpec
     ? tickFormatter(input.formatSpec, requestedTicks)
     : input.format;
-  // A bottom tick label centres on its tick. Only an end label whose centred
-  // box would leave the canvas (a plot with no right margin) or run into
-  // something already on it (the y-axis tick column beside a scatter's
-  // corner) anchors inward, at its tick: an end label anchored by
-  // default would sit 6 to 11 px off a tick at the plot edge.
   // An axis that runs right to left (a mirrored butterfly pane) has its first tick at the right.
   const mirrored = requestedTicks.length > 1 && scale(requestedTicks[0]!) > scale(requestedTicks[requestedTicks.length - 1]!);
-  const labelX = (pos: number, width: number, index: number, count: number): number => {
-    const centred = pos - width / 2;
-    const end = count > 1 && (index === 0 || index === count - 1);
-    if (!end) return centred;
-    const box = { x: centred, y: plot.y + plot.h + 6, w: width, h: font.size * (font.lineHeight ?? 1.2) };
-    const inside = centred >= 0 && centred + width <= (input.canvasWidth ?? Infinity);
-    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, mirrored ? count - 1 - index : index, count, true);
-  };
+  const labelX = valueAxisTickLabelX(plot, font, occupied, input.canvasWidth, mirrored);
   const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true, input.keepTopTick === true);
 
   for (const t of ticks) {

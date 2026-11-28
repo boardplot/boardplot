@@ -353,7 +353,7 @@ export interface ValueAxisOptions {
   tickStep?: number; // ticks at step multiples, 1–20 intervals; extends outward, dot keeps data ends when two ticks fit
   includeZero?: boolean;
   percent?: boolean;
-  /** Log10 scale on scatter ('x', 'y', 'both' or true) and line ('y' or true); every value on it must be above zero. */
+  /** Log10 scale on scatter ('x', 'y', 'both' or true), line ('y' or true), dot and box ('x' or true). Values and bounds must be positive. */
   log?: boolean | 'x' | 'y' | 'both';
   reverse?: boolean;
   gridlines?: boolean; // default false
@@ -750,6 +750,7 @@ type ValueAxisFor<T extends string> = T extends keyof typeof VALUE_AXIS_ONLY
 type ValueAxisOptionsFor<T extends string> = {
   [K in keyof ValueAxisOptions]: K extends RefusedValueAxisKeys<T> ? never
     : K extends 'break' ? T extends 'waterfall' | 'pvm' ? ValueAxisOptions[K] : Exclude<ValueAxisOptions[K], 'auto'>
+    : K extends 'log' ? T extends 'dot' | 'box' ? boolean | 'x' : ValueAxisOptions[K]
       : ValueAxisOptions[K];
 };
 

@@ -507,4 +507,23 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'latency-by-operation-log',
+  title: 'Response times and a target on a log axis',
+  kind: 'example',
+  data: {
+    categories: [{ id: 'lookup', label: 'Lookup' }, { id: 'search', label: 'Search' }, { id: 'export', label: 'Export' }],
+    series: [{ id: 'latency', label: 'Response time', values: [3, 45, 600] }],
+  },
+  options: {
+    title: 'Only exports exceed the 100 ms target',
+    unit: 'ms',
+    valueAxis: { log: true, min: 1, max: 1000 },
+    axisTitles: { primary: 'Response time (ms, log scale)' },
+    source: 'Illustrative response times',
+    size: { width: 720 },
+  },
+  annotations: [{ kind: 'valueLine', value: 100, label: 'Target' }],
+});
+
 registerFixtures('dot', fixtures);
