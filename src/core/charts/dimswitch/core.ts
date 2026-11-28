@@ -428,7 +428,7 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
     const selected = classFloor(layout,data,options,layout(data,options));
     // Only the selected form needs its cell records. Store ordinary data in the completed layout.
     selected.derived = { ...selected.derived };
-    if (!selected.refused) selected.a11y = a11yDescription(options, 'Dimension switch table', selected.a11y.counts);
+    if (!selected.refused) selected.a11y = a11yDescription(options, ['Dimension switch table', 'Dimensionstabelle'], selected.a11y.counts);
     return selected;
   });
 }

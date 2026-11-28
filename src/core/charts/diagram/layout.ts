@@ -843,7 +843,7 @@ function layoutDiagramPass(
     },
     a11y: a11yDescription(options, [`${variantName} diagram`, variantName], [
       structureCount('nodes', data.nodes.length, undefined, options),
-      structureCount('relationships', preset.edges.length, undefined, options),
+      ...(preset.edges.length ? [structureCount('relationships', preset.edges.length, undefined, options)] : []),
     ]),
     warnings,
     debug: {

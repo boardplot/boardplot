@@ -204,7 +204,7 @@ export function layoutPvm(
   return withUnprintedClaims({
     ...geometry,
     type: 'pvm',
-    a11y: a11yDescription(options, 'Price / volume / mix bridge', geometry.a11y.counts),
+    a11y: a11yDescription(options, ['Price / volume / mix bridge', 'Preis-Mengen-Mix-Brücke'], geometry.a11y.counts),
     derived,
     warnings: [...warnings, ...geometry.warnings],
   }, ['pvm:reconciliation', ...(netChange === false ? ['pvm:delta'] : [])]);

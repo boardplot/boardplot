@@ -772,7 +772,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   const variantName = isBump
     ? chartString(domain.options, 'bumpVariant')
     : variant === 'line' ? chartString(domain.options, 'lineName') : variant === 'area' ? chartString(domain.options, 'areaName2') : variant === 'stacked-area' ? chartString(domain.options, 'stackedArea') : chartString(domain.options, 'percentArea');
-  const localizedName = variant === 'line' || variant === 'area' ? `${variantName}diagramm` : variantName;
+  const localizedName = !isBump && (variant === 'line' || variant === 'area') ? `${variantName}diagramm` : variantName;
   const lineShown = lineShownTexts(domain, input.reserves, plan, allLabels, area.frame.legend);
   if (lineShown.shown.length > 0) marks.shown = lineShown.shown;
   if (lineShown.wouldShow) marks.wouldShow = lineShown.wouldShow;

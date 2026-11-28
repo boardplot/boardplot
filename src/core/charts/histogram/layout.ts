@@ -908,7 +908,7 @@ export function layoutHistogram(
   return withUnprintedClaims({
     ...column,
     type: 'histogram',
-    a11y: a11yDescription(options, 'Histogram', [structureCount('observations', n, undefined, options)], { counts: column.a11y.counts }),
+    a11y: a11yDescription(options, ['Histogram', 'Histogramm'], [structureCount('observations', n, undefined, options)], { counts: column.a11y.counts }),
     size,
     marks: { bars: column.marks.bars, bins, ...(shown.length > 0 ? { shown } : {}) },
     derived,
