@@ -84,9 +84,10 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
   const { theme: optionTheme, target: optionTarget, ...options } = (rest.options ?? {}) as Record<string, unknown>;
   const T = theme ?? optionTheme, G = target ?? optionTarget;
   const pages: Page[] = [];
-  // The bare forms differ only in where the theme and the target stand, and the parser reads them alike: one parse of
-  // the form that holds both in its options serves them all.
-  const bare = { ...rest, options: { ...options, ...(T !== undefined && { theme: T }), ...(G !== undefined && { target: G }) } };
+  // The bare forms differ in where the theme stands, which the parser reads alike, and in whether the target stands in the
+  // options, which decides the canvas the margins are checked against. One parse serves the forms of one target placement.
+  const bare = (inOptions: boolean) => ({ ...rest, options: { ...options, ...(T !== undefined && { theme: T }), ...(inOptions && G !== undefined && { target: G }) } });
+  const bareForms = [bare(false), bare(true)];
   const parses = new Map<object, ReturnType<typeof parseChartSpec>>();
   if (source) {
     // A document of several charts shows one of them as the document with that chart alone.
@@ -100,7 +101,7 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
   // The request written as a bare chart, with its theme at its top, in a prop or in its options, and its target in a prop or in its options.
   for (const t of T === undefined ? [''] : ['prop', 'top', 'options']) for (const g of G === undefined ? [''] : ['prop', 'options']) {
     pages.push([{ ...rest, ...(t === 'top' && { theme: T }), options: { ...options, ...(t === 'options' && { theme: T }), ...(g === 'options' && { target: G }) } },
-      { ...(t === 'prop' && { theme: T }), ...(g === 'prop' && { target: G }) }, bare]);
+      { ...(t === 'prop' && { theme: T }), ...(g === 'prop' && { target: G }) }, bareForms[g === 'options' ? 1 : 0]!]);
   }
   // A page draws the prepared chart when its render key without the data and its data as one JSON string are the same.
   // The data is the large part, so the check compares it as a string and every page hashes it once.
