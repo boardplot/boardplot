@@ -551,8 +551,8 @@ export function withPeriodEvents(base: LabelCardContent, records: readonly Inter
   const events = categoryId === undefined || first.event ? [] : records.filter(record => record.event?.categoryId === categoryId
     && record.target.chart === first.target.chart && record.target.panel === first.target.panel);
   if (!events.length) return base;
-  // A grid panel's records name an annotation with the panel's id in front.
-  const prefix = first.target.panel === undefined ? '' : `${first.target.panel.split('/').at(-1)}/`;
+  // A grid panel's records name an annotation with the panel's path in front.
+  const prefix = first.target.panel === undefined ? '' : `${first.target.panel}/`;
   const ids = new Set(events.map(record => prefix + record.target.owner.annotationId!));
   const rows = events.flatMap(({ event }) => event!.items.map(({ title }): LabelCardRow => event!.day
     ? { kind: 'event', label: event!.day, value: title, text: `${event!.day} ${title}` } : { kind: 'event', text: title }));
