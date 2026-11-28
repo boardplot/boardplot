@@ -2600,7 +2600,6 @@ fixtures.push({
     title: 'Revenue by plan, per day',
     unit: '$',
     source: 'Synthetic daily revenue',
-    // The notes-list lead for totals that miss a part; the "(partial)" marker prints only under notes.show 'disclosure'.
     strings: { knownPartsTotals: 'Daily totals add the reported plans only' },
   },
 });

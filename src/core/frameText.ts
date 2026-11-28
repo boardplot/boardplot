@@ -5,7 +5,7 @@ import { fitText } from './label/fitText';
 import { footnoteMark } from './footnoteMark';
 import { chartString, localeStrings } from './strings/frame';
 import {
-  allQuiet, defaultNoteLines, defaultNotePlacement, engineNoteMeta, isQuiet, keepNoteMeta, notesPointer, sourceLine,
+  allQuiet, defaultNoteLines, defaultNotePlacement, engineNoteMeta, isQuiet, keepNoteMeta, notesPointer, printsNote, sourceLine,
   type ChartCredit, type ChartNote, type EngineNoteMeta, type NoteKind, type NoteList, type NotePlacement,
 } from './notes';
 import type { FontSpec, TextMeasurer } from './text';
@@ -87,7 +87,6 @@ export interface FrameTextEntry {
   /** The text the footer draws: the number mark, then the short form where the kind prints it. */
   drawn: string;
   ref?: number;
-  ranks?: true;
 }
 
 export interface FrameText {
@@ -142,7 +141,6 @@ export function frameText(input: FrameTextInput): FrameText {
   const fullStatic = policy.pinned;
   const placement = fullStatic ? 'frame' : input.notes?.placement ?? defaultNotePlacement(input.target);
   const budget = fullStatic ? Infinity : input.notes?.maxLines ?? defaultNoteLines(input.target, input.width);
-  // Engine notes (method, disclosure) print only where the author asks for them (notes.show).
   const shown = new Set<string>(input.notes?.show ?? ['note']);
   const pointerOn = !fullStatic && !input.footnotesOff && input.notes?.pointer !== false;
   // The kinds the composers gave, by text; a list note the frame fits takes its fitted kind here.
@@ -177,17 +175,15 @@ export function frameText(input: FrameTextInput): FrameText {
       // a capped list note names what fits two footer lines at this width.
       if (meta?.list) {
         const fitted = fittedNote(meta.list, (text) => wrapFootnote(markBold(text), footFont, footW, footMeasure).length <= 2);
-        f = meta.short
-          ? mark(f, { kind: 'disclosure', short: fitted, values: meta.values, list: meta.list })
-          : mark(fitted, { kind: 'disclosure', values: meta.values, list: meta.list });
+        f = meta.short ? mark(f, { ...meta, short: fitted }) : mark(fitted, meta);
       }
       const kind: NoteKind = numberedDisclosure ? 'disclosure' : numberedHere ? 'note' : meta?.kind ?? 'method';
       // A disclosure draws its short form only where it is narrower than the full note;
       // an author-set notes.maxListed keeps its form.
       const fittedShort = metas.get(f)?.short ?? meta?.short;
       const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || footMeasure(markBold(fittedShort), footFont).width < footMeasure(markBold(f), footFont).width) ? fittedShort : undefined;
-      const storedMeta = meta ? { ...meta, ...metas.get(f), ...(meta.ranks ? { ranks: true as const } : {}) } : undefined;
-      entries.push(keepNoteMeta({ kind, text: f, ...(short ? { short } : {}), drawn: `${marker}${kind === 'disclosure' || (kind === 'method' && !fullStatic) ? short ?? f : f}`, ...(marker ? { ref: next } : {}), ...(meta?.ranks ? { ranks: true as const } : {}) }, storedMeta));
+      const storedMeta = meta ? { ...meta, ...metas.get(f) } : undefined;
+      entries.push(keepNoteMeta({ kind, text: f, ...(short ? { short } : {}), drawn: `${marker}${kind === 'disclosure' || (kind === 'method' && !fullStatic) ? short ?? f : f}`, ...(marker ? { ref: next } : {}) }, storedMeta));
     }
     // A number with no mark pointing at it sends the reader looking
     // for one, so the note prints unnumbered and the author hears why.
@@ -213,8 +209,8 @@ export function frameText(input: FrameTextInput): FrameText {
   if (sourceOff) {
     warnings.push({ code: 'footnotes-off', severity: 'info', message: `compact frame has no room for the source line: ${sourceText}` });
   }
-  // A disclosure whose kind the author lists in notes.show himself, and a note a
-  // drawn mark points at, stay in the frame outside the line budget, like a
+  // A default caveat, a disclosure enabled by an authored notes.show, and a note a
+  // drawn mark points at stay in the frame outside the line budget, like a
   // required credit: an author note in pointedNotes, a disclosure with a number
   // (ref, a "1)" on a cut name or a milestone) or the rank key (ranks, the rank
   // numbers under the columns), since a mark whose key sits behind the pointer
@@ -223,9 +219,13 @@ export function frameText(input: FrameTextInput): FrameText {
   // static output prints every note anyway, so its layout keeps it too.
   // `footnotes: false` hands every other note to the host; a printed disclosure stays.
   const pointed = new Set(input.pointedNotes ?? []);
-  const kept = entries.filter((entry) => entry.kind === 'disclosure'
-    ? (input.notesShowAuthored === true || !policy.live || entry.ref !== undefined || entry.ranks === true) && (shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')))
-    : !input.footnotesOff && pointed.has(entry.text));
+  const kept = entries.filter((entry) => {
+    if (entry.kind !== 'disclosure') return !input.footnotesOff && pointed.has(entry.text);
+    if (!printsNote(entry, input.notes?.show)) return false;
+    const meta = engineNoteMeta(entry);
+    return input.notesShowAuthored === true || !policy.live || entry.ref !== undefined || meta?.ranks === true
+      || (meta?.caveat === true && input.notes?.show === undefined);
+  });
   const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's
   // hidden notes stay in the notes list without a pointer under the chart.
@@ -325,7 +325,7 @@ export function frameText(input: FrameTextInput): FrameText {
 export const listText = (lead: string, items: readonly string[]) => `${lead}: ${items.join(', ').replace(/\.$/, '')}.`;
 
 /**
- * a capped list note names as many items as fit `fits` (two footer lines at
+ * a capped list note names as many of its items as fit `fits` (two footer lines at
  * the drawn width), at most noteCap, in its order, then "and N more"; a lone last item only when
  * it fits. When not even one name fits, the note counts: "18 of 36 values", else "18 items".
  */

@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
+import type { GridMarks } from '../src/core/charts/grid/layout';
 import { getFixtures } from '../src/fixtures';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
@@ -16,6 +17,7 @@ import { claimId, HOST_CLAIMS, unprintedClaims, type HostClaims } from '../src/c
 import { layoutWaterfall } from '../src/core/charts/waterfall/layout';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
+import { requireGeometry } from '../src/core/sizing';
 import { noteTexts } from './helpers/notes';
 import { solveLabels, type LabelRequest } from '../src/core/label/solver';
 import { createOccupiedIndex } from '../src/core/label/occupied';
@@ -30,6 +32,99 @@ function lay(type: string, data: unknown, options: Record<string, unknown> = {})
 }
 const texts = (g: Geometry): string[] => g.scene.flatMap((n) => (n.t === 'text' ? [n.lines.join(' ')] : []));
 const codes = (g: Geometry): string[] => g.warnings.map((w: LintWarning) => w.code);
+const footer = (g: Geometry) => g.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? [node.lines.join(' ')] : []);
+const twoPartStack = (categories: string[], alpha: number[], beta: (number | null)[]) => ({
+  categories, series: [{ id: 'a', label: 'Alpha', values: alpha }, { id: 'b', label: 'Beta', values: beta }],
+});
+const quarterStack = twoPartStack(['Q1', 'Q2', 'Q3'], [60, 60, 60], [40, null, 40]);
+const stackNote = 'Totals add the known parts only: Q2 without Beta.';
+const draw = (type: string, data: unknown, options: Record<string, unknown>) =>
+  requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options })));
+
+// Readers need to see partial totals, missing area values and clipped points unless the author hides disclosures.
+it('prints the three caveats by default and hides them with notes.show [note]', () => {
+  const examples = [
+    { type: 'column', data: quarterStack, options: { variant: 'stacked' }, note: stackNote },
+    { type: 'combo', data: { ...quarterStack, series: quarterStack.series.map(series => ({ ...series, kind: 'column' })) }, options: {}, note: stackNote },
+    { type: 'line', data: quarterStack, options: { variant: 'stacked-area' }, note: 'Missing values at Q2: 0 used; totals partial.' },
+    { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 20 }, { id: 'b', x: 2, y: 300 }] },
+      options: { valueAxis: { clamp: { max: 100 } } }, note: '1 point clipped at 100 (y).' },
+  ];
+  for (const { type, data, options, note } of examples) {
+    const shown = lay(type, data, options);
+    const hidden = lay(type, data, { ...options, notes: { show: ['note'] } });
+    expect(footer(shown), type).toEqual([note]);
+    expect(footer(hidden), type).toEqual([]);
+    expect(hidden.frame.noteList, type).toContainEqual(expect.objectContaining({ text: note, inFrame: false }));
+  }
+});
+
+// A caveat must give way when the plot needs the footer space.
+it('draws a short fixed-height stack without the default caveat and keeps its warnings', () => {
+  const fixture = getFixtures('column').find(entry => entry.id === 'stacked-with-connectors')!;
+  const options = { ...fixture.options, size: { width: 480, height: 220 } };
+  const chart = draw('column', fixture.data, options);
+  const plain = draw('column', fixture.data, { ...options, notes: { show: ['note'] } });
+  expect(texts(chart)).toEqual(texts(plain));
+  expect(chart.plot).toEqual(plain.plot);
+  expect(codes(chart)).toEqual(expect.arrayContaining(['incomplete-composition', 'plot-under-floor']));
+
+  const size = { width: 720 };
+  for (const height of [165, 260]) {
+    const panels = [{ id: 'orders', type: 'column', align: { vertical: 'start', height }, options: { variant: 'stacked' },
+      data: quarterStack }];
+    const grid = draw('grid', { panels }, { columns: [1], size });
+    const noNotes = draw('grid', { panels }, { columns: [1], size, notes: { show: ['note'] } });
+    const child = (geometry: Geometry) => (geometry.marks.panels as GridMarks['panels'])[0]!.chart!.geometry;
+    expect(codes(grid), `panel capped at ${height} px`).not.toContain('grid-panel-too-short');
+    expect(texts(grid)).toEqual(texts(noNotes));
+    expect(child(grid).plot).toEqual(child(noNotes).plot);
+    expect(child(grid).frame.noteList).toContainEqual(expect.objectContaining({ text: stackNote, inFrame: false }));
+  }
+});
+
+// A slide without a caveat must step down its text before giving up the requested method note.
+it('steps down slide text to keep the requested method note', () => {
+  const fixture = getFixtures('line').find(entry => entry.id === 'brand-share-bump')!;
+  const chart = draw('line', fixture.data, { ...fixture.options, target: 'slide', methodNote: true, size: { width: 720, height: 380 } });
+  expect(codes(chart)).toContain('type-stepped');
+  expect(codes(chart)).not.toContain('footnotes-off');
+  expect(chart.frame.noteList).toContainEqual(expect.objectContaining({ kind: 'method', inFrame: true }));
+});
+
+// A default caveat must not take the place of disclosures the author requested on a slide.
+it('keeps requested disclosures when slide text steps down to fit', () => {
+  const stack = twoPartStack(['Q1', 'Q2', 'Q3', 'Q4'], [100, 100, 100, 100], [3, null, 2, 4]);
+  const data = { ...stack, series: [...stack.series, { id: 'g', label: 'Gamma', values: [50, 50, 50, 50] }] };
+  const chart = draw('column', data, { variant: 'stacked', title: 'Sales by tier across four quarters',
+    subtitle: 'USD millions', source: 'Internal', target: 'slide', notes: { placement: 'frame' }, size: { width: 720, height: 260 } });
+  expect(codes(chart)).toContain('type-stepped');
+  expect(codes(chart)).not.toContain('footnotes-off');
+  expect(footer(chart)).toEqual(expect.arrayContaining(['Values not printed on the columns: Beta 3 (Q1), Beta 2 (Q3), Beta 4 (Q4).', stackNote]));
+});
+
+// A long list of missing parts must leave room for the plot.
+it('fits a combo caveat into two footer lines', () => {
+  const categories = Array.from({ length: 20 }, (_, i) => `Month ${i + 1}`);
+  const stack = twoPartStack(categories, categories.map(() => 40), categories.map(() => null));
+  const combo = { ...stack, series: [...stack.series.map(series => ({ ...series, kind: 'column' })),
+    { id: 'r', label: 'Rate', kind: 'line', values: categories.map(() => 25) }] };
+  const chart = draw('combo', combo, { size: { width: 320, height: 300 } });
+  const caveat = chart.scene.find(node => node.t === 'text' && node.part === 'footnote' && node.lines[0]?.startsWith('Totals add the known parts only'));
+  expect(caveat).toMatchObject({ lines: [expect.stringMatching(/Month 1/), expect.stringMatching(/and \d+ more/)] });
+  expect(chart.plot.h).toBeGreaterThanOrEqual(160);
+});
+
+// The grid's note settings must reach each chart panel, with explicit panel settings taking precedence.
+it('honors the grid caveat switch inside chart panels', () => {
+  const column = { id: 'orders', type: 'column', options: { variant: 'stacked' }, data: quarterStack };
+  const options = { columns: [1], size: { width: 720 }, notes: { show: ['note'] } };
+  expect(footer(draw('grid', { panels: [column] }, { ...options, notes: undefined }))).toEqual([stackNote]);
+  expect(footer(draw('grid', { panels: [column] }, options))).toEqual([]);
+  const override = { ...column, options: { ...column.options, notes: { show: ['disclosure'] } } };
+  expect(footer(draw('grid', { panels: [override] }, options))).toEqual([stackNote]);
+});
+
 // A crowded stack row used to skip its tallest column when that column fell between the retained totals.
 it('keeps the tallest stacked column total in a crowded row', () => {
   const data = {
@@ -150,16 +245,13 @@ describe('data gaps', () => {
     // A missing part prints nothing on a drawn column; no share of the known parts prints.
     expect(shares.labels.filter((l) => l.kind === 'segment' && l.owner.categoryId === 'q1').map((l) => l.text)).toEqual([]);
     expect(codes(shares)).toContain('incomplete-composition');
-    // a stacked column prints the sum of its drawn parts as a plain total, since the note a
-    // "(partial)" marker keys to is hidden by default; the notes list and one warning say what it lacks.
     const columnTotals = lay('column', partial, { variant: 'stacked' });
     expect(columnTotals.labels.filter((l) => l.kind === 'grandTotal').map((l) => l.lines ?? [l.text])).toEqual([['60'], ['100']]);
     expect(noteTexts(columnTotals)).toContain('Totals add the known parts only: Q1 without B.');
     expect(columnTotals.warnings.filter((w) => w.code === 'incomplete-composition')).toHaveLength(1);
-    // Where disclosures print, the marker and the note naming it are back.
-    const marked = lay('column', partial, { variant: 'stacked', notes: { show: ['disclosure'] } });
-    expect(marked.labels.filter((l) => l.kind === 'grandTotal').map((l) => l.lines)).toEqual([['60', '(partial)'], ['100']]);
-    expect(noteTexts(marked)).toContain('Totals marked (partial) add the known parts only: Q1 without B.');
+    const disclosed = lay('column', partial, { variant: 'stacked', notes: { show: ['disclosure'] } });
+    expect(disclosed.labels.filter((l) => l.kind === 'grandTotal').map((l) => l.lines)).toEqual([['60'], ['100']]);
+    expect(noteTexts(disclosed)).toContain('Totals add the known parts only: Q1 without B.');
     // a stack of one drawn part (the others null or 0) printed its number twice, in the segment and as the total.
     // also where a per-series format prints the part as "42.0" beside the total "42".
     for (const type of ['column', 'bar', 'combo']) for (const other of [null, 0]) for (const format of [undefined, '0.0']) {
@@ -189,7 +281,7 @@ describe('data gaps', () => {
     expect(latest.hidden).toBeUndefined();
     // Half of one line, not of the box: two-line totals 15 px apart share 13 of 28 px, and the second line of one beside the first of the other read as one number.
     const plot = { x: 0, y: 0, w: 400, h: 300 };
-    const twoLine = (id: string, x: number, y: number): LabelRequest => ({ id: `grandTotal:${id}`, kind: 'grandTotal', owner: { categoryId: id }, text: '100', lines: ['100', '(partial)'],
+    const twoLine = (id: string, x: number, y: number): LabelRequest => ({ id: `grandTotal:${id}`, kind: 'grandTotal', owner: { categoryId: id }, text: '100', lines: ['100', 'to date'],
       font: { family: 'Inter', size: 12, weight: 400 }, priority: 900, candidates: [{ slot: 'aboveStack', rect: { x, y, w: 37, h: 28 }, penalty: 0 }] });
     const stair = solveLabels([twoLine('a', 100, 100), twoLine('b', 140, 115)], createOccupiedIndex(plot), { density: 'smart', pins: {}, measure: measureText, plot });
     expect(stair.placed.map((l) => l.hidden ?? 'shown')).toEqual(['shown', 'collision']);
@@ -603,7 +695,6 @@ describe('an empty category in a stack', () => {
   it('reads n/a once on the baseline, none on a drawn column, and stays out of the partial note', () => {
     const fixture = getFixtures('column').find((entry) => entry.id === 'stacked-empty-weeks')!;
     const g = lay('column', fixture.data, fixture.options as Record<string, unknown>);
-    // Footer rule: the note is in the notes list, not drawn.
     expect(noteTexts(g)).toContain('Totals add the known parts only: W34 without Returning.');
     const na = (categoryId: string) => g.labels.filter((l) => l.id.startsWith('na:') && l.owner.categoryId === categoryId && !l.hidden).map((l) => l.id);
     expect([na('w31'), na('w32'), na('w34')]).toEqual([['na:w31'], ['na:w32'], []]);

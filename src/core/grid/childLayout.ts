@@ -1,8 +1,7 @@
 /** Child requirements are measured at the width allocated by the grid. */
 import type { Geometry, LayoutResult, RefusedLayout } from '../types/scene';
 import type { Rect, Size } from '../geometry';
-import { chartSizing, resolveSizing, sizeRefusal } from '../sizing';
-import { isVarianceTier } from './varianceTiers';
+import { chartSizing, panelMinHeight, resolveSizing, sizeRefusal } from '../sizing';
 import { maxOf, minOf } from '../arrays';
 import { unitMagnitude } from '../formatSpec';
 import { NormalizeError } from '../normalize/shared';
@@ -96,11 +95,10 @@ function childLayout(data: unknown, options: unknown, layout: ChildChartLayout):
   if (geometry.refused) return geometry;
   // Canvas floors do not apply to panels. Measured content and frame
   // floors do. Variance strips keep the grid's existing short-plot policy.
-  const { sizing, frame } = geometry;
+  const { sizing } = geometry;
   if (sizing) {
     const minWidth = sizing.measuredMinWidth;
-    const minHeight = Math.ceil(Math.max(frame.minHeight ?? 0, isVarianceTier(options) ? 0 : frame.plotMinHeight ?? 0,
-      sizing.measuredMinHeight));
+    const minHeight = panelMinHeight(geometry, options);
     geometry.sizing = resolveSizing({ ...sizing, minWidth, minHeight }, geometry.size, {
       minWidth, minHeight, naturalWidth: sizing.naturalWidth, naturalHeight: sizing.naturalHeight,
     });

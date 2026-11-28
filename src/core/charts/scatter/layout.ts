@@ -54,7 +54,7 @@ import { QUADRANT_BOXES, QUADRANT_BOX_NAME, quadrantBoxName, type ScatterDerived
 import { type ScatterFrameMeasurements, scatterDotRadius, scatterPaints, scatterPlotArea, solveScatterFrame } from './plot';
 import { gridZones, zoneKeyItems } from './zones';
 import type { ScatterStrategyOptions } from './types';
-import { disclosureNote, disclosuresShown, withEngineNotes } from '../../notes';
+import { caveatsShown, disclosureNote, disclosuresShown, withEngineNotes } from '../../notes';
 import { withUnprintedClaims } from '../../claims/ids';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, pushAll } from '../../arrays';
@@ -237,8 +237,7 @@ function assembleScatterGeometry(input: {
 function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: ReadonlySet<Id>, keyed: ReadonlySet<Id>): Id[] {
   const q = domain.quadrants;
   const captions = env.options.quadrants?.labels ?? {};
-  // A disclosure prints as a footnote; without footnotes the key names the dropped points.
-  const footnotes = disclosuresShown(env.options);
+  const clippingNote = caveatsShown(env.options.notes?.show);
   return [
     ...domain.trends.flatMap((fit) => [`scatter:trend:${fit.id}:intercept`, ...(keyed.has(`trend:${fit.id}`) ? [] : [`scatter:trend:${fit.id}:slope`, `scatter:trend:${fit.id}:r2`])]),
     ...(q.derived ? [
@@ -247,10 +246,10 @@ function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: R
       ...QUADRANT_BOXES.filter((box) => !captions[box] || q.voidBoxes.has(box)).map((box) => `scatter:quadrant:count:${box}`),
     ] : []),
     ...(domain.clamp?.records ?? []).flatMap((record) => [
-      ...(footnotes ? [] : [`scatter:clipped:${record.axis}:${record.bound}`]),
+      ...(clippingNote ? [] : [`scatter:clipped:${record.axis}:${record.bound}`]),
       ...record.points.filter((point) => !named.has(point.id)).map((point) => `scatter:clipped:${record.axis}:${record.bound}:${point.id}`),
     ]),
-    ...(domain.dropped && !footnotes && env.options.legend === 'none' ? ['scatter:dropped'] : []),
+    ...(domain.dropped && !disclosuresShown(env.options) && env.options.legend === 'none' ? ['scatter:dropped'] : []),
   ];
 }
 

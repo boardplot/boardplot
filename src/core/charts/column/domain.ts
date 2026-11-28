@@ -51,7 +51,6 @@ import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { numberMinus } from '../../numberMarks';
-import { disclosuresShown } from '../../notes';
 import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -1069,7 +1068,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   // Match planColumnValueLabels: shareLabels adds percent only in the named columns.
   // Keep the existing stacked100 rounding path unchanged.
   const shareOnly = variant === 'stacked' ? options.shareLabels?.only : undefined;
-  warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
+  warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings);
   warnShareFormatIgnored(variant, options.format, shareFormatExample(options), gtContent?.includes('absolute') === true || columnSegmentsPrintAbsolute(options), warnings);
   // Every computed share the chart prints takes one precision.
   const shareSet = shareSetFormatter(cats.flatMap((_, ci) => keySeries.flatMap((s) => full.shareOf(s, ci) ?? [])), options.locale?.language);

@@ -20,7 +20,7 @@ import { AUTHORED_EXAMPLES, withChartFormats, withUnitStandIns, writtenExamples 
 import { hasFormatRecord } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, heightOmitted, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { autoPlotPx, CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, heightOmitted, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, panelMinHeight, plotForFloor, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_PX, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -41,8 +41,8 @@ import { rectsOverlap } from './geometry';
 import { isOwnMark } from './label/solver';
 import { reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
-import { staticFrame } from './footer';
-import { sourceLine } from './notes';
+import { LIVE_NOTE_SHOW, staticFrame } from './footer';
+import { AUTO_PANEL_HEIGHT, engineNoteMeta, shownNoteKinds, sourceLine, withAuthorNotesOnly, withEngineNotes } from './notes';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
@@ -54,6 +54,30 @@ type RepairReplacement<M extends object, DV extends object> = () => LayoutResult
 export type DiscardRepair = boolean | ((refusal: RefusedLayout) => boolean);
 type RegistryFitLayout<O extends ChartOptions, M extends object, DV extends object> = FitLayout<O, M, DV>
   & ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => LayoutResult<M, DV>);
+
+/** A fixed canvas keeps its default caveats only when they leave room for the plot. */
+function fitDefaultCaveats<M extends object, DV extends object>(first: LayoutResult<M, DV>, options: ChartOptions,
+  withoutCaveats: () => LayoutResult<M, DV>): LayoutResult<M, DV> {
+  if (first.refused || isRefused(first)) return withoutCaveats();
+  const plot = plotForFloor(first).h;
+  const target = options.target ?? DEFAULT_TARGET;
+  const panel = panelTypeClass(options) !== undefined;
+  const floor = panel ? autoPlotPx(target, first.size.width) : PLOT_FLOOR_PX[target];
+  const warned = first.warnings.some(warning => warning.code === 'plot-under-floor');
+  const shortPlot = warned || plot + SIZE_TOLERANCE < floor;
+  // A panel can draw at a trial height below its measured minimum. The grid later checks that minimum.
+  const need = panel ? panelMinHeight(first, options) : 0;
+  const shortPanel = first.size.height < need;
+  const grew = options.size === undefined ? first.size.height > resolveTargetSize(target).sizePx.height + 0.01
+    : first.warnings.some(warning => warning.code === 'static-footer-grew');
+  if (!shortPlot && !shortPanel && !grew) return first;
+  const plain = withoutCaveats();
+  if (plain.refused || isRefused(plain)) return first;
+  const clearsWarning = warned && !plain.warnings.some(warning => warning.code === 'plot-under-floor');
+  return clearsWarning || (shortPlot && plotForFloor(plain).h > plot)
+    || (shortPanel && panelMinHeight(plain, options) < need)
+    || (grew && plain.size.height < first.size.height) ? plain : first;
+}
 
 /**
  * A layout that draws reports an estimated height and no patch: the estimate was never drawn, and a patch that
@@ -321,6 +345,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   const canDiscardSize = builtIn && !def.finishLayout && def.type !== 'gantt' && def.type !== 'grid';
   // These charts validate their data and options before choosing a height-dependent drawing.
   const canTryClassBeforeRepair = canDiscardSize && ['cohort', 'combo', 'column', 'likert', 'line', 'scatter'].includes(def.type);
+  const hasDefaultCaveats = builtIn && ['column', 'combo', 'line', 'scatter'].includes(def.type);
   const prepareLayout = (data: D, authored?: O, fitOnly: DiscardRepair = false): RegistryFitLayout<O, M, DV> => {
     const annotations = prepareFractionAnnotations(authored?.annotations);
     if (annotations !== authored?.annotations) authored = { ...authored, annotations } as O;
@@ -885,7 +910,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const options = withDefaultTarget(authored);
     return withLayoutMemo(() => {
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
-      let geo = loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
+      const draw = (at?: O) => loadedDeferred('footer')?.(withCuts, data, at, def.type) ?? withCuts(data, at);
+      let geo = hasDefaultCaveats && options && shownNoteKinds(options) === undefined && !(AUTO_PANEL_HEIGHT in options)
+        && !heightOmitted(options.size, options.target)
+        ? withEngineNotes(notes => {
+          const { caveat } = notes;
+          const first = draw(options);
+          if (first.refused ? notes.caveat === caveat : !first.frame.noteList?.some(note => engineNoteMeta(note)?.caveat)) return first;
+          return fitDefaultCaveats(first, options, () => draw({ ...withAuthorNotesOnly(options), [LIVE_NOTE_SHOW]: ['note'] }));
+        }) : draw(options);
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
       if (options?.categoryAxis?.title) {
         // The title gives way when it would refuse the chart or hide a label, itself included.

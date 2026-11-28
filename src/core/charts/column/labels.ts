@@ -49,7 +49,6 @@ import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
 import { noteName } from '../../calendarData';
 import { chartString } from '../../strings';
-import { disclosuresShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 export const COLUMN_LABEL_PAD = 2;
@@ -684,14 +683,6 @@ export function stackTotalText(domain: ColumnDomain, ci: number, format = domain
   return { text: net ? `${domain.options.strings!.net} ${text}` : text, net };
 }
 
-/**
- * The line under a stack total that misses a part: "(partial)", in the muted secondary step.
- * It keys the total to a disclosure, so it prints only where disclosures print.
- */
-export function partialWords(domain: ColumnDomain, ci: number): string | undefined {
-  return domain.variant === 'stacked' && domain.incompleteCats.has(domain.cats[ci]!.id) && disclosuresShown(domain.options) ? domain.options.strings!.incomplete! : undefined;
-}
-
 const box = (x: number, yy: number, size: { width: number; height: number }): Rect => ({ x, y: yy, w: size.width, h: size.height });
 
 /** Append the stack totals and their integrated growth values at the current scale. */
@@ -722,14 +713,11 @@ export function planColumnTotals(
   };
   const totals = fullTotals
     .map((total, ci) => { const text = total && !total.net ? authoredPart(ci) : undefined; return text ? { ...total!, text } : total; });
-  // A running category's total says so under the value, in the secondary step and the muted ink;
-  // a stack that misses a part says "(partial)" there.
+  // A running category's total says "to date" under the value.
   const toDateIds = toDateOnValues(domain);
   const toDate = domain.options.strings?.toDate ?? chartString(domain.options, 'toDate');
-  const wordsAt = (ci: number, text: string, font: FontSpec) => {
-    const words = toDateIds.has(cats[ci]!.id) ? toDate : partialWords(domain, ci);
-    return words ? toDateLabel(text, font, words, domain.theme, measure) : undefined;
-  };
+  const wordsAt = (ci: number, text: string, font: FontSpec) => toDate && toDateIds.has(cats[ci]!.id)
+    ? toDateLabel(text, font, toDate, domain.theme, measure) : undefined;
   const seats = (font: FontSpec) => totals.map((total, ci) => {
     if (!total || total.net) return null;
     const size = wordsAt(ci, total.text, font)?.size ?? measure(total.text, font);
@@ -787,8 +775,7 @@ export function planColumnTotals(
         .map(candidate => ({ ...candidate, overRules: true, rect: { ...candidate.rect, x: Math.max(area.plot.x, Math.min(candidate.rect.x, area.plot.x + area.plot.w - candidate.rect.w)) } }))
         // In a thinned row the neighbours print no total: a total wider than its
         // column that would cut into a taller neighbour rises just clear of it,
-        // still centred on its own column. It may rise four lines of its font and two seat gaps,
-        // whatever its own line count: the reach a two-line total had before totals printed in one line.
+        // still centred on its own column. It may rise four lines of its font and two seat gaps.
         .flatMap(candidate => {
           if (!thinned || !above) return [candidate];
           const { x, w } = candidate.rect;

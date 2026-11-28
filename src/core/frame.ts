@@ -26,7 +26,7 @@ import { isNumberAlone } from './textRole';
 import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { withLocaleStrings } from './strings';
-import { allQuiet, chartNotes, copyNote, defaultNotePlacement, disclosureNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
+import { allQuiet, caveatNote, chartNotes, copyNote, defaultNotePlacement, disclosureNote, engineNote, engineNoteMeta, footerParts, keepEngineNoteMeta, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
@@ -907,6 +907,11 @@ export function noteLine(lead: string, items: readonly string[], options?: NoteC
   return items.length === 0 ? [] : [engineNote(listText(lead, options === undefined ? items : cappedItems(items, options, total)), 'disclosure', undefined, undefined,
     // unless the author set notes.maxListed, the frame names as many items as fit two lines.
     options?.notes?.maxListed === undefined && options ? { lead, items, total, options } : undefined)];
+}
+
+/** Keep the missing part named when it is the only item in the caveat. */
+export function caveatNoteLine(lead: string, items: readonly string[], options: NoteCapOptions): string[] {
+  return noteLine(lead, items, items.length === 1 ? undefined : options).map(caveatNote);
 }
 
 /** How many items a drawn list note names (the frame fitted it, `fittedNote`); undefined when `drawn` is not one of its forms. */
@@ -2152,7 +2157,7 @@ export function sourceOnlyListNotes(old: FrameResult, footnotes: string[]) {
   if (source.lines.length !== fitted.lines.length || source.lines.some((line, i) => line !== fitted.lines[i])
     || source.title !== (fitted.title ? plainText(fitted.title) : undefined)) return;
   const mark = () => {
-    for (const { text: note, meta } of text.marked) engineNote(note, meta.kind, meta.short, meta.values, meta.list ?? null);
+    for (const { text: note, meta } of text.marked) keepEngineNoteMeta(note, meta);
   };
   return { mark, replace: () => {
     const copy = retainFrameState(frame, { ...frame, notes: text.unprinted, noteList: text.noteList });
@@ -2323,7 +2328,7 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims, measurement
   const footX = contentX + footInset;
   const fullStatic = staticFrame.pinned;
   // The request's note registry learns the kinds the frame gave its fitted list notes.
-  for (const { text: note, meta } of text.marked) engineNote(note, meta.kind, meta.short, meta.values, meta.list ?? null);
+  for (const { text: note, meta } of text.marked) keepEngineNoteMeta(note, meta);
   if (text.countable) staticFrame.countable = true;
   const { placement, footMeasure, sourceText, sourceOff, sourceBlock, noteList } = text;
   // WCAG 2.2 AA 2.5.8: the 'info' footer is a 24 px button in React (ChartFooter), so the room

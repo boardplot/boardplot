@@ -19,7 +19,7 @@ import { chartString } from '../../strings/scatter';
 import { NormalizeError } from '../../normalize/shared';
 import type { Id } from '../../types/cell';
 import type { DrawnValueLine } from './valueLines';
-import { disclosureNote } from '../../notes';
+import { caveatNote, disclosureNote } from '../../notes';
 
 type ScatterAxis = 'x' | 'y';
 type ScatterBoundName = 'min' | 'max';
@@ -212,7 +212,7 @@ export function planScatterClamp(
         limitText,
         count: beyond.length,
         points: beyond,
-        note: disclosureNote(chartString(input.options, 'clippedPointsNote', { v1: chartString(input.options, 'pointsCount', { v1: beyond.length, v2: beyond.length === 1 ? '' : 's' }), v2: limitText, v3: axisName(axis, input.axisTitles) })),
+        note: caveatNote(chartString(input.options, 'clippedPointsNote', { v1: chartString(input.options, 'pointsCount', { v1: beyond.length, v2: beyond.length === 1 ? '' : 's' }), v2: limitText, v3: axisName(axis, input.axisTitles) })),
       });
     }
   }

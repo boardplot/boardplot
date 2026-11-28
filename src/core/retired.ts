@@ -46,6 +46,7 @@ const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.secondaryAxis.acknowledge', use: "A combo line or area with axis: 'secondary' draws a second value scale and warns dual-axis." },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
+  { at: 'options.strings.partialTotals', use: 'Set options.strings.knownPartsTotals to change the footer wording.' },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
   // Unused options and data fields.
   { at: ['options.endpointLabelDefault', 'options.lineLabels'], types: ['line', 'combo'], use: 'Set seriesLabels and valueLabels.' },

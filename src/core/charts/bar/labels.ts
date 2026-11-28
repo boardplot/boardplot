@@ -28,7 +28,6 @@ import { labelOn } from '../labelOn';
 import { emphasisWeight } from '../../theme';
 import { barHalves, LABEL_GAP, TOTAL_COLUMN, type BarArea, type BarDomain, type BarMarkGeometry, type BarPaints, type NormSeries } from './model';
 import { noteName } from '../../calendarData';
-import { disclosuresShown } from '../../notes';
 import { onePartDrawn, printsValue } from '../band/stacks';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
@@ -316,9 +315,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       // The total prints its one part's value: in the total's own text, or in the part's authored text.
       const partShows = partText === undefined ? { [valueSlot(domain)]: text } : partValue;
       if (partOwner && partShows) stated?.set(`grandTotal:${cat.id}`, { owner: partOwner, shows: partShows });
-      // A running row says "to date" under its total; a stack that misses a part says "(partial)".
-      const second = toDateIds.has(cat.id) ? toDate : domain.incompleteRows.has(cat.id) && disclosuresShown(domain.options) ? domain.options.strings!.incomplete! : undefined;
-      const words = second ? toDateLabel(text, strongFont, second, domain.theme, measure) : undefined;
+      const words = toDate && toDateIds.has(cat.id) ? toDateLabel(text, strongFont, toDate, domain.theme, measure) : undefined;
       const tsize = words?.size ?? measure(text, strongFont);
       // A total the caller sets in a column takes its column seat first; the seats past the bar's end stay as fallbacks.
       const column = (options as { [TOTAL_COLUMN]?: number })[TOTAL_COLUMN];

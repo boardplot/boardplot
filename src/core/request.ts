@@ -6,7 +6,7 @@ import { drawnRequest } from './drawnRequest';
 import { PLAN_ONLY, RETAIN_TABLE_RESULT, withPlanInputs, requestMemo, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
 import { INTERACTIVE_LAYOUT } from './footer';
-import { shownNoteKinds } from './notes';
+import { askedNotesOffWarning, shownNoteKinds, withAuthorNotesOnly } from './notes';
 import { canonicalChartType, getChart, type DiscardRepair } from './registry';
 import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
@@ -610,19 +610,15 @@ function layoutWidthProbe(request: ResolvedChartRequest): LayoutResult {
  * draws as without them; they stay in the notes list. An authored notes.show refuses as before.
  */
 function withoutAskedNotes(request: ResolvedChartRequest, result: LayoutResult): ResolvedChartRequest | undefined {
-  const options = request.options as Parameters<typeof shownNoteKinds>[0] & RequestOptions;
+  const { options } = request;
   if (!result.refused || result.warnings[0]?.code !== 'size-below-floor' || !request.fixed.height
     || options.notes?.show !== undefined || shownNoteKinds(options) === undefined) return undefined;
-  return { ...request, options: { ...request.options, notes: { ...options.notes, show: ['note'] } } as typeof request.options };
+  return { ...request, options: withAuthorNotesOnly(options) };
 }
 
 function askedNotesOff(plain: LayoutResult, refused: LayoutResult): LayoutResult {
   const height = (refused.warnings[0]!.expected?.minimum as Size | undefined)?.height;
-  return { ...plain, warnings: [...plain.warnings, {
-    code: 'footnotes-off', severity: 'info',
-    message: 'the pinned height has no room for the notes methodNote or notes.placement asks for; they are in the notes list',
-    suggest: `Leave the height out${height === undefined ? '' : `, or give the chart ${height} px of height`}.`,
-  }] };
+  return { ...plain, warnings: [...plain.warnings, askedNotesOffWarning(height)] };
 }
 
 /** One width-only probe: whether the request draws there, the width its own form needs, and the layout. */

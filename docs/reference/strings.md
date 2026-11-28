@@ -2,7 +2,7 @@
 
 # Built-in words
 
-Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 885 keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
+Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 884 keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
 
 A word with a field in braces, such as `{count}`, keeps the field in the replacement. A word written for a plural, such as `{v1|slice|slices}`, keeps that form.
 
@@ -545,7 +545,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `paretoTop` | `Top {v1}{v2}` | pareto |
 | `paretoUnlabelled` | `Columns with no room for a label, by rank: {v1}.` | pareto |
 | `partial` | `Partial` | shared |
-| `partialTotals` | `Totals marked {partial} add the known parts only` | shared |
 | `partsMissTotal` | `Parts print rounded, so the parts of a row can miss its printed total by one step.` | bartable |
 | `percentArea` | `100% area` | line |
 | `period` | `Period {period}` | cohort |
