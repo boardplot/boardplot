@@ -1070,7 +1070,7 @@ function settleJoinedLabels(
   return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
 }
 
-/** The bounds of each arrowhead the edges drew; the occupied index holds only the edge lines of a roadmap. */
+/** The bounds of each arrowhead the edges drew; the occupied index holds only the edge lines of a roadmap, so a moved name keeps off them here. */
 function arrowheadRects(scene: readonly SceneNode[]): Rect[] {
   return scene.flatMap(node => {
     if (node.t !== 'path' || node.part !== 'diagramArrow') return [];
@@ -1103,11 +1103,13 @@ function placePinnedRoadmapNames(
     occupied.release!(claim);
     const request = requests.find(request => request.id === id)!;
     const candidates = externalCandidates(circle, label.rect.w, label.rect.h, u, true, ctx.plot)
+      .filter(seat => !arrowheads.some(arrow => rectsOverlap(arrow, seat.rect)))
       .map(seat => ({ ...seat, keepOffLines: true as const }));
     const retry = solveLabels([{ ...request, text: label.text, lines: label.lines, candidates }], occupied, ctx);
     const moved = retry.placed[0]!;
-    // The label stays when the move needs a leader (the scene draws none for these labels) or would cover an arrowhead.
-    if (moved.hidden || moved.leader || arrowheads.some(arrow => rectsOverlap(arrow, moved.rect))) {
+    // The label stays when the move needs a leader (the scene draws none for these labels).
+    if (moved.hidden || moved.leader) {
+      if (!moved.hidden) occupied.release!(nodeLabelClaim(moved, occupied)!);
       occupied.claim(label.rect, 'label', label.owner);
       continue;
     }
