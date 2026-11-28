@@ -152,11 +152,11 @@ export function inMarginStepBand(width: number): boolean {
 
 /**
  * The width a step at 720 or 1080 px reads. Under a class cap it is at most the last pixel of the capped
- * class, so a capped layout takes the steps of the width just under the step; outside a cap it is the width.
+ * class (a narrow card drawn at 600 px or wider reads 399), so a capped layout takes the steps of the width just under the step; outside a cap it is the width.
  */
 export function classStepWidth(width: number): number {
   const classCap = typeClassCap();
-  return classCap === 'S' ? Math.min(width, 719) : classCap === 'M' ? Math.min(width, WIDE_CANVAS_MIN_WIDTH - 1) : width;
+  return classCap === 'XS' ? Math.min(width, 399) : classCap === 'S' ? Math.min(width, 719) : classCap === 'M' ? Math.min(width, WIDE_CANVAS_MIN_WIDTH - 1) : width;
 }
 
 /**
