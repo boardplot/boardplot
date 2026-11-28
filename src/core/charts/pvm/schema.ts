@@ -56,13 +56,7 @@ export const pvmOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .enum(['split', 'combined'])
     .optional()
     .describe(
-      "'split' (default) draws Volume and Mix separately; the boundary between them depends on the counting unit, which methodNote: true states on the exhibit. 'combined' draws one 'Volume & mix' bar and the decomposition is then unit-invariant.",
-    ),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe(
-      'Default false. true adds the short convention ("volume and mix at prior prices") to the one footer line, which joins the coverage note ("Covers the 4 items in both periods") while items enter or leave the book; the coverage part prints regardless. Where Volume and Mix nearly cancel (their sum under a tenth of the larger) the convention and the counting unit print without it, since the split between them then carries the story. The long method notes are in derived, and join the notes list when notes is set.',
+      "'split' (default) draws Volume and Mix separately; the boundary between them depends on the counting unit. 'combined' draws one 'Volume & mix' bar and the decomposition is then unit-invariant.",
     ),
   netChange: z
     .boolean()

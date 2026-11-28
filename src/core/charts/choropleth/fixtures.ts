@@ -221,8 +221,6 @@ export const fixtures: Fixture<ChoroplethData, ChoroplethOptions>[] = [
       // At slide height the legend, pack note and source push the map band
       // under the 0.60 floor; the a4 rung keeps it above.
       size: { width: 720, height: 511 },
-      // With methodNote the pack disclaimer still prints once, on the source line.
-      methodNote: true,
       title: 'Priority-market footprint and activation progress',
       // The fill and the Harvey balls are two measures, each named once.
       subtitle: { measure: 'Market weight and activation progress', period: 'FY26' },

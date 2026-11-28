@@ -2,7 +2,7 @@
 
 import type { ChartCore } from '../../registry';
 import { CARD_MIN_WIDTH, chartSizing } from '../../sizing';
-import { layoutTreemap, treemapDefaultStrings } from './layout';
+import { layoutTreemap } from './layout';
 import type { TreemapData, TreemapDerived, TreemapMarks, TreemapOptions } from './types';
 import { retiredSettings } from './retired';
 
@@ -18,8 +18,7 @@ export const treemapCore: ChartCore<TreemapData, TreemapOptions, TreemapMarks, T
   aliasDefaults: { 'voronoi-treemap': { variant: 'circle' } },
   layout: (data, options) => layoutTreemap(data, options),
   // The note of unnamed cells leads with its own words per variant; an authored lead wins.
-  defaultStrings: treemapDefaultStrings,
   // Every cell must stay identifiable: the note of names a cell cannot hold lists them all.
-  defaults: { variant: 'rect', order: 'value', cellValue: 'value', notes: { maxListed: 'all' } },
+  defaults: { variant: 'rect', order: 'value', cellValue: 'value' },
   annotationKinds: [],
 };

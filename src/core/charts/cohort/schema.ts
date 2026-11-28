@@ -76,17 +76,12 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .union([z.literal(false), z.literal('weighted')])
     .optional()
     .describe('Heatmap only. Weighted column average = total active / total base of the observed cohorts.'),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe(
-      "Default false. true adds the measure formula and explains the visible anchor column and blank cells. strings.cohortMeasure and strings.cohortFormula name another count-based measure, such as cumulative conversion. Required interpretation notes still print: the formula under basis 'previous', not-meaningful cells, weighted averages and rates too narrow to print.",
-    ),
+  methodNote: z.boolean().optional().describe("Print the measure formula. The formula for basis 'previous' is included by default."),
   variant: z
     .enum(['heatmap', 'pure', 'stepped'])
     .optional()
     .describe(
-      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
+      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
     ),
   formatScope: z
     .enum(['classic', 'column'])
@@ -99,7 +94,7 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   visiblePeriods: z.array(z.number().int().nonnegative()).min(1).optional().describe("Original zero-based period indices displayed in chronological order. A hidden period leaves no cell, head, note or record; rates and averages are still derived over all periods."),
   cohortSizeLabel: z.string().min(1).optional().describe("Header for the exhibit cohort-size column; defaults to Cohort size."),
   showPercentSign: z.boolean().optional().describe("Print a percent sign in every exhibit cell; defaults to false because the unit is stated once."),
-  threshold: z.union([z.number().finite(), z.literal(false)]).optional().describe("Pure-exhibit emphasis threshold in percentage points: cohort and total rates above it print bold; period 0 stays neutral. A note prints only when a visible cell uses that emphasis. Defaults to 60; false disables emphasis and its note."),
+  threshold: z.union([z.number().finite(), z.literal(false)]).optional().describe("Pure-exhibit emphasis threshold in percentage points: cohort and total rates above it print bold; period 0 stays neutral. Defaults to 60; false disables emphasis."),
   designatedPeriod: z.union([z.number().int().nonnegative(), z.literal(false)]).optional().describe("Original zero-based period index receiving the pure-exhibit column tint; defaults to 3. false draws no tint and no head emphasis, on variant 'pure' only."),
   total: z.union([z.literal(false), z.literal('weighted')]).optional().describe("Summary row. Exhibit: weighted retention by default, or false to hide it. Heatmap: 'weighted' equals averages 'weighted', false hides the average row, and total wins over averages. Never averages cohort percentages equally."),
   totalPosition: z.enum(['top', 'bottom']).optional().describe("Exhibit variants: where the summary row stands, with its ground, rules and average bases; default 'bottom'. With total false it warns option-ignored."),

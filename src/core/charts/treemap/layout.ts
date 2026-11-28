@@ -18,7 +18,7 @@ import { chartString } from '../../strings/treemap';
 
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, valueNoteLine, type LegendItemInput } from '../../frame';
+import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, normalizeLegendOption, solveFrame, valueNoteLine, type LegendItemInput } from '../../frame';
 import { disclosureNote } from '../../notes';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { shareSetFormatter } from '../../format';
@@ -81,11 +81,6 @@ interface CellText {
   outside?: { nameLines: string[]; w: number; h: number; side: 'left' | 'right'; anchor: Pt; oneLine?: true };
   /** The name, with the value, goes to the note line ('rect'). */
   noted?: true;
-}
-
-/** The lead for the note of unnamed cells, per variant. The registry puts it over the locale fill. */
-export function treemapDefaultStrings(options: TreemapOptions): Record<string, string> {
-  return { hiddenLabels: chartString(options, (options.variant ?? 'rect') === 'circle' ? 'treemapCircleHiddenLead' : 'treemapRectHiddenLead') };
 }
 
 /** The label size of one fit step, set on the options of the stepped pass. */
@@ -155,8 +150,6 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const palette = chartPalette(theme, options.palette, warnings);
   const measure = options.measure ?? defaultMeasurer;
   const shape = options.variant ?? 'rect';
-  // A direct call without the registry's locale fill gets the same lead (treemapDefaultStrings).
-  if (options.strings?.hiddenLabels === undefined) options = { ...options, strings: { ...options.strings, ...treemapDefaultStrings(options) } };
   const byValue = (options.order ?? 'value') === 'value';
   const locale = options.locale?.language;
 
@@ -255,10 +248,9 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     : undefined;
   // The complete list of the names too small to print, on the page: neither
   // notes.maxListed nor the registry's move of its own line to the description takes it off.
-  const hiddenNote = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: 'all' } }, []);
   const leftOutNote = valueNoteLine(chartString(options, 'treemapLeftOutNote'), leftOut, options).map(disclosureNote);
   const frame = solveFrame({
-    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: [...(hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line]), ...leftOutNote], theme, measure,
+    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: [...authoredNotes(options), ...leftOutNote], theme, measure,
     ...(legendOptions ? { legend: { options: legendOptions, items: legendItems } } : {}),
   }, occupied);
   fixedPlotChrome(frame);
@@ -366,8 +358,6 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   };
 
   // ---- text plan of every cell inside a region ----
-  // A pair already named in the list stays there on the next measured pass.
-  const notedNames = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
   // An outside name wraps at spaces to a column a fifth of the plot wide, never with an ellipsis.
   // The column is never narrower than the longest word of any name, which it holds anyway.
   const longestWord = Math.max(0, maxOf(ordered.flatMap((item) => item.label.split(/\s+/).map((word) => measure(word, outFont).width))));
@@ -385,11 +375,10 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     const at = polygonCentroid(poly);
     const span = chordAt(poly, at.y) - 2 * CELL_PAD;
     const seat = (w: number, h: number): Pt | undefined => seatIn(poly, at, w, h);
-    const owed = notedNames?.has(`name:${item.id}`) === true || shape === 'rect' && notedNames?.has(`item:${item.id}`) === true;
     // A narrower wrap suits a tall or pointed cell: try the full chord, then narrower steps.
     // A circle cell then tries the stepped size before its name goes out to a column.
     for (const [font, fontLineH, fontValueW, stepped] of [[nameFont, lineH, valueW, false], ...(cellStepFont ? [[cellStepFont, cellStepLineH, measure(value, cellStepValueFont!).width, true]] : [])] as [FontSpec, number, number, boolean][]) {
-      for (const share of owed ? [] : [1, 0.85, 0.7, 0.6, 0.5, 0.4]) {
+      for (const share of [1, 0.85, 0.7, 0.6, 0.5, 0.4]) {
         if (span <= 0) continue;
         const wrapped = wrapText(item.label, font, span * share, 3, measure);
         // Rectangles allow marked word breaks before the complete pair goes to the note.
@@ -403,7 +392,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
       }
     }
     const lineW = measure(`${item.label} `, nameFont).width + valueW;
-    const lineAt = owed ? undefined : seat(lineW, lineH);
+    const lineAt = seat(lineW, lineH);
     if (lineAt) return { inside: { nameLines: [item.label], value: true, w: lineW, h: lineH, at: lineAt, oneLine: true } };
     // A circle cell too small for its pair names it on a leader, name and value together;
     // a sliver under half a percent goes to the note, so the columns stay short.
@@ -430,7 +419,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const contentSide = Math.round(CONTENT_BASE + size.width / 3);
   let wantPlotH = 0;
   // Fit searches live within this request. The unit geometry alone can outlive it.
-  const memoBase = [round2(plot.w), round2(reserveTop), nameFont.family, nameFont.size, valueFont.weight, valueFont.size, outFont.size, [...(notedNames ?? [])].sort().join(','),
+  const memoBase = [round2(plot.w), round2(reserveTop), nameFont.family, nameFont.size, valueFont.weight, valueFont.size, outFont.size,
     options.cellValue ?? '', options.format ?? '', options.unit ?? '', locale ?? ''].join('|');
   // Unpinned, the canvas grows to the columns' height, so the width floor counts their narrow form.
   let wideGutter: { left: number; right: number } | undefined;
@@ -763,7 +752,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const order = new Map(ordered.map((item, index) => [item.id, index]));
   solved.placed.sort((a, b) => (order.get(a.owner.categoryId ?? '') ?? ordered.length) - (order.get(b.owner.categoryId ?? '') ?? ordered.length));
   for (const label of solved.placed) {
-    if ((!label.hidden && !hiddenNote.ids.has(label.id)) || !label.owner.categoryId) continue;
+    if (!label.hidden || !label.owner.categoryId) continue;
     const item = ordered.find(item => item.id === label.owner.categoryId)!;
     const valueDrawn = solved.placed.some(other => other.id === `value:${item.id}` && !other.hidden);
     label.noteText = label.kind === 'item' && valueDrawn ? item.label : `${item.label} ${valueText(item)}`;
@@ -792,7 +781,6 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     a11y: a11yDescription(options, ['Treemap', 'Flächenbaum'], [structureCount('cells', ordered.length, undefined, options), ...(nGroups > 0 ? [structureCount('groups', nGroups, undefined, options)] : [])]),
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
-  markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);
   const bigItemIds = new Set(ordered.filter((item) => item.value / total >= LARGE_TILE_SHARE).map((item) => item.id));
   FIT_SCORE.set(geometry, {
     hidden: solved.placed.filter((l) => l.hidden && l.kind !== 'grandTotal').length,

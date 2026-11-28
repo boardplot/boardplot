@@ -209,22 +209,14 @@ export function frameText(input: FrameTextInput): FrameText {
   if (sourceOff) {
     warnings.push({ code: 'footnotes-off', severity: 'info', message: `compact frame has no room for the source line: ${sourceText}` });
   }
-  // A default caveat, a disclosure enabled by an authored notes.show, and a note a
-  // drawn mark points at stay in the frame outside the line budget, like a
-  // required credit: an author note in pointedNotes, a disclosure with a number
-  // (ref, a "1)" on a cut name or a milestone) or the rank key (ranks, the rank
-  // numbers under the columns), since a mark whose key sits behind the pointer
-  // does not read alone. Any other disclosure asked for only by methodNote or
-  // notes.placement counts against the live budget, after the author notes;
-  // static output prints every note anyway, so its layout keeps it too.
-  // `footnotes: false` hands every other note to the host; a printed disclosure stays.
+  // Default caveats, explicit disclosures and pointed notes can use space outside the line budget.
+  // Implicit disclosures in a live footer share the budget with authored notes.
   const pointed = new Set(input.pointedNotes ?? []);
   const kept = entries.filter((entry) => {
     if (entry.kind !== 'disclosure') return !input.footnotesOff && pointed.has(entry.text);
     if (!printsNote(entry, input.notes?.show)) return false;
-    const meta = engineNoteMeta(entry);
-    return input.notesShowAuthored === true || !policy.live || entry.ref !== undefined || meta?.ranks === true
-      || (meta?.caveat === true && input.notes?.show === undefined);
+    return input.notesShowAuthored === true || !policy.live || entry.ref !== undefined
+      || (engineNoteMeta(entry)?.caveat === true && input.notes?.show === undefined);
   });
   const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's
@@ -339,9 +331,9 @@ export function fittedNote(list: NoteList, fits: (text: string) => boolean): str
 }
 
 /** The list note that names the first `k` items and counts the rest; with k = 0 it only counts. */
-export function listedNoteText({ lead, items, total, options }: NoteList, k: number): string {
+export function listedNoteText({ lead, items, options }: NoteList, k: number): string {
   const n = items.length;
-  if (k === 0) return listText(lead, [total !== undefined && total >= n ? countedValuesText(n, total, options) : moreListedText(n, options, true)]);
+  if (k === 0) return listText(lead, [moreListedText(n, options, true)]);
   return listText(lead, k < n ? [...items.slice(0, k), moreListedText(n - k, options)] : items);
 }
 
@@ -354,7 +346,7 @@ export interface NoteCapOptions {
 /**
  * Items a note line names by default: the first 8 in the note's order, then
  * "and N more"; the reading keeps the full list. An author-set `notes.maxListed` wins: 'all'
- * names every item, 0 names none and counts them ("18 of 36 values").
+ * names every item and 0 prints the count alone.
  */
 export const DEFAULT_NOTE_LIMIT = 8;
 
@@ -372,20 +364,13 @@ export function moreListedText(count: number, options?: NoteCapOptions, alone = 
     : (options?.strings?.moreListed ?? 'and {count} more').replace('{count}', String(count));
 }
 
-/** The count form of a note under `notes.maxListed: 0`: "18 of 36 values". */
-export function countedValuesText(count: number, total: number, options?: NoteCapOptions): string {
-  return chartString(options as Parameters<typeof chartString>[0], 'countedValues', { count, total });
-}
-
 /**
  * The items a note line prints: the first `noteCap` items and the count of the rest ("and 3
- * more"). Under `notes.maxListed: 0` it only counts: "18 of 36 values" when the caller knows
- * the `total` of values, else "18 items".
+ * more"). Under `notes.maxListed: 0` it prints the count alone.
  */
-export function cappedItems(items: readonly string[], options?: NoteCapOptions, total?: number): string[] {
+export function cappedItems(items: readonly string[], options?: NoteCapOptions): string[] {
   const cap = noteCap(options, items.length);
   if (items.length <= cap) return [...items];
-  if (cap === 0 && total !== undefined && total >= items.length) return [countedValuesText(items.length, total, options)];
   return [...items.slice(0, cap), moreListedText(items.length - cap, options, cap === 0)];
 }
 

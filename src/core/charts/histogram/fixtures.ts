@@ -157,27 +157,14 @@ fixtures.push({
   },
 });
 
-// Coverage: the automatic width left unsnapped, and the binning rule stated.
+// Coverage: the automatic width left unsnapped.
 const orderValueFixture = fixtures.find((fixture) => fixture.id === 'order-value-distribution')!;
 fixtures.push({
   ...orderValueFixture,
   kind: 'torture', id: 'unsnapped-bins-method-note',
-  title: 'The automatic bin width as computed, not snapped to a round number, with the binning rule stated',
+  title: 'The automatic bin width as computed',
   tags: ['coverage'],
-  options: { ...orderValueFixture.options, binSnap: false, methodNote: true },
-});
-
-fixtures.push({
-  id: 'localized-binning',
-  title: 'Authored binning wording under a German locale',
-  kind: 'torture',
-  tags: ['coverage'],
-  data: { observations: [0, 0.1, 0.4, 0.9, 1.1, 1.4] },
-  options: {
-    title: 'The values fall into three bins',
-    locale: { language: 'de' }, bins: { width: 0.5, anchor: 0 }, methodNote: true,
-    strings: { histogramBins: '{count} bins, each {about}{width} wide, from {from} to {to}; lower edge included' },
-  },
+  options: { ...orderValueFixture.options, binSnap: false, notes: { placement: 'frame' } },
 });
 
 registerFixtures('histogram', fixtures);

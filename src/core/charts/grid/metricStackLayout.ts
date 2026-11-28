@@ -273,8 +273,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const stateNotes: { maturing?: number; partial?: number } = {};
   const engineNumbers: number[] = [];
   const notesOff = frameTextOptions(options).footnotesOff;
-  const stateNote = (state: 'maturing' | 'partial', authored: string | undefined, engine: () => string | undefined) => {
-    const text = authored ?? engine();
+  const stateNote = (state: 'maturing' | 'partial', authored: string | undefined, engine?: () => string | undefined) => {
+    const text = authored ?? engine?.();
     if (text === undefined) return;
     // With footnotes off no value carries a marker, so an engine note prints unnumbered or not at all.
     if (authored === undefined && (!disclosuresShown(options) || notesOff)) { listed.push(disclosureNote(text)); return; }
@@ -291,7 +291,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // The footer prints authored notes before generated disclosures.
   const partialFirst = options.strings?.toDate === '' && partialFootnote !== undefined && maturingFootnote === undefined;
   if (partialFirst) addPartialNote();
-  if (computed.maturing.length) stateNote('maturing', maturingFootnote, () => chartString(options, 'maturingCohortNote'));
+  if (computed.maturing.length) stateNote('maturing', maturingFootnote);
   if (!partialFirst) addPartialNote();
   const marker = (value: number | undefined) => value === undefined || notesOff ? '' : String(value).split('').map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(c)]).join('');
   const visibleValue = (p: ComputedStackPanel, i: number) => p.values[i] !== null;
@@ -580,29 +580,21 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     : (compactReadout ? 8 : 12) + categoryHeight + (periodBoxes ? 10 + maxOf(periodBoxes.map(b=>b.h)) : 0) + (compactReadout ? 4 : 10);
   const bandFirstIndex = data.states?.maturing ? data.panels.findIndex(p=>data.states!.maturing!.panels.includes(p.id)) : -1;
   const firstOverhang = computed.maturing.length ? gap : 0;
-  // The method line explains the headline and the span: it goes with the last of them. The focus look's header always prints.
-  const hasMethod = showHeadline || showSpan || look;
-  const readLogic = data.panels.some(p => p.readout === 'change') && data.windows
-    ? chartString(options, showHeadline ? 'stackChangeMethod' : 'stackAverageMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
-    : chartString(options, `stack${narrow ? 'Above' : onRight ? 'Right' : 'Left'}${!showSpan ? 'Rates' : !showHeadline ? 'Remaining' : 'Method'}` as const);
-  // The focus look's header line: the focus label, "against", a dashed key in the stroke of the base line and
-  // the base window's label, then a second sentence where a window holds more than one category.
+  const namesWindows = data.panels.some(p => p.readout === 'change') && data.windows !== undefined;
+  const readLogic = look ? undefined : namesWindows && (showHeadline || showSpan)
+    ? chartString(options, showHeadline ? 'stackChangeMethod' : 'stackAverageMethod', { v1: metricStackGrain(data), v2: data.windows!.base.label, v3: data.windows!.compare.label })
+    : showSpan ? chartString(options, `stack${narrow ? 'Above' : onRight ? 'Right' : 'Left'}${showHeadline ? 'Method' : 'Remaining'}` as const) : undefined;
   const focusLabelFont: FontSpec = { ...keyFont, weight: 700 };
-  const header = !look ? undefined : (() => {
-    const sp = measure(' ', keyFont).width, dashW = 18;
-    const against = chartString(options, 'stackAgainst'), base = data.windows!.base.label;
-    const widest = maxOf([data.windows!.compare.label, ...data.categories.map(c => c.label || c.id)].map(label => measure(label, focusLabelFont).width));
-    const tail = sp + measure(against, keyFont).width + sp + dashW + sp + measure(base, keyFont).width;
-    const several = (range: StackRange) => stackRange(data, range).length > 1;
-    // Room for the sentence wherever a focus prints it: the authored windows hold it; a single category may not.
-    const averages = several(data.windows!.base) || several(data.windows!.compare) ? chartString(options, 'stackAverages', { v1: metricStackGrain(data) }) : '';
-    const shown = several(data.windows!.base) || several(focusWindow!);
-    const sentence = averages ? textBox(averages, keyFont, frame.plot.w) : NO_BOX;
-    const beside = sentence.lines.length === 1 && widest + tail + 2 * sp + sentence.w <= frame.plot.w;
-    return { sp, dashW, against, base, averages: shown ? averages : '', sentence, beside, h: heightOf(keyFont) + (averages && !beside ? sentence.h : 0) };
-  })();
-  const readLogicBox = header ? { lines: [] as string[], w: frame.plot.w, h: header.h } : hasMethod ? textBox(readLogic, keyFont, frame.plot.w) : NO_BOX;
-  const headerRoom = hasMethod ? readLogicBox.h + 12 + (compactReadout ? 4 : 30) : 0;
+  const header = look ? {
+    sp: measure(' ', keyFont).width,
+    dashW: 18,
+    against: chartString(options, 'stackAgainst'),
+    base: data.windows!.base.label,
+  } : undefined;
+  const readLogicBox = readLogic === undefined ? NO_BOX : textBox(readLogic, keyFont, frame.plot.w);
+  const headerHeight = header ? heightOf(keyFont) : readLogicBox.h;
+  const hasHeader = header !== undefined || readLogic !== undefined;
+  const headerRoom = hasHeader ? headerHeight + 12 + (compactReadout ? 4 : 30) : 0;
   const topRoom = headerRoom + (bandFirstIndex === 0 ? firstOverhang : 0);
   const neededPlotHeight = topRoom + headRoom + heights.reduce((a,b)=>a+b,0) + gap*(heights.length-1) + axisHeight;
   const overhead = size.height-frame.plot.h;
@@ -668,14 +660,11 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       hx += header.dashW + header.sp;
       const base = at(header.base, keyFont);
       put('stack:base-window', header.base, keyFont, { x: hx, y: lineY, ...base }, {}, muted, 'secondary', 'annotation');
-      hx += base.w;
-      if (header.averages) {
-        const box = header.sentence;
-        put('stack:averages', header.averages, keyFont, header.beside ? { x: hx + 2 * header.sp, y: lineY, w: box.w, h: box.h } : { x: frame.plot.x, y: lineY + heightOf(keyFont), w: box.w, h: box.h }, {}, muted, 'secondary', 'annotation', box.lines);
-      }
     }
-  } else put('stack:read-logic', readLogic, keyFont, {x:frame.plot.x,y:frame.plot.y,w:readLogicBox.w,h:readLogicBox.h}, {}, muted, 'secondary', 'annotation', readLogicBox.lines);
-  if (hasMethod) scene.push({t:'line',id:'stack:header-rule',x1:frame.plot.x,x2:frame.plot.x+frame.plot.w,y1:frame.plot.y+readLogicBox.h+10,y2:frame.plot.y+readLogicBox.h+10,stroke:{token:'grid'},width:strokeToken(theme, 'hair'),owner:{},part:'headerRule'});
+  } else if (readLogic !== undefined) {
+    put('stack:read-logic', readLogic, keyFont, { x: frame.plot.x, y: frame.plot.y, w: readLogicBox.w, h: readLogicBox.h }, {}, muted, 'secondary', 'annotation', readLogicBox.lines);
+  }
+  if (hasHeader) scene.push({t:'line',id:'stack:header-rule',x1:frame.plot.x,x2:frame.plot.x+frame.plot.w,y1:frame.plot.y+headerHeight+10,y2:frame.plot.y+headerHeight+10,stroke:{token:'grid'},width:strokeToken(theme, 'hair'),owner:{},part:'headerRule'});
   const plots: Rect[] = [];
   // A panel's top: its plot, or its readout where that sits above the plot.
   const tops: number[] = [];
@@ -980,7 +969,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       if (names.some(({ rect }) => x >= rect.x - 2 && x <= rect.x + rect.w + 2)) scene.splice(sceneIndex, 1);
     }
   }
-  // Any other label without a seat drops: the shared note pass names it and warns label-hidden, as on every chart type.
+  // A label without a seat is reported in the reading omissions and label-hidden warnings.
   pushAll(scene, labelsToNodes(theme, solved.placed,()=>valueFont));
   const counts=[structureCount('panels',data.panels.length, undefined, options),structureCount('categories',data.categories.length, undefined, options),structureCount('series',data.measures.length,chartString(options, 'sourceMeasures', { v1: data.measures.length }))];
   // A readout operand (a sum, a raw share) and a figure without a seat print no number of their own.

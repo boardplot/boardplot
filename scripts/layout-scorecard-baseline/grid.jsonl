@@ -61,7 +61,7 @@
 ["grid/category-mismatch",320,"authored","default","refused",["grid-category-mismatch","series-indistinguishable"],null,null,null,[]]
 ["grid/category-mismatch",320,"notation","default","refused",["grid-category-mismatch"],null,null,null,[]]
 ["grid/category-mismatch",400,"authored","default","refused",["grid-category-mismatch","series-indistinguishable"],null,null,null,[]]
-["grid/category-mismatch",400,"authored","fixed=400x300","refused",["grid-category-mismatch","label-hidden","values-in-note"],null,null,null,[]]
+["grid/category-mismatch",400,"authored","fixed=400x300","refused",["grid-category-mismatch","label-hidden"],null,null,null,[]]
 ["grid/category-mismatch",400,"notation","default","refused",["grid-category-mismatch"],null,null,null,[]]
 ["grid/category-mismatch",400,"notation","fixed=400x300","refused",["grid-category-mismatch"],null,null,null,[]]
 ["grid/category-mismatch",480,"authored","default","refused",["grid-category-mismatch","series-indistinguishable"],null,null,null,[]]

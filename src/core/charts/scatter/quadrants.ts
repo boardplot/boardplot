@@ -1,10 +1,6 @@
-import { chartString } from '../../strings/scatter';
 /**
  * Scatter phase 1, the 2x2 part: the cut points, the box each point
- * falls in, and every note and warning the cut points owe the reader. The
- * thresholds depend only on the plotted values, so they are known before the
- * frame — which is what lets the method note enter `footnotes` as a frame
- * participant instead of being appended as unreserved text afterwards.
+ * falls in, and the warnings the cut points produce.
  */
 
 import type { Id } from '../../types/cell';
@@ -13,7 +9,6 @@ import type { LintWarning } from '../../types/scene';
 import {
   QUADRANT_BOXES,
   QUADRANT_BOX_NAME,
-  quadrantBoxName,
   type Disclosed,
   type NormPt,
   type QuadrantBox,
@@ -145,34 +140,8 @@ function classifyQuadrants(pts: NormPt[], cutX: Cut, cutY: Cut): { derived: Quad
   return { derived, onThreshold };
 }
 
-/** What the cut points are, where they came from, and what the shading and bubbles mean. */
-function quadrantMethodNotes(
-  cutX: Cut,
-  cutY: Cut,
-  pointCount: number,
-  bubbleMode: boolean,
-  env: ScatterEnv,
-  notes: string[],
-  warnings: LintWarning[],
-): void {
-  const provenance = (source: CutSource): string =>
-    source === 'declared' ? chartString(env.options, 'declaredLower') : chartString(env.options, 'cutProvenance', { v1: source, v2: pointCount });
-  // With authored short axis names and two
-  // declared cuts, one short line says where the cuts are and the tie rule.
-  const names = env.options.quadrants?.axisNames;
-  if (names?.x && names.y && cutX.source === 'declared' && cutY.source === 'declared') {
-    notes.push(chartString(env.options, 'quadrantCutShort', { v1: names.x, v2: cutX.text, v3: names.y, v4: cutY.text }));
-  } else {
-    notes.push(
-      chartString(env.options, 'quadrantCutX', { v1: cutX.text, v2: provenance(cutX.source) }) +
-        chartString(env.options, 'quadrantCutY', { v1: cutY.text, v2: provenance(cutY.source) }) +
-        chartString(env.options, 'quadrantEquality'),
-    );
-  }
-
-
+function warnUnweightedCut(cutX: Cut, cutY: Cut, bubbleMode: boolean, warnings: LintWarning[]): void {
   if (bubbleMode && (cutX.source !== 'declared' || cutY.source !== 'declared')) {
-    notes.push(chartString(env.options, 'quadrantWeights'));
     warnings.push({
       code: 'quadrant-stat-unweighted',
       severity: 'info',
@@ -184,7 +153,7 @@ function quadrantMethodNotes(
   }
 }
 
-/** A cut point on or beyond a domain edge draws no divider: the exhibit is a 1x2, and says so. */
+/** A cut point on or beyond a domain edge draws no divider. */
 function quadrantsOffDomain(
   cuts: { x: Cut; y: Cut },
   plan: QuadrantPlan,
@@ -213,9 +182,6 @@ function quadrantsOffDomain(
         'so the exhibit is a 1x2, not a 2x2: every plotted unit sits on one side of that cut point.',
       suggest: `move the ${axis} cut point strictly inside the plotted range, or drop it`,
     });
-    plan.notes.push(
-      chartString(env.options, 'quadrantOutsideRange', { v1: axis, v2: cutLabel, v3: loLabel, v4: hiLabel }),
-    );
     const boxes: QuadrantBox[] =
       axis === 'horizontal'
         ? cut > hi
@@ -229,25 +195,20 @@ function quadrantsOffDomain(
   return voided;
 }
 
-/** Ties on a cut point, hidden axes and a one-box result: each is a finding the reader must see. */
+/** Warn about ties, hidden axes and a one-box result. */
 function quadrantEdgeCases(
   derived: QuadrantDerived,
   onThreshold: NormPt[],
   pts: NormPt[],
   env: ScatterEnv,
-  notes: string[],
   warnings: LintWarning[],
 ): void {
   if (onThreshold.length > 0) {
-    const named = onThreshold.slice(0, 3).map((p) => p.label).join(', ');
-    const rest = onThreshold.length - Math.min(3, onThreshold.length);
-    const list = rest > 0 ? chartString(env.options, 'andMore', { v1: named, v2: rest }) : named;
     warnings.push({
       code: 'quadrant-on-threshold',
       severity: 'info',
       message: `${onThreshold.length} point(s) sit exactly on a cut point (${onThreshold.map((p) => p.id).join(', ')}) — the half-open rule counts them to the right and above; a different tie rule would move them`,
     });
-    notes.push(chartString(env.options, 'quadrantOnThreshold', { v1: onThreshold.length === 1 ? chartString(env.options, 'oneUnitSits') : chartString(env.options, 'unitsSit', { v1: onThreshold.length }), v2: list }));
   }
 
   if (env.va.show === false) {
@@ -271,7 +232,6 @@ function quadrantEdgeCases(
       severity: 'info',
       message: `all ${pts.length} plotted points fall in the ${QUADRANT_BOX_NAME[soleBox]} box; the other three are empty — an empty-box result is a finding, not a rendering fault`,
     });
-    notes.push(chartString(env.options, 'quadrantAllUnits', { v1: pts.length, v2: quadrantBoxName(soleBox, env.options) }));
   }
 }
 
@@ -316,7 +276,7 @@ export function deriveQuadrants(
   env: ScatterEnv,
   warnings: LintWarning[],
 ): QuadrantPlan {
-  const plan: QuadrantPlan = { notes: [], voidBoxes: new Set(), drawX: false, drawY: false };
+  const plan: QuadrantPlan = { voidBoxes: new Set(), drawX: false, drawY: false };
   if (!env.options.quadrants) return plan;
   const refusal = quadrantRefusal(env);
   if (refusal) {
@@ -332,8 +292,8 @@ export function deriveQuadrants(
   // on one of its sides. That is a 1x2 too, and it is reported as one.
   plan.drawX = cuts.x.value > dx[0] && cuts.x.value < dx[1];
   plan.drawY = cuts.y.value > dy[0] && cuts.y.value < dy[1];
-  quadrantMethodNotes(cuts.x, cuts.y, pts.length, bubbleMode, env, plan.notes, warnings);
+  warnUnweightedCut(cuts.x, cuts.y, bubbleMode, warnings);
   plan.voidBoxes = quadrantsOffDomain(cuts, plan, dx, dy, env, warnings);
-  quadrantEdgeCases(derived, onThreshold, pts, env, plan.notes, warnings);
+  quadrantEdgeCases(derived, onThreshold, pts, env, warnings);
   return plan;
 }

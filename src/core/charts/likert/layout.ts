@@ -3,7 +3,7 @@ import { staticFrame } from '../../footer';
 import { alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks, trackPlotFloor } from '../columnOverrides';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/likert';
-import { methodNote, disclosureNote, keepShownNotes } from '../../notes';
+import { disclosureNote, keepShownNotes } from '../../notes';
 import { structureCount } from '../../structureCounts';
 /**
  * Likert diverging survey (registry type 'likert') — a diverging
@@ -75,7 +75,7 @@ import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RI
 import { labelOn as chartLabelOn } from '../labelOn';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { repaintSeparation } from '../../markVisibility';
-import { heightOmitted, rowSizing, sameContent } from '../../sizing';
+import { rowSizing, sameContent } from '../../sizing';
 import { requestMemo } from '../../layoutPlan';
 import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -164,18 +164,8 @@ export interface LikertOptions extends Omit<BaseOptionsFor<'likert'>, 'sort' | '
   base?: 'column' | 'none';
   /** Default 'sheet'. */
   sortBy?: 'sheet' | 'net';
-  /**
-   * Default false. true adds the method notes (forced-choice centre line, net
-   * definition, sort order). The neutral treatment and the base print
-   * regardless, unless `requiredNotes` turns them off.
-   */
-  methodNote?: boolean;
-  /**
-   * Default both true. false drops the note on the neutral treatment or on the
-   * base, for an exhibit whose own title, subtitle, source or footnote already
-   * states it. The engine never reads the authored text to decide this.
-   */
-  requiredNotes?: { neutral?: boolean; base?: boolean };
+  /** Default true. false omits the disclosure listing excluded neutral responses. */
+  requiredNotes?: { neutral?: boolean };
 }
 
 export interface LikertDerived {
@@ -690,37 +680,6 @@ export function layoutLikert(
     half ? `likert:${scale[i]!.id}:${half}` : `likert:${scale[i]!.id}`;
   const labelOf = (i: number) => scale[i]!.label ?? scale[i]!.id;
 
-  // ---- what the two sides are CALLED, derived from the declared scale -----
-  // "Likert" is a shape, not a subject. Fixed agreement vocabulary would print
-  // over whatever scale it is given: on `customer-effort-7pt`, whose options
-  // run 'Very high effort' … 'Very low effort', the footnote would read "share
-  // on the agree side minus share on the disagree side" and the accessible
-  // description "Opening an account: 73% agree". Nobody agrees with opening an
-  // account, and the sign of the headline changes meaning with it — "+60"
-  // would read as net agreement when it means net-low-effort.
-  //
-  // So the words come from the data. An agreement scale keeps the agreement
-  // words, because that is what its own labels say; every other scale is named
-  // by its declared poles, which is the only vocabulary the author supplied.
-  const AGREEMENT = /\bdisagree|\bagree/i;
-  const isAgreementScale =
-    AGREEMENT.test(labelOf(0)) && AGREEMENT.test(labelOf(scale.length - 1));
-  const sideWords = isAgreementScale
-    ? {
-        negative: chartString(opts, 'disagreeLower'),
-        positive: chartString(opts, 'agreeLower'),
-        negativeSide: chartString(opts, 'disagreeSide'),
-        positiveSide: chartString(opts, 'agreeSide'),
-        boundary: chartString(opts, 'agreementBoundary'),
-      }
-    : {
-        negative: chartString(opts, 'onNamedSide', { v1: labelOf(0) }),
-        positive: chartString(opts, 'onNamedSide', { v1: labelOf(scale.length - 1) }),
-        negativeSide: chartString(opts, 'namedSide', { v1: labelOf(0) }),
-        positiveSide: chartString(opts, 'namedSide', { v1: labelOf(scale.length - 1) }),
-        boundary: chartString(opts, 'twoSidesBoundary'),
-      };
-
   interface Emission {
     id: Id;
     label: string;
@@ -906,7 +865,6 @@ export function layoutLikert(
   interface Rows { bandFraction?: number; bandPad?: number }
   // One short line says that shares on narrow segments are not printed,
   // rather than a list of them or nothing.
-  let narrowNote = false;
   // A wide survey can ask about the same shorter bar at several trial heights.
   // The natural-height draw reads the target's fixed flags and uses its own size.
   const naturalMinimum: BarNaturalMinimum = (width, height, drawMinimum) => {
@@ -942,8 +900,7 @@ export function layoutLikert(
   });
   const sharedSettings = isCachedTextMeasurer(measure) ? barSettings() : undefined;
   const withBarOptions = <T>(rows: Rows, run: (options: BarOptions) => T): T => {
-    const footnotes = [...authoredNotes(opts), ...methodNotes(),
-      ...(narrowNote ? [disclosureNote(chartString(opts, 'narrowSharesNotPrinted'))] : [])];
+    const footnotes = [...authoredNotes(opts), ...neutralDisclosure()];
 
     // Only the author's own notes keep a number; the rest are derived.
     const barOptions = withAuthoredFootnotes({
@@ -976,7 +933,7 @@ export function layoutLikert(
     annotationPass.footnoteRows = surveyFootnoteRows();
   }
   const layoutWith = (rows: Rows) => {
-    const check = reuseNaturalMinimum && !narrowNote && rows.bandFraction === defaultFraction && !rows.bandPad
+    const check = reuseNaturalMinimum && rows.bandFraction === defaultFraction && !rows.bandPad
       ? naturalMinimum : checkBarNaturalHeight;
     const drawn = withBarOptions(rows, options => layoutBarRows(barData, options, surveyBarFeatures, annotationPass, check));
     // The bar layout owes a hidden sliver's share to its generic note. Here a
@@ -1047,27 +1004,6 @@ export function layoutLikert(
   if (comparing && reach > 0) {
     rightRoom = Math.ceil(reach + BRACKET_CLEAR);
     geo = layoutWith(rows);
-  }
-  // The note takes footer room, so the layout runs again with it. Whether a
-  // share fits its segment depends on the bar width, which the note does not
-  // change. On a pinned height the note gives way when only it would make the
-  // card refuse (a 720 x 405 compact card drew without it before).
-  if (geo.labels.some((label) => label.kind === 'segment' && label.hidden === 'density')) {
-    const before = { geo, rows };
-    const minimumH = (g: typeof geo, r: Rows) => stacked
-      ? g.size.height - g.plot.h - (r.bandPad ?? 0) + ordered.length * (statementH + STATEMENT_GAP + Math.ceil(statementLineH + 4) + ROW_GAP_MIN) + headH
-      : g.sizing?.minHeight ?? 0;
-    narrowNote = true;
-    if (stacked) {
-      const initial = { bandFraction: defaultFraction };
-      rows = stackedRows(checkBarNaturalHeight ? layoutWith(initial).plot.h : plotHeightWith(initial));
-    }
-    geo = layoutWith(rows);
-    const pinnedH = !heightOmitted(opts.size) && (opts as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
-    if (pinnedH && minimumH(geo, rows) > canvas.height + 0.5 && minimumH(before.geo, before.rows) <= canvas.height + 0.5) {
-      narrowNote = false;
-      ({ geo, rows } = before);
-    }
   }
   // Likert passes each formatted share as the segment's label text, so the label
   // prints the value it names (bar reads a plain authored label as a name only).
@@ -1171,63 +1107,12 @@ export function layoutLikert(
 
   // -- helpers that need the closure ---------------------------------------
 
-  function methodNotes(): string[] {
-    // Footer rule: each method note carries the one-line form the frame
-    // prints under notes.show ['note', 'method'].
-    const notes: string[] = [];
-    const neutralLabel = oddScale ? labelOf(neutralIndex) : '';
-    const short = (side: string) => side.replace(/^the /, '');
-    // The author turns a required note off where the exhibit's own
-    // text already states it; the engine does not read that text.
-    const neutralNote = opts.requiredNotes?.neutral !== false;
-    const baseNote = opts.requiredNotes?.base !== false;
-    if (!neutralNote) {
-      // The author states the neutral treatment elsewhere on the exhibit.
-    } else if (neutralMode === 'split') {
-      notes.push(methodNote(
-        chartString(opts, 'likertNeutralFull', { v1: neutralLabel, v2: sideWords.boundary }) +
-          chartString(opts, 'neutralShareOnce'),
-        chartString(opts, 'likertNeutralBrief', { v1: neutralLabel }),
-      ));
-    } else if (neutralMode === 'positive' || neutralMode === 'negative') {
-      const side = neutralMode === 'positive' ? sideWords.positiveSide : sideWords.negativeSide;
-      notes.push(methodNote(
-        chartString(opts, 'likertNeutralSideFull', { v1: neutralLabel, v2: side, v3: sideWords.boundary }),
-        chartString(opts, 'likertNeutralSideBrief', { v1: neutralLabel, v2: side }),
-      ));
-    } else if (neutralMode === 'exclude') {
-      notes.push(disclosureNote(
-        chartString(opts, 'likertNeutralExcluded', { v1: neutralLabel, v2: items
-          .map((item) => `${item.label} ${shareFmt(pctNeutral[item.id]!)}`)
-          .join('; ') }),
-      ));
-    } else if (opts.methodNote === true) {
-      notes.push(methodNote(
-        chartString(opts, 'forcedChoiceFull', { v1: scale.length }),
-        chartString(opts, 'forcedChoiceBrief', { v1: scale.length }),
-      ));
-    }
-    if (baseNote) notes.push(
-      knownBases.length === 0
-        ? methodNote(chartString(opts, 'authoredSharesFull'), chartString(opts, 'authoredSharesBrief'))
-        : knownBases.length === items.length && maxOf(knownBases) === minOf(knownBases)
-          ? methodNote(chartString(opts, 'likertBaseFull', { v1: baseFmt(knownBases[0]!) }),
-            chartString(opts, 'likertBaseBrief', { v1: baseFmt(knownBases[0]!) }))
-          : methodNote(chartString(opts, 'likertBasesFull', { v1: baseFmt(minOf(knownBases)), v2: baseFmt(maxOf(knownBases)) }),
-            chartString(opts, 'likertBasesBrief', { v1: baseFmt(minOf(knownBases)), v2: baseFmt(maxOf(knownBases)) })),
-    );
-    // The neutral treatment and the base change how the bars read and
-    // print unless requiredNotes turns them off, and so does the net column: a signed figure
-    // right of a bar reads as a change over time unless the chart says what
-    // it is. The sort order is a method note.
-    if (summary === 'net') {
-      notes.push(methodNote(
-        isAgreementScale ? chartString(opts, 'likertNetShort') : chartString(opts, 'likertNetFull', { v1: sideWords.positiveSide, v2: sideWords.negativeSide }),
-        isAgreementScale ? chartString(opts, 'likertNetBrief') : chartString(opts, 'likertNetNamedBrief', { v1: short(sideWords.positiveSide), v2: short(sideWords.negativeSide) }),
-      ));
-    }
-    if (categorySort === 'desc' && opts.methodNote === true) notes.push(methodNote(chartString(opts, 'sortedNetFull'), chartString(opts, 'sortedNetBrief')));
-    return notes;
+  function neutralDisclosure(): string[] {
+    if (neutralMode !== 'exclude' || opts.requiredNotes?.neutral === false) return [];
+    return [disclosureNote(chartString(opts, 'likertNeutralExcluded', {
+      v1: labelOf(neutralIndex),
+      v2: items.map((item) => `${item.label} ${shareFmt(pctNeutral[item.id]!)}`).join('; '),
+    }))];
   }
 
 
@@ -1664,7 +1549,6 @@ function likertBarOptions(options: LikertOptions, labelSize: number): BaseOption
     summary: _summary,
     base: _base,
     sortBy: _sortBy,
-    methodNote: _methodNote,
     format: _format,
     footnotes: _footnotes,
     legend: _legend,

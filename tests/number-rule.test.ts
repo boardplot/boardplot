@@ -304,7 +304,6 @@ describe('the default number rule on charts', () => {
     const edges = [...texts].filter(([id]) => id.startsWith('label:edge:')).map(([, text]) => text);
     expect(edges.length).toBeGreaterThan(2);
     expect(edges.every((text) => /^1\d,\d00$/.test(text))).toBe(true);
-    expect([...texts.values()].some((text) => /from 13,000/.test(text))).toBe(true);
   });
 
   // A zero edge printed a decimal point in a chart with ',' marks ("0.0" beside "0,5").

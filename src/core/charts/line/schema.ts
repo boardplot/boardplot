@@ -4,7 +4,8 @@ import * as z from 'zod';
 import { liveWindowOptionsSchema } from '../../live/schema';
 import {
   colorRoleField,
-  addCategorySeriesIdIssues, addDuplicateIdIssues,
+  addCategorySeriesIdIssues,
+  addDuplicateIdIssues,
   annotationArraySchema,
   annotationSchema,
   timeAnnotationSchema,
@@ -357,12 +358,6 @@ export const lineOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions
       'Uncertainty fan: nested bands declared as ordinary series pairs. The engine derives no quantiles — it paints declared numbers and verifies their nesting.',
     ),
   targets: z.array(optionTargetSchema).optional().describe("Chart-level target markers, each naming its owning series and category."),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe(
-      'Default false. true adds the method footnote of a bump chart: how ranks are derived and how ties are ranked. A fan whose interval is undeclared at some periods and near-zero end labels that were folded print their notes regardless.',
-    ).meta({ default: false }),
   referenceBands: z
     .array(referenceBandSchema)
     .min(1)

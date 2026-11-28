@@ -200,7 +200,7 @@ it('bounds the content shared across data objects', () => {
   expect(prepareTableData(structuredClone(tables[0]!))).not.toBe(models[0]);
 });
 
-// A change off a base above zero that its format prints as 0 (0.04 under '1') printed n.m. with the near-zero note, though the base is not zero.
+// Rounding a positive base to 0 for display must still allow a percent change.
 it('decides a percent change n.m. on its received base, not on the base as printed', () => {
   const data = (prev: number): TableData => ({
     columns: [
@@ -211,10 +211,7 @@ it('decides a percent change n.m. on its received base, not on the base as print
   });
   const small = resolveTable(data(0.04)).table;
   expect([small.rows[0]!.cells.prev!.displayed, small.rows[0]!.cells.chg!.displayed]).toEqual(['0', '+25%']);
-  expect(small.footnotes).toEqual([]);
-  // A base of zero or below stays n.m.; the near-zero note stands where n.m. prints for a zero base.
   const zero = resolveTable(data(0)).table;
   expect(zero.rows[0]!.cells.chg!.displayed).toBe('n.m.');
-  expect(zero.footnotes.some(note => note.startsWith('n.m.'))).toBe(true);
   expect(resolveTable(data(-0.04)).table.rows[0]!.cells.chg!.displayed).toBe('n.m.');
 });

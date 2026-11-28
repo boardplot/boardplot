@@ -379,37 +379,22 @@ function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: numbe
 }
 
 /**
- * The note under the table: the period of the drawn columns (once), the median
- * basis while the median or the change draws, and the colour key while the change draws.
+ * The comparison dates of the drawn columns when they differ.
  */
 function comparisonText(data: CreativeData, options: CreativeOptions, plan: TablePlan): string {
-  const { startDate, endDate, population } = data.comparison;
+  const { startDate, endDate } = data.comparison;
   const own = readerSpan(data.facts.launchDate, data.facts.endDate ?? data.facts.asOf, options);
   const medians = readerSpan(startDate, endDate, options);
   const rowsDrawn = plan.rows.length > 0;
   const valueDrawn = rowsDrawn && plan.columns.includes('value');
   const medianDrawn = rowsDrawn && plan.columns.includes('median');
-  const deltaDrawn = rowsDrawn && plan.columns.includes('delta');
   const overrides = options.columnOverrides;
   const renamed = overrides?.value?.label !== undefined || overrides?.median?.label !== undefined;
-  const period = valueDrawn && medianDrawn && !renamed
-    ? (own === medians ? chartString(options, 'bothColumns', { v1: own }) : chartString(options, 'splitColumns', { v1: own, v2: medians }))
-    : [...(valueDrawn ? [`${overrides?.value?.label ?? chartString(options, 'creativeColumn')}: ${own}.`] : []),
-      ...(medianDrawn ? [`${overrides?.median?.label ?? chartString(options, 'accountMedianColumn')}: ${medians}.`] : [])].join(' ');
-  const drawnKeys = plan.rows.map(([key]) => key);
-  const numbers = creativeNumbers(data, options);
-  const tones = deltaDrawn ? drawnKeys.map((key) => numbers.delta(key).tone) : [];
-  const cpaJudged = drawnKeys.includes('cpa') && numbers.delta('cpa').tone !== 'neutral';
-  let key = '';
-  // The key says which deltas are coloured, never which colour: the
-  // theme names no colour and a repaint may change it.
-  const better = tones.includes('good');
-  const worse = tones.includes('bad');
-  if (better || worse) {
-    key = chartString(options, better && worse ? 'keyBoth' : better ? 'keyBetter' : 'keyWorse');
-    key += cpaJudged ? ` (${chartString(options, 'lowerCpaBetter')}).` : '.';
+  if (valueDrawn && medianDrawn && !renamed) {
+    return own === medians ? '' : chartString(options, 'splitColumns', { v1: own, v2: medians });
   }
-  return [period, ...(medianDrawn || deltaDrawn ? [chartString(options, 'medianBasis', { v1: population.replace(/\.$/, '') })] : []), key].filter(Boolean).join(' ');
+  return [...(valueDrawn ? [`${overrides?.value?.label ?? chartString(options, 'creativeColumn')}: ${own}.`] : []),
+      ...(medianDrawn ? [`${overrides?.median?.label ?? chartString(options, 'accountMedianColumn')}: ${medians}.`] : [])].join(' ');
 }
 
 /** The fatigue lines a reader needs. Without a rule that is one line; the author's instruction goes to the warnings. */
@@ -579,7 +564,7 @@ const THREE_COLUMNS_FROM = 900;
 
 /**
  * The card draws its first form wherever that fits. On a canvas whose height is given and too short for it,
- * the card tries, in order: three columns (media, head and table, trends), the method lines in frame.notes
+ * the card tries, in order: three columns (media, head and table, trends), the notes in frame.notes
  * (as `footnotes: false`), and a table 2 px tighter per row. When none fits, the form with the lowest floor reports it.
  */
 export function layoutCreative(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'> = {}): Geometry<CreativeMarks, CreativeDerived> {
@@ -666,7 +651,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const comparison = comparisonText(data, options, plan);
   // The source's own definitions of its metrics; the card never writes them.
   const definitions = definitionLines(data.definitions);
-  // Under `footnotes: false` the method lines leave the card with the source
+  // Under `footnotes: false` the notes leave the card with the source
   // and stay readable in frame.notes; the status line stays.
   // The registry hands `footnotes: false` on as `footnotesOff` (frame.ts).
   const authoredOff = options.footnotes === false || (options as { footnotesOff?: boolean }).footnotesOff === true;
@@ -675,7 +660,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const sides = canvasMargin(theme, size.width);
   const margin = stacked ? { top: 16, right: 16, bottom: 16, left: 16 } : { top: 24, right: sides.right, bottom: 24, left: sides.left };
   const frame = solveFrame({ size, margin, cardGaps: true,
-    ...frameTextOptions(options), ...(notesOff ? { footnotes: [...(comparison ? [comparison] : []), ...(data.definitions?.trim() ? [data.definitions.trim()] : []), ...fatigueLines.slice(1)] } : {}),
+    ...frameTextOptions(options), ...(notesOff ? { footnotes: [...(comparison ? [comparison] : []), ...(data.definitions?.trim() ? [data.definitions.trim()] : [])] } : {}),
     subtitle: resolveSubtitle(options.subtitle), theme, measure }, occupied);
   const { plot } = frame;
   const nodes: SceneNode[] = [...frame.nodes];
@@ -715,35 +700,28 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
 
   const noteLines: [string, string][] = notesOff ? [] : [...(comparison ? [['creative:comparison', comparison] as [string, string]] : []), ...definitions.map((text, i): [string, string] => [i === 0 ? 'creative:definitions' : `creative:definitions:${i}`, text])];
   const fatigueOwner = { seriesId: 'fatigue', categoryId: data.id };
-  // The last method line prints the observed change; the window means print nowhere.
-  const changeClaims = fatigue.rule && fatigue.changePct !== null ? ['creative:fatigue:change'] : undefined;
-  const claimsAt = (index: number) => index === fatigueLines.length - 1 ? changeClaims : undefined;
   const unprinted = [
     ...(fatigue.rule ? (['baseline', 'current'] as const).filter((key) => fatigue[key].mean !== null).map((key) => `creative:fatigue:${key}`) : []),
-    ...(notesOff && changeClaims ? changeClaims : []),
+    ...(fatigue.rule && fatigue.changePct !== null ? ['creative:fatigue:change'] : []),
   ];
   let strip: ReturnType<typeof trends>, contentEnd: number;
   if (three) {
-    // Three columns: the media with its caption, the head with the table, the trends. The method lines run across the foot, joined while a line has room.
+    // Three columns: media, metrics and trends. Join notes on a single line where they fit.
     let columnsEnd = media.y + media.h;
     if (caption) columnsEnd += 8 + add('creative:media-caption', caption, { x: media.x, w: media.w, y: columnsEnd + 8 }, muted(fonts.note)).h;
     strip = trends(data, { x: plot.x + plot.w - trendW, y: plot.y, w: trendW }, theme, add, nodes, fonts, measure, false, THREE_SPARK_H, options.palette, options, true);
-    // The foot is the source line's size, so a long method fits a line of the wide card.
+    // Use the same size as the source line.
     const footFont: FontSpec = { family: theme.type.family, ...footerType(theme.type.footnote, options.target, options.textScale) };
     const foot = { font: footFont, ink: 'inkMuted' as const, typeRole: 'footnote' as const };
-    const joined = (items: [string, string, (readonly Id[])?][]) => items.reduce<[string, string, (readonly Id[])?][]>((lines, [id, text, claimIds]) => {
+    const joined = noteLines.reduce<[string, string][]>((lines, [id, text]) => {
       const last = lines[lines.length - 1];
-      if (last && measure(`${last[1]} ${text}`, footFont).width <= plot.w) {
-        last[1] += ` ${text}`;
-        if (claimIds) last[2] = [...(last[2] ?? []), ...claimIds];
-      } else lines.push([id, text, claimIds]);
+      if (last && measure(`${last[1]} ${text}`, footFont).width <= plot.w) last[1] += ` ${text}`;
+      else lines.push([id, text]);
       return lines;
     }, []);
-    const fatigueMethod = notesOff ? [] : fatigueLines.slice(1).map((text, i): [string, string, (readonly Id[])?] => [`creative:fatigue:${i + 1}`, text, claimsAt(i + 1)]);
     let top = Math.max(metrics.end, strip.end, columnsEnd) + 12;
-    for (const [id, text] of joined(noteLines)) top += add(id, text, { x: plot.x, w: plot.w, y: top }, foot).h + 2;
+    for (const [id, text] of joined) top += add(id, text, { x: plot.x, w: plot.w, y: top }, foot).h + 2;
     top += add('creative:fatigue:0', fatigueLines[0]!, { x: plot.x, w: plot.w, y: top }, { ...foot, ...(fatigue.rule ? { font: { ...footFont, weight: fonts.strong } } : {}), owner: fatigueOwner }).h + 2;
-    for (const [id, text, claimIds] of joined(fatigueMethod)) top += add(id, text, { x: plot.x, w: plot.w, y: top }, { ...foot, owner: fatigueOwner, ...(claimIds ? { claimIds } : {}) }).h + 2;
     contentEnd = top - 2;
   } else {
     // The notes: the left column under the media on a wide card, under the table when stacked.
@@ -755,17 +733,10 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
       if (caption) notesY += add('creative:media-caption', caption, { ...notesBox, y: media.y + media.h + 8 }, muted(fonts.note)).h + 8;
     }
     for (const [id, text] of noteLines) notesY += add(id, text, { ...notesBox, y: notesY }, muted(fonts.note)).h + 2;
-    // With a rule, its verdict and method stand under the trends on a wide card (the left column is narrow); the one "not assessed" line stays with the notes.
     const fatigueUnderTrends = !stacked && fatigue.rule !== undefined;
-    const fatigueBlock = (box: { x: number; w: number }, top: number): number => {
-      for (const [index, text] of (notesOff ? fatigueLines.slice(0, 1) : fatigueLines).entries()) {
-        // With a rule, its verdict leads in the strong weight; the method lines follow as notes.
-        const strong = index === 0 && fatigue.rule !== undefined;
-        const claimIds = claimsAt(index);
-        top += add(`creative:fatigue:${index}`, text, { ...box, y: top }, { ...(strong ? { font: fonts.noteStrong, typeRole: 'footnote' as const } : muted(fonts.note)), owner: fatigueOwner, ...(claimIds ? { claimIds } : {}) }).h + 2;
-      }
-      return top;
-    };
+    const fatigueFont = fatigue.rule ? { font: fonts.noteStrong, typeRole: 'footnote' as const } : muted(fonts.note);
+    const fatigueBlock = (box: { x: number; w: number }, top: number): number =>
+      top + add('creative:fatigue:0', fatigueLines[0]!, { ...box, y: top }, { ...fatigueFont, owner: fatigueOwner }).h + 2;
     if (!fatigueUnderTrends) notesY = fatigueBlock(notesBox, notesY);
 
     const sparkH = stacked ? (size.width >= 460 ? 28 : 24) : 38;

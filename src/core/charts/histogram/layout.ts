@@ -40,11 +40,10 @@ import { structureCount } from '../../structureCounts';
 
 import { chartString } from '../../strings/histogram';
 import { shareSetFormatter } from '../../format';
-import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../../formatPrecision';
+import { MAX_FORMAT_DECIMALS } from '../../formatPrecision';
 import {
   MAGNITUDE_DIVISOR,
   RULE_SET,
-  exampleSpec,
   defaultSetSpec,
   defaultFormatSpec,
   formatWithSpec,
@@ -74,7 +73,6 @@ import { axisTitleAllowed } from '../../axis';
 import { ruleFormatter } from '../../numberSets';
 import { fixedRuleSet } from '../../numberRule';
 import { chartNumberMarks, numberMinus } from '../../numberMarks';
-import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
 import { authoredNotes, frameTextOptions, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
@@ -143,7 +141,6 @@ export function layoutHistogram(
   options: HistogramOptions = {},
 ): Geometry<HistogramMarks, HistogramDerived> {
   const warnings: LintWarning[] = [];
-  const strings = { ...localeStrings(options.locale?.language), ...options.strings };
   const observations = validateObservations(data);
   const n = observations.length;
   // The sample size is a set of one; a count of part of the sample is a late value of it.
@@ -241,7 +238,6 @@ export function layoutHistogram(
     });
   }
   // The binning rule is a method note on request.
-  const methodNote = options.methodNote === true;
 
   if (binning.exactWidth !== undefined) {
     warnings.push({
@@ -315,51 +311,6 @@ export function layoutHistogram(
     : formatterFromExample(options.format!, options.locale?.language, options.unit);
   const edgeLabels = labelValues.map((edge) => fmt(edge));
 
-  /**
-   * The measure's format as a SPEC, so the method note can re-derive it at a
-   * different precision. The default branch reproduces the `fmt` above:
-   * the chart locale's separators, no magnitude, no affixes. Without the
-   * locale a German chart printed "0,0–0,5" bins and a note of "0.5".
-   */
-  // The note and the edges hold the example's scale ("0.0000005 Mio. from 1 Mio."); the precision search below keeps them nonzero.
-  const measureSpec: NumberFormatSpec = edgeSpec ?? { ...exampleSpec(options.format!, options.locale?.language, options.unit), nonzero: undefined };
-  /** The measure's face at `decimals`: the note's own precision. */
-  const measureAt = (decimals: number): NumberFormatSpec => (edgeRule ? edgeAt(decimals) : { ...measureSpec, decimals });
-  /**
-   * The method note is the exhibit's receipt for its own binning: a reader
-   * reconstructs every edge as `anchor + i x width`. At the display precision
-   * of the EDGE COLUMN that receipt is false — a width of 332.5 prints "333",
-   * and edges rebuilt from 333 miss every bin boundary on the page. So the
-   * note gets its own precision: the fewest decimals at which the width AND
-   * the first edge both round-trip to themselves under the caller's format
-   * (magnitude included — `roundedNumber` is the value the reader SEES).
-   * When no precision inside the cap round-trips, the note says the figures
-   * are rounded rather than certifying a width nothing used.
-   */
-  const NOTE_MAX_DECIMALS = 6;
-  // Per value, not one precision for both: an anchor of 0 printed "0.000"
-  // because the width needed three decimals is false precision on a number
-  // that has none.
-  // A width no precision inside the cap round-trips (an unsnapped rule width,
-  // 241.610692...) prints one decimal past the edges, and says it is rounded.
-  // A width under the cap still prints nonzero (nonzeroDecimals): 5e-7
-  // printed "4 bins of about 0.000000". The check runs on the figure the
-  // reader sees, at the example's magnitude: a width of 0.5 under a "Mio."
-  // example is 5e-7 on the page, and the raw 0.5 passed as nonzero while
-  // the note printed "0.00M".
-  // A first edge that stands under the bars prints no fewer decimals in the note than in its bin range,
-  // so the two read alike ("0.0000010" in both), and more only where the receipt needs them.
-  const anchorFrom = edgeSpec !== undefined && !perValue && labelValues[0] === binning.anchor ? edgeDecimals : 0;
-  const noteDecimalsFor = (value: number, from = 0): number => {
-    for (let decimals = from; decimals <= Math.max(NOTE_MAX_DECIMALS, from); decimals++) {
-      if (roundedNumber(value, measureAt(decimals)) === value) return decimals;
-    }
-    return nonzeroDecimals(value / MAGNITUDE_DIVISOR[measureSpec.magnitude], Math.max(from, Math.min(NOTE_MAX_DECIMALS, edgeDecimals + 1)));
-  };
-  const noteSpecFor = (value: number, edge = false): NumberFormatSpec => measureAt(noteDecimalsFor(value, edge ? anchorFrom : 0));
-  const fmtNote = (value: number, edge = false): string => formatWithSpec(value, noteSpecFor(value, edge));
-  const noteExact = roundedNumber(binning.width, noteSpecFor(binning.width)) === binning.width
-    && roundedNumber(binning.anchor, noteSpecFor(binning.anchor, true)) === binning.anchor;
   // A negative edge carries a minus of its own, so the range dash gets spaces
   // ("−100 – −80", not "−100–−80"), on every bin of the exhibit.
   const minus = numberMinus(options.locale?.language);
@@ -501,37 +452,17 @@ export function layoutHistogram(
    * behind the warning that says they did not.
    */
   const delegateOptions = (frequencyAxis: boolean, tail: Annotation[] = []): ColumnOptions => {
-    // The sample base and bins stay visible even when the frequency axis is hidden.
     const captioned = frequencyAxis && options.valueAxis?.show !== false && axisTitleAllowed(options.labels);
-    const notesOff = options.footnotes === false || (options as HistogramOptions & { footnotesOff?: boolean }).footnotesOff === true;
-    // The method note states the binning; where it prints, the base keeps only n so the binning prints once.
-    const methodPrinted = methodNote && !notesOff;
-    const caption = [options.axisTitles?.y, sampleBase, methodPrinted ? undefined : binsText, methodPrinted ? undefined : openClause].filter(Boolean).join(' · ');
-    const withOpen = (text: string): string => openClause === undefined ? text : `${text} · ${openClause}`;
-    // Without the axis, an authored frequency title leads the base note: the footer then says what a bar counts.
-    // The default footer is one short line that keeps the edge
-    // rule, 'Orders per 250 bin, lower edge included · n = 240'. The full binning text stays
-    // where the width prints rounded (Boardplot bins are always equal width), and where
-    // strings.histogramBins is authored: an authored setting always wins. The request fills
-    // every string with its default, so 'authored' means it differs from the locale default.
+    const caption = [options.axisTitles?.y, sampleBase].filter(Boolean).join(' · ');
     const title = frequencyAxis ? undefined : options.axisTitles?.y;
-    const shortBins = binsExact && !binsAuthored;
-    const baseNote = captioned ? [] : [disclosureNote(methodPrinted
-      ? `${title ? `${title} · ` : ''}${sampleBase}.`
-      : perValue && !binsAuthored
-        ? `${withOpen(title ? chartString(options, 'histogramPerValueTitled', { v1: title }) : chartString(options, 'histogramPerValue'))} · ${sampleBase}.`
-      : shortBins
-        ? `${withOpen(title
-          ? chartString(options, 'histogramBinsShortTitled', { v1: title, v2: fmtNote(binning.width) })
-          : chartString(options, 'histogramBinsShort', { v1: fmtNote(binning.width) }))} · ${sampleBase}.`
-        : `${title ? `${title} · ` : ''}${sampleBase} · ${withOpen(binsText)}.`)];
+    const baseNote = captioned ? [] : [disclosureNote(`${title ? `${title} · ` : ''}${sampleBase}.`)];
     return {
     ...keepShownNotes(options, frameTextOptions(options)),
     ...(isAutomaticLegend(options) ? { [AUTO_LEGEND]: true } : {}),
     ...(options.size === undefined ? {} : { size: options.size }),
     ...(options.margin === undefined ? {} : { margin: options.margin }),
     // Only the author's own notes keep a number; the rest are derived.
-    ...withAuthoredFootnotes({}, [...authoredNotes(options), ...baseNote, ...(methodPrinted ? [methodNoteText(false)] : [])], options.footnotes),
+    ...withAuthoredFootnotes({}, [...authoredNotes(options), ...baseNote], options.footnotes),
     ...(baseNote.length > 0 ? { footnotesOff: false } : {}),
     ...(tail.length > 0 ? { annotations: tail } : {}),
     ...(options.theme === undefined ? {} : { theme: options.theme }),
@@ -564,35 +495,7 @@ export function layoutHistogram(
     } as ColumnOptions;
   };
 
-  function methodNoteText(withBase: boolean): string {
-    let rule: string;
-    if (binning.rule === 'auto') {
-      const chosen = !binning.autoCap && binning.hFd > 0 && binning.hFd <= binning.hSturges ? 'Freedman-Diaconis' : 'Sturges';
-      rule = binning.snapped ? stringFields(strings.histogramSnapped, { rule: chosen }) : chosen;
-    } else {
-      rule = binning.rule === 'count' ? strings.histogramRuleCount : strings.histogramRuleWidth;
-    }
-    const smallSample = n < SMALL_SAMPLE_N ? strings.histogramSmallSample : '';
-    const rounding = noteExact ? '' : strings.histogramRounded;
-    return `${withBase ? `${sampleBase} · ${binsText}${openClause === undefined ? '' : ` · ${openClause}`}. ` : ''}${openValue !== undefined
-      ? chartString(options, 'histogramOpenMethod', {
-        v1: closedCount, v2: fmtNote(binning.width), v3: fmtNote(binning.anchor, true), v4: rule, v5: rounding, v6: fmt(openValue), v7: smallSample,
-      })
-      : stringFields(strings.histogramMethod, {
-        count: k, width: fmtNote(binning.width), from: fmtNote(binning.anchor, true), rule, rounding, smallSample,
-      })}`;
-  }
-
   const sampleBase = `n = ${sampleFmt(n)}`;
-  const binsExact = roundedNumber(binning.width, noteSpecFor(binning.width)) === binning.width;
-  const binsAuthored = strings.histogramBins !== localeStrings(options.locale?.language).histogramBins;
-  const binsText = perValue && !binsAuthored
-    ? chartString(options, 'histogramPerValueRange', { v1: edgeLabels[0]!, v2: edgeLabels[closedCount - 1]! })
-    : stringFields(strings.histogramBins, {
-    count: closedCount, about: binsExact ? '' : strings.histogramAbout,
-    width: fmtNote(binning.width), from: fmtNote(binning.edges[0]!), to: fmtNote(binning.edges[closedCount]!),
-  });
-  const openClause = openValue === undefined ? undefined : chartString(options, 'histogramOpenClause', { v1: fmt(openValue) });
   const size = resolveSize(options.size);
   // The bins are derived data: a column refusal names a histogram option it was handed, or nothing.
   const layoutBins = (binData: typeof delegateData, binOptions: ColumnOptions) => hostedLayout(options, binOptions, () => layoutColumn(binData, binOptions, true));

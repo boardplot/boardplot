@@ -28,13 +28,13 @@ import { structureCount } from '../../structureCounts';
 
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { emptyAnnotatePass, runAnnotatePass } from '../../annotatePass';
-import { HIDDEN_LABEL_LEAD, hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
+import { type FrameResult, type LegendItemInput } from '../../frame';
 import { staticFrame, storyFrameFit } from '../../footer';
 import { ruleFormatter } from '../../numberSets';
 import { currentSmallValues, formatScopeKey, withSmallValues } from '../../formatPrecision';
 import { requestMemo } from '../../layoutPlan';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { sameContent, scatterNoteLimit, SCATTER_NOTE_LIMIT_EXCEEDED } from '../../sizing';
+import { sameContent } from '../../sizing';
 import { layoutStepKey, spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
@@ -42,15 +42,15 @@ import { leaderPieces, solveLabels, type LabelRequest, type SolveCtx, type Solve
 import { resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { defaultAnnotationId, type AnchorRef, type Annotation } from '../../types/annotations';
-import { rectsOverlap, sameRect, type Rect } from '../../geometry';
+import { rectsOverlap, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { ScatterData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from '../../types/scene';
 import { inView, resolveScatterDomain, resolveScatterEnv } from './domain';
-import { planScatterLabels, pointValueText, scatterSolveCtx } from './labels';
+import { planScatterLabels, scatterSolveCtx } from './labels';
 import { DENSE_POINTS, layoutScatterMarks, quadrantBoxRect, sizeMarkerOf, type ScatterMarkGeometry } from './marks';
 import { plotSizeKey, sizeKeyTitleExceedsPlot, sizeKeyItems, type PlotSizeKey } from './sizeKey';
-import { QUADRANT_BOXES, QUADRANT_BOX_NAME, quadrantBoxName, type ScatterDerived, type ScatterDomain, type ScatterEnv, type ScatterPaints, type ScatterMarks, type ScatterPlotArea } from './model';
+import { QUADRANT_BOXES, quadrantBoxName, type ScatterDerived, type ScatterDomain, type ScatterEnv, type ScatterPaints, type ScatterMarks, type ScatterPlotArea } from './model';
 import { type ScatterFrameMeasurements, scatterDotRadius, scatterPaints, scatterPlotArea, solveScatterFrame } from './plot';
 import { gridZones, zoneKeyItems } from './zones';
 import type { ScatterStrategyOptions } from './types';
@@ -253,12 +253,6 @@ function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: R
   ];
 }
 
-/** Whether a laid-out scatter hides a point name or value its note does not list. */
-function notListed(geometry: Geometry<ScatterMarks, ScatterDerived>): boolean {
-  const text = geometry.scene.flatMap((node) => (node.t === 'text' && node.part === 'footnote' ? node.lines : [])).join(' ');
-  return geometry.labels.some((label) => label.hidden && /^(point|value):/.test(String(label.id)) && !text.includes(label.text));
-}
-
 /** Replays a phase's claims, in claim order, into the run's index. */
 /** Rounds of seat removal that keep two point names off one line. */
 const NAME_APART_ROUNDS = 3;
@@ -362,13 +356,6 @@ function solveAfterPrefix(requests: LabelRequest[], occupied: OccupiedIndex, ctx
   } };
 }
 
-interface SeatRepairs {
-  available: number;
-  spent: number;
-  start: ProbeSolve;
-  improvements: { cost: number; seats: ProbeSolve }[];
-}
-
 const failedNameRepair = Symbol();
 
 /**
@@ -378,7 +365,7 @@ const failedNameRepair = Symbol();
  * only other names block is freed: those names lose every seat that meets
  * it, when they still find another seat and no name is lost on the way.
  */
-function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, size: { width: number; height: number }, initial: ProbeSolve, dots = false, record?: SeatRepairs): ProbeSolve | undefined {
+function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, size: { width: number; height: number }, initial: ProbeSolve, dots = false): ProbeSolve | undefined {
   const names = new Map(requests.filter((r) => String(r.id).startsWith('point:')).map((r) => [r.id, r] as const));
   let all = initial.result.placed;
   // The last probe that seated a lost name: its candidates are the ones the requests keep.
@@ -449,7 +436,6 @@ function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: S
                 previous = probe;
                 all = next;
                 seated = probe;
-                record?.improvements.push({ cost: record.available - seatProbe.left, seats: probe });
                 if (prefixSafe) placedClaims = probe.index.snapshot().slice(fixedCount);
                 break;
               }
@@ -541,10 +527,6 @@ function sizeKeyInPlot(env: ScatterEnv, domain: ScatterDomain): boolean {
 /** Notes the plot owes its reader once the plot is known. */
 function scatterLateNotes(env: ScatterEnv, domain: ScatterDomain, area: ScatterPlotArea): string[] {
   const notes: string[] = [];
-  const titles = env.options.axisTitles ?? {};
-  if (area.showAxes) {
-    notes.push(...noteLine(chartString(env.options, 'axesUntitled'), [...(titles.x ? [] : [chartString(env.options, 'horizontal')]), ...(titles.y ? [] : [chartString(env.options, 'vertical')])]));
-  }
   if (domain.bubbleMode) {
     const drawn = domain.pts.filter((p) => inView(env.options, domain.dx, domain.dy, p) && p.marker !== 'none');
     const names = (pick: (p: (typeof drawn)[number]) => boolean) => drawn.filter(pick).map((p) => p.label).join(', ');
@@ -555,11 +537,6 @@ function scatterLateNotes(env: ScatterEnv, domain: ScatterDomain, area: ScatterP
       [chartString(env.options, 'minimumDotSize'), names((p) => sizeMarkerOf(p) === undefined && (p.size ?? 0) > 0 && area.radiusOf(p) <= area.radiusOf({ size: 0 }) + 1e-9)],
     ].filter(([, who]) => who).map(([what, who]) => `${what} (${who})`);
     if (parts.length) notes.push(disclosureNote(chartString(env.options, 'notDrawnScale', { v1: parts.join('; ') })));
-  }
-  const maxPointLabels = env.options.maxPointLabels ?? 300;
-  const labelsOn = env.options.labels !== false && (env.options.labels?.point !== false || env.options.labels?.value === true);
-  if (labelsOn && domain.pts.filter((p) => inView(env.options, domain.dx, domain.dy, p)).length > maxPointLabels) {
-    notes.push(disclosureNote(chartString(env.options, 'pointLabelsOff', { v1: maxPointLabels })));
   }
   return notes;
 }
@@ -589,7 +566,7 @@ const seatProbe = { left: SEAT_PROBE_BUDGET, dotLeft: DOT_SEAT_PROBES, depth: 0 
 /** The size key settles against the frame before any mark or label is placed. */
 function scatterFrame(
   env: ScatterEnv, domain: ScatterDomain, paints: ScatterPaints, warnings: LintWarning[],
-  hiddenNote: ReturnType<typeof hiddenNoteWith>, sizeKeyInRow: boolean, measurements?: ScatterFrameMeasurements,
+  sizeKeyInRow: boolean, measurements?: ScatterFrameMeasurements,
 ) {
   let area: ScatterPlotArea | undefined;
   let solvedFrame: ReturnType<typeof solveScatterFrame> | undefined;
@@ -600,7 +577,7 @@ function scatterFrame(
     const keyed = scatterKeyItems(env, domain, paints, area, passWarnings, !keyInPlot);
     ringRow = Math.max(pass >= 2 ? ringRow : 0, maxOf(keyed.map((item) => (item.key === 'sizes' ? Math.ceil(2 * Math.max(0.5, ...(item.radii ?? []))) : 0))));
     const items = keyed.map((item) => (item.key === 'sizes' ? { ...item, ringRow } : item));
-    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], hiddenNote, measurements);
+    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], measurements);
     const next = scatterPlotArea(env, domain, solvedFrame.frame, passWarnings);
     // The first pass has no late notes or size entries. If neither would be
     // added for this plot, the second pass would repeat the same frame.
@@ -672,18 +649,9 @@ export function layoutScatter(...args: Parameters<typeof layoutScatterRun>): Ret
   }
 }
 
-type FinishScatterNote = (
-  frame: FrameResult, hiddenNames: readonly string[], note: ReturnType<typeof hiddenNoteWith>, warnings: LintWarning[],
-) => Geometry<ScatterMarks, ScatterDerived>;
-
 function layoutScatterRun(
   data: ScatterData,
   options: ScatterStrategyOptions = {},
-  /** Names an earlier run could not place on the plot; listed in a note. */
-  hiddenNames?: readonly string[],
-  run = 0,
-  /** Hide every label the note lists, so a note from a longer run is not stale (see the end). */
-  hideListed = false,
   /** The bubble values this layout prints (ScatterEnv.valueTier). */
   valueTier: 0 | 1 | 2 = 0,
   /** The size key goes to the key row: no plot corner was free for it. */
@@ -698,15 +666,8 @@ function layoutScatterRun(
   valueInsideOnly?: ReadonlySet<Id>,
   /** The plot key stays in the plot: the key row lost more (see the crowding check). */
   keepKeyInPlot = false,
-  /** Only a recursive note update can reuse a prior pass of this fixed-size plot. */
-  previous?: {
-    plot: Rect; inner: Rect; seats: ScatterMarkGeometry['seatMemo']; occupied: OccupiedIndex; first?: ProbeSolve; repairs?: SeatRepairs;
-    finishNote?: { claims: OccupiedIndex; draw: FinishScatterNote };
-  },
   prepared?: ReturnType<typeof scatterInputs>,
 ): Geometry<ScatterMarks, ScatterDerived> {
-  // The names the plot could not place share ONE note with the registry's ("Not labelled on the chart").
-  const hiddenNote = hiddenNoteWith(options, (hiddenNames ?? []).map((text, i) => ({ id: `scatter:${i}`, text })));
   const inputs = prepared ?? scatterHeightInputs(data, options);
   const { domain, paints } = inputs;
   const env: ScatterEnv = { ...inputs.env, valueTier, valueInsideOnly };
@@ -722,7 +683,7 @@ function layoutScatterRun(
   // the third pass on the key row never shrinks (ringRow), the plot then only
   // shrinks, the rings with it, and the loop settles with the rings at the
   // final plot's scale.
-  const { frame, claims, area, keyInPlot } = scatterFrame(env, domain, paints, warnings, hiddenNote, sizeKeyInRow, inputs.frameWidths);
+  const { frame, claims, area, keyInPlot } = scatterFrame(env, domain, paints, warnings, sizeKeyInRow, inputs.frameWidths);
   // Soft labels only change hidden-label notes here. With those notes off
   // the canvas, either size-key position has the frame's measured floor.
   const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
@@ -735,24 +696,15 @@ function layoutScatterRun(
       const probe = { ...env, options: { ...options, margin: { ...options.margin, bottom } } };
       try {
         return withSmallValues(options.smallValues, () => withEngineNotes(() => [false, true].every(inRow => {
-          const at = scatterFrame(probe, domain, paints, [], hiddenNote, inRow);
+          const at = scatterFrame(probe, domain, paints, [], inRow);
           const floor = Math.max(at.frame.frame.minHeight ?? 0, at.frame.frame.plotMinHeight ?? 0);
           return at.area.plot.w === width && Math.ceil(floor) < env.size.height;
         }), true));
       } finally { staticFrame.countable = counted; }
     });
   }
-  const finishNote = previous?.finishNote;
-  if (finishNote && sameContent(area.plot, previous.plot) && sameContent(area.inner, previous.inner)
-    && sameContent(claims.snapshot(), finishNote.claims.snapshot()) && sameContent(claims.tickColumns, finishNote.claims.tickColumns)) {
-    return finishNote.draw(frame, hiddenNames!, hiddenNote, warnings);
-  }
-  const afterFrame = warnings.length;
   commitClaims(occupied, claims);
   const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
-  const plot = area.plot;
-  const samePlot = previous && sameRect(previous.plot, plot) && sameRect(previous.inner, area.inner);
-  if (samePlot) geometry.seatMemo = previous.seats;
   if (geometry.densePoints) {
     warnings.push({
       code: 'scatter-dense-paths',
@@ -769,9 +721,9 @@ function layoutScatterRun(
       ? (['tr', 'br', 'tl', 'bl'] as const).filter((box) => !domain.quadrants.voidBoxes.has(box)).map((box) => quadrantBoxRect(box, area!.plot, geometry.split))
       : [];
     plotKey = plotSizeKey(env, area!, sizeMin, domain.sizeMax!, geometry.claims, warnings, boxes);
-    if (!plotKey) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
+    if (!plotKey) return layoutScatter(data, options, valueTier, true, calloutMode, valueInsideOnly, false, retryInputs);
     // A 2x2 box is small: a key that costs a point its name goes to the key row instead.
-    if (run === 0 && !hideListed && domain.quadrants.derived) {
+    if (domain.quadrants.derived) {
       const lostWith = (rects: Rect[]): number => {
         const probe = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
         commitClaims(probe, occupied);
@@ -781,7 +733,7 @@ function layoutScatterRun(
         const tried = solveLabels(planScatterLabels(env, domain, area!, geometry, paints, []), probe, scatterSolveCtx(env, area!));
         return tried.placed.filter((label) => label.hidden && String(label.id).startsWith('point:')).length;
       };
-      if (lostWith(plotKey.rects) > lostWith([])) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
+      if (lostWith(plotKey.rects) > lostWith([])) return layoutScatter(data, options, valueTier, true, calloutMode, valueInsideOnly, false, retryInputs);
     }
     geometry.nodes.push(...plotKey.nodes);
     for (const rect of plotKey.rects) geometry.claims.claim(rect, 'legend', {}, 'sizeKey');
@@ -862,7 +814,7 @@ function layoutScatterRun(
   // For speed, run 0 only; the note runs keep its choice (passed on as
   // valueTier and valueInsideOnly). A choice in each later run would make
   // measure() of the portfolio-bubbles demo run 17 layouts instead of 4.
-  if (run === 0 && !hideListed && valueTier < 2 && domain.bubbleMode && options.labels !== false && options.labels?.value === true) {
+  if (valueTier < 2 && domain.bubbleMode && options.labels !== false && options.labels?.value === true) {
     const lostAt = (tier: 0 | 1 | 2, insideOnly?: ReadonlySet<Id>): number => {
       const placed = probeAt(tier, insideOnly);
       // A hidden value would go to the note: it counts as a loss too, below any name.
@@ -884,61 +836,10 @@ function layoutScatterRun(
     env.valueInsideOnly = best.insideOnly;
   }
   const requests = planScatterLabels(env, domain, area!, geometry, paints, warnings);
-  // A point name the plot cannot place is listed, with where the
-  // point is, in a note; one more run makes room for it.
-  // A lost value is listed with its point's name. The note takes height from
-  // the plot, so the run repeats until every lost text is in it (four runs
-  // at most); the list keeps the input order of the points.
-  const byId = new Map(domain.pts.map((p) => [p.id, p]));
-  const valueText = new Map(requests.flatMap((request) => (request.id.startsWith('value:') && request.owner.pointId !== undefined ? [[request.owner.pointId, request.text] as const] : [])));
-  // A name that carries its value has no value request; a lost one keeps the size in the note.
-  if (domain.bubbleMode && options.labels !== false && options.labels?.value === true) {
-    for (const p of domain.pts) if (!valueText.has(p.id) && p.size !== null) valueText.set(p.id, pointValueText(env, domain, p, 'size')!);
-  }
-  const listed = new Set(hiddenNames ?? []);
   const named = new Set(requests.flatMap((request) => (request.id.startsWith('point:') && request.owner.pointId !== undefined ? [request.owner.pointId] : [])));
-  const noteText = (id: Id, owner: { pointId?: Id }, text: string): { idx: number; text: string; valueFor?: Id } | undefined => {
-    // region names carry meaning even when the point labels fit.
-    const box = String(id).replace(/^quadrant:caption:/, '') as keyof typeof QUADRANT_BOX_NAME;
-    if (String(id).startsWith('quadrant:caption:')) return { idx: -1, text: `${text} (${quadrantBoxName(box, env.options)})` };
-    if (String(id).startsWith('zone:')) {
-      const grid = options.zones?.grid;
-      const cell = grid?.cells?.find(cell => String(id) === `zone:label:${cell.id}`);
-      return { idx: -1, text: cell ? `${text} (${grid!.y.length === 2 ? [chartString(env.options, 'bottom'), chartString(env.options, 'middle'), chartString(env.options, 'top')][cell.row] : chartString(env.options, 'rowCount', { v1: cell.row + 1 })} ${grid!.x.length === 2 ? [chartString(env.options, 'left'), chartString(env.options, 'middle'), chartString(env.options, 'right')][cell.column] : chartString(env.options, 'columnCount', { v1: cell.column + 1 })})` : text };
-    }
-    const p = /^(point|value):/.test(String(id)) ? byId.get(owner.pointId!) : undefined;
-    if (!p) return undefined;
-    // One item per point. A lost name and a lost value share one text, so a
-    // point is listed once; a bubble's printed value follows its position.
-    const value = valueText.get(p.id);
-    // A bubble value whose name the plot shows is listed by the name alone ("PortNexus 2.7").
-    if (String(id).startsWith('value:') && named.has(p.id) && value !== undefined) {
-      return { idx: p.idx, text: `${p.label}\u00a0${value}`, valueFor: p.id };
-    }
-    // A narrow note keeps a name with its position and value on one line ("CupriCo (−3, 4) 4.9").
-    const sp = '\u00a0';
-    return { idx: p.idx, text: `${p.label}${sp}(${env.axisFmt.x(p.x)},${sp}${env.axisFmt.y(p.y)})${value !== undefined && domain.bubbleMode ? `${sp}${value}` : ''}` };
-  };
-  if (hideListed) {
-    for (const request of requests) {
-      const pointText = request.id.startsWith('value:') ? noteText(`point:${request.owner.pointId}`, request.owner, request.text)?.text : undefined;
-      if (!listed.has(noteText(request.id, request.owner, request.text)?.text ?? '') && !(pointText !== undefined && listed.has(pointText))) continue;
-      request.redundant = true;
-      request.suppressedAs = 'density';
-    }
-  }
-  // Updating a note can leave the plot and every obstacle in exactly the same place.
   const before = occupied;
-  let first = !hideListed ? probes.get(probeKey(env.valueTier ?? 0, env.valueInsideOnly)) : undefined;
-  let replay: SeatRepairs | undefined;
-  if (!first && !hideListed && samePlot && previous.first
-    && JSON.stringify(before.snapshot()) === JSON.stringify(previous.occupied.snapshot())
-    && JSON.stringify(before.tickColumns) === JSON.stringify(previous.occupied.tickColumns)) {
-    replay = previous.repairs && seatProbe.left <= previous.repairs.available ? previous.repairs : undefined;
-    first = replay ? previous.first : { result: structuredClone(previous.first.result), index: copyOccupied(previous.first.index, env.size) };
-  }
-  first ??= probeSolveOn(requests, before, solveCtx, env.size);
-  const apart = replay?.start ?? keepNamesApart(requests, before, solveCtx, env.size, first);
+  const first = probes.get(probeKey(env.valueTier ?? 0, env.valueInsideOnly)) ?? probeSolveOn(requests, before, solveCtx, env.size);
+  const apart = keepNamesApart(requests, before, solveCtx, env.size, first);
   let solved = apart.result;
   occupied = apart.index;
 
@@ -952,20 +853,8 @@ function layoutScatterRun(
   const spare = domain.bubbleMode ? 0 : Math.max(0, seatProbe.left - seatProbe.dotLeft);
   seatProbe.left -= spare;
   const leftBefore = seatProbe.left;
-  // The same plot and claims give a note retry the same sequence of repairs.
-  // Reuse only improvements the remaining number of probes could reach.
-  const repairs = replay ?? (domain.bubbleMode && !hideListed && env.measure === defaultMeasurer && lostPoints > 0
-    ? { available: leftBefore, spent: 0, start: apart, improvements: [] } : undefined);
-  let seated: ProbeSolve | undefined;
-  if (replay) {
-    let answer = replay.start;
-    for (const improvement of replay.improvements) if (improvement.cost <= leftBefore) answer = improvement.seats;
-    seated = { result: structuredClone(answer.result), index: copyOccupied(answer.index, env.size) };
-    seatProbe.left -= Math.min(leftBefore, replay.spent);
-  } else if (lostPoints > 0 && (domain.bubbleMode || lostPoints === 1)) {
-    seated = seatLostNames(requests, before, solveCtx, env.size, apart, !domain.bubbleMode, repairs);
-    if (repairs) repairs.spent = leftBefore - seatProbe.left;
-  }
+  const seated = lostPoints > 0 && (domain.bubbleMode || lostPoints === 1)
+    ? seatLostNames(requests, before, solveCtx, env.size, apart, !domain.bubbleMode) : undefined;
   if (!domain.bubbleMode) seatProbe.dotLeft -= leftBefore - seatProbe.left;
   seatProbe.left += spare;
   if (seated) {
@@ -978,13 +867,13 @@ function layoutScatterRun(
   const lostIn = (labels: readonly { id: Id; hidden?: unknown }[]) => labels.reduce((sum, label) => sum
     + (!label.hidden ? 0 : String(label.id).startsWith('point:') ? 1000 : String(label.id).startsWith('value:') ? 1 : 0), 0);
   let rowAlternative: { geo: Geometry<ScatterMarks, ScatterDerived>; lost: number } | undefined;
-  if (plotKey && !sizeKeyInRow && !keepKeyInPlot && run === 0 && !hideListed
+  if (plotKey && !sizeKeyInRow && !keepKeyInPlot
     && solved.placed.some((label) => !label.hidden && String(label.id).startsWith('point:') && plotKey!.rects.some((rect) => rectGap(rect, label.rect) < KEY_LABEL_GAP))) {
     // Names come first: the key row takes plot height from the names
     // (VoltStream and CupriCo left the plot at 320 px).
     // A bubble chart (no 2x2) keeps the key in the plot when the row costs
     // a name; a value it costs counts too, below any name (it goes to the note).
-    const inRow = layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
+    const inRow = layoutScatter(data, options, valueTier, true, calloutMode, valueInsideOnly, false, retryInputs);
     if (!domain.bubbleMode || domain.quadrants.derived || lostIn(inRow.labels) < 1000) return inRow;
     // Else this layout goes on with the key in the plot, and its result is
     // taken when it loses less (one layout less, the same choice).
@@ -996,83 +885,14 @@ function layoutScatterRun(
   };
   // A name that carries a callout and finds no seat gives the callout back to the annotation pass.
   if (merged.callouts.size > 0 && solved.placed.some((label) => label.hidden && String(label.id).startsWith('point:') && merged.callouts.has(label.owner.pointId!))) {
-    return pick(layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, sizeKeyInRow, calloutMode === 'line' ? 'wrap' : 'off', valueInsideOnly, keepKey, undefined, retryInputs));
+    return pick(layoutScatter(data, options, valueTier, sizeKeyInRow, calloutMode === 'line' ? 'wrap' : 'off', valueInsideOnly, keepKey, retryInputs));
   }
-  const lostNames = new Set(solved.placed.filter((label) => label.hidden && String(label.id).startsWith('point:')).map((label) => label.owner.pointId));
-  // One item per point: a lost name's item carries the value too.
-  const entryFor = (label: { id: Id; owner: { pointId?: Id }; text: string }) => {
-    const entry = noteText(label.id, label.owner, label.text);
-    return entry?.valueFor !== undefined && lostNames.has(entry.valueFor) ? noteText(`point:${entry.valueFor}`, label.owner, label.text) : entry;
-  };
-  const lost = solved.placed.flatMap((label) => {
-    const entry = label.hidden ? entryFor(label) : undefined;
-    return entry ? [entry] : [];
-  });
-  // The next run lists exactly what this one lost. A run whose list holds
-  // everything it lost stands; the last run keeps the union, so nothing it
-  // hides goes unlisted.
-  const lostTexts = [...new Set(lost.sort((a, b) => a.idx - b.idx).map((entry) => entry.text))];
-  const complete = lostTexts.every((text) => listed.has(text));
-  const exact = complete && lostTexts.length === listed.size;
-  if (!exact && run < 4 && (lostTexts.length > 0 || listed.size > 0)) {
-    const next = complete ? lostTexts : run === 3 ? [...new Set([...listed, ...lostTexts])] : lostTexts;
-    if (next.length !== listed.size || next.some((text) => !listed.has(text))) {
-      // The next note names exactly these lost labels. When the same repairs are reachable,
-      // an unchanged frame reproduces the same placements, including every leader.
-      const sameSeats = repairs && !rowAlternative
-        && (repairs.improvements.at(-1)?.cost ?? 0) <= seatProbe.left;
-      // Dot repairs only try to recover a single lost name. Two or more lost names
-      // leave the same seats on an unchanged plot when the note is added.
-      const sameDotSeats = !domain.bubbleMode && lostPoints > 1 && env.measure === defaultMeasurer;
-      const finishNote = !hideListed && !complete && next.length === lostTexts.length
-        && (run > 0 && leftBefore === 0 || sameSeats || sameDotSeats) ? {
-          claims,
-          draw: (newFrame: FrameResult, names: readonly string[], note: ReturnType<typeof hiddenNoteWith>, log: LintWarning[]) => {
-            // The original plot and its entire obstacle set survived the note update.
-            // Every lost label is named by this note. A refusal also fails the same midpoint.
-            const limit = sameDotSeats && run === 0 && options.size && typeof options.size === 'object'
-              ? scatterNoteLimit.get(options.size) : undefined;
-            if (limit !== undefined && lost.length > limit
-              && newFrame.frame.notes?.some(text => text.includes(`${HIDDEN_LABEL_LEAD}:`))) {
-              throw SCATTER_NOTE_LIMIT_EXCEEDED;
-            }
-            if (sameSeats) seatProbe.left -= Math.min(seatProbe.left, repairs.spent);
-            pushAll(log, warnings.slice(afterFrame));
-            return finish(newFrame, names, note, log);
-          },
-        } : undefined;
-      const prior = isCachedTextMeasurer(env.measure)
-        ? { plot, inner: area.inner, seats: geometry.seatMemo, occupied: before, first: hideListed ? undefined : first, repairs, finishNote } : undefined;
-      const attempt = layoutScatter(data, options, next, run + 1, hideListed, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, prior, retryInputs);
-      // A trimmed list that loses a name the longer one covered is not taken.
-      if (!complete || !notListed(attempt)) return pick(attempt);
-    }
-  }
-  // Left with a list longer than what this run lost: the note takes room, the
-  // room places a name the note lists, and the shorter note loses it again.
-  // The note then names labels the plot draws. Hide every listed label once
-  // more in this layout, so the note lists exactly the points left unlabelled.
-  if (complete && !exact && !hideListed) return pick(layoutScatter(data, options, hiddenNames, run, true, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, undefined, retryInputs));
-  return pick(finish(frame, hiddenNames ?? [], hiddenNote, warnings));
-
-  function finish(frame: FrameResult, names: readonly string[], hiddenNote: ReturnType<typeof hiddenNoteWith>, warnings: LintWarning[]) {
-    const listed = new Set(names);
-    // the labels the note lists are named there by identity.
-    const own = solved.placed.filter((label) => label.hidden && listed.has(entryFor(label)?.text ?? ''));
-    // a disclosed zone caption is an information note, like a disclosed point name.
-    const notedIds = new Set([...solved.placed.filter(label => label.noted), ...own].map(label => label.id));
-    pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
-      && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
-    pushAll(warnings, annotated.warnings);
-    const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named, new Set(frame.legend?.items.map((item) => item.id))));
-    // The note names these by identity (or counts them): the registry's items and this chart's own names.
-    const counted = new Set<Id>([...hiddenNote.counted].filter((id) => !id.startsWith('scatter:')));
-    for (const label of own) {
-      const at = names.indexOf(entryFor(label)?.text ?? '');
-      if (hiddenNote.counted.has(`scatter:${at}`)) counted.add(label.id);
-    }
-    markNotedLabels(drawn, new Set([...hiddenNote.ids].filter((id) => !id.startsWith('scatter:')).concat(own.map((label) => label.id))), counted, options);
-    for (const label of own) label.noted = true;
-    return drawn;
-  }
+  const notedIds = new Set(solved.placed.filter(label => label.noted).map(label => label.id));
+  pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
+    && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
+  pushAll(warnings, annotated.warnings);
+  return pick(withUnprintedClaims(
+    assembleScatterGeometry({ env, domain, frame, area, geometry, solved, annotated, occupied, warnings }),
+    unprintedScatterClaims(env, domain, named, new Set(frame.legend?.items.map((item) => item.id))),
+  ));
 }

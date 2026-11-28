@@ -175,7 +175,6 @@ const RAIL_PAINT = CONNECTOR_PAINT;
 /** Range caps a step darker than the rail, so each bound reads as an end. */
 const CAP_PAINT: Paint = { token: 'neutralMark', theme: { kind: 'visible-tint', base: { token: 'neutralMark' }, amount: 0.3, floor: MARK_CONTRAST_FLOOR + 0.5 } };
 /** Most rows a missing-midpoint note names before it counts them. */
-const MID_NOTE_NAMES = 4;
 /** The mid-point marker in the key, as the plot draws it beside a 6 px dot. */
 const MID_KEY_R = 3.5;
 /** Below this HSV saturation a theme's first series is a grey: the scenario notation. */
@@ -371,20 +370,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     });
   }
   const rangesDrawn = dataSeries.some((s) => s.cells.some((cell) => cell.v !== null && cell.range !== undefined));
-  // A supplied mid-point draws as an open marker on its rail, keyed, and a
-  // note names the rows whose range has none.
+  // A supplied mid-point draws as an open marker on its rail and has a key.
   const rangeOptions = options.range as (DotOptions['range'] & { midLabel?: string }) | undefined;
   const midName = rangeOptions?.midLabel ?? chartString(options, 'midName');
   const midsDrawn = dataSeries.some((s) => s.cells.some((cell) => cell.v !== null && cell.range?.mid !== undefined));
-  const rowsWithoutMid = midsDrawn
-    ? cats.filter((_, ci) => dataSeries.some((s) => s.cells[ci]!.v !== null && s.cells[ci]!.range !== undefined && s.cells[ci]!.range!.mid === undefined))
-    : [];
-  const midNote = rowsWithoutMid.length === 0 ? undefined
-    : rowsWithoutMid.length > MID_NOTE_NAMES ? chartString(options, 'midMissingCount', { v1: midName, v2: rowsWithoutMid.length })
-    : chartString(options, 'midMissing', {
-      v1: midName,
-      v2: rowsWithoutMid.map((c) => c.label).reduce((text, name, i, all) => (i === 0 ? name : `${text}${i === all.length - 1 ? ` ${chartString(options, 'and')} ` : ', '}${name}`), ''),
-    });
   if (markerScope !== undefined) {
     const inScope = dataSeries.filter((s) => markerScope === 'all' || markerScope.includes(s.id))
       .flatMap((s) => s.cells.flatMap((cell) => (cell.v === null ? [] : [cell.v])));
@@ -572,13 +561,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       size,
       margin,
       ...frameTextOptions(options),
-      // The mid-point marker's method note prints on request; the note
-      // on rows without a mid-point prints whenever some rows have one.
       footnotes: [
         ...authoredNotes(options),
         ...warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message)),
-        ...(midNote ? [disclosureNote(midNote)] : []),
-        ...(options.methodNote === true && midsDrawn ? [disclosureNote(chartString(options, 'rangeMidNote'))] : []),
       ],
       legend: legendInput,
       theme,

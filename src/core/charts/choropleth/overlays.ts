@@ -288,12 +288,12 @@ export function renderGeoOverlays(input: RenderGeoOverlaysInput): GeoOverlayRend
       decisions.push(...hidden.decisions);
       if (input.frame && !geoOverlayInFrame(anchor, input.frame)) {
         warnings.push({ code: 'overlay-coordinate-outside-frame', severity: 'warn',
-          message: `overlay '${overlay.id}' lies outside the map frame, so its glyph is not drawn; its label is listed in the note`,
+          message: `overlay '${overlay.id}' lies outside the map frame, so its glyph is not drawn`,
           owner, suggest: 'move the overlay inside the mapped area, or place it on a region with at.region' });
         return;
       }
       warnings.push({ code: 'geo-overlay-no-space', severity: 'warn',
-        message: `overlay '${overlay.id}' at its geographic anchor overlaps another glyph; its label is listed in the note`,
+        message: `overlay '${overlay.id}' at its geographic anchor overlaps another glyph`,
         owner, suggest: 'use smaller glyphs or a wider map' });
       return;
     }

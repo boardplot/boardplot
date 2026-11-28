@@ -749,11 +749,9 @@ describe('default card rows', () => {
   });
 
   // A pie slice named in a note can show a different share on hover when its label is missing.
-  it('uses the rounded share in the pie record and hover card for a slice named in a note', () => {
+  it('uses the rounded share in the pie record and hover card', () => {
     const fixture = getFixtures('pie').find(entry => entry.id === 'ten-tiny-slices')!;
     const { request, geometry } = build({ type: 'pie', data: fixture.data, options: { ...fixture.options, size: { width: 320, height: 320 } } });
-    const noted = geometry.warnings.find(warning => warning.code === 'values-in-note')?.detail?.values;
-    expect(noted).toContain('Challenger 9 1.7 (3%)');
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'c9')!;
     expect(record.share?.percent.displayed).toBe('3%');
     expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toMatch(/^Share: 3% of /);

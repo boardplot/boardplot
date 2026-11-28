@@ -158,8 +158,6 @@ fixtures.push({
   },
   options: {
     size: { width: 1000, height: 500 },
-    // The one fixture that shows the band convention note.
-    methodNote: true,
     title: 'Residents aged under 20 grew 20% a year',
     subtitle: { measure: 'Residents by age band', period: 'FY21 to FY23' },
     source: 'Illustrative town population snapshots',

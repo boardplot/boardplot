@@ -122,30 +122,16 @@ export interface DocumentedStrings {
   worse?: string;
   /** Name of a mixed-sign stack positive boundary. */
   positiveTotal?: string;
-  /** Range method note. */
-  rangeMidNote?: string;
-  /** Tornado method note. */
-  sensitivityNote?: string;
-  /** Tornado base mismatch note. */
-  hatchedBaseNote?: string;
   /** Tornado missing output note; {drivers} is replaced. */
   missingSwingNote?: string;
   /** Focused bump note. */
   rankOmitted?: string;
   /** A missing bump rank. */
   noRank?: string;
-  /** Bump method note; {direction}, {format}, and {ring} are replaced. */
-  rankMethod?: string;
   /** Direction of a bump rank. */
   higherBetter?: string;
   /** Direction of a bump rank. */
   lowerBetter?: string;
-  /** Format clause in the bump method note. */
-  rankFormat?: string;
-  /** Tie clause in the bump method note. */
-  rankRing?: string;
-  /** Note for folded zero line ends. */
-  nearZeroNote?: string;
   /** Anomaly marker key. */
   flagged?: string;
   /** Anomaly rule key. */
@@ -178,7 +164,7 @@ export interface DocumentedStrings {
   upperBound?: string;
   /** Off-scale corridor note. */
   undrawnBounds?: string;
-  /** Heading of the note for hidden chart labels. */
+  /** Heading for hidden heatmap labels in the accessible description. */
   hiddenLabels?: string;
   /** Pointer to one hidden note. */
   noteOne?: string;
@@ -218,10 +204,6 @@ export interface DocumentedStrings {
   incomplete?: string;
   /** Key for a range whisker. */
   range?: string;
-  /** Note heading for omitted column values. */
-  valuesNotOnColumns?: string;
-  /** Note heading for omitted combo values. */
-  valuesNotBesideMarks?: string;
   /** Footer heading for incomplete stack totals in column and combo charts. */
   knownPartsTotals?: string;
   /** Word before missing stack parts. */
@@ -246,8 +228,6 @@ export interface DocumentedStrings {
   swingOutsideBase?: string;
   /** Missing uncertainty note; {categories} is replaced. */
   fanGap?: string;
-  /** Mixed-sign share note; {categories} is replaced. */
-  mixedShares?: string;
   /**
    * Key labels of a table's traffic-light heat lane (`scale: 'status'`):
    * the side below the centre, the warn band around it and the side above
@@ -278,7 +258,7 @@ export interface DocumentedStrings {
   cellNote?: string;
   /**
    * Last item of a note line that lists only its first items (`notes.maxListed`); '{count}' becomes the
-   * number left out. Default 'and {count} more'. A React chart with hover on adds ' (tap or hover shows each value)' when this is not set.
+   * number left out. Default 'and {count} more'.
    */
   moreListed?: string;
   /** Story panel buttons and counter ('{step}' and '{count}', two digits). Defaults '‹ Back', 'Next ›', '{step} – {count}'. */
@@ -290,26 +270,12 @@ export interface DocumentedStrings {
   /** Ends of a scatter qualitative axis. Defaults 'Lower' and 'Higher'. */
   axisLow?: string;
   axisHigh?: string;
-  /** Table and dimswitch note for a change printed n.m.: past ±999 % or off a base that rounds to 0. */
-  nearZeroChange?: string;
-  /** Table note for a change printed n.m. because one operand is a partial total over fewer rows. */
-  mixedCoverage?: string;
   /** Dimswitch card note naming the periods it leaves out at a narrow width; {periods} is replaced. */
   hiddenPeriods?: string;
   /** Cascade share-column heading. */
   share?: string;
   /** Histogram binning disclosure; {count}, {about}, {width}, {from}, {to}. */
   histogramBins?: string;
-  /** Histogram approximation word, including its trailing space. */
-  histogramAbout?: string;
-  /** Histogram method note; {count}, {width}, {from}, {rule}, {rounding}, {smallSample}. */
-  histogramMethod?: string;
-  histogramRuleCount?: string;
-  histogramRuleWidth?: string;
-  /** Rounded bin width description; {rule} is replaced. */
-  histogramSnapped?: string;
-  histogramRounded?: string;
-  histogramSmallSample?: string;
   /** Required source-null stack notes; {categories} is replaced. */
   missingStack?: string;
   incompleteStacks?: string;
@@ -322,8 +288,6 @@ export interface DocumentedStrings {
   stackFrom?: string;
   /** Metric stack focus look: the word between the focus and the base window in the header line. */
   stackAgainst?: string;
-  /** Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. */
-  stackAverages?: string;
 }
 
 /** Every built-in word: the documented keys above and every other key of the word tables (docs/reference/strings.md). */
@@ -533,24 +497,21 @@ export interface BaseOptions {
    */
   footnotes?: string[] | false;
   /**
-   * The footer rule. `maxListed`: the items a note line
-   * the engine writes for what the drawing leaves out ("Not labelled on the
-   * chart:...") names before it counts the rest ("and 3 more"); default 8,
-   * 'all' names every item, 0 names none and only counts them ("18 of 36
-   * values"). Every item stays in the reading's omissions and the hover records. `placement`: 'frame' prints notes in the frame within
-   * `maxLines`. 'list' shows the source, a required credit and the pointer
-   * alongside disclosures outside `maxLines`. 'info' is a React "Notes and sources" button (the SVG draws it as
-   * 'frame'); default dashboard 'info', slide 'list', else 'frame'.
-   * `maxLines`: visible lines of notes and source, a required credit not
-   * counted; default report and dashboard 3 (2 under 720 px), slide 2,
-   * print 3. `show` selects the kinds the frame prints. By default it prints
-   * authored notes and three caveats: incomplete stack totals, missing values
-   * drawn as zero in stacked area charts, and clipped scatter points. Use
-   * 'disclosure' to keep the caveats and add the other reading notes outside
-   * the budget. 'method' adds short method notes. 'ranks' adds the rank key
-   * for columns whose names do not fit.
-   * Without `show`, `methodNote: true` or an authored `placement` prints the
-   * method notes and other disclosures within the budget, after the author notes.
+   * `maxListed` sets how many items a list disclosure names before it counts the
+   * rest. The default is 8. 'all' names every item. 0 prints the count alone.
+   * `placement` decides where notes go. 'frame' prints notes within `maxLines`.
+   * 'list' shows the source, required credit and pointer alongside disclosures
+   * outside `maxLines`. 'info' uses a React notes button. The default is 'info'
+   * for dashboard, 'list' for slide and 'frame' otherwise.
+   * `maxLines` counts visible lines of notes and source. The default is 3 for
+   * report and dashboard (2 under 720 px), 2 for slide and 3 for print.
+   * `show` selects what the frame prints. By default it prints authored notes
+   * and three caveats: incomplete stack totals, missing values drawn as zero
+   * in stacked area charts, and clipped scatter points. An explicit list with
+   * 'disclosure' prints the caveats and other disclosures outside the budget.
+   * 'method' adds retained method notes, such as the cohort formula.
+   * Without `show`, an authored `placement` or a supported `methodNote: true`
+   * prints method notes and other disclosures within the budget.
    * Engine notes not shown stay in the notes list. `pointer`: default true, prints
    * "+N notes" when the notes list holds more of the kinds `show` prints.
    */
@@ -558,7 +519,7 @@ export interface BaseOptions {
     maxListed?: number | 'all';
     placement?: 'frame' | 'info' | 'list';
     maxLines?: number;
-    show?: ('note' | 'method' | 'disclosure' | 'ranks')[];
+    show?: ('note' | 'method' | 'disclosure')[];
     pointer?: boolean;
   };
 
@@ -933,11 +894,7 @@ export interface BarOptions
   currentValue?: number | CurrentValueSpec;
   baseValue?: number | BaseValueSpec;
   tornado?: TornadoCases;
-  /**
-   * Default false. true adds the method notes of the football-field and tornado
-   * variants; a football-field range draws its mid-point tick only with its
-   * note. Hatched tornado bars and drivers not shown print regardless.
-   */
+  /** Draw the supplied midpoint tick in a football-field range. Default false. */
   methodNote?: boolean;
 }
 export interface ButterflyOptions extends Omit<BaseOptionsFor<'butterfly'>, 'sort'> {
@@ -1180,8 +1137,6 @@ export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'>
    * `highlight` and `emphasis: 'first'` all still win.
    */
   scenarioStyle?: Partial<Record<Scenario, LineScenarioStyle>>;
-  /** Default false. true adds the bump chart's ranking note; fan gaps and folded tails print regardless. */
-  methodNote?: boolean;
   /** Named reference bands, each named in a column right of the plot and tied to its band by a leader. */
   referenceBands?: LineReferenceBand[];
 }
@@ -1262,8 +1217,6 @@ export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort' | '
   threshold?: number | false;
   /** Draw the derived cumulative curve; default true. */
   cumulative?: boolean;
-  /** Footnotes stating the derivation and the vital-few set; default false. */
-  methodNote?: boolean;
   /** Title over the left value axis; drawn when authored, or derived where the theme sets valueAxis.titles. */
   axisTitles?: { primary?: string };
   /**
@@ -1322,11 +1275,6 @@ export interface QuadrantOptions {
   tint?: 'none' | 'alternating'; // default 'none'
   /** First caption candidate: the box's outer corner (default) or its centre. */
   captionPlacement?: 'corner' | 'centre';
-  /**
-   * Short names of the two axes for a one-line method note ("Cuts: share at 1
-   * and growth at 8; …"). Used only with both names and two declared cut points.
-   */
-  axisNames?: { x?: string; y?: string };
 }
 
 /**
@@ -1395,12 +1343,6 @@ export interface ScatterOptions extends BaseOptionsFor<'scatter'> {
   sizeLegend?: boolean | { values?: number[]; label?: string };
   /** Axes that read as directions, not scales: no ticks, 'Lower' and 'Higher' at the ends, the bold title between arrows. */
   qualitativeAxes?: boolean;
-  /**
-   * Default false. true adds the method notes: axes that do not start at zero
-   * and the quadrant cut points, tie rule, shading and box counts. Clipped and
-   * dropped points print regardless.
-   */
-  methodNote?: boolean;
 }
 export interface VarianceOptions extends Omit<BaseOptionsFor<'variance'>, 'topN'> {
   topN?: Omit<TopNOptions, 'showRestCount'> & { showRestCount?: never };
@@ -1496,8 +1438,6 @@ export interface DotOptions extends Omit<BaseOptionsFor<'dot'>, 'topN'> {
    * prints bold. Default false; the column stays off below 576 px canvas width.
    */
   gapColumn?: boolean;
-  /** Default false. true adds the method note naming the mid-point tick inside a range, and draws the tick. */
-  methodNote?: boolean;
   /**
    * What the drawn ranges are. `label` names the interval in the key
    * ("Peer range, min to max"); default "Range". `values: true` prints each

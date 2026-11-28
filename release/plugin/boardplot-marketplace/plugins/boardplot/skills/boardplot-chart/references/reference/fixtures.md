@@ -121,8 +121,6 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | iso-days-year-change-de | column.grouped | example | German ISO day ids across a year change |
 | small-drawer | column.grouped | example | A plain column chart in a 480 by 200 drawer |
 | ordered-ramp-rest-apart | column.stacked | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
-| option-notes-max-listed | column.stacked | example | The note line names its first 3 values and counts the rest (notes.maxListed) |
-| option-notes-max-listed-all | column.stacked | torture | The note line names every value (notes.maxListed all) |
 | band-label-headroom-rising-tail | column.grouped | torture | A band label over a rising tail takes headroom above the plot |
 | callout-band-sliver-baseline | column.grouped | torture | A callout leader clears its bar value, a shaded band label centres, a sliver bar keeps the baseline |
 | option-value-labels-extremes | column.grouped | example | Twenty-four months print first, peak, low and last value (valueLabels extremes) |
@@ -578,8 +576,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | default-series-key | combo.overlay | torture | Three series and a line retain their names |
 | counts-fraction-rate | combo.dual-axis | example | Count columns and a fraction rate on its own axis |
 | band-label-headroom-rising-tail | combo.dual-axis | torture | A band label over a rising tail takes headroom above the plot |
-| ranked-campaigns-key-shown | combo.dual-axis | torture | Campaign names too long for their columns read as ranks with the key printed (notes.show) |
-| ranked-campaigns-rank-key-only | combo.dual-axis | torture | Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks) |
+| ranked-campaigns-key-shown | combo.dual-axis | torture | Long campaign names beneath columns with a secondary ROAS axis |
 | area-capacity-behind-columns | combo.overlay | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
 | inside-base-values | combo.overlay | example | Combo column values inside the base |
 | daily-columns-lines-labels | combo.overlay | torture | Two column series and three lines on 60 days with every value label at phone width |
@@ -674,8 +671,8 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | mix-dominates-sign-flip | pvm | torture | Torture: mix and volume are near-equal opposites, one quantity falls three orders of magnitude, and a line carries negative revenue |
 | fy-revenue-combined-volume-mix | pvm | example | FY24 to FY25 revenue bridge with volume and mix combined |
 | dated-revenue-growth | pvm | example | Revenue grows 7.4% annually between two dated totals |
-| revenue-bridge-method-note | pvm | example | The revenue bridge with the method notes printed |
-| revenue-bridge-notes-listed | pvm | example | The revenue bridge on a slide with its method notes in the notes list |
+| revenue-bridge-method-note | pvm | example | The revenue bridge with the value-axis break disclosed |
+| revenue-bridge-notes-listed | pvm | example | The revenue bridge on a slide with notes placement set to list |
 | named-periods-and-ranges | pvm | torture | PVM names each period and entry or exit range |
 | revenue-bridge-no-net-change | pvm | example | The revenue bridge without the net change over the closing column |
 | no-point-labels | pvm | example | The revenue bridge prints no step or total values, and keeps the net change |
@@ -964,7 +961,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | metric-stack-per-unit | grid.metric-stack | example | Metric stack: cost per order computed from spend and orders |
 | metric-stack-focus | grid.metric-stack | example | Metric stack: the focus look, with the latest week against the first |
 | metric-stack-focus-shares | grid.metric-stack | example | Metric stack: the focus look by month, with segment shares |
-| metric-stack-empty-averages | grid.metric-stack | example | A focus stack compares two quarters without an averages sentence |
+| metric-stack-empty-averages | grid.metric-stack | example | A focus stack compares two quarters at 360 px |
 | metric-stack-category-labels | grid.metric-stack | example | Metric stack: dated weeks with names on selected ticks |
 
 ## slope
@@ -1117,7 +1114,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | dated-survey-comparison | likert | example | Agree share grows 20% annually, while Disagree falls 10 percentage points |
 | torture-long-labels | likert | torture | Torture: long names at a generous size read whole, never cut |
 | engagement-options | likert | example | The engagement survey with left row labels, thicker bars, one highlighted statement and explicit label kinds |
-| engagement-notes-pinned | likert | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
+| engagement-notes-pinned | likert | torture | The engagement survey with a fixed height and an authored footnote |
 | engagement-dashboard-notes | likert | torture | The engagement survey on a dashboard with its notes in the info panel |
 | twelve-statements-slide | likert | torture | Twelve statements on a full slide print their shares inside the bars |
 | column-overrides | likert | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
@@ -1133,8 +1130,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | order-value-eur-formatted | histogram | torture | Formatted in euro: the bin edges carry the currency, the bar heights are counts |
 | bimodal-with-far-outlier | histogram | torture | One $14,000 order stretches the axis over 40 bins; 999 of 1,000 orders sit in the first three |
 | claim-amount-open-tail | histogram | example | 15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis |
-| unsnapped-bins-method-note | histogram | torture | The automatic bin width as computed, not snapped to a round number, with the binning rule stated |
-| localized-binning | histogram | torture | Authored binning wording under a German locale |
+| unsnapped-bins-method-note | histogram | torture | The automatic bin width as computed |
 
 ## box
 

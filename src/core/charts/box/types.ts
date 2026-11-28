@@ -42,8 +42,6 @@ export type BoxOptions = Omit<BaseOptionsFor<'box'>, 'legend'> & {
   whiskers?: WhiskerRule;
   showOutliers?: boolean;
   showObservations?: 'none' | 'small-n';
-  /** Default false. true adds the quartile and Tukey whisker note; other whisker rules print theirs regardless. */
-  methodNote?: boolean;
   /** 'median' (default) prints the median; 'all' also prints Q1, Q3 and the whisker ends under the box. */
   boxValues?: 'median' | 'all';
 };

@@ -62,8 +62,7 @@ export interface PvmOptions extends Omit<BaseOptionsFor<'pvm'>, 'labels'> {
   interaction?: 'in-price' | 'separate';
   /**
    * 'split' (default) draws Volume and Mix as two bars; that boundary depends
-   * on the unit each item's quantity is counted in, which `methodNote: true`
-   * states. 'combined' draws one `Volume & mix` bar, and the whole
+   * on the unit each item's quantity is counted in. 'combined' draws one `Volume & mix` bar, and the whole
    * decomposition is then invariant to the counting unit.
    */
   volumeMix?: 'split' | 'combined';
@@ -71,13 +70,6 @@ export interface PvmOptions extends Omit<BaseOptionsFor<'pvm'>, 'labels'> {
   labels?: { point?: false };
   /** Horizontal bridge: the name band (label) and the value band (value), in px. */
   columnOverrides?: Record<string, { width?: number }>;
-  /**
-   * Default false. true adds the short convention to the one footer line. The
-   * coverage part of that line prints regardless while items enter or leave
-   * the book. The long notes are in `derived`; they join the notes list when
-   * `notes` is set.
-   */
-  methodNote?: boolean;
   /**
    * Default true. Prints the net change from the opening to the closing total,
    * absolute and in percent, in its sign colour above the closing column.
@@ -136,10 +128,4 @@ export interface PvmDerived {
   /** Effect ids that carry no items at all and therefore draw no bar. */
   omittedEffects: PvmEffectId[];
   contributions: PvmContribution[];
-  /** The convention as printed, or null when the note was suppressed. */
-  methodNote: string | null;
-  /** The unit-basis note as printed; null in 'combined' mode or with the method notes off. */
-  unitBasisNote: string | null;
-  /** The common-base coverage note as printed; null at full coverage with the method notes off. */
-  coverageNote: string | null;
 }

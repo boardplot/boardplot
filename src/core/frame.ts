@@ -18,18 +18,14 @@ import type { Margin, Rect, Size } from './geometry';
 import { classStepWidth, resolveTargetTheme, panelTypeClass, smallestTitleSize, spaceTokens, emphasisWeight, secondaryType, strokeToken, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { formatScenarios, resolveSubtitle } from './normalize/shared';
 import type { TextMeasurer } from './text';
-import { DEFAULT_TARGET, resolveTargetSize, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
+import { DEFAULT_TARGET, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { fitText } from './label/fitText';
-import { containsText, cutLabels } from './label/omissions';
-import { isNumberAlone } from './textRole';
-import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
-import { withLocaleStrings } from './strings';
-import { allQuiet, caveatNote, chartNotes, copyNote, defaultNotePlacement, disclosureNote, engineNote, engineNoteMeta, footerParts, keepEngineNoteMeta, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
+import { allQuiet, caveatNote, engineNote, engineNoteMeta, footerParts, keepEngineNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote } from './notes';
 import { harveyWedgePath } from './svgPath';
 import {
-  cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
+  cappedItems, frameText, listText, type NoteCapOptions,
   measureNamesUnit, subtitleUnitClause, unitWordsAsSigns, type SubtitleText, type FrameText,
 } from './frameText';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
@@ -51,7 +47,7 @@ import type {
 import type { Theme, ThemeRef } from './types/theme';
 import { VALUE_SELECTION } from './types/sizing';
 import type { OccupiedClaim } from './label/occupied';
-import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, retainFrameState, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
+import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
 import { chartString as wordingString } from './strings';
 import { TEXT_ASCENT } from './svg/renderSvg';
 import { maxOf, pushAll } from './arrays';
@@ -139,12 +135,9 @@ export interface CompactSourceOptions {
   [LIVE_NOTE_SHOW]?: readonly string[];
 }
 
-const CUT_LABEL_NOTES = Symbol('cutLabelNotes');
-const CUT_LABEL_LIST = Symbol('cutLabelList');
 
 export interface FrameInput extends IdentityCollectionOptions, CompactSourceOptions {
   [LEGEND_HEIGHT]?: LegendBudget;
-  [CUT_LABEL_NOTES]?: string[];
   /** Internal footer plan: all enabled static text already has room in this frame. */
   fullStaticFooter?: boolean;
   target?: BaseOptions['target'];
@@ -275,7 +268,6 @@ type FrameTextKey = 'target' | 'textScale' | 'title' | 'subtitle' | 'unit' | 'so
  * to put it there.
  */
 export interface InternalFootnoteOptions {
-  [CUT_LABEL_NOTES]?: string[];
   authoredFootnotes?: string[];
   /**
    * `footnotes: false`, as `footnoteSwitch` records it for the layouts
@@ -387,13 +379,12 @@ function unreferenced(options: object & InternalFootnoteOptions & Pick<BaseOptio
 export function frameTextOptions(
   options: Pick<BaseOptions, Exclude<FrameTextKey, 'mode'> | 'textSize'> & InternalFootnoteOptions & CompactSourceOptions
     & { mode?: unknown; theme?: ThemeRef; [LEGEND_HEIGHT]?: LegendBudget },
-): Pick<FrameInput, FrameTextKey | 'notesShowAuthored' | 'footnotesOff' | 'numberedFootnotes' | 'unreferencedNotes' | 'pointedNotes' | 'legendFont' | 'compactTitleSize' | typeof CUT_LABEL_NOTES | typeof LEGEND_HEIGHT> & IdentityCollectionOptions & CompactSourceOptions {
+): Pick<FrameInput, FrameTextKey | 'notesShowAuthored' | 'footnotesOff' | 'numberedFootnotes' | 'unreferencedNotes' | 'pointedNotes' | 'legendFont' | 'compactTitleSize' | typeof LEGEND_HEIGHT> & IdentityCollectionOptions & CompactSourceOptions {
   const mode = options.mode === 'full' || options.mode === 'compact' ? options.mode : undefined;
   const unitLine = resolveSubtitle(options.subtitle) === undefined ? unitLineSubtitle(options) : undefined;
   return {
     ...identityCollector(options),
     ...(options[LEGEND_HEIGHT] !== undefined ? { [LEGEND_HEIGHT]: options[LEGEND_HEIGHT] } : {}),
-    ...(options[CUT_LABEL_NOTES] ? { [CUT_LABEL_NOTES]: options[CUT_LABEL_NOTES] } : {}),
     target: options.target,
     ...(options.textScale === undefined && options.textSize === undefined ? {} : { textScale: textScaleOf(options) }),
     title: options.title,
@@ -421,31 +412,10 @@ export function frameTextOptions(
   };
 }
 
-/** Measure the actual header, notes and source for each possible count of generated value notes.
- * A band chart composes one note for segment values and one for other displaced labels. */
 export function keylessFrame(frame: FrameResult): { frame: FrameResult; printedDisclosure: boolean } | undefined {
   const input = footerPlans.get(frame.frame);
   if (!input || frame.legend || input.eventKey || input[COLLECT_IDENTITIES]) return;
-  // solveFrame already appended cut-label notes to this stored input.
-  const { [CUT_LABEL_NOTES]: _cut, ...projection } = input;
-  const generatedVisible = input.notes?.show?.includes('disclosure') === true;
-  const liveInfo = staticFrame.live && !staticFrame.pinned && (input.notes?.placement ?? defaultNotePlacement(input.target)) === 'info';
-  const printsDisclosure = (f: FrameResult) => f.frame.noteList?.some(note => note.kind === 'disclosure' && note.inFrame) === true;
-  let printedDisclosure = printsDisclosure(frame);
-  if (!generatedVisible && !liveInfo && !(staticFrame.live && input[LIVE_NOTE_SHOW]?.includes('disclosure'))) return { frame, printedDisclosure };
-  const notes = [...(projection.footnotes ?? [])];
-  let smallest = frame;
-  for (let added = 0; added < 2; added++) {
-    // Its words can be arbitrary. Only the count can be used if the footer keeps this record in the list.
-    const generated = '';
-    if (projection.footnotes?.includes(generated)) return;
-    notes.push(disclosureNote(generated));
-    const measured = solveFrame({ ...projection, footnotes: notes }, collectFrameClaims([]));
-    if (measured.frame.noteList?.some(note => note.text === generated && note.inFrame)) return;
-    printedDisclosure ||= printsDisclosure(measured);
-    if (measured.plot.h < smallest.plot.h || measured.deficit && measured.deficit > (smallest.deficit ?? 0)) smallest = measured;
-  }
-  return { frame: smallest, printedDisclosure };
+  return { frame, printedDisclosure: frame.frame.noteList?.some(note => note.kind === 'disclosure' && note.inFrame) === true };
 }
 
 export interface FrameResult {
@@ -901,12 +871,12 @@ export function unitInFormatLints(
  * and the hover records. An item that ends in a period ("+26.0% p.a.") does
  * not print a second one.
  */
-export function noteLine(lead: string, items: readonly string[], options?: NoteCapOptions, total?: number): string[] {
+export function noteLine(lead: string, items: readonly string[], options?: NoteCapOptions): string[] {
   // shortcut: entries may break between name and value; keep them together when
   // the height search can avoid the extra layout work.
-  return items.length === 0 ? [] : [engineNote(listText(lead, options === undefined ? items : cappedItems(items, options, total)), 'disclosure', undefined, undefined,
+  return items.length === 0 ? [] : [engineNote(listText(lead, options === undefined ? items : cappedItems(items, options)), 'disclosure', undefined, undefined,
     // unless the author set notes.maxListed, the frame names as many items as fit two lines.
-    options?.notes?.maxListed === undefined && options ? { lead, items, total, options } : undefined)];
+    options?.notes?.maxListed === undefined && options ? { lead, items, options } : undefined)];
 }
 
 /** Keep the missing part named when it is the only item in the caveat. */
@@ -914,92 +884,13 @@ export function caveatNoteLine(lead: string, items: readonly string[], options: 
   return noteLine(lead, items, items.length === 1 ? undefined : options).map(caveatNote);
 }
 
-/** How many items a drawn list note names (the frame fitted it, `fittedNote`); undefined when `drawn` is not one of its forms. */
-function namedInDrawnNote(list: NoteList, drawn: string): number | undefined {
-  const flat = (text: string) => text.replace(/\s+/g, '');
-  const target = flat(drawn);
-  for (let k = Math.min(list.items.length, noteCap(list.options, list.items.length)); k >= 0; k--) if (flat(listedNoteText(list, k)) === target) return k;
-  return undefined;
-}
-
 /** `noteLine` for values the drawing does not print and no label stands for: the `values-in-note` warning lists them. */
-export function valueNoteLine(lead: string, items: readonly string[], options?: NoteCapOptions, total?: number): string[] {
-  return noteLine(lead, items, options, total).map((line) => valueNote(line, items));
+export function valueNoteLine(lead: string, items: readonly string[], options?: NoteCapOptions): string[] {
+  return noteLine(lead, items, options).map((line) => valueNote(line, items));
 }
 
-/** Measure cut-label disclosures through the existing frame; a pinned canvas keeps its size. */
-export function withCutLabelNotes<O extends Pick<BaseOptions, 'notes' | 'footnotes' | 'strings' | 'locale' | 'target' | 'size'>, M extends object, D extends object>(
-  data: unknown, options: O, layout: (options: O) => LayoutResult<M, D>,
-): LayoutResult<M, D> {
-  const first = layout(options);
-  if (first.refused) return first;
-  const cuts = cutLabels(first);
-  if (!cuts.length) return first;
-  // An error layout will be refused; its diagnostics must not gain drawing-only disclosures.
-  if (first.warnings.some(warning => warning.severity === 'error')) return first;
-  const warn = (geo: Geometry<M, D>) => {
-    geo.warnings = [...geo.warnings.filter(warning => warning.code !== 'label-truncated'), {
-      code: 'label-truncated', severity: 'warn', message: `${cuts.length} shortened labels have their full text in the notes list and reading.omissions.`,
-      detail: { labels: cuts.map(cut => cut.labelId) },
-    }];
-    return geo;
-  };
-  const existing = chartNotes(first).map(note => note.text.replace(/\s+/g, ' ').trim());
-  // A count or a repeated number in another note does not identify a cut value.
-  const unlisted = cuts.filter(cut => isNumberAlone(cut.text)
-    || !existing.some(note => containsText(plainText(note), cut.text.replace(/\s+/g, ' ').trim())));
-  if (!unlisted.length) return warn(first);
-  const items = [...new Set(unlisted.map(cut => {
-    const node = first.scene.find(node => node.t === 'text' && (node.id === cut.labelId || node.id === `label:${cut.labelId}`));
-    const owner = node?.owner;
-    const source = data as { rows?: { id: string; label?: string }[]; columns?: { id: string; label?: string }[] };
-    const row = source?.rows?.find(row => row.id === owner?.rowId)?.label;
-    const column = source?.columns?.find(column => column.id === owner?.colId)?.label;
-    const place = [row, row ? column : undefined].filter(Boolean).join(' — ');
-    return place ? `${place}: ${cut.text.trim()}` : cut.text.trim();
-  }))];
-  const lead = chartString(options, 'cutLabels');
-  const short = noteLine(lead, items, options)[0]!;
-  const full = engineNote(`${lead}: ${items.join('; ').replace(/\.$/, '')}.`, 'disclosure', short, undefined, engineNoteMeta(short)?.list ?? null);
-  const planned = { ...options, [CUT_LABEL_NOTES]: [...((options as InternalFootnoteOptions)[CUT_LABEL_NOTES] ?? []), full] };
-  let next = options.notes?.show?.includes('disclosure') ? layout(planned) : first;
-  // Footer allocation is owned by the frame. Do not turn an accepted pinned chart into a refusal,
-  // nor raise the height a grid panel needs past its slot, which would refuse the grid around it.
-  const need = (geo: LayoutResult<M, D>) => geo.refused ? 0 : Math.max(geo.frame.minHeight ?? 0, geo.frame.plotMinHeight ?? 0, geo.sizing?.measuredMinHeight ?? 0);
-  if (next.refused || resolveTargetSize(options.target ?? DEFAULT_TARGET, options.size).fixed.height
-    && (next.size.height > first.size.height || need(next) > Math.max(next.size.height, need(first)))) next = first;
-  if (next !== first) {
-    const original = new Map(cuts.map(cut => [cut.labelId, cut.displayed]));
-    const visible = new Set(first.labels.filter(label => !label.hidden).map(label => label.id));
-    // A note cannot pay for its space by cutting other text or hiding a value that was drawn.
-    if (cutLabels(next).some(cut => !original.has(cut.labelId) || cut.displayed.length < original.get(cut.labelId)!.length)
-      || next.labels.some(label => label.hidden && visible.has(label.id))) next = first;
-  }
-  (next as Geometry<M, D> & { [CUT_LABEL_LIST]?: ChartNote })[CUT_LABEL_LIST] = keepNoteMeta<ChartNote>({ n: 0, kind: 'disclosure', text: full, short, inFrame: false }, engineNoteMeta(full));
-  return warn(next);
-}
-
-/** A note that cannot fit stays in the result after the footer has used its measured space. */
-export function finishCutLabelNotes(geo: Geometry<object, object>): void {
-  const note = (geo as Geometry & { [CUT_LABEL_LIST]?: ChartNote })[CUT_LABEL_LIST];
-  if (!note || geo.frame.noteList?.some(entry => entry.text === note.text)) return;
-  const notes = geo.frame.noteList ?? [];
-  const at = notes.findIndex(entry => entry.kind === 'source' || entry.kind === 'credit');
-  const cut = at < 0 ? notes.length : at;
-  geo.frame.noteList = [...notes.slice(0, cut), note, ...notes.slice(cut)].map((entry, i) => copyNote(entry, { n: i + 1 }));
-}
-
-/** Layouts whose density notes must not change their finished value selection. */
+/** Layouts that can try a wider plot for density omissions. */
 export const DEFER_DENSITY_NOTES = Symbol('deferDensityNotes');
-/** Values selected for the disclosure do not compete with the kept labels. */
-export const DENSITY_VALUES = Symbol('densityValues');
-/**
- * Size refusals of a density pass on a pinned height. Their height is the refused frame's plot-floor
- * estimate, and the frame at that height can select other values and need more: the outer layout verifies it.
- */
-export const UNVERIFIED_DENSITY_REFUSALS = new WeakSet<object>();
-/** Layout continuation options that preserve the selected values' scale. */
-export const DENSITY_LAYOUT_OPTIONS = Symbol('densityLayoutOptions');
 
 /**
  * The label kinds a reader loses outright when hidden: values, names, an
@@ -1067,12 +958,12 @@ export function owedHiddenLabels(
   const valueCallouts = loadedDeferred('annotate')?.valueAnnotationLabels(geo.labels, annotations) ?? [];
   const noteFor = (label: PlacedLabel): string | undefined => {
     // LEFT_OUT_OF_NOTE: a grid panel's own chart leaves this value out of its note (panelNoteTexts).
-    if (label.hidden === undefined || label.noted || (label as { [LEFT_OUT_OF_NOTE]?: true })[LEFT_OUT_OF_NOTE]
-      || (minimal || geo[DEFER_DENSITY_NOTES]) && label.hidden === 'density' || !label.text) return;
+    if (label.hidden === undefined || label.noted || (label as { [LEFT_OUT_OF_NOTE]?: true })[LEFT_OUT_OF_NOTE] || !label.text) return;
     // a drawn callout or note that prints this value with `${value}` at its mark is its label.
     const callout = valueCallouts.find(([own, at]) => holdsToken(own.text, label.text)
       && Object.entries(at).every(([key, id]) => key === 'edge' || (label.owner as Record<string, unknown>)[key] === id));
     if (callout) { label.printedIn = callout[0].id; return; }
+    if ((minimal || geo[DEFER_DENSITY_NOTES]) && label.hidden === 'density') return;
     // A series is unlabelled only when no drawn label names it (a bump's end name covers its start name).
     if (label.kind === 'series' && label.owner.seriesId !== undefined && geo.labels.some((other) => other !== label && other.kind === 'series'
       && other.hidden === undefined && other.owner.seriesId === label.owner.seriesId)) return;
@@ -1230,108 +1121,21 @@ export function dataOrder(data: unknown, labels: readonly PlacedLabel[], annotat
     || at(a, annotationRank, 'annotationId') - at(b, annotationRank, 'annotationId');
 }
 
-/**
- * Reserve density notes through the normal frame layout before returning a
- * measured chart. The first pass selects values without the density footer;
- * the second pass measures the merged note and keeps that value selection.
- */
-export function withDensityNotes<O extends BaseOptions, M extends object, D extends object>(
+/** Keep a wider layout that seats values the narrow plot lost. */
+export function withDensitySelection<O extends BaseOptions, M extends object, D extends object>(
   data: unknown, options: O, layout: (options: O) => LayoutResult<M, D>,
   clearer?: (first: Geometry<M, D>, owed: ReadonlyMap<Id, string>) => LayoutResult<M, D> | undefined,
 ): LayoutResult<M, D> {
   const first = layout({ ...options, [VALUE_SELECTION]: true });
-  if (first.refused || !(first as Geometry & { [DEFER_DENSITY_NOTES]?: boolean })[DEFER_DENSITY_NOTES]
+  if (!clearer || first.refused || !(first as Geometry & { [DEFER_DENSITY_NOTES]?: boolean })[DEFER_DENSITY_NOTES]
     || (options as O & { [VALUE_SELECTION]?: boolean })[VALUE_SELECTION] || options.labelDensity === 'minimal' || panelTypeClass(options) !== undefined) return first;
   const labels = first.labels.map(label => ({ ...label, noted: undefined }));
   const owed = owedHiddenLabels({ ...first, labels, [DEFER_DENSITY_NOTES]: false }, data, options.labelPlacements, options.annotations);
   const density = new Map(labels.flatMap(label => label.hidden === 'density' && ['point', 'grandTotal'].includes(label.kind)
     && owed.has(label.id) ? [[label.id, owed.get(label.id)!] as const] : []));
-  if (density.size === 0) return first;
-  const alternative = clearer?.(first, density);
-  if (alternative) return alternative;
-  // Merge earlier collision notes and deferred density values before the one cap.
-  for (const [id, text] of owed) density.set(id, text);
-  const fixed = resolveTargetSize(options.target ?? 'report', options.size).fixed.height;
-  const visible = new Set(first.labels.filter(label => !label.hidden && ['point', 'grandTotal'].includes(label.kind)).map(label => label.id));
-  // A taller automatic footer can also displace values; keep the selected chart in that case.
-  const misfit = (run: LayoutResult<M, D>) => run.refused ? fixed : run.labels.some(label => visible.has(label.id) && label.hidden);
-  const run = (from: O, values = density) => {
-    const planned = withHiddenLabelNote(withLocaleStrings(from), values, { data, labels: first.labels, annotations: options.annotations });
-    return { planned, next: layout({ ...planned, ...((first as Geometry & { [DENSITY_LAYOUT_OPTIONS]?: object })[DENSITY_LAYOUT_OPTIONS] ?? {}), [DENSITY_VALUES]: new Set(values.keys()) }) };
-  };
-  let from = options;
-  let { planned, next } = run(from);
-  // A pinned height is a promise to the host: a two-line note that still displaces values there
-  // counts instead (one line), else the static footer would grow the canvas. An authored cap stays.
-  if (fixed && options.notes?.maxListed === undefined && misfit(next)) {
-    const countedFrom = { ...options, notes: { ...options.notes, maxListed: 0 } };
-    const counted = run(countedFrom);
-    if (!counted.next.refused) ({ planned, next, from } = { ...counted, from: countedFrom });
-  }
-  // A value the note's own line displaces in a pinned frame joins the note
-  // (named or counted), or it would be dropped without a trace (pareto at 320 px on a dashboard).
-  for (let pass = 0; fixed && !next.refused && pass < 3; pass++) {
-    const shown = next;
-    const owedNext = owedHiddenLabels({ ...shown, labels: shown.labels.map(label => ({ ...label, noted: undefined })), [DEFER_DENSITY_NOTES]: false },
-      data, options.labelPlacements, options.annotations);
-    const more = shown.labels.filter(label => label.hidden === 'density' && ['point', 'grandTotal'].includes(label.kind)
-      && !density.has(label.id) && owedNext.has(label.id));
-    if (more.length === 0) break;
-    // The values join the note only when the layout that names them draws; a refused run keeps the last note.
-    const wider = new Map(density);
-    for (const label of more) wider.set(label.id, owedNext.get(label.id)!);
-    const again = run(from, wider);
-    if (again.next.refused) break;
-    for (const label of more) density.set(label.id, wider.get(label.id)!);
-    ({ planned, next } = again);
-  }
-  // A fixed frame keeps the fitted count note even if it moves another value into the note.
-  // Returning the earlier selection here would add its note outside the frame and grow the canvas.
-  if (!fixed && misfit(next)) {
-    return densityNoteInList(first, planned, new Set(density.keys()));
-  }
-  if (!next.refused) {
-    for (const label of next.labels) if (density.has(label.id)) { label.noted = undefined; label.noteCounted = undefined; }
-    markNotedLabels(next, new Set(density.keys()), planned);
-  } else if (fixed && next.warnings[0]?.code === 'size-below-floor') UNVERIFIED_DENSITY_REFUSALS.add(next.warnings[0]);
-  return next;
+  return (density.size ? clearer(first, density) : undefined) ?? first;
 }
 
-/** Keep an omission explicit when its note cannot fit without displacing values. */
-export function densityNoteInList<M extends object, D extends object>(first: Geometry<M, D>, planned: BaseOptions, ids: ReadonlySet<Id>): Geometry<M, D> {
-  const line = (planned as BaseOptions & { [NOTE_LINE]: string })[NOTE_LINE];
-  const heading = planned.strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
-  const prior = (text: string) => text.replace(/\s/g, '').startsWith(`${heading}:`.replace(/\s/g, ''));
-  const priorIds = new Set(first.scene.flatMap(node => node.t === 'text' && first.frame.footnoteNodeIds?.includes(node.id) && prior(node.lines.join(' ')) ? [node.id] : []));
-  first.scene = first.scene.filter(node => !priorIds.has(node.id));
-  first.frame.footnoteNodeIds = first.frame.footnoteNodeIds?.filter(id => !priorIds.has(id));
-  first.frame.notes = [...(first.frame.notes ?? []).filter(text => !prior(text)), line];
-  const entries = (first.frame.noteList ?? []).filter(entry => !prior(entry.text));
-  const at = entries.findIndex(entry => entry.kind !== 'note');
-  entries.splice(at < 0 ? entries.length : at, 0, keepNoteMeta({ n: 0, kind: 'disclosure', text: line, inFrame: false }, engineNoteMeta(line)));
-  first.frame.noteList = entries.map((entry, i) => copyNote(entry, { n: i + 1 }));
-  first.a11y.desc += ` ${line}`;
-  first.warnings.push({ code: 'compact-notes-omitted', severity: 'info', message: `the frame leaves this note in the notes list and accessible description: ${line}` });
-  for (const label of first.labels) if (ids.has(label.id)) { label.noted = undefined; label.noteCounted = undefined; }
-  markNotedLabels(first, ids, planned);
-  return first;
-}
-
-/** The ids of the labels the note line names, for a layout that would print one elsewhere too (a bump value in its name). */
-export const NOTED_LABELS = Symbol('notedLabels');
-
-/** One item of the hidden-label note: its text and the label it names (for the order). */
-interface NoteItem { text: string; label?: Pick<PlacedLabel, 'id' | 'owner' | 'kind' | 'priority'> }
-/** Every item the options carry so far, and the note line they produced, so the next producer replaces it. */
-const NOTE_ITEMS = Symbol('noteItems');
-const NOTE_LINE = Symbol('noteLine');
-/** The data and authored annotations the order of the items follows. */
-const NOTE_CONTEXT = Symbol('noteContext');
-/** Which noted ids the note line leaves to its count ("and 236 more"). */
-const NOTE_COUNTED = Symbol('noteCounted');
-
-/** Options for comparing a chart body before and after withHiddenLabelNote.
- * The new frame still consumes every note field, including its reference numbers. */
 /** Options as plain data for a sameContent key: without the given markers, and with the legend budget's names as a list. */
 export function comparableOptions(options: object, ...drop: symbol[]): Record<PropertyKey, unknown> {
   const copy: Record<PropertyKey, unknown> = { ...options };
@@ -1341,125 +1145,9 @@ export function comparableOptions(options: object, ...drop: symbol[]): Record<Pr
   return copy;
 }
 
-export function hiddenNoteBodyOptions(options: BaseOptions): object {
-  const { footnotes, authoredFootnotes, [NOTED_LABELS]: _ids, [NOTE_ITEMS]: _items,
-    [NOTE_CONTEXT]: _context, [NOTE_LINE]: _line, [NOTE_COUNTED]: _counted, [FOOTNOTE_REFS]: _refs,
-    ...body } = options as BaseOptions & InternalFootnoteOptions & Record<symbol, unknown>;
-  return { ...body, authoredFootnotes: authoredFootnotes ?? footnotes ?? [] };
-}
-
-/** The private combo note map contains ordered point/total records. Read all values
- * afresh, including each label owner, and encode the common shapes in one call.
- * The generic key counts names and leaves, even the repeated label id. */
-export function packedComboNoteItems(options: object) {
-  const items = (options as { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem> })[NOTE_ITEMS];
-  if (!items || Object.isFrozen(items) || items.size < 32 || items.size > 512) return;
-  let cost = 9; // The map itself.
-  const values: (string | number | null)[] = [];
-  for (const [id, item] of items) {
-    const label = item.label;
-    if (!label || Object.isFrozen(item) || Object.isFrozen(label) || id !== label.id || typeof item.text !== 'string' || typeof id !== 'string'
-      || !Number.isSafeInteger(label.priority) || Object.is(label.priority, -0)) return;
-    const owner = label.owner;
-    if (!owner || Object.isFrozen(owner) || Object.getPrototypeOf(owner) !== Object.prototype && Object.getPrototypeOf(owner) !== null) return;
-    const keys = Reflect.ownKeys(owner);
-    const point = label.kind === 'point' && keys.length === 2 && keys[0] === 'seriesId' && keys[1] === 'categoryId';
-    const total = label.kind === 'grandTotal' && keys.length === 1 && keys[0] === 'categoryId';
-    if ((!point && !total) || typeof owner.categoryId !== 'string' || point && typeof owner.seriesId !== 'string') return;
-    values.push(id, item.text, label.kind, label.priority, point ? owner.seriesId! : null, owner.categoryId);
-    // Each entry pays for three objects (27), six scalar values (6), and
-    // the quoted property names (52). A point adds 11 characters
-    // for the seriesId property name and its string value tag.
-    cost += 85 + 2 * id.length + item.text.length + label.kind.length + String(label.priority).length + owner.categoryId.length
-      + (point ? 11 + owner.seriesId!.length : 0);
-  }
-  return { key: NOTE_ITEMS, value: items, text: 'N' + JSON.stringify(values), cost };
-}
-
-/** What the note needs to order its items: the data, the authored annotations and the labels the ids name. */
-interface NoteContext { data: unknown; labels: readonly PlacedLabel[]; annotations?: unknown }
-
-/**
- * A reference line, an authored annotation, a series name or a line end value
- * leads the note: the chart's message is usually about them, and a long list
- * of column values must not push them off it.
- */
-function leadsNote(item: NoteItem): boolean {
-  const label = item.label;
-  return label !== undefined && (['valueLine', 'annotation', 'series'].includes(label.kind) || label.kind === 'point' && label.priority >= PRIORITY.endpoint);
-}
-
-/**
- * The options for the next run: ONE note naming every item noted so far, the
- * ones in `noted` (label id to item) and the ones an earlier producer on the
- * same options left (the registry's owed labels and the band's collision
- * values share the note). It replaces the note line that producer wrote, so
- * a chart never carries two. Unnumbered, since no mark points at it.
- *
- * Order: leads first (see `leadsNote`), then series, category and annotation
- * order of the data. It names the first `noteCap` items (default 8, an
- * author-set `notes.maxListed` wins) and counts the rest; the ids it counts
- * travel under NOTE_COUNTED for markNotedLabels.
- * The ids of all items travel under NOTED_LABELS.
- */
-export function withHiddenLabelNote<T extends object>(options: T, noted: ReadonlyMap<Id, string>, context: NoteContext): T {
-  const own = options as T & Pick<BaseOptions, 'footnotes'> & InternalFootnoteOptions & NoteCapOptions
-    & { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string; [NOTE_CONTEXT]?: { kindCounts?: Record<string, number> } };
-  const byId = new Map(context.labels.map((label) => [label.id, label]));
-  const items = new Map(own[NOTE_ITEMS]);
-  // Only the fields the note reads: a label's rect would make equal notes at two heights unequal layout inputs.
-  const picked = (label: PlacedLabel | undefined): NoteItem['label'] => label && { id: label.id, owner: label.owner, kind: label.kind, priority: label.priority };
-  for (const [id, text] of noted) items.set(id, { text, label: picked(byId.get(id)) ?? items.get(id)?.label });
-  const kindCounts = labelKindCounts(context.labels, own[NOTE_CONTEXT]?.kindCounts);
-  const plan = planNote(items, { ...context, kindCounts }, own);
-  const others = authoredNotes(own).filter((note) => note !== own[NOTE_LINE]);
-  return {
-    ...withAuthoredFootnotes(own, [...others, ...(plan.line ? [plan.line] : [])], own.authoredFootnotes ?? authoredNotes(own)),
-    [NOTED_LABELS]: new Set(items.keys()),
-    [NOTE_ITEMS]: items,
-    [NOTE_CONTEXT]: { data: context.data, annotations: context.annotations, kindCounts },
-    [NOTE_LINE]: plan.line,
-    [NOTE_COUNTED]: plan.counted,
-  };
-}
-
-/** A registry note that the default static footer keeps outside the frame.
- * Remove only the fields withHiddenLabelNote and the legend policy added. */
 export function beforeUnprintedLabelNote<T extends Pick<BaseOptions, 'footnotes'>>(options: T): T | undefined {
-  const { footnotes, authoredFootnotes, [FOOTNOTE_REFS]: refs, [NOTED_LABELS]: labels,
-    [NOTE_ITEMS]: items, [NOTE_CONTEXT]: context, [NOTE_LINE]: line, [NOTE_COUNTED]: counted, ...rest } =
-    options as T & InternalFootnoteOptions & Record<symbol, unknown>;
-  if (footnotes === undefined) return authoredFootnotes === undefined && !refs && !items && !context && !line && !labels && !counted
-    ? rest as unknown as T : undefined;
-  if (!Array.isArray(footnotes) || footnotes.length !== 1 || footnotes[0] !== line || typeof line !== 'string'
-    || engineNoteMeta(line)?.kind !== 'disclosure' || !Array.isArray(authoredFootnotes) || authoredFootnotes.length !== 0
-    || !(items instanceof Map) || !(labels instanceof Set)) return;
-  return rest as unknown as T;
-}
-
-/**
- * The hidden-label note line. Compact framing keeps it on the
- * canvas: whatever the chart could not draw (an annotation, a value, a name)
- * is named where the reader looks, not only in the accessible description.
- */
-export function hiddenNoteLine(options: object): string | undefined {
-  const own = options as { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string; [NOTE_TO_A11Y]?: true };
-  const line = own[NOTE_LINE];
-  if (!line || !own[NOTE_TO_A11Y]) return line || undefined;
-  // A card too short for the line keeps only an undrawn annotation's note; the rest is in the description.
-  return own[NOTE_ITEMS] && [...own[NOTE_ITEMS].values()].some((item) => (item.label?.kind === 'annotation' || item.label?.kind === 'valueLine')
-    && item.label.owner.annotationId !== undefined) ? line : undefined;
-}
-
-const NOTE_TO_A11Y = Symbol('noteToA11y');
-/**
- * The options again with the hidden-label note moved to the accessible
- * description on a compact card, for the card that has no room for its line.
- * Undefined when that changes nothing (the line is kept anyway).
- */
-export function withNoteInA11y<T extends object>(options: T): T | undefined {
-  const marked = { ...options, [NOTE_TO_A11Y]: true as const };
-  return hiddenNoteLine(options) !== undefined && hiddenNoteLine(marked) === undefined ? marked : undefined;
+  const { footnotes, authoredFootnotes, [FOOTNOTE_REFS]: refs, ...rest } = options as T & InternalFootnoteOptions & { [FOOTNOTE_REFS]?: ReadonlySet<number> };
+  return footnotes === undefined && authoredFootnotes === undefined && !refs ? rest as T : undefined;
 }
 
 /** Whether `needle` stands whole in `hay`: no letter, digit or sign joins it ('1%' is not in '11%' or '-1%', '1' is not in '1.5'). */
@@ -1471,163 +1159,6 @@ function holdsToken(hay: string | undefined, needle: string): boolean {
   return false;
 }
 
-
-/** Label kinds that hold values: under `notes.maxListed: 0` the note counts them instead of naming them. */
-const COUNTED_KINDS = new Set(['point', 'segment', 'total', 'grandTotal']);
-
-/** How many labels of each kind the chart carries, the total a counted note line names ("18 of 36 values"). An earlier producer's count of a kind stays when it is larger. */
-function labelKindCounts(labels: readonly PlacedLabel[], prior?: Record<string, number>): Record<string, number> {
-  const counts: Record<string, number> = { ...prior };
-  const own: Record<string, number> = {};
-  for (const label of labels) own[label.kind] = (own[label.kind] ?? 0) + 1;
-  for (const [kind, n] of Object.entries(own)) counts[kind] = Math.max(counts[kind] ?? 0, n);
-  return counts;
-}
-
-/** The numbers in the data's series, a grid's panels summed; undefined for data of another shape. */
-function heldValues(data: unknown): number | undefined {
-  const { series, panels } = (data ?? {}) as { series?: { values?: unknown[] }[]; panels?: { data?: unknown }[] };
-  // A panel of another shape makes the sum NaN, read as unknown.
-  const sum = Array.isArray(panels) ? panels.reduce((n, panel) => n + (heldValues(panel?.data) ?? NaN), 0)
-    : series?.reduce((n, item) => n + (item?.values?.filter((cell) => cell != null && (cell as { number?: unknown }).number !== null).length ?? 0), 0);
-  return sum || undefined;
-}
-
-/** The note line for the items, the ids it only counts, in the order and under the cap described at `withHiddenLabelNote`. */
-function planNote(items: ReadonlyMap<Id, NoteItem>, context: { data: unknown; annotations?: unknown; kindCounts?: Record<string, number> }, cap: NoteCapOptions): { line: string | undefined; counted: Set<Id> } {
-  const known = [...items.values()].flatMap((item) => (item.label ? [item.label as PlacedLabel] : []));
-  const byData = dataOrder(context.data, known, context.annotations);
-  // One mark is named once: an item whose text another item of the same
-  // owner holds in full ('780' in 'Marketplaces 780') takes that item's text, and the set below drops the repeat.
-  const ownerKey = (item: NoteItem): string | undefined => item.label?.owner.annotationId === undefined && (item.label?.owner.seriesId !== undefined || item.label?.owner.categoryId !== undefined)
-    ? `${item.label!.owner.seriesId ?? ''}|${item.label!.owner.categoryId ?? ''}` : undefined;
-  let merged = [...items];
-  if (known.some(label => label.kind !== known[0]!.kind)) {
-    let sharedKinds = false;
-    const byOwner = new Map<string, NoteItem[]>();
-    for (const item of items.values()) {
-      const key = ownerKey(item);
-      if (key === undefined) continue;
-      const group = byOwner.get(key);
-      if (group) {
-        sharedKinds ||= group[0]!.label?.kind !== item.label?.kind;
-        group.push(item);
-      } else byOwner.set(key, [item]);
-    }
-    if (sharedKinds) merged = merged.map(([id, item]): [Id, NoteItem] => {
-      const key = ownerKey(item);
-      const cover = key === undefined ? undefined : byOwner.get(key)!.find((other) => other !== item && other.label?.kind !== item.label?.kind && other.text.length > item.text.length && holdsToken(other.text, item.text));
-      return [id, cover ? { ...item, text: cover.text, label: cover.label } : item];
-    });
-  }
-  const ranked = merged.sort(([a, x], [b, y]) => Number(leadsNote(y)) - Number(leadsNote(x)) || byData(a, b));
-  // A diagram's secondary text is the author's description, not a value: it is named in full.
-  const described = new Set(ranked.filter(([, item]) => (item.label?.kind as string | undefined) === 'diagramSecondary').map(([, item]) => item.text));
-  const texts = [...new Set(ranked.map(([, item]) => item.text))];
-  const listed = new Set(texts.filter((text) => described.has(text)));
-  // the note names its first noteCap items (default 8) in this order, then
-  // "and N more". Under notes.maxListed: 0 it names only the leads (reference lines, annotations,
-  // series names, end values) and counts the values against all values of their kinds, "18 of 36
-  // values"; names (categories, regions, points a chart lists without a label) are counted alone.
-  const countOnly = cap.notes?.maxListed === 0;
-  const values = ranked.filter(([, item]) => !leadsNote(item) && !described.has(item.text));
-  const valueKinds = new Set(values.map(([, item]) => item.label?.kind as string | undefined));
-  const countable = context.kindCounts !== undefined && ![...valueKinds].some((kind) => kind === undefined || !COUNTED_KINDS.has(kind));
-  // against all values the data holds, when the data says, not only the values a label stands for.
-  const held = countable ? heldValues(context.data) : undefined;
-  const allValues = !countable ? undefined : held ?? [...valueKinds].reduce((sum, kind) => sum + (context.kindCounts![kind!] ?? 0), 0);
-  const total = countOnly ? allValues : undefined;
-  const countValues = total !== undefined && total >= new Set(values.map(([, item]) => item.text)).size;
-  if (countValues) { for (const [, item] of ranked) if (leadsNote(item)) listed.add(item.text); }
-  else { const limit = noteCap(cap, texts.length - described.size); for (const text of texts) if (listed.size - described.size < limit) listed.add(text); }
-  const counted = new Set(ranked.filter(([, item]) => !listed.has(item.text)).map(([id]) => id));
-  const rest = texts.length - listed.size;
-  // Counted, too: the values no label stands for at all (most line points), held beyond the value labels.
-  const unlabelled = rest + Math.max(0, (held ?? 0) - [...COUNTED_KINDS].reduce((sum, kind) => sum + (context.kindCounts?.[kind] ?? 0), 0));
-  const tail = counted.size === 0 ? [] : countValues ? [countedValuesText(unlabelled, total!, cap)] : [moreListedText(rest, cap, listed.size === 0)];
-  const lead = (cap as BaseOptions).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
-  const line = noteLine(lead, [...texts.filter((text) => listed.has(text)), ...tail])[0];
-  if (line && !countOnly && !countValues && described.size === 0 && cap.notes?.maxListed === undefined) engineNote(line, 'disclosure', undefined, undefined, { lead, items: texts, total: values.length === ranked.length ? allValues : undefined, options: cap });
-  return { line, counted };
-}
-
-/**
- * A chart type that lists names of its own (scatter) puts them in the same
- * note: the line over the registry's items and `extras` (id and text, in the
- * order to list them), and the footnotes without the line the registry wrote.
- * `counted` holds the ids the cap leaves to its count. The caller marks the
- * labels it names with `markNotedLabels`, handing it `marks`, so the labels the
- * drawn note leaves to "and N more" read as counted, not listed.
- */
-export function hiddenNoteWith(options: object, extras: readonly { id: Id; text: string }[]): { footnotes: string[]; line: string[]; ids: Set<Id>; counted: ReadonlySet<Id>; marks: object } {
-  const own = options as Pick<BaseOptions, 'footnotes' | 'strings'> & NoteCapOptions
-    & { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string; [NOTE_CONTEXT]?: { data: unknown; annotations?: unknown; kindCounts?: Record<string, number> } };
-  const items = new Map(own[NOTE_ITEMS]);
-  for (const { id, text } of extras) items.set(id, { text });
-  const plan = planNote(items, own[NOTE_CONTEXT] ?? { data: undefined }, own);
-  return { footnotes: authoredNotes(own).filter((note) => note !== own[NOTE_LINE]), line: plan.line ? [plan.line] : [], ids: new Set(items.keys()), counted: plan.counted,
-    marks: { strings: own.strings, [NOTE_ITEMS]: items, [NOTE_LINE]: plan.line, [NOTE_COUNTED]: plan.counted } };
-}
-
-/**
- * After a run that was handed the note: when the note reached the page (a
- * drawn note, `frame.notes` with the block off, or the compact notes), each
- * label it names is marked `noted`, and one the run placed after all (the
- * note moved the plot) is taken off the drawing, so the note never says a
- * drawn label is missing. A run that dropped the note marks nothing. A label
- * the note only counts ("and 236 more") is marked the same way, with a
- * location that says so; the reading's omissions keep it. A label an inner
- * producer has marked already keeps its mark.
- */
-export function markNotedLabels(
-  geo: { labels: PlacedLabel[]; scene: SceneNode[]; frame: FrameGeometry; a11y: { compactNotes?: string[] } },
-  noted: ReadonlySet<Id>,
-  /** The options the run was given, or the ids its note only counts. */
-  from?: object | ReadonlySet<Id>,
-  /** With the counted ids as `from`: the options the run was given, which carry the note's heading and wording. */
-  wording?: object,
-): void {
-  const ids = new Set(geo.frame.footnoteNodeIds ?? []);
-  const notes = [
-    ...geo.scene.flatMap((node) => (node.t === 'text' && ids.has(node.id) ? [node.lines.join(' ')] : [])),
-    ...(geo.frame.notes ?? []),
-    ...(geo.a11y.compactNotes ?? []),
-  ];
-  // A narrow note wraps inside a word, so lines joined with spaces are compared without spaces.
-  const words = (from instanceof Set ? wording : from) as BaseOptions | undefined;
-  const heading = words?.strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
-  const prefix = `${heading}:`.replace(/\s+/g, '');
-  const leads = (text: string) => text.replace(/\s+/g, '').includes(prefix);
-  const destination = notes.find(leads);
-  if (!destination) return;
-  const own = from instanceof Set ? undefined : from as { [NOTE_COUNTED]?: ReadonlySet<Id>; [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string } | undefined;
-  // The drawn note is the one source: the frame names as many items as fit two lines, so an
-  // item it leaves to "and N more" is counted, also when the planned line named it.
-  const list = own?.[NOTE_LINE] ? engineNoteMeta(own[NOTE_LINE])?.list : undefined;
-  const named = list && own?.[NOTE_ITEMS] ? namedInDrawnNote(list, destination) : undefined;
-  const listed = named === undefined ? undefined : new Set(list!.items.slice(0, named));
-  const counted = from instanceof Set ? from as ReadonlySet<Id>
-    : listed ? new Set([...own![NOTE_ITEMS]!].filter(([, item]) => !listed.has(item.text)).map(([id]) => id)) : own?.[NOTE_COUNTED];
-  // All labels in this disclosure refer to the same rendered note.
-  const node = geo.scene.find(node => node.t === 'text' && ids.has(node.id) && leads(node.lines.join(' ')));
-  const note = geo.frame.noteList?.find(note => leads(note.text));
-  const gone = new Set<Id>();
-  for (const label of geo.labels) {
-    if (!noted.has(label.id) || label.noted) continue;
-    if (!label.hidden) {
-      label.hidden = 'note';
-      for (const id of [`label:${label.id}`, `label:${label.id}:body`, `leader:${label.id}`, `swatch:${label.id}`]) gone.add(id);
-    }
-    label.noted = true;
-    // The reader-facing name the note gives it ("Elo 1,563 (Orion)"), for the omission lists.
-    label.noteText ??= own?.[NOTE_ITEMS]?.get(label.id)?.text;
-    if (counted?.has(label.id)) label.noteCounted = true;
-    label.noteLocation = chartString(words, node && note
-      ? counted?.has(label.id) ? 'countedInNote' : 'listedInNote'
-      : counted?.has(label.id) ? 'countedInNotes' : 'listedInNotes', { n: note?.n ?? 1 });
-  }
-  if (gone.size > 0) geo.scene = geo.scene.filter((node) => !gone.has(node.id));
-}
 
 /** The drawing prints no `options.unit` although the author declared one (the test `unit-not-shown` and the unit line share). */
 export function unitMissing(
@@ -2140,39 +1671,7 @@ function textForFrame(input: FrameInput, footW: number, footFont: FontSpec): Fra
   });
 }
 
-/** Replace notes listed outside a static source-only footer. Check the actual source
- * lines and tooltip: these are the footer's only scene nodes and occupied row. */
-export function sourceOnlyListNotes(old: FrameResult, footnotes: string[]) {
-  const frame = old.frame;
-  const input = footerPlans.get(frame);
-  if (!input || staticFrame.live || staticFrame.pinned || input.credit || input.footerInset
-    || input[CUT_LABEL_NOTES]?.length || frame.warnings?.length || frame.footnoteNodeIds?.length || !frame.notes?.length || !frame.footerRect) return;
-  const source = old.nodes.find(node => node.id === frame.sourceNodeId);
-  if (source?.t !== 'text') return;
-  const plan = { ...input, footnotes };
-  const text = textForFrame(plan, frame.footerRect.w, source.font);
-  if (!text.sourceBlock || text.printed.length || text.warnings.length || text.placement !== frame.notePlacement
-    || text.sourceOff || text.countable || !text.unprinted.length) return;
-  const fitted = text.sourceLines(text.sourceBlock);
-  if (source.lines.length !== fitted.lines.length || source.lines.some((line, i) => line !== fitted.lines[i])
-    || source.title !== (fitted.title ? plainText(fitted.title) : undefined)) return;
-  const mark = () => {
-    for (const { text: note, meta } of text.marked) keepEngineNoteMeta(note, meta);
-  };
-  return { mark, replace: () => {
-    const copy = retainFrameState(frame, { ...frame, notes: text.unprinted, noteList: text.noteList });
-    footerPlans.set(copy, plan);
-    const chrome = frameChrome.get(frame);
-    const floor = plotChromeFloor.get(frame);
-    if (chrome !== undefined) frameChrome.set(copy, chrome);
-    if (floor !== undefined) plotChromeFloor.set(copy, floor);
-    if (settledAutoHeight.has(frame)) settledAutoHeight.add(copy);
-    return copy;
-  } };
-}
-
 export function solveFrame(input: FrameInput, occupied: FrameClaims, measurements?: FrameWidthMeasurements): FrameResult {
-  if (input[CUT_LABEL_NOTES]?.length) input = { ...input, footnotes: [...(input.footnotes ?? []), ...input[CUT_LABEL_NOTES]!] };
   const destination = occupied;
   const pendingClaims = input.autoHeight ? [] as OccupiedClaim[] : undefined;
   if (pendingClaims) occupied = collectFrameClaims(pendingClaims);

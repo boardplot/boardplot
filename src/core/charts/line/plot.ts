@@ -464,13 +464,13 @@ export function solveLineFrame(
       // be a lie if the frame still printed "in EUR m" over a rank ladder.
       unit: isBump ? undefined : shareUnitOptions('line', options).unit,
       footnotes: [
-        ...lineFrameFootnotes({ fan: domain.fan, cats, running: domain.running, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
+        ...lineFrameFootnotes({ fan: domain.fan, cats, running: domain.running, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, options: frameOptions,
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },
-          mixedSign: cats.filter((c) => domain.nmCats100.has(c.id) && !domain.overfullCats100.has(c.id)), incompleteStack: domain.incompleteStack,
-          knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)), rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
+          incompleteStack: domain.incompleteStack, knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)),
+          rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
         ...domain.shareNotes,
         // The anomaly rule, stated on the exhibit (column prints it over the plot).
-        ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
+        ...(options.anomaly?.label ? [disclosureNote(options.anomaly.label)] : []),
         ...timeZoneNote(domain, options),
       ],
       legend,

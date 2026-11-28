@@ -7,7 +7,7 @@ import { chartString } from '../../strings/cohort';
 import { missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { authoredNotes, frameRendersUnit, frameTextOptions, legendOff, solveFrame, subtitleUnitClause, textCarriesCohortUnit, UNIT_LINE, withAuthoredFootnotes } from '../../frame';
-import { formatExactNumber, formatAutomaticNumber, numberRange } from '../../format';
+import { formatAutomaticNumber, numberRange } from '../../format';
 import { defaultSetSpec, formatterFromExample, formatWithSpec } from '../../formatSpec';
 import { ruleFormatter } from '../../numberSets';
 import type { Rect } from '../../geometry';
@@ -519,37 +519,13 @@ function pureEmphasis(options: CohortOptions, period: number, value: number): bo
   return options.threshold !== false && period !== 0 && value * 100 > (options.threshold ?? 60);
 }
 
-/**
- * The anchor and blank-cell convention is a method note. The weighting
- * is required, and so is the formula under basis 'previous', which changes
- * what every rate means.
- */
 function exhibitNotes(data: CohortData, derived: CohortDerived, options: CohortOptions, visible: readonly number[]): string[] {
-  const methodNote = options.methodNote === true;
-  const first = periodName(data.periodLabel, 0, options.locale?.language);
-  const hidden = (options as ExhibitOptions)[HIDDEN_PERIODS] ?? [];
-  const later = hidden.filter((period) => period !== 0);
-  const formula = [
-    ...(hidden.includes(0) ? [disclosureNote(chartString(options, 'anchorHidden', { period: first }))] : []),
-    ...(later.length > 0 ? [disclosureNote(chartString(options, 'periodsHidden', { periods: periodRuns(data.periodLabel, later, options.locale?.language) }))] : []),
-    ...(methodNote || derived.basis === 'previous' ? [cohortFormula(options, derived.basis)] : []),
+  const hidden = ((options as ExhibitOptions)[HIDDEN_PERIODS] ?? []).filter((period) => period !== 0);
+  return [
+    ...(hidden.length > 0 ? [disclosureNote(chartString(options, 'periodsHidden', { periods: periodRuns(data.periodLabel, hidden, options.locale?.language) }))] : []),
+    ...(options.methodNote || derived.basis === 'previous' ? [cohortFormula(options, derived.basis)] : []),
     ...(derived.cohorts.some(row => visible.some(period => missingCohortRate(row, period, derived.basis))) ? [disclosureNote(chartString(options, 'missingExhibit'))] : []),
   ];
-  const anchor = visible.includes(0);
-  const basis = chartString(options, derived.basis === 'previous' ? 'previousBasis' : 'cohortBasis');
-  if (options.variant !== 'stepped') return [
-    ...formula,
-    ...(methodNote ? [disclosureNote(chartString(options, 'emptyUnobserved', { anchor: anchor ? chartString(options, 'anchorClause', { period: first }) : '' }))] : []),
-    // The bold rates are an encoding; the note names it.
-    ...(exhibitRows(data, derived, options).some(row => row.kind !== 'total' && visible.some(period => {
-      const value = row.retention[period];
-      return period < row.observedPeriods && value != null && pureEmphasis(options, period, value);
-    })) ? [disclosureNote(chartString(options, 'bold', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), threshold: formatExactNumber(typeof options.threshold === 'number' ? options.threshold : 60, options.locale?.language), after: anchor ? chartString(options, 'afterPeriod', { period: first }) : '' }))] : []),
-    ...(derived.total ? [chartString(options, 'weightedTotal', { basis })] : []),
-  ];
-  const weighting = derived.total ? chartString(options, 'weightedObserved', { basis }) : '';
-  if (!methodNote) return [...formula, ...(weighting ? [weighting] : [])];
-  return [...formula, disclosureNote(chartString(options, 'steppedBlank', { anchor: anchor ? chartString(options, 'positiveAnchor', { period: first }) : '', weighting: weighting ? ` ${weighting}` : '' }))];
 }
 
 function buildExhibit(

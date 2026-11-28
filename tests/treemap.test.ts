@@ -5,6 +5,7 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { requireGeometry } from '../src/core/sizing';
 import { checkItemBudget } from '../src/core/itemBudget';
 import { layoutTreemap } from '../src/core/charts/treemap/layout';
+import type { ChartReading } from '../src/core/reading';
 
 // Zero and null items must not prevent positive cells from drawing or enter their totals and limits.
 it('leaves zero and null items out of the drawn treemap and names them in a note', () => {
@@ -173,16 +174,16 @@ it('names a large treemap tile when a smaller label size can fit it', () => {
   expect(label!.hidden).toBeUndefined();
 });
 
-// The note named five small items and "and 3 more", while the reading said the three counted names were listed in it.
-it('reads the names the drawn note leaves to its count as counted, not listed', async () => {
+// The reading preserves each name and value even when a cell is too small for a label.
+it('keeps the smallest cell labels in the reading', async () => {
   const { getFixtures } = await import('../src/fixtures');
   const { render } = await import('../src/cli/render');
   const fixture = getFixtures('treemap').find((f) => f.id === 'growth-rect')!;
   const spec = { type: 'treemap', data: fixture.data, options: { ...fixture.options, size: { width: 320 } } };
-  const reading = (render({ spec, return: ['reading'] }).body as any).reading;
-  const note = reading.notes.find((n: any) => /and 3 more/.test(n.text));
-  expect(note).toBeDefined();
-  const inNote = reading.omissions.filter((o: any) => /in note/.test(o.destination));
-  expect(inNote.map((o: any) => o.labelId)).toEqual(['item:robotaxis', 'item:air-taxis', 'item:prefab-housing']);
-  expect(inNote.every((o: any) => o.destination.startsWith('Counted in note'))).toBe(true);
+  const { reading } = render({ spec, return: ['reading'] }).body as { reading: ChartReading };
+  expect(reading.omissions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ labelId: 'item:robotaxis', text: 'Robotaxis 49', destination: 'reading.omissions' }),
+    expect.objectContaining({ labelId: 'item:air-taxis', text: 'Air taxis 14', destination: 'reading.omissions' }),
+    expect.objectContaining({ labelId: 'item:prefab-housing', text: 'Prefab housing 0.4', destination: 'reading.omissions' }),
+  ]));
 });

@@ -23,7 +23,7 @@ const markerSchema = z.enum(['circle', 'square', 'triangle', 'diamond', 'none'])
 const pointSchema = z.strictObject({
   id: idSchema.describe("Unique point identity used by labels, annotations and interaction records."),
   group: idSchema.optional().describe("Group id controlling shared legend identity and styling."),
-  label: z.string().optional().describe("Displayed point name. If no point has an authored label, each point defaults to its id. If any point has an authored label, including an empty string, points with omitted labels stay unnamed on the plot and in omission notes. Their ids remain in interaction and data records."),
+  label: z.string().optional().describe("Displayed point name. If no point has an authored label, each point defaults to its id. If any point has an authored label, including an empty string, points with omitted labels stay unnamed on the plot. Their ids remain in interaction and data records."),
   x: cellSchema.describe("Horizontal coordinate in the x-axis units."),
   y: cellSchema.describe("Vertical coordinate in the y-axis units."),
   size: z.number().optional().describe("Bubble magnitude; proportional to area by default, or diameter when sizeBy requests it."),
@@ -106,13 +106,6 @@ export const quadrantOptionsSchema = z
         "Neutral checkerboard wash only; good/bad quadrant coloring is not offered because the engine cannot know axis polarity. Use options.highlight for emphasis.",
       ),
     captionPlacement: z.enum(['corner', 'centre']).optional().describe("Place quadrant captions in their corner or centre."),
-    axisNames: z
-      .object({
-        x: z.string().min(1).optional().describe("Short name of the horizontal axis, e.g. 'share'."),
-        y: z.string().min(1).optional().describe("Short name of the vertical axis, e.g. 'growth'."),
-      })
-      .optional()
-      .describe("Short axis names for the method note (methodNote: true). With both names and two declared cut points the note is one line: 'Cuts: share at 1 and growth at 8; a point on a cut counts right and above.' Otherwise the full cut-point sentence prints."),
   })
   .superRefine((quadrants, ctx) => {
     for (const axis of ['x', 'y'] as const) {
@@ -368,12 +361,6 @@ export const scatterOptionsSchema = baseOptionsSchema
       .optional()
       .describe(
         "Axes that read as directions, not scales: no tick numbers and no gridlines; each axis prints strings.axisLow ('Lower') and strings.axisHigh ('Higher') at its ends and its title in bold between two arrows, the y axis in a column left of the plot. Needs axisTitles. Positions keep their numeric scale.",
-      ),
-    methodNote: z
-      .boolean()
-      .optional()
-      .describe(
-        'Default false. true adds the method footnotes: axes that do not start at zero, and for quadrants the cut points with their source, the tie rule, the shading, units on a cut point, empty boxes and a divider that falls outside the range. Clipped and dropped points are required for interpretation and print regardless.',
       ),
   })
   .superRefine((options, ctx) => {

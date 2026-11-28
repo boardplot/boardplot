@@ -286,13 +286,7 @@ function notDrawnColumns(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): s
 }
 
 function mekkoNotes(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string[] {
-  const name = (ci: number): string => domain.cats[ci]!.label ?? domain.cats[ci]!.id;
   const notes: string[] = [];
-  if (area.unnamed.length > 0) {
-    // Totals have their own label and omission path. This note only supplies missing category names.
-    const unnamed = area.unnamed.map(name);
-    notes.push(disclosureNote(chartString(env.options, 'mekkoUnnamedNote', { v1: unnamed.join(', ') })));
-  }
   for (const text of notDrawnColumns(env, domain, area)) notes.push(disclosureNote(text));
   const others = domain.othersId === null ? undefined : domain.cats.find((c) => c.id === domain.othersId);
   if (others && domain.othersMembers.length > 0) notes.push(disclosureNote(`${others.label ?? others.id}: ${domain.othersMembers.join(', ')}.`));

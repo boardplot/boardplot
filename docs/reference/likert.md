@@ -75,10 +75,8 @@ One form; its chart ID is `likert`.
 | summary | string | `'net'`, `'none'` | `'net'` | Net column (% agree − % disagree). Default 'net'; refused with neutral 'positive'/'negative', where the signed stack sum is not the net score. |
 | base | string | `'column'`, `'none'` |  | The base n of each statement as a right-aligned grey column right of the net, under the head 'n'. Default 'column' when the counts or an item's n give a base; percent input without n has none. One base shared by every statement prints once in the head ('n = 900'). The column stays off below 576 px canvas width. |
 | sortBy | string | `'sheet'`, `'net'` | `'sheet'` | Default 'sheet' keeps statement order; 'net' ranks by net score, descending unless sort.categories supplies the direction or mode. Ties keep authored order. |
-| methodNote | boolean |  |  | Default false. true adds the method footnotes: the forced-choice centre line, the definition of the net column and the sort order. The neutral treatment and the base of the shares are required for interpretation and print regardless, unless requiredNotes turns them off. |
-| requiredNotes | object |  |  | The two notes a reader needs to read the shares print by default. Turn one off only when the exhibit's own text already says it. |
-| requiredNotes.neutral | boolean |  |  | Default true. false drops the note on the neutral treatment; set it when the title or subtitle already states it ('Neutral split across the centre line'). |
-| requiredNotes.base | boolean |  |  | Default true. false drops the note on the base of the shares; set it when the source or a footnote already states it ('n = 882 per statement'). |
+| requiredNotes | object |  |  | Control the disclosure for excluded neutral responses. |
+| requiredNotes.neutral | boolean |  |  | Default true. false omits the disclosure listing the shares excluded with neutral: exclude. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
@@ -118,7 +116,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | dated-survey-comparison | example | Agree share grows 20% annually, while Disagree falls 10 percentage points |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | engagement-options | example | The engagement survey with left row labels, thicker bars, one highlighted statement and explicit label kinds |
-| engagement-notes-pinned | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
+| engagement-notes-pinned | torture | The engagement survey with a fixed height and an authored footnote |
 | engagement-dashboard-notes | torture | The engagement survey on a dashboard with its notes in the info panel |
 | twelve-statements-slide | torture | Twelve statements on a full slide print their shares inside the bars |
 | column-overrides | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |

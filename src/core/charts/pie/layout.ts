@@ -45,10 +45,9 @@ import {
   type SolveCtx,
 } from '../../label/solver';
 import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { authoredNotes, frameTextOptions, valueNoteLine, normalizeLegendOption, settledAutoHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, settledAutoHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { disclosureNote, disclosuresShown } from '../../notes';
-import { hiddenValueNoteHeight } from '../../staticFooter';
+import { disclosureNote } from '../../notes';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import {
   canvasMargin,
@@ -231,22 +230,13 @@ interface SliceGeom {
   priority?: number;
 }
 
-/** Slices whose label the chart could not seat, named in the note line. */
-const UNLABELLED = Symbol('pieUnlabelled');
 const FIXED_PASS = Symbol('pieFixedPass');
 /** The ring drops the smallest label without a good seat, never a lower one to free a seat. */
 const BAD_FIRST = Symbol('pieBadFirst');
 /** The pass gives a doughnut's centre total priority over the outside-label reserve. */
 const CENTRE_FIRST = Symbol('pieCentreFirst');
-type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true; [CENTRE_FIRST]?: true };
+type PiePassOptions = PieOptions & { [FIXED_PASS]?: true; [BAD_FIRST]?: true; [CENTRE_FIRST]?: true };
 
-/**
- * A slice whose label found no seat is named in the note
- * line with its value and share, and gets no leader. The note takes footer
- * height and so shrinks the ring, so the chart is laid out again with it,
- * until the named set holds (one pass per slice at most). Every share then prints
- * once, so a sum-consistent set adds to 100%.
- */
 export function layoutPie(
   data: ChartData,
   options: PieOptions = {},
@@ -275,7 +265,6 @@ function drivePie(
   data: ChartData,
   options: PiePassOptions,
 ): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean; centreLost: boolean } {
-  let named = new Map<Id, string>();
   let swapped = false;
   const run = (passOptions: PiePassOptions) => {
     const result = layoutPiePass(data, passOptions);
@@ -288,33 +277,13 @@ function drivePie(
     options = { ...options, [FIXED_PASS]: true } as PiePassOptions;
     pass = run(options);
   }
-  // A grid panel has no footer of its own to spare: its grid speaks for it.
-  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped, centreLost: pass.centreLost };
-  // A note that wraps to one more line shrinks the ring and can unseat one more
-  // label, so the note is set again until it names every slice the last pass
-  // left unlabelled, so nothing is lost silently. Each round names at least one more
-  // slice, so it ends within one round per slice.
-  const owed = data.categories.length;
-  for (let round = 0; round <= owed && [...pass.unlabelled.keys()].some((id) => !named.has(id)); round++) {
-    named = new Map([...named, ...pass.unlabelled]);
-    pass = run({ ...options, [UNLABELLED]: named } as PiePassOptions);
-  }
-  // That note prints only on request (notes.show 'disclosure'). An open height still offers the ring
-  // the height its lines would take, never more, and keeps it when every slice then has its label.
-  if (named.size > 0 && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && !disclosuresShown(options)) {
-    const room = hiddenValueNoteHeight(pass.geometry);
-    const { width, height } = pass.geometry.size;
-    const taller = room > 0 ? run({ ...options, size: { width, height: Math.ceil(height + room) } } as PiePassOptions) : undefined;
-    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped, centreLost: taller.centreLost };
-  }
-  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped, centreLost: pass.centreLost };
+  return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped, centreLost: pass.centreLost };
 }
 
 function layoutPiePass(
   data: ChartData,
   options: PiePassOptions,
 ): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean; centreLost: boolean } {
-  const named = options[UNLABELLED] ?? new Map<Id, string>();
   let swapped = false;
   const warnings: LintWarning[] = [];
   const theme = chartTheme(options);
@@ -672,7 +641,6 @@ function layoutPiePass(
       footnotes: [
         ...authoredNotes(options),
         ...(negatives.length ? [disclosureNote(chartString(options, 'pieNegativeNote', { v1: negatives.join(', ') }))] : []),
-        ...valueNoteLine(chartString(options, 'pieHiddenSlices', { v1: named.size, v2: named.size === 1 ? 'slice' : 'slices' }), [...named.values()], options),
       ],
       legend: legendInput,
       theme,
@@ -896,7 +864,6 @@ function layoutPiePass(
   const buildSliceLabels = (): SliceLabel[] => {
   const sliceLabels: SliceLabel[] = [];
   for (const g of geoms) {
-    if (named.has(g.cat.id)) continue;
     const blockOf = (inside: boolean) => {
       const content = inside ? insideContent! : outsideContent;
       if (!content) return undefined;
@@ -1063,8 +1030,6 @@ function layoutPiePass(
     const arc = (r * g.sweep * Math.PI) / 180;
     const joined = neighbours.length > 0 && ![g, ...neighbours].some(exploded) && arc > 2 * strokeToken(theme, 'rule');
     const f1 = {
-      // The note item that names the slice with its value, if the frame draws it.
-      ...(named.has(g.cat.id) && !namesOnly(outsideContent ?? insideContent ?? [], undefined).printsFor ? { notedAs: named.get(g.cat.id)! } : {}),
       ...(joined ? { bounds: neighbours.map((n) => n.paint) } : {}),
     };
     nodes.push({

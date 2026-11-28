@@ -13,8 +13,6 @@ export const EN = {
   "unchangedPair": "{v1} unchanged",
   // the key entry of a range mid-point marker and the note that names rows without one.
   "midName": "Midpoint",
-  "midMissing": "{v1} not reported for {v2}.",
-  "midMissingCount": "{v1} not reported for {v2} rows.",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -29,8 +27,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "unchangedPair": "{v1} unverändert",
   // the key entry of a range mid-point marker and the note that names rows without one.
   "midName": "Mittelwert",
-  "midMissing": "{v1} für {v2} nicht angegeben.",
-  "midMissingCount": "{v1} für {v2} {v2|Zeile|Zeilen} nicht angegeben.",
 };
 
 export const { chartString, localeStrings } = chartStrings(EN, DE);

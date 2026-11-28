@@ -118,7 +118,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | currentValue | number \| object |  |  | Football-field vertical current-value marker; number shorthand uses an automatic label. |
 | currentValue.value | number |  |  | Current output value marked across the football-field ranges. |
 | currentValue.label | string |  |  | Authored label for the football-field current-value marker. |
-| methodNote | boolean |  |  | Default false. true adds the method footnotes: the mid-point tick of a football-field range, drawn only with its note, and the one-at-a-time contract of a tornado. Hatched tornado bars and drivers that could not be drawn are required for interpretation and print regardless. |
+| methodNote | boolean |  |  | Draw the supplied midpoint tick inside each football-field range. Default false. |
 | grandTotalLabels | boolean |  |  | Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack. |
 | referenceStyle | string | `'tick'`, `'line'`, `'marker'` | `'tick'` | Reference-series mark style; defaults to tick. Line references use a 1.25px stroke. |
 | referenceTick | object |  |  | Weight and ink of the reference tick, read under referenceStyle 'tick' only: the dotted 'line' uses stroke.rule and the 'marker' its neutral dot. A prior-year mark that must stand out is { width: 2, color: 'highlight' }. |
@@ -159,7 +159,7 @@ An annotation anchor is a category or item id string, or an object with category
 
 ## Dense value labels
 
-The default `labelDensity: 'smart'` keeps every value eligible. In a chart with more than 12 categories, or with most labels wider than the band, the first, last, highest and lowest values (ties: the first) take their seats first, and the note names any of them that finds none. A smaller chart keeps every value on the one-step rule and names any that finds no seat. Other values use only their natural seat beside the mark, and are dropped without a note entry when it is taken. Stacked bars apply this rule to totals. Use `labelDensity: 'full'` to treat all values alike and name every value without a seat. Reading records keep every value.
+The default `labelDensity: 'smart'` keeps every value eligible. In a chart with more than 12 categories, or with most labels wider than the band, the first, last, highest and lowest values (ties: the first) take their seats first. A smaller chart keeps every value on the one-step rule. Other values use only their natural seat beside the mark. Stacked bars apply this rule to totals. Use `labelDensity: 'full'` to treat all values alike. Reading records keep every value. The reading lists omitted labels in `omissions`.
 
 ## Sizing
 

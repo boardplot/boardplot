@@ -50,7 +50,7 @@ import { layoutBarMarks } from './marks';
 import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPlotArea, solveBarFrame, barPassText } from './plot';
 import { toleranceKeyed } from '../../valueLineDomain';
-import { withBandValueNotes } from '../band/valueNotes';
+import { keepBandTotals } from '../band/valueNotes';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -168,13 +168,13 @@ export function layoutBarRows(
     : undefined;
   const next = retry?.next;
   if (retry) delete retry.next;
-  const geo = next && sameContent(next.options, options) ? next.geometry : withBandValueNotes(data, options, layout);
+  const geo = next && sameContent(next.options, options) ? next.geometry : keepBandTotals(options, layout);
   const natural = geo.sizing?.naturalHeight;
   if (checkNaturalHeight && natural !== undefined && natural < geo.size.height) {
     // a shorter row layout may need a disclosure that the tall layout did not.
     const drawMinimum = () => {
       const shorter = { ...options, size: { width: geo.size.width, height: natural } };
-      const geometry = withBandValueNotes(data, shorter, layout);
+      const geometry = keepBandTotals(shorter, layout);
       if (retry) retry.next = { options: shorter, geometry };
       return geometry.sizing?.minHeight;
     };
@@ -196,7 +196,7 @@ function barOptionsForLayout(options: BarOptions, dropped: LintWarning[]): BarOp
 export function stackedBarPlotHeight(data: ChartData, options: BarOptions, features: BarRowFeatures, annotationPass: BarAnnotationPass): number {
   options = barOptionsForLayout(options, []);
   refuseSignColor(data, options);
-  return withBandValueNotes(data, options, next => layoutStandardBar(data, next, features, annotationPass, barPlotWithNotes)).plot.h;
+  return keepBandTotals(options, next => layoutStandardBar(data, next, features, annotationPass, barPlotWithNotes)).plot.h;
 }
 
 function barPlotWithNotes(_domain: BarDomain, area: BarArea, _scene: BarMarkGeometry, solved: SolveResult, annotated: AnnotatePassResult) {

@@ -738,7 +738,7 @@ function comboAnomalyModel(
     const value = series.vals[ci]?.v;
     return value === null || value === undefined || !Number.isFinite(value) ? [] : [{ categoryId: c.id, value }];
   });
-  return { ...anomalyModel(spec, present, fmt, statFmt, locale, warnings, strings, rule), seriesId: series.id, statFmt, rule, onSecondary };
+  return { anomaly: anomalyModel(spec, present, fmt, statFmt, locale, warnings, strings, rule), seriesId: series.id, statFmt, rule, onSecondary };
 }
 
 /** Internal: the second run of a combo whose default-hidden value axis left a column total without a seat. */
@@ -1007,7 +1007,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     const extent: [number, number] | undefined = anomalyRun?.onSecondary ? rightDomain : [left.dLo, left.dHi];
     return anomalyRun && extent && {
       model: anomalyRun.anomaly, seriesId: anomalyRun.seriesId, statFmt: anomalyRun.statFmt,
-      ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, extent[0], extent[1], anomalyRun.statFmt, out, options.strings, anomalyRun.rule),
+      ...anomalyCorridor(anomalyRun.anomaly, extent[0], extent[1], anomalyRun.statFmt, out, options.strings, anomalyRun.rule),
     };
   };
   // The anatomy with every value labelled (each column value and each line

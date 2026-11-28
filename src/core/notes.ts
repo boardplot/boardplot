@@ -13,17 +13,10 @@ import type { StringsSpec } from './types/options';
  *   requires it (BKG, US Census), else in the notes list.
  * - note: the author's `footnotes`, and an engine note a mark on the chart
  *   numbers (gantt's event key). Visible within the line budget.
- * - method: engine text on how a number is built. Notes list; the short form
- *   prints in the frame under `notes.show: ['note', 'method']`.
- * - disclosure: engine text the reader needs to read the chart right: it
- *   explains an encoding on the chart ("One cell = 5%", "W38 partial",
- *   "Columns by rank"), a change to the data ("1 value below zero shown as
- *   0."), or names the marks the drawing leaves unlabelled ("Not labelled on
- *   the chart: ..."). A caveat or a disclosure enabled by an authored
- *   `notes.show` prints outside the line budget, like a required credit. So does an author
- *   note a mark on the chart points at ("1)"). Where the author asks for the
- *   engine's notes another way (`methodNote: true`, a `notes.placement`), a
- *   disclosure prints within the budget, after the author notes.
+ * - method: retained engine text, such as the cohort formula.
+ * - disclosure: a note about scale, missing data or a changed value.
+ *   Default caveats and disclosures enabled by an explicit `notes.show` print
+ *   outside the line budget.
  */
 import { typeWidthClass } from './theme';
 import type { RenderTarget } from './types/options';
@@ -105,12 +98,10 @@ export function printsNoteKind(kind: NoteKind, show: readonly string[] = ['note'
   return kind === 'source' || kind === 'credit' || show.includes(kind);
 }
 
-/** Whether this note prints by kind, by default as a caveat, or as the rank key. */
+/** Whether this note prints by kind or by default as a caveat. */
 export function printsNote(note: { kind: NoteKind; text: string }, show?: readonly string[]): boolean {
-  if (printsNoteKind(note.kind, show)) return true;
-  if (note.kind !== 'disclosure') return false;
-  const meta = engineNoteMeta(note);
-  return (meta?.caveat === true && caveatsShown(show)) || (meta?.ranks === true && show?.includes('ranks') === true);
+  return printsNoteKind(note.kind, show)
+    || (note.kind === 'disclosure' && engineNoteMeta(note)?.caveat === true && caveatsShown(show));
 }
 
 /**
@@ -191,8 +182,8 @@ export function keepShownNotes<T extends object>(options: NoteAsk, passed: T): T
 
 /**
  * True where the author prints the engine's disclosures (`notes.show` lists
- * 'disclosure'). Only then may a chart key its marks to a disclosure (rank
- * numbers, a note mark on a cut name); else it draws marks that read alone.
+ * 'disclosure'). A chart can then key its marks to that disclosure, such as
+ * a note mark on a cut name.
  */
 export function disclosuresShown(options: { notes?: { show?: readonly string[] } } | undefined): boolean {
   return options?.notes?.show?.includes('disclosure') === true;
@@ -201,15 +192,6 @@ export function disclosuresShown(options: { notes?: { show?: readonly string[] }
 /** Caveats print by default. An authored list must include 'disclosure' to keep them. */
 export function caveatsShown(show: readonly string[] | undefined): boolean {
   return show === undefined || show.includes('disclosure');
-}
-
-/**
- * True where the rank key prints: `notes.show` lists 'disclosure', or 'ranks'
- * for the rank key alone. Only then may a column row draw rank numbers.
- */
-export function rankKeyShown(options: { notes?: { show?: readonly string[] } } | undefined): boolean {
-  const show = options?.notes?.show;
-  return show?.includes('disclosure') === true || show?.includes('ranks') === true;
 }
 
 /** The label of the button that opens the notes panel under 'info': "Notes and sources (3)". */
@@ -223,8 +205,8 @@ export function notesPointer(count: number, strings?: StringsSpec): string {
 }
 
 /** A capped list note: the frame names as many of its items as fit two footer lines. */
-export interface NoteList { lead: string; items: readonly string[]; total?: number; options: object }
-export interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; caveat?: true; quiet?: true }
+export interface NoteList { lead: string; items: readonly string[]; options: object }
+export interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; caveat?: true; quiet?: true }
 
 const NOTE_META = Symbol('noteMetadata');
 type Noted = { [NOTE_META]?: EngineNoteMeta };
@@ -281,22 +263,9 @@ export function caveatNote(text: string): string {
   return text;
 }
 
-/** The rank key: a disclosure that also prints where `notes.show` lists 'ranks'. */
-export function rankKeyNote(text: string): string {
-  engineNote(text, 'disclosure');
-  const meta = engineNoteMeta(text);
-  if (meta) meta.ranks = true;
-  return text;
-}
-
 /** A disclosure that names values the drawing does not print; the `values-in-note` warning lists them. */
 export function valueNote(text: string, values: readonly string[]): string {
   return engineNote(text, 'disclosure', undefined, values);
-}
-
-/** A method note with its one-line form. */
-export function methodNote(text: string, short: string): string {
-  return engineNote(text, 'method', short);
 }
 
 /**

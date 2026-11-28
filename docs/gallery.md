@@ -1,6 +1,6 @@
 # Gallery
 
-Boardplot has 37 chart types, 83 variants and 699 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
+Boardplot has 37 chart types, 83 variants and 698 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
 
 - [Most common](#most-common): [column](#column), [bar](#bar), [line](#line), [dimswitch](#dimswitch), [table](#table), [waterfall](#waterfall)
 - [Variance, bridges and KPIs](#variance-bridges-and-kpis): [kpi](#kpi), [variance](#variance), [bullet](#bullet), [pvm](#pvm)
@@ -2051,7 +2051,7 @@ Price, volume and mix bridge. [Reference](reference/pvm.md)
     "subtitle": { "company": "Acme Software", "measure": "Product revenue", "period": "FY24 → FY25" },
     "unit": "$k",
     "source": "Acme ERP order book; units and revenue per product, price derived",
-    "methodNote": true
+    "notes": { "placement": "frame" }
   }
 }
 ```
@@ -4537,8 +4537,7 @@ Diverging bars for survey scales. [Reference](reference/likert.md)
     "title": "Engagement survey — agreement by statement",
     "subtitle": { "measure": "Share of responses", "period": "FY25 pulse" },
     "legend": "bottom",
-    "source": "Employee pulse survey, n = 900 per statement",
-    "requiredNotes": { "base": false }
+    "source": "Employee pulse survey, n = 900 per statement"
   }
 }
 ```

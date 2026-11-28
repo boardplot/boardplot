@@ -191,7 +191,6 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const whiskerRule: WhiskerRule = options.whiskers ?? 'tukey';
   const showOutliers = options.showOutliers ?? true;
   const showObservations = options.showObservations ?? 'small-n';
-  const methodNote = options.methodNote === true;
 
   if (log) {
     data.groups.forEach((group, gi) => group.observations.forEach((value, oi) => {
@@ -447,36 +446,6 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // ---- frame ---------------------------------------------------------------
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
-  // Two dot encodings can appear in one exhibit — hollow outliers and filled
-  // small-n observations. An encoding a reader has to guess at is a defect
-  // so the note names the second one whenever it is drawn.
-  const drawsObservations =
-    showObservations === 'small-n' && rows.some((row) => row.state === 'points');
-  // Kept as SEPARATE footnotes rather than one concatenated sentence: each is a
-  // distinct disclosure and a reader should be able to find one without reading
-  // the others. The Tukey rule is what a reader assumes, so stating it is
-  // a method note; any other whisker rule changes what whiskers and dots mean
-  // and prints regardless, as does the second dot encoding. The note describes
-  // the ink ACTUALLY on the page: with showOutliers off there are no dots.
-  // The default Tukey rule prints its one line, as the other
-  // rules print theirs; the full method note stays behind methodNote.
-  const highlighted = rows.filter((row) => highlights.has(row.id) && row.state === 'box').map((row) => row.label);
-  // Each line names an encoding on the chart, so each stays in the frame (disclosure).
-  const methodNotes = [
-    ...(methodNote || whiskerRule !== 'tukey'
-      ? [chartString(options, ({ tukey: showOutliers ? 'boxTukeyPoints' : 'boxTukeyNoPoints', minmax: showOutliers ? 'boxMinmaxPoints' : 'boxMinmaxNoPoints', p10p90: showOutliers ? 'boxP10P90Points' : 'boxP10P90NoPoints' } as const)[whiskerRule])]
-      : [showOutliers ? chartString(options, 'boxBriefPoints') : chartString(options, 'boxBriefNoPoints')]),
-    // The filled box is the highlight, and the chart says so.
-    ...(highlighted.length > 0 ? [chartString(options, 'boxHighlight', { v1: highlighted.join(', ') })] : []),
-    ...(drawsObservations
-      ? [chartString(options, 'boxSmallSample')]
-      : []),
-  ].map(disclosureNote);
-  // THE CENSORSHIP TRACE. `showOutliers: false` removes real
-  // observations from the ink AND from the axis domain; without this line the
-  // printed exhibit shows a tighter distribution than the data holds and the
-  // reader has no way to know. It is NOT gated on `methodNote`: turning off a
-  // method statement must not also turn off a disclosure that data is missing.
   const withheldNote =
     withheldTotal > 0
       ? disclosureNote(chartString(options, 'boxWithheldNote', { v1: withheldTotal, v2: withheldTotal === 1 ? '' : 's', v3: chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[whiskerRule]), v4: withheldTotal === 1 ? 'is' : 'are', v5: withheldTotal === 1 ? 'is' : 'are' }))
@@ -489,7 +458,6 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       ...frameTextOptions(options),
       footnotes: [
         ...authoredNotes(options),
-        ...methodNotes,
         ...(withheldNote ? [withheldNote] : []),
       ],
       theme,
@@ -1108,7 +1076,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         const under = rowY + boxH + 4;
         const onRow = rowCenter - size.height / 2;
         const inside = stat === 'q1' ? statX + 3 : statX - 3 - size.width;
-        const insideFits = quartilesInside && (stat === 'q1' ? inside + size.width < medianX - 3 : inside > medianX + 3);
+        const insideFits = quartilesInside && size.height <= boxH && (stat === 'q1' ? inside + size.width < medianX - 3 : inside > medianX + 3);
         const candidates: SlotCandidate[] = [
           ...(stat.startsWith('q') && insideFits
             ? [{ slot: 'insideBox', rect: { x: inside, y: onRow, w: size.width, h: size.height }, penalty: 0, insideFill: paintColor(theme, boxFill), insidePaint: boxFill }]

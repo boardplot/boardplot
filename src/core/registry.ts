@@ -23,8 +23,8 @@ import type { ChartSizing } from './types/sizing';
 import { autoPlotPx, CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, heightOmitted, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, panelMinHeight, plotForFloor, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_PX, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
-import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
-import { layoutWithLegendPolicy, prepareLegendLayout } from './legendPolicy';
+import { footnoteSwitch, owedHiddenLabels, withDensitySelection } from './frame';
+import { prepareLegendLayout } from './legendPolicy';
 import { loadedDeferred } from './deferred';
 import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
@@ -39,10 +39,10 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { linkRetiredSettings, type RetiredSetting } from './retired';
 import { rectsOverlap } from './geometry';
 import { isOwnMark } from './label/solver';
-import { reportLabelOmissions } from './label/omissions';
+import { cutLabels, reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
 import { LIVE_NOTE_SHOW, staticFrame } from './footer';
-import { AUTO_PANEL_HEIGHT, engineNoteMeta, shownNoteKinds, sourceLine, withAuthorNotesOnly, withEngineNotes } from './notes';
+import { AUTO_PANEL_HEIGHT, engineNoteMeta, shownNoteKinds, sourceLine, withEngineNotes } from './notes';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
@@ -55,7 +55,7 @@ export type DiscardRepair = boolean | ((refusal: RefusedLayout) => boolean);
 type RegistryFitLayout<O extends ChartOptions, M extends object, DV extends object> = FitLayout<O, M, DV>
   & ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => LayoutResult<M, DV>);
 
-/** A fixed canvas keeps its default caveats only when they leave room for the plot. */
+/** A fixed canvas keeps optional notes only when they leave room for the plot. */
 function fitDefaultCaveats<M extends object, DV extends object>(first: LayoutResult<M, DV>, options: ChartOptions,
   withoutCaveats: () => LayoutResult<M, DV>): LayoutResult<M, DV> {
   if (first.refused || isRefused(first)) return withoutCaveats();
@@ -365,10 +365,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const origins = new WeakMap<object, object>();
     const layoutDefinition = def.prepareLayout ? { ...def, layout: def.prepareLayout(data, prepared) } : def;
     const legendLayout = prepareLegendLayout(layoutDefinition, data, origins);
-    // The fixed result's identity includes its labels and their geometry.
-    // Equal note text at another frame cannot reuse this note variant.
-    let noteLayouts = new WeakMap<object, Map<string, FitLayout<O, M, DV>>>();
-    const noteRuns: FitLayout<O, M, DV>[] = [];
     const layoutBody = ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => {
     // Only the frame and search markers change within this prepared call.
     const sizeTarget = options?.size === undefined && ['kpi', 'bullet', 'sparkline'].includes(def.type)
@@ -386,135 +382,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       size: resolved.fixed.height ? resolved.sizePx : { width: resolved.sizePx.width },
       [TARGET_SIZE]: resolved,
     } as unknown as O;
-    const densityFixed = DENSITY_VALUES in options && resolved.fixed.height;
-    if (densityFixed) options = { ...options, [FIXED_SIZE_PROBE]: true } as O;
     const anns = options?.annotations;
     const dropped = anns?.filter((a) => !supported.has(a.kind)) ?? [];
     const layoutOptions = dropped.length === 0 ? options : { ...(options as O), annotations: anns!.filter((a) => supported.has(a.kind)) };
-    // a value, name, value line, annotation or pinned label the
-    // solver hid is named in the note line. The note takes height and can
-    // hide another label, so the chart is laid out again with every label
-    // named so far until nothing is owed, up to the finite label population. A failed pass
-    // suggests more height only if the proposed size resolves it.
-    // A grid panel's grid speaks for it.
     const pins = options?.labelPlacements;
-    // An authored 'minimal' drops values by request: the note does not list them.
-    const minimal = (options as { labelDensity?: string } | undefined)?.labelDensity === 'minimal';
     const nested = panelTypeClass(options) !== undefined;
-    let lastGeometry: Geometry<M, DV> | undefined;
-    const named = (runOptions: O | undefined, probeHeight = true): { geo: LayoutResult<M, DV>; noteRefused: boolean } => {
-      let geo = legendLayout(runOptions);
-      if (geo.refused || nested) return { geo, noteRefused: false };
-      lastGeometry = geo;
-      const first = geo;
-      let noted = new Map<string, string>();
-      let owed = owedHiddenLabels(geo, data, pins, options?.annotations, minimal);
-      let previousOwed: string | undefined;
-      for (let run = 0; owed.size > 0; run++) {
-        // A pass that owes the same labels the note already names
-        // repeats the last pass exactly; go to the run limit's answer now (otherwise a choropleth compact
-        // measure repeats 24 identical passes per probe height).
-        const owedKey = [...owed.keys()].sort().join('\u0000');
-        const stalled = owedKey === previousOwed && [...owed.keys()].every((id) => noted.has(id));
-        previousOwed = owedKey;
-        // each note pass can displace another larger label; finish the finite label population.
-        if (stalled || run === first.labels.length + 1) {
-          const refusal = hiddenLabelRefusal(def.title, first, geo);
-          const size = { width: refusal.sizing.minWidth, height: refusal.sizing.minHeight };
-          // An estimate is advice only after the same note pass accepts it.
-          const probe = probeHeight ? named(withoutForcedCompact({ ...runOptions, size } as O), false).geo : undefined;
-          const names = new Set([...noted.keys(), ...owed.keys()]);
-          // Freed means drawn: at its point, or printed in the label that holds
-          // it (a bump value in its name). A note naming it is no proof.
-          const lost = probe && !probe.refused ? owedHiddenLabels({ ...probe, labels: probe.labels.map(({ noted: _noted, ...label }) => label) }, data, pins, options?.annotations, minimal) : undefined;
-          if (probe && !probe.refused && !isRefused(probe) && ![...names].some(id => lost!.has(id))) {
-            return { geo: refusal, noteRefused: true };
-          }
-          // The estimate can stop below the height at which
-          // the note line seats. Before a refusal without a repair size, try up to three taller
-          // heights (x1.25 each) through the same check and offer the first that draws.
-          if (probeHeight) {
-            let height = size.height;
-            for (let step = 0; step < 3; step++) {
-              height = Math.ceil(height * 1.25);
-              const taller = named(withoutForcedCompact({ ...runOptions, size: { width: size.width, height } } as O), false).geo;
-              // Drawn means every label is at its point, in its name, or named (or counted, under the 8-item
-              // limit) by a note line in the notes list (a note only in the description is no proof). The
-              // frame prints that line where notes.show lists 'disclosure'.
-              if (taller.refused || isRefused(taller)) continue;
-              const missing = owedHiddenLabels({ ...taller, labels: taller.labels.map(({ noted: _noted, ...label }) => label) }, data, pins, options?.annotations, minimal);
-              const pageNotes = [...(taller.frame?.notes ?? []), ...(taller.frame?.noteList ?? []).map(entry => entry.text)];
-              if ([...names].some(id => missing.has(id) && !taller.labels.some(label => label.id === id && label.noted && pageNotes.some(note => note.includes(label.text) || (label.noteCounted === true && note.length > 0))))) continue;
-              const grown = sizeRefusal(def.type, def.title, refusal.size, { ...refusal.sizing, minHeight: height, measuredMinHeight: Math.min(refusal.sizing.measuredMinHeight, height) });
-              grown.warnings[0]!.message += '; at this size it hides labels its note line has no room to name';
-              return { geo: grown, noteRefused: true };
-            }
-          }
-          // A canvas under the chart's own width floor explains the collision: the refusal names that floor.
-          if (geo.sizing && geo.sizing.minWidth > geo.size.width + SIZE_TOLERANCE) return { geo: sizeRefusal(def.type, def.title, geo.size, geo.sizing), noteRefused: true };
-          return { geo: hiddenLabelCollision(def.title, geo, owed, [...owed.keys()].every(id => noted.has(id))), noteRefused: true };
-        }
-        // Rounds find labels in the order they lose their seat; the note lists them in data order.
-        if (noted.size === 0) noted = owed; // owedHiddenLabels already returned this drawing's data order.
-        else {
-          const byData = dataOrder(data, geo.labels);
-          noted = new Map([...noted, ...owed].sort(([a], [b]) => byData(a, b)));
-        }
-        const noteOptions: O = withHiddenLabelNote((runOptions ?? {}) as O, noted, { data, labels: geo.labels, annotations: options?.annotations });
-        let next: LayoutResult<M, DV>;
-        // Gantt's full-card context changes during raw layout. Keep
-        // its note passes in order; its wider-card memo replays that context.
-        if (def.type === 'gantt') next = layoutWithLegendPolicy(def, data, noteOptions);
-        else {
-          const origin = origins.get(geo) ?? geo;
-          let variants = noteLayouts.get(origin);
-          if (!variants) noteLayouts.set(origin, variants = new Map());
-          const noteKey = JSON.stringify([...noted]);
-          let noteRun = variants.get(noteKey);
-          if (!noteRun) {
-            noteRun = prepareLegendLayout(layoutDefinition, data, origins);
-            variants.set(noteKey, noteRun);
-            noteRuns.push(noteRun);
-          }
-          next = noteRun(noteOptions);
-        }
-        // Only compact framing can move the note; a full fixed frame would repeat the same layout.
-        const moved: O | undefined = !staticFrame.pinned && (geo.mode === 'compact' || !resolved.fixed.height)
-          && next.refused && next.warnings[0]?.code === 'size-below-floor' ? withNoteInA11y(noteOptions) : undefined;
-        // The line moves to the description: it leaves the composed footnotes too, or a layout
-        // that draws its footnotes as written prints the capped line beside its own disclosure.
-        const movedLine: string | undefined = moved ? hiddenNoteLine(noteOptions as object) : undefined;
-        const inA11y: O | undefined = moved && movedLine
-          ? { ...moved, footnotes: authoredNotes(moved as Pick<BaseOptions, 'footnotes'>).filter((note) => note !== movedLine) } as O
-          : moved;
-        if (inA11y) { const quiet: LayoutResult<M, DV> = layoutWithLegendPolicy(def, data, inA11y); if (!quiet.refused) next = quiet; }
-        if (!staticFrame.pinned && next.refused && resolved.fixed.height && [...noted.keys()].every(id => first.labels.some(label => label.id === id && label.hidden === 'density'))) {
-          return { geo: densityNoteInList(first, noteOptions as BaseOptions, new Set(noted.keys())), noteRefused: false };
-        }
-        if (next.refused) return { geo: next, noteRefused: true };
-        markNotedLabels(next, new Set(noted.keys()), noteOptions);
-        geo = next;
-        lastGeometry = geo;
-        owed = owedHiddenLabels(geo, data, pins, options?.annotations, minimal);
-      }
-      // The note's own line can free a seat, so the last run drew a value the note
-      // names (markNotedLabels then took it off). One run without those names keeps it
-      // on the chart when that run owes nothing new; else the note stands.
-      const freed = new Set(geo.labels.filter((label) => label.hidden === 'note').map((label) => label.id));
-      if (freed.size > 0) {
-        const kept = new Map([...noted].filter(([id]) => !freed.has(id)));
-        const keptOptions: O = withHiddenLabelNote((runOptions ?? {}) as O, kept, { data, labels: geo.labels, annotations: options?.annotations });
-        const retry = layoutWithLegendPolicy(def, data, keptOptions);
-        if (!retry.refused) {
-          markNotedLabels(retry, new Set(kept.keys()), keptOptions);
-          if (owedHiddenLabels(retry, data, pins, options?.annotations, minimal).size === 0 && !retry.labels.some((label) => label.hidden === 'note')) {
-            geo = retry;
-            lastGeometry = geo;
-          }
-        }
-      }
-      return { geo, noteRefused: false };
-    };
     // Type steps: S (under 720 px) and M type differ, so a content minimum under
     // 720 px measured with M type can refuse at that width. One run at the minimum, in S type, tells:
     // refused on width, the chart reports the width that refusal names (at most 720).
@@ -527,7 +399,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       const at = Math.max(Math.ceil(minimum.minWidth), CARD_MIN_WIDTH);
       const mapBound = def.type === 'choropleth' && !resolved.fixed.height && at === minimum.minWidth
         ? { width: at } : undefined;
-      let probe: ReturnType<typeof named>['geo'];
+      let probe: LayoutResult<M, DV>;
       // A chart whose text cannot wrap at the probe width throws (creative-text-overflow in German).
       // The probe only refines the reported minimum, so the chart that drew keeps it.
       // Only a width refusal counts here. The hidden-label note rounds add note lines, which take
@@ -539,10 +411,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       return (probe.refused ? probe.warnings[0]?.code === 'size-below-floor' : at > minimum.minWidth) && probe.sizing && probe.sizing.minWidth > minimum.minWidth
         ? { ...minimum, minWidth: Math.min(720, probe.sizing.minWidth) } : minimum;
     };
-    const geo = named(layoutOptions).geo;
+    const geo = legendLayout(layoutOptions);
     if (geo.refused) {
-      // A refused density footer on a fixed frame returns the selected chart, not a repair size.
-      if (densityFixed) return geo;
       // This search discards refusal details. Every branch below still returns
       // a refusal, so verifying its repair would not change the search result.
       // A fixed-size probe (measure's compact floor) takes the chart's own estimate the same way.
@@ -568,12 +438,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           || !fitsSize(resolved.sizePx, declaredSizing(def, options)));
         // Under the declared floor the full probe already runs compact (`belowMinimum`). At a size
         // that fits it, compact goes first: a drawing there settles it without the full chart's repair search.
-        const hostView = (runOptions: O, probeHeight?: boolean) => {
+        const hostView = (runOptions: O) => {
           const size = runOptions?.size as { width: number; height: number };
-          if (!compactCall || !fitsSize(size, declaredSizing(def, options))) return named(withoutForcedCompact(runOptions), probeHeight).geo;
-          const compact = named({ ...runOptions, [FORCE_COMPACT]: true } as O, probeHeight).geo;
+          if (!compactCall || !fitsSize(size, declaredSizing(def, options))) return legendLayout(withoutForcedCompact(runOptions));
+          const compact = legendLayout({ ...runOptions, [FORCE_COMPACT]: true } as O);
           if (!isRefused(compact)) return compact;
-          const full = named(withoutForcedCompact(runOptions), probeHeight).geo;
+          const full = legendLayout(withoutForcedCompact(runOptions));
           return isRefused(full) && compact.warnings[0]?.code === 'size-below-floor' ? compact : full;
         };
         const probeAt = (width: number, height: number) => hostView({ ...layoutOptions, size: { width, height }, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}) } as O);
@@ -595,7 +465,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             // This larger size drew. The remaining search only refines the size refusal.
             // The counted or compact form can replace it before anyone reads its advice.
             const repair = (frame as { [FALLBACK_REPAIR]?: FallbackRepair } | undefined)?.[FALLBACK_REPAIR];
-            if (repair && staticFrame.countable && resolved.fixed.height && !layoutOptions?.annotations?.length
+            if (repair && resolved.fixed.height && !layoutOptions?.annotations?.length
               && (layoutOptions?.measure === undefined || layoutOptions.measure === defaultMeasurer)
               && compactFallbackApplies(def, options, data) && fitsSize(resolved.sizePx, declaredSizing(def, options))) {
               repair.deferred = true;
@@ -608,7 +478,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             let high = floor.minHeight;
             const accepts = (height: number) => !isRefused(hostView({
               ...layoutOptions, size: { width, height }, [FIXED_SIZE_PROBE]: def.type !== 'gantt', [ACCEPTANCE_PROBE]: true, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}),
-            } as O, def.type === 'gantt'));
+            } as O));
             if (!resolved.fixed.height && accepts(low + 1)) high = low + 1;
             while (high - low > 1) {
               const mid = Math.floor((low + high) / 2);
@@ -631,8 +501,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           floor = { ...next, minWidth: Math.max(floor.minWidth, next.minWidth), minHeight: Math.max(floor.minHeight, next.minHeight) };
           if (floor.minWidth > limit.width || floor.minHeight > limit.height) { unbounded = true; break; }
         }
-        if (lastGeometry) return { ...hiddenLabelCollision(def.title, lastGeometry,
-          owedHiddenLabels(lastGeometry, data, pins, options?.annotations, minimal)), size: geo.size };
         // Past the bound the refusal names no size beyond the frame on the side that grew. Measure verifies
         // the floor a refusal names by laying the chart out there, and would chase the growing floor again.
         const wide = unbounded && floor.minWidth > limit.width;
@@ -647,23 +515,16 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       }
       return geo;
     }
-    // labels collide at some heights and not at others, so a chart
-    // drawn taller than its content can report a natural height at which
-    // its note line finds no room. One run at that height tells: refused on
-    // height for the note, the chart reports the height that refusal names.
-    // shortcut: probes only charts with authored annotations, the one owed
-    // kind the natural height did not cover; widen the gate when another
-    // owed kind can hide at the natural height.
-    const natural = geo.sizing?.naturalHeight;
-    if (!nested && layoutOptions?.annotations?.length && geo.sizing?.fit === 'content' && natural !== undefined && natural < geo.size.height) {
-      const probe = named(withoutForcedCompact({ ...layoutOptions, size: { width: geo.size.width, height: natural } } as O));
-      const need = probe.geo.refused ? probe.geo.sizing : undefined;
-      if (probe.noteRefused && probe.geo.warnings[0]?.code === 'size-below-floor' && need && need.minWidth <= geo.size.width && need.minHeight > natural) {
-        geo.sizing = { ...geo.sizing, naturalHeight: need.minHeight };
-      }
-    }
     if (geo.sizing) geo.sizing = sClassMinimum(geo.sizing, geo.size);
     if (!(options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]) {
+      if (geo.labels.some(label => label.hidden && !label.noteText)) {
+        const namedData = def.categoryLabels ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
+        const hidden = owedHiddenLabels(geo, namedData, options?.labelPlacements, options?.annotations);
+        for (const label of geo.labels) {
+          const text = hidden.get(label.id);
+          if (text !== undefined) label.noteText ??= text;
+        }
+      }
       // A pale fill keeps its colour; without equivalent text or bounding neighbours it takes a 3:1 edge.
       fillEdges(geo, theme);
       // A key swatch, or a segment on a highlighted row's tint, that would vanish into the fill it lies on keeps a hairline.
@@ -719,9 +580,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       withChartFormats(prepared as BaseOptions, () => layoutBody(options, replaceRepair))) as RegistryFitLayout<O, M, DV>;
     layout.finish = () => {
       legendLayout.finish();
-      for (const run of noteRuns) run.finish();
-      noteRuns.length = 0;
-      noteLayouts = new WeakMap();
     };
     return layout;
   };
@@ -818,11 +676,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     clearer?: (first: Geometry<M, DV>, owed: ReadonlyMap<Id, string>) => LayoutResult<M, DV> | undefined) => {
     const noteData = def.categoryLabels
       ? withCalendarLabels(data, options?.locale?.language, def.categoryLabels) : data;
-    return withDensityNotes(noteData, (options ?? {}) as BaseOptions, next => {
-      if (!(DENSITY_VALUES in next)) return layoutBaseline(data, next as O, layoutOnce, probe);
-      const notedLayout = prepareLayout(data, next as O);
-      try { return layoutBaseline(data, next as O, notedLayout, probe); } finally { notedLayout.finish(); }
-    }, clearer);
+    return withDensitySelection(noteData, (options ?? {}) as BaseOptions, next =>
+      layoutBaseline(data, next as O, layoutOnce, probe), clearer);
   };
   // Preparation and the full/compact policy belong to one call, including its size probes.
   const createLayout = (data: D, authored?: O, fitOnly: DiscardRepair = false): LayoutCall<O, M, DV> => {
@@ -909,17 +764,22 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     if (!hasFormatRecord(authored)) return withUnitStandIns({ [AUTHORED_EXAMPLES]: writtenExamples(data, authored) }, () => layoutWithFooter(data, authored));
     const options = withDefaultTarget(authored);
     return withLayoutMemo(() => {
-      const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
-      const draw = (at?: O) => loadedDeferred('footer')?.(withCuts, data, at, def.type) ?? withCuts(data, at);
-      let geo = hasDefaultCaveats && options && shownNoteKinds(options) === undefined && !(AUTO_PANEL_HEIGHT in options)
+      const draw = (at?: O) => loadedDeferred('footer')?.(layout, data, at, def.type) ?? layout(data, at);
+      const comboDisclosures = def.type === 'combo' && options?.notes?.show?.includes('disclosure') ? options.notes.show : undefined;
+      const geo = hasDefaultCaveats && options && (comboDisclosures || shownNoteKinds(options) === undefined) && !(AUTO_PANEL_HEIGHT in options)
         && !heightOmitted(options.size, options.target)
         ? withEngineNotes(notes => {
           const { caveat } = notes;
           const first = draw(options);
-          if (first.refused ? notes.caveat === caveat : !first.frame.noteList?.some(note => engineNoteMeta(note)?.caveat)) return first;
-          return fitDefaultCaveats(first, options, () => draw({ ...withAuthorNotesOnly(options), [LIVE_NOTE_SHOW]: ['note'] }));
+          if (comboDisclosures) {
+            if (!first.refused || first.warnings[0]?.code !== 'size-below-floor' || first.size.width + SIZE_TOLERANCE < first.sizing.minWidth) return first;
+          } else if (first.refused ? notes.caveat === caveat : !first.frame.noteList?.some(note => engineNoteMeta(note)?.caveat)) return first;
+          const show = comboDisclosures?.filter(kind => kind !== 'disclosure') ?? ['note' as const];
+          return fitDefaultCaveats(first, options, () => {
+            const plain = draw({ ...options, notes: { ...options.notes, show }, [LIVE_NOTE_SHOW]: show });
+            return comboDisclosures && isRefused(plain) ? first : plain;
+          });
         }) : draw(options);
-      geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
       if (options?.categoryAxis?.title) {
         // The title gives way when it would refuse the chart or hide a label, itself included.
         const { title: _title, ...axis } = options.categoryAxis;
@@ -928,7 +788,13 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         if (!isRefused(plain) && hiddenLabels(plain) < hiddenLabels(geo)) return { ...plain, warnings: [...plain.warnings, categoryTitleDropped()] };
       }
       if (!geo.refused) {
-        finishCutLabelNotes(geo);
+        const cuts = cutLabels(geo);
+        if (cuts.length && !geo.warnings.some(warning => warning.severity === 'error')) {
+          geo.warnings = [...geo.warnings.filter(warning => warning.code !== 'label-truncated'), {
+            code: 'label-truncated', severity: 'warn', message: `${cuts.length} shortened labels have their full text in reading.omissions.`,
+            detail: { labels: cuts.map(cut => cut.labelId) },
+          }];
+        }
         reportLabelOmissions(geo, options, data);
         const sourceId = geo.frame?.sourceNodeId;
         const source = options?.source;
@@ -985,37 +851,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   for (const redraw of registryWaiting) redraw();
 }
 
-/**
- * A density pass refused on a pinned height names the height its own frame needs; the frame at that
- * height can select other values and refuse again (combo.band-label-headroom-rising-tail at 300 px
- * named 309, and 309 refused). Raise the height to each refusal's size until the chart draws, then
- * search down to the lowest height that draws, so the advice is a size that draws.
- */
-function verifiedDensityRefusal<M extends object, DV extends object>(geo: LayoutResult<M, DV>, title: string, options: ChartOptions,
-  at: (size: { width: number; height: number }) => LayoutResult<M, DV>): LayoutResult<M, DV> {
-  const refusal = geo.warnings[0];
-  if (!refusal || !UNVERIFIED_DENSITY_REFUSALS.has(refusal) || !isRefused(geo) || !geo.sizing) return geo;
-  const probe = options as Record<symbol, unknown>;
-  if (probe[ACCEPTANCE_PROBE] || probe[FULL_LAYOUT_PROBE] || probe[FIXED_SIZE_PROBE] || probe[WIDTH_PROBE]) return geo;
-  const width = geo.size.width;
-  let low = Math.ceil(geo.size.height), height = Math.max(low + 1, Math.ceil(geo.sizing.minHeight));
-  for (let pass = 0; ; pass++) {
-    const taller = at({ width, height });
-    if (!isRefused(taller)) break;
-    if (pass === 7 || taller.warnings[0]?.code !== 'size-below-floor' || !taller.sizing || taller.sizing.minWidth > width + SIZE_TOLERANCE) return geo;
-    low = height;
-    height = Math.max(height + 1, Math.ceil(taller.sizing.minHeight));
-  }
-  while (height - low > 1) {
-    const mid = Math.floor((low + height) / 2);
-    if (isRefused(at({ width, height: mid }))) low = mid; else height = mid;
-  }
-  if (height === Math.ceil(geo.sizing.minHeight)) return geo;
-  const verified = sizeRefusal(geo.type, title, geo.size,
-    { ...geo.sizing, minHeight: height, measuredMinHeight: Math.min(geo.sizing.measuredMinHeight, height) });
-  return { ...verified, warnings: [...verified.warnings, ...geo.warnings.slice(1)] } as unknown as LayoutResult<M, DV>;
-}
-
 /** Pass the parent target through both explicit and repeated grid panels.
  * The grid already passes its width class at each measured child width.
  */
@@ -1041,20 +876,8 @@ function inheritGridTarget<D>(data: D, target: RenderTarget, textScale: number, 
   };
 }
 
-/**
- * Estimate the height the note took from the plot, at least 20px. The caller
- * must verify this size through the note pass before returning the refusal.
- */
-function hiddenLabelRefusal(title: string, first: Geometry<object, object>, last: Geometry<object, object>): RefusedLayout {
-  const sizing = last.sizing!;
-  const height = last.size.height + Math.max(20, Math.ceil(first.plot.h - last.plot.h));
-  const refusal = sizeRefusal(last.type, title, last.size, { ...sizing, minWidth: Math.max(sizing.minWidth, last.size.width), minHeight: Math.max(sizing.minHeight, height) });
-  refusal.warnings[0]!.message += '; at this size it hides labels its note line has no room to name';
-  return refusal;
-}
-
 /** Height cannot resolve this collision. Name the label and its blockers. */
-function hiddenLabelCollision(title: string, geo: Geometry<object, object>, owed: ReadonlyMap<string, string>, noteMissing = false): RefusedLayout {
+function hiddenLabelCollision(title: string, geo: Geometry<object, object>, owed: ReadonlyMap<string, string>): RefusedLayout {
   const hidden = geo.labels.filter(label => owed.has(label.id));
   const collisions = hidden.map(label => {
     const blockers = geo.debug.occupied.filter(item => rectsOverlap(item.rect, label.rect)
@@ -1067,7 +890,7 @@ function hiddenLabelCollision(title: string, geo: Geometry<object, object>, owed
     code: 'label-collision', severity: 'error',
     // A hidden label goes into the capped note and the chart draws. The refusal is left for a note that
     // cannot be drawn: its labels were handed to the note, and the note is not on the page.
-    message: `${noteMissing ? 'The note line that names the hidden labels is not drawn' : 'More height did not resolve the hidden labels'}: ${collisions.join('; ') || 'the note and chart frame compete for space'}`,
+    message: `${'More height did not resolve the hidden labels'}: ${collisions.join('; ') || 'the note and chart frame compete for space'}`,
     suggest: 'Shorten or move the named labels, or remove the colliding element.',
   }] };
 }

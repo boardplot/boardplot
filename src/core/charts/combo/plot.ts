@@ -56,7 +56,6 @@ import { MARKER_MAX_CATS } from '../line/shared';
 import type { LabelContent, LabelKind, LegendOptions } from '../../types/options';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { planComboAxisTitles } from './axisTitles';
-import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from './categoryRanks';
 import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPOINT_IDS, insideEndpointGutters, prepareComboEndpointTexts, type EndpointGutters } from './endpoints';
 import type { ForecastBoundary } from '../line/forecast';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer, type NormVal } from './model';
@@ -65,7 +64,7 @@ import { comboBandFraction, primaryLineMean, secondaryPrimaryRange } from './dom
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
-import { engineNoteMeta, disclosureNote, disclosuresShown, rankKeyShown } from '../../notes';
+import { engineNoteMeta, disclosureNote, disclosuresShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
@@ -545,7 +544,7 @@ export function prepareComboFrame(env: ComboEnv, domain: ComboDomain, paints: Co
             return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
           }) : [], options),
       // The anomaly rule, stated on the exhibit (column prints it over the plot).
-      ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
+      ...(options.anomaly?.label ? [disclosureNote(options.anomaly.label)] : []),
       // The growth statements on a card, where the column beside the plot would cost it the width.
       ...(growthNote === undefined ? [] : [growthNote]),
       // Two scales without tick columns: the note says each series reads on its own.
@@ -886,15 +885,12 @@ export function comboPlotArea(
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   const authored = authoredDateTicks(cats, options, warnings);
   bandedCrossesBetween(options, warnings);
-  // Combo publishes the rank to name mapping, so it takes ranks over a
-  // row of cut names. `withCategoryRanks` keeps that decision, and the strings
-  // that carry the mapping, out of the shared cascade every type imports.
   const chronological = (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] !== false;
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const toDate = partialAxisWords(options.strings, options, frame.legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain));
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, toDate, domain.running);
     ticked?.name(row);
-    return withCategoryRanks(planCategoryRow({
+    return planCategoryRow({
       rotate: !categoryNames.every(name => MONTH_START.exec(name.trim())?.[0] === name.trim()),
       ...bandedCategoryStyle(options, theme, tickFont),
       ...row,
@@ -910,14 +906,13 @@ export function comboPlotArea(
       plotHeight: measure === defaultMeasurer && row.calendar?.length === row.labels.length && row.calendar.every(Boolean) ? undefined : frame.plot.h,
       // A name the rotated row cuts takes the next note number after the author's.
       // A cut name takes a note mark only where its note prints.
-      // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
-      // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
-      ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
+      // Nominal names keep one name per column (rotate, then ellipsis).
+      ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
       ...ticked?.plan,
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
       ...(rotate === false ? { rotate } : {}),
-    }), measure, categoryNames, (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    });
   };
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   let catPlan = planRow(band, authored);
@@ -928,12 +923,7 @@ export function comboPlotArea(
   const showCatTickRow = kindSetting(domain, 'category') !== false && cats.length > 0 && !stair;
   const categoryTitle = planCategoryTitle(options, tickFont, measure, plotWidth, warnings);
   if (categoryTitle) catPlan = withCategoryTitle(catPlan, categoryTitle, showCatTickRow);
-  if (showCatTickRow) {
-    pushAll(warnings, catPlan.warnings);
-    // The rank plan carries no lint of its own: the mapping belongs to the
-    // caller that can publish it.
-    if (catPlan.step === 'ranks') warnings.push(categoryRanksLint(categoryNames, band.step));
-  }
+  if (showCatTickRow) pushAll(warnings, catPlan.warnings);
   const rowHeight = showCatTickRow && keylessLimit
     ? categoryHeightLimit(cats, theme, measure) + (categoryTitle?.bandHeight ?? 0)
     : undefined;

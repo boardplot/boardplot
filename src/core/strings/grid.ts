@@ -2,7 +2,6 @@ import { chartStrings } from '../strings';
 
 export const EN = {
   // reader-facing wording linked only by its consumers.
-  "maturingCohortNote": "Maturing cohorts have not had the full time to produce an outcome. Their scoped values are provisional.",
   "matureCohort": "Mature cohort",
   "provisional": "Provisional",
   "metricStack": "Metric stack",
@@ -15,9 +14,6 @@ export const EN = {
   "stackLeftMethod": "Left: volume-weighted mature rates and remaining per 100",
   "stackRightMethod": "Right: volume-weighted mature rates and remaining per 100",
   "stackAboveMethod": "Above each panel: volume-weighted mature rates and remaining per 100",
-  "stackLeftRates": "Left: volume-weighted mature rates",
-  "stackRightRates": "Right: volume-weighted mature rates",
-  "stackAboveRates": "Above each panel: volume-weighted mature rates",
   "stackLeftRemaining": "Left: remaining per 100",
   "stackRightRemaining": "Right: remaining per 100",
   "stackAboveRemaining": "Above each panel: remaining per 100",
@@ -25,11 +21,9 @@ export const EN = {
   "labelsShowTotals": "Labels show totals",
   "stackFrom": "from {v1}",
   "stackAgainst": "against",
-  "stackAverages": "Averages per {v1}; rates and amounts per unit use volume weighting",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
-  "maturingCohortNote": "Noch nicht ausgereifte Kohorten hatten nicht die volle Zeit für ein Ergebnis. Ihre Werte im angegebenen Bereich sind vorläufig.",
   "matureCohort": "Ausgereifte Kohorte",
   "provisional": "Vorläufig",
   "metricStack": "Kennzahlenstapel",
@@ -42,9 +36,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "stackLeftMethod": "Links: nach Volumen gewichtete ausgereifte Raten und Rest je 100",
   "stackRightMethod": "Rechts: nach Volumen gewichtete ausgereifte Raten und Rest je 100",
   "stackAboveMethod": "Über jedem Feld: nach Volumen gewichtete ausgereifte Raten und Rest je 100",
-  "stackLeftRates": "Links: nach Volumen gewichtete ausgereifte Raten",
-  "stackRightRates": "Rechts: nach Volumen gewichtete ausgereifte Raten",
-  "stackAboveRates": "Über jedem Feld: nach Volumen gewichtete ausgereifte Raten",
   "stackLeftRemaining": "Links: Rest je 100",
   "stackRightRemaining": "Rechts: Rest je 100",
   "stackAboveRemaining": "Über jedem Feld: Rest je 100",
@@ -52,7 +43,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "labelsShowTotals": "Beschriftungen zeigen Summen",
   "stackFrom": "von {v1}",
   "stackAgainst": "gegenüber",
-  "stackAverages": "Mittelwerte je {v1}; Raten und Beträge je Einheit sind nach Volumen gewichtet",
 };
 
 export const { chartString } = chartStrings(EN, DE);

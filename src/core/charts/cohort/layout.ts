@@ -82,7 +82,6 @@ export function layoutCohort(
   const basis = options.basis ?? 'cohort';
   // `total` wins over `averages`: one row, two names.
   const averagesMode = options.total ?? options.averages ?? false;
-  const methodNote = options.methodNote === true;
 
   // Periods are ordinal time-since-acquisition and cohorts are chronological:
   // reordering either axis by value scrambles the staircase into a shape that
@@ -118,7 +117,6 @@ export function layoutCohort(
     derived: allPeriods,
     warnings: derivedWarnings,
     notMeaningful,
-    unsupportedAveragePeriods,
   } = deriveRetention(data, {
     basis,
     averages: averagesMode,
@@ -240,7 +238,7 @@ export function layoutCohort(
   const baseFootnotes = [
     ...authoredNotes(options),
     ...(derived.cohorts.some(row => visibleSpan(row).some((t) => missingCohortRate(row, t, basis))) ? [disclosureNote(chartString(options, 'hatchMissing'))] : []),
-    ...cohortNotes(basis, derived.averages, shownSupports, shownNotMeaningful(data, derived, visible, notMeaningful), unsupportedAveragePeriods.filter((t) => shown.has(t)), periodNames, methodNote && shown.has(0), methodNote, options),
+    ...cohortNotes(options, basis, shownNotMeaningful(data, derived, visible, notMeaningful)),
   ];
 
   // Each cell value the matrix prints names its rate claim (claimsForChart, case 'cohort'): a cohort's rate of a
@@ -253,7 +251,7 @@ export function layoutCohort(
     return t < (rowById.get(owner.seriesId)?.observedPeriods ?? 0) ? [claimId('cohort', owner.seriesId, `t${t}`)] : undefined;
   };
 
-  const build = (extra: string[]): ReturnType<typeof layoutHeatmap> => {
+  const build = (): ReturnType<typeof layoutHeatmap> => {
     // Only the author's own notes keep a number; the rest are derived.
     const inner = withAuthoredFootnotes<HeatmapLayoutOptions & { [HOST_CLAIMS]: HostClaims }>({
       ...stripAnswered(options),
@@ -288,42 +286,13 @@ export function layoutCohort(
       ...(reverseRows ? { sort: { segments: 'reverse' as const } } : {}),
       // A row name too long for the band is cut before its base, never the base.
       rowSuffix: Object.fromEntries(baseSuffix),
-    }, [...baseFootnotes, ...extra], options.footnotes);
+    }, baseFootnotes, options.footnotes);
     // The cells are derived rates: a heatmap refusal names a cohort option it was handed, or nothing.
     return hostedLayout(options, inner, () => sideKeyGivesWay(inner, layoutHeatmap(hostData, inner), (keyAbove) => layoutHeatmap(hostData, keyAbove)));
   };
 
-  // A cell too small for its own number keeps its colour and loses its value
-  // with nothing said. That silence is a defect, and a warning an
-  // agent reads is not a trace the READER of the exhibit can see — so the loss
-  // is stated in the ink, which costs a second layout pass.
-  // "Some cells" would be an understatement: at the DEFAULT 720x405 canvas
-  // with 16 cohorts and an average row, every single rate is lost. The note therefore carries the measured count — and the
-  // measurement has to survive the note that states it, because adding the line
-  // costs plot height and can lose more numbers. So the count is re-measured on
-  // the pass that prints it. Bounded at three passes, and the bound is exact:
-  // passes 2 and 3 differ only in the DIGITS of one footnote line, never in the
-  // number of lines, so their geometry — and therefore their count — is identical.
-  let host = build([]);
-  let lost = countSuppressed(host, derived, methodNote, shown);
-  if (lost.total > 0) {
-    host = build([disclosureNote(suppressionNote(lost, options))]);
-    const second = countSuppressed(host, derived, methodNote, shown);
-    if (second.total !== lost.total || second.drawn !== lost.drawn) {
-      host = build([disclosureNote(suppressionNote(second, options))]);
-      const third = countSuppressed(host, derived, methodNote, shown);
-      if (third.total !== second.total || third.drawn !== second.drawn) {
-        // Not reachable by the argument above; if it ever were, the exhibit
-        // says the true unquantified thing rather than print a wrong count.
-        host = build([disclosureNote(chartString(options, 'uncountedSuppressed'))]);
-        lost = countSuppressed(host, derived, methodNote, shown);
-      } else {
-        lost = third;
-      }
-    } else {
-      lost = second;
-    }
-  }
+  const host = build();
+  const lost = countSuppressed(host, derived, shown);
 
   // ---- rebuild the parts that would otherwise speak the host's language ----
   const rowIndex = new Map<Id, number>();
@@ -390,7 +359,7 @@ export function layoutCohort(
     warnings.push({
       code: 'cohort-values-suppressed',
       severity: 'warn',
-      message: `${lost.total} of ${lost.drawn} cells are too small to carry their percentage${where}; those cells read from colour alone, and the exhibit says so in a footnote`,
+      message: `${lost.total} of ${lost.drawn} cells are too small to carry their percentage${where}; those cells read from colour alone`,
       suggest: 'widen the canvas, show fewer periods, or read the exact rates from the derived output',
     });
   }
@@ -497,84 +466,13 @@ function periodLabels(periodLabel: string | undefined, count: number, options: C
   return Array.from({ length: count }, (_, t) => (initial === '' ? chartString(options, 'period', { period: String(t) }) : `${initial}${t}`));
 }
 
-/**
- * One claim per footnote. The method notes (the 'cohort' formula, the
- * anchor column) print only with `methodNote: true`. Everything a reader would
- * otherwise misread prints regardless: the 'previous' formula, which changes
- * what every rate means, hatched cells, the weighting of the average row, the
- * cohorts behind it and an average that has none.
- */
-function cohortNotes(
-  basis: 'cohort' | 'previous',
-  averages: CohortDerived['averages'],
-  shownSupports: { support: number; t: number }[],
-  notMeaningful: string[],
-  unsupported: number[],
-  periodNames: string[],
-  anchorNote: boolean,
-  methodNote: boolean,
-  options: CohortOptions,
-): string[] {
-  // Every footnote line costs plot height, and plot height is what puts numbers
-  // inside the cells: two facts per line, never one fact per line.
-  const notes = [
-    ...(methodNote || basis === 'previous' ? [chartString(options, 'formulaCount', { formula: cohortFormula(options, basis).replace(/[.!?]$/, '') })] : []),
-    // The anchor column's value is stated ONCE here rather than repeated in
-    // every cell. With the note off the anchor cells count like any other in
-    // the suppression note (countSuppressed).
-    ...(anchorNote
-      ? [disclosureNote(chartString(options, 'anchorNote', { period: periodNames[0] }))]
-      : []),
+function cohortNotes(options: CohortOptions, basis: CohortDerived['basis'], notMeaningful: string[]): string[] {
+  return [
+    ...(options.methodNote || basis === 'previous'
+      ? [chartString(options, 'formulaCount', { formula: cohortFormula(options, basis).replace(/[.!?]$/, '') })] : []),
+    ...(notMeaningful.length > 0 ? [disclosureNote(chartString(options, 'hatchNm', { periods: notMeaningful.join(', ') }))] : []),
   ];
-  if (notMeaningful.length > 0) {
-    notes.push(disclosureNote(chartString(options, 'hatchNm', { periods: notMeaningful.join(', ') })));
-  }
-  if (averages) {
-    // The printed formula has to be the formula that was COMPUTED. The
-    // denominator follows the basis — base for 'cohort', the previous period's
-    // active for 'previous' — and a note that says "total base" under
-    // basis 'previous' states arithmetic the exhibit did not do. It also has to
-    // say WHICH cohorts: the support set is the cohorts with a READABLE cell,
-    // not every cohort observed in the period (a hatched n.m. cell never votes).
-    notes.push(
-      basis === 'cohort'
-        ? chartString(options, 'averageBase')
-        : chartString(options, 'averagePrevious'),
-    );
-    // The support set is the whole health of the number above it, and it is the
-    // one thing a computed row cannot show by itself.
-    const first = shownSupports[0];
-    const last = shownSupports[shownSupports.length - 1];
-    if (first && last) notes.push(
-      first.support === last.support
-        ? chartString(options, 'everySupport', { count: String(first.support) })
-        : chartString(options, 'averageSupports', { first: String(first.support), firstPeriod: periodNames[first.t], last: String(last.support), lastPeriod: periodNames[last.t] }),
-    );
-    if (unsupported.length > 0) {
-      notes.push(
-        // The note says hatched, not blank: an unsupported average is painted
-        // like the unmeasurable cells it has none of, and the note has to
-        // name the mark the reader is looking at.
-        chartString(options, 'unsupportedAverage', { periods: unsupported.map((t) => periodNames[t]).join(', ') }),
-      );
-    }
-  }
-  return notes;
 }
-
-/**
- * The reader-facing trace for a number the layout could not print.
- * It carries the COUNT: "some" is what a chart says when every single rate has
- * been dropped, and a reader who cannot tell how much is missing cannot correct
- * for it. `all` is spelled out because "240 of 240" is a sentence a reader has
- * to do arithmetic on.
- */
-function suppressionNote(lost: SuppressionCount, options: CohortOptions): string {
-  return lost.total >= lost.drawn
-    ? chartString(options, 'allSuppressed', { count: String(lost.drawn) })
-    : chartString(options, 'someSuppressed', { count: String(lost.total), total: String(lost.drawn) });
-}
-
 
 /**
  * A cell whose rate cannot be measured, drawn the way a deck has always drawn
@@ -595,15 +493,11 @@ interface SuppressionCount {
 }
 
 /**
- * What the reader cannot see. Period 0 is excluded while the method note is on:
- * its value is 100% for every cohort by definition and the note says so in
- * words, so its cells carry no number to lose. With the note off nothing states
- * it, and the anchor column counts like any other.
+ * What the reader cannot see. The anchor column counts like any other.
  */
 function countSuppressed(
   host: Geometry<object, object>,
   derived: CohortDerived,
-  methodNote: boolean,
   shown: ReadonlySet<number>,
 ): SuppressionCount {
   const visible = new Set(host.labels.filter((label) => !label.hidden).map((label) => label.id));
@@ -611,7 +505,6 @@ function countSuppressed(
   const lostPer = new Map<number, number>();
   const count = (rowId: Id, t: number, value: number | null): void => {
     if (value === null || !shown.has(t)) return;
-    if (t === 0 && methodNote) return;
     drawnPer.set(t, (drawnPer.get(t) ?? 0) + 1);
     if (!visible.has(`point:${rowId}:t${t}`)) lostPer.set(t, (lostPer.get(t) ?? 0) + 1);
   };

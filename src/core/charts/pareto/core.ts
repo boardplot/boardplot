@@ -20,6 +20,6 @@ export const paretoCore: ChartCore<
     'Sorted columns plus a derived cumulative curve whose 100% is the grand total; the vital few reaching a stated threshold are highlighted, and a flat distribution says so instead of implying concentration',
   aliases: ['pareto-chart'],
   layout: layoutPareto,
-  defaults: { threshold: 80, cumulative: true, methodNote: false },
+  defaults: { threshold: 80, cumulative: true },
   annotationKinds: ['note', 'callout', 'cagr', 'diff', 'delta', 'text', 'line', 'arrow', 'box']
 };

@@ -2724,25 +2724,6 @@ fixtures.push({
   },
 });
 
-// a note line names its first items and counts the rest; notes.maxListed sets how many.
-const sliverSegments = fixtures.find((fixture) => fixture.id === 'sliver-segments')!;
-fixtures.push({
-  ...sliverSegments,
-  id: 'option-notes-max-listed',
-  title: 'The note line names its first 3 values and counts the rest (notes.maxListed)',
-  kind: 'example',
-  tags: ['feature:options'],
-  options: { ...sliverSegments.options, notes: { maxListed: 3 } },
-});
-fixtures.push({
-  ...sliverSegments,
-  id: 'option-notes-max-listed-all',
-  title: 'The note line names every value (notes.maxListed all)',
-  kind: 'torture',
-  tags: ['feature:options'],
-  options: { ...sliverSegments.options, notes: { maxListed: 'all' } },
-});
-
 // A band label over a rising tail: the plot gives up headroom above it.
 fixtures.push({
   id: 'band-label-headroom-rising-tail',

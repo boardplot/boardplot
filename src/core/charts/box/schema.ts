@@ -55,12 +55,6 @@ export const boxOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .enum(['none', 'small-n'])
     .optional()
     .describe("Default 'small-n': groups with fewer than 5 observations plot their values instead of a box.").meta({ default: 'small-n' }),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe(
-      "Default false. true adds the footnote stating the quartile definition and the Tukey whisker rule. A 'minmax' or 'p10p90' whisker rule changes what whiskers and dots mean, so its note prints regardless, as do the small-n dot note and the note on withheld observations.",
-    ).meta({ default: false }),
   boxValues: z
     .enum(['median', 'all'])
     .optional()

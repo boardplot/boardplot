@@ -107,7 +107,6 @@ One form; its chart ID is `choropleth`.
 | rowOrder | array |  |  | Order of the generated rows; rows left out follow in default order. Ids: each region id, through the aliases of the map pack. |
 | rowOverrides | object |  |  | Settings per generated row. Ids: each region id, through the aliases of the map pack. |
 | rowOverrides.*.label | string |  |  | Row name. |
-| methodNote | boolean |  |  | Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis`, `highlight`, `story`, `rounding`, `annotations`. This type ignores `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 

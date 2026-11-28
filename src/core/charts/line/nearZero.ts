@@ -1,6 +1,3 @@
-import { localeStrings } from '../../strings/line';
-import { stringFields } from '../../strings';
-import type { StringsSpec } from '../../types/options';
 /**
  * Line series whose last value is zero at the exhibit's precision.
  *
@@ -32,8 +29,7 @@ import type { EndLabelSeed } from './context';
 /**
  * More than three names in one end label is a sentence, not a label: at the
  * 18% gutter budget it forces the wrapped or legend rung for every other
- * series on the exhibit. Above this count the labels go and a footnote states
- * the fact instead.
+ * series on the exhibit. Above this count the labels go.
  */
 const SHARED_LABEL_MAX_SERIES = 3;
 
@@ -43,10 +39,8 @@ export interface NearZeroTail {
   seriesIds: Id[];
   /** The zero the group's last values round to at the exhibit's precision, e.g. `0.0`; every member prints the same value text. */
   value: string;
-  /** `shared`: one joint end label. `dropped`: no end label, footnote instead. */
+  /** `shared`: one joint end label. `dropped`: no end label. */
   mode: 'shared' | 'dropped';
-  /** Derived footnote text; present only when `mode` is `dropped`. */
-  footnote?: string;
 }
 
 /**
@@ -101,7 +95,6 @@ function sharedSeed(group: EndLabelSeed[], endContent: LabelContent): EndLabelSe
  * end label and counts once in `label-gutter-over-budget`.
  */
 export function planNearZeroTails(input: {
-  strings?: StringsSpec;
   seeds: EndLabelSeed[];
   endContent: LabelContent | null;
   /** True when the author pinned a placement for that label id. */
@@ -141,8 +134,6 @@ export function planNearZeroTails(input: {
         seriesIds,
         value: zeroText,
         mode: 'dropped',
-        // "near": each value is nonzero or zero below the precision, never printed as 0.
-        footnote: stringFields(input.strings?.nearZeroNote ?? localeStrings().nearZeroNote, { count: group.length, value: zeroText }),
       },
     };
   }
@@ -152,9 +143,4 @@ export function planNearZeroTails(input: {
     seeds: seeds.flatMap((seed) => (seed.id === firstId ? [shared] : members.has(seed.id) ? [] : [seed])),
     tail: { seriesIds, value: zeroText, mode: 'shared' },
   };
-}
-
-/** The footnote the engine owns when the group lost its labels. */
-export function nearZeroTailNote(tail: NearZeroTail | undefined): string[] {
-  return tail?.footnote ? [tail.footnote] : [];
 }

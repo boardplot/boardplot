@@ -177,8 +177,6 @@ export interface ScatterEnv {
 /** Phase 1 output for the 2x2: the cut points and what they did to the exhibit. */
 export interface QuadrantPlan {
   derived?: QuadrantDerived;
-  /** Engine-authored method notes; printed only with `methodNote: true`. */
-  notes: string[];
   /** Boxes with no plot area (a cut point off-domain) — captions are refused there. */
   voidBoxes: ReadonlySet<QuadrantBox>;
   drawX: boolean;
@@ -212,7 +210,6 @@ export interface ScatterDomain {
   evenGrid?: { x: boolean; y: boolean };
   /** The annotations left after the vertical view window. */
   annotations: Annotation[];
-  baselineNotes: string[];
   derivedNotes: string[];
   quadrants: QuadrantPlan;
   /** The trend fits options.trend asked for, over the drawn points. */

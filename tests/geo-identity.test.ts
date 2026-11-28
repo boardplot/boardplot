@@ -108,8 +108,8 @@ test('overlay pies and their key share one paint per label and reject tone confl
   expect(publicResult()).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: 'overlay-share-tone-conflict' })] });
 });
 
-// A longitude/latitude overlay the pack crop leaves outside the map frame was drawn off the canvas with no warning and no note.
-test('an overlay outside the map frame is warned about and listed in the note, not drawn off the canvas', () => {
+// A cropped overlay must stay in the reading and off the canvas.
+test('warns about an overlay outside the map frame and keeps its value in the reading', () => {
   const spec = {
     type: 'choropleth',
     data: {
@@ -121,7 +121,9 @@ test('an overlay outside the map frame is warned about and listed in the note, n
   const body = runVerb(() => render({ spec, return: ['svg', 'reading'] })).body as Record<string, any>;
   expect(body.ok).toBe(true);
   expect(body.warnings.map((warning: { code: string }) => warning.code)).toContain('overlay-coordinate-outside-frame');
-  expect(body.reading.omissions).toEqual([expect.objectContaining({ labelId: 'overlay:o', reason: 'note' })]);
+  expect(body.reading.omissions).toEqual([expect.objectContaining({
+    labelId: 'overlay:o', text: 'Funchal: 50%', destination: 'reading.omissions',
+  })]);
   expect(body.svg).not.toContain('overlay:glyph:o');
 });
 
@@ -136,7 +138,9 @@ test('an off-frame overlay is omitted with a second toned overlay, and a coast t
     { id: 'de', label: 'Berlin', at: { region: 'DE' }, glyph: { kind: 'harvey', value: 0.3, tone: 'bad' } },
   ]);
   expect(two.warnings.map((warning: { code: string }) => warning.code)).toContain('overlay-coordinate-outside-frame');
-  expect(two.reading.omissions).toEqual([expect.objectContaining({ labelId: 'overlay:mad', reason: 'note' })]);
+  expect(two.reading.omissions).toEqual([expect.objectContaining({
+    labelId: 'overlay:mad', text: 'Funchal: 50%, Good', destination: 'reading.omissions',
+  })]);
   expect(two.svg).not.toContain('overlay:glyph:mad');
   expect(two.svg).toContain('overlay:glyph:de');
   for (const [id, lon, lat] of [['sv', -8.997, 37.023], ['nu', 27.87, 70.08]] as const) {

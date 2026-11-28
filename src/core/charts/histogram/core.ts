@@ -15,7 +15,7 @@ export const histogramCore: ChartCore<
   sizing: chartSizing('histogram'),
   title: 'Histogram (distribution of one measure)',
   summary:
-    'Bins one sample of raw observations into contiguous equal-width bars and declares the binning rule, the width, and n on the exhibit',
+    'Groups raw observations into equal-width bins and displays their frequencies',
   aliases: ['distribution', 'frequency'],
   layout: layoutHistogram,
   defaults: {},

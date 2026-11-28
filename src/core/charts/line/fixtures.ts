@@ -1351,8 +1351,6 @@ export const fixtures: LineFixture[] = [
     },
     options: {
       variant: 'bump',
-      // The one fixture that shows the bump ranking note.
-      methodNote: true,
       title: 'Road freight passed rail on volume in 2023',
       subtitle: { measure: 'Rank by tonne-kilometres', period: '2019–2024' },
       legend: 'none',

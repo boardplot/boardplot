@@ -638,15 +638,10 @@ export function layoutVariance(
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   margin.right = Math.max(margin.right, (options as { [VALUE_LINE_RESERVE]?: number })[VALUE_LINE_RESERVE] ?? 0);
-  // An n.m. category prints its absolute change beside the
-  // marker, in the measure's own unit, which a percent chart names nowhere
-  // else. One note says what n.m. means and names that unit once.
-  const nmShown = mode === 'relative' && nmCats.size > 0 && options.footnotes !== false;
-  const nmNote = disclosureNote(chartString(options, 'varianceNmNote', { v1: refWord, v2: options.unit ? chartString(options, 'inUnitClause2', { v1: options.unit }) : '' }));
   const partialNotes = partialFootnotes(partialCats, options.strings, running, partialNamed);
   const topNNotes = warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message));
-  const frameOptions = partialNotes.length || nmShown || topNNotes.length
-    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...topNNotes, ...(nmShown ? [nmNote] : [])], options.footnotes)
+  const frameOptions = partialNotes.length || topNNotes.length
+    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...topNNotes], options.footnotes)
     : options;
   const frameResult = solveFrame(
     {

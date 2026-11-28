@@ -33,21 +33,16 @@ const layout = (opts: object) => getChart('scatter')!.layout(fixture.data as nev
 const reactLayout = (opts: object) => layout({ ...opts, [STORY_NAVIGATION]: true });
 
 describe('story layout', () => {
-  // Story text cut at a line limit must stay in the returned notes and omissions, including inactive steps.
-  it('retains the full text of cut story steps in notes and omissions', () => {
+  // A cut story title stays in the reading even on an inactive step.
+  it('retains the full text of cut story steps in the reading', () => {
     const story = structuredClone(options.story);
     const title = 'An invented long story title '.repeat(16).trim();
     story.steps[1]!.title = title;
-    const result = render({ spec: { type: 'scatter', data: fixture.data, options: { ...options, story } }, return: ['reading'] }).body as {
-      reading: ChartReading; notes: { text: string }[];
-    };
+    const result = render({ spec: { type: 'scatter', data: fixture.data, options: { ...options, story } }, return: ['reading'] }).body as { reading: ChartReading };
     expect(result.reading.labelsTruncated).toContainEqual(expect.objectContaining({ text: title }));
     expect(result.reading.omissions).toContainEqual(expect.objectContaining({ text: title, reason: 'truncated' }));
-    expect(result.notes.some(note => note.text.includes(title))).toBe(true);
     const shown = render({ spec: { type: 'scatter', data: fixture.data,
-      options: { ...options, story, notes: { show: ['disclosure'], maxListed: 'all' } } }, return: ['reading'] }).body as {
-        reading: ChartReading; notes: { text: string; inFrame: boolean }[];
-      };
+      options: { ...options, story, notes: { show: ['disclosure'], maxListed: 'all' } } }, return: ['reading'] }).body as { reading: ChartReading };
     expect(shown.reading.size).toEqual(result.reading.size);
     expect(shown.reading.labelsTruncated.map(label => label.labelId)).toEqual(result.reading.labelsTruncated.map(label => label.labelId));
   });

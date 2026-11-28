@@ -244,18 +244,6 @@ it('mekko of shares prints no column total and warns that its widths need amount
   expect(body.svg).not.toMatch(/id="label:total:/);
 });
 
-// The line n.m. note said rows past 100% "mix positive and negative values"; their parts are all positive.
-it('line stacked100-area names only signed categories in its mixed-signs note', () => {
-  const body = render({ format: 'svg', return: ['svg'], spec: { type: 'line', data: {
-    valueKind: 'fraction',
-    categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'east', label: 'East' }, { id: 'west', label: 'West' }],
-    series: [{ id: 'web', label: 'Web', values: [0.6, 0.25, -0.1, 0.4] }, { id: 'store', label: 'Store', values: [0.6, 0.5, 0.6, 0.7] }, { id: 'app', label: 'App', values: [0.1, 0.25, 0.5, 0.3] }],
-  }, options: { variant: 'stacked100-area', title: 'T' } } }).body as { ok: boolean; notes?: { text: string }[] };
-  expect(body.ok).toBe(true);
-  const mixed = (body.notes ?? []).filter((note) => /positive and negative/.test(note.text));
-  expect(mixed.map((note) => note.text)).toEqual([expect.stringMatching(/^East\b/)]);
-});
-
 // A 100% axis drew a difference arrow and a total growth bracket over equal columns, and read a data-unit value line as a percent.
 it('stacked100 drops diff, total cagr and a value line at the axis end, and warns about one inside (column, bar)', () => {
   const data = {

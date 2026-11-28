@@ -668,7 +668,6 @@ it('prints n.m. for a change between a full total and a partial one, and keeps a
   expect(parent.both!.displayed).toContain('(partial)');
   // A literal covers no rows: a partial total over 1000 stays a value.
   expect(parent.scaled!.displayed).toContain('(partial)');
-  expect(resolved.table.footnotes).toContain('n.m.: not meaningful, the compared totals cover different rows.');
 });
 
 // A row calc compared a full row total with a partial one and printed a change between two different sets of rows.
@@ -1076,7 +1075,7 @@ it('fits a status group into a narrow track and names cut labels in the notes li
     for (const chip of chips) expect(chip.rect.x >= track.x && chip.rect.x + chip.rect.w <= track.x + track.w, `${width}`).toBe(true);
     // The narrower track cuts its heading too; retain that name without repeating the status note.
     expect(geometry.frame.noteList?.filter(entry => entry.kind === 'disclosure').map(entry => entry.text))
-      .toEqual(width === 20 ? [note, 'Full text of shortened labels: S.'] : [note]);
+      .toEqual([note]);
   }
   // Under the cut floor a short label that fits the track without the cell padding still prints whole.
   const short = layout('table', {
@@ -1092,7 +1091,7 @@ it('fits a status group into a narrow track and names cut labels in the notes li
     rows: [0, 1, 2, 3, 4].map((i) => ({ id: `r${i}`, label: `R${i}`, cells: { v: i, s: 'at-risk' } })),
   }, { size: { width: 480, height: 240 } });
   expect(many.frame.noteList?.filter(entry => entry.kind === 'disclosure').map(entry => entry.text))
-    .toEqual(['s: R0, R1, R2, R3, R4 = Learning limited', 'Full text of shortened labels: S.']);
+    .toEqual(['s: R0, R1, R2, R3, R4 = Learning limited']);
   // A label that fits whole but starts with "…" is not a tail-only cut and prints.
   const lead = layout('table', {
     columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value' }, { id: 's', kind: 'status', width: 100, labels: { pending: '…held' } }],
@@ -1847,9 +1846,6 @@ it('prints bar table part values inside the segments that hold them, and only th
   expect(on).not.toContain('abs:b:y=1');
   expect(on.some((id) => id.startsWith('pct:'))).toBe(false);
   expect(parts({ total: false, segmentValues: false })).toEqual([]);
-  // 113 + 67 + 40 prints 220 beside 221: the notes list says rounded parts can miss the total.
-  const notes = (layout('bartable', data, { total: false }).frame?.noteList ?? []).map((n) => n.text).join(' | ');
-  expect(notes).toContain('parts of a row can miss its printed total');
 });
 
 // A pinned canvas taller than the chart left a 360 px empty band above the source line; the source follows the content, and the theme patch brings the old place back.

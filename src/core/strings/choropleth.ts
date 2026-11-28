@@ -6,7 +6,6 @@ export const EN = {
   "regionIdSuggestion": "Did you mean '{v1}'?",
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
-  "mapLabelPolicy": "Labels: top {v1} by value; full region list in data",
   "regionCountPrefix": "{v1}-region",
   "listedRegions": "{v1} listed regions",
   "regionsCount": "{v1} regions",
@@ -42,7 +41,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "regionIdSuggestion": "War '{v1}' gemeint?",
   // reader-facing wording linked only by its consumers.
   "notInData": "Nicht in den Daten",
-  "mapLabelPolicy": "Beschriftungen: oberste {v1} nach Wert; vollständige Liste in den Daten",
   "regionCountPrefix": "{v1} {v1|Region|Regionen}",
   "listedRegions": "{v1} {v1|aufgeführte Region|aufgeführte Regionen}",
   "regionsCount": "{v1} {v1|Region|Regionen}",

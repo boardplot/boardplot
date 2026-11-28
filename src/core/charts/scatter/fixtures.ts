@@ -397,8 +397,6 @@ fixtures.push(
       // The header and footer grow the furniture band past the 0.60 plot
       // floor at the standard height; the a4 ratio (1.41) restores it.
       size: { width: 778, height: 552 },
-      // The one fixture that shows the quadrant and axis method notes.
-      methodNote: true,
       title: 'Two stars and one question mark; the cash cow leads on revenue',
       subtitle: {
         company: 'Brevinth Holdings',
@@ -430,7 +428,6 @@ fixtures.push(
         tint: 'alternating',
         captionPlacement: 'corner',
         // short axis names give the one-line method note.
-        axisNames: { x: 'share', y: 'growth' },
       },
     },
   },

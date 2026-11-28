@@ -93,7 +93,7 @@ it('discloses the running cohort and last observations removed by exclusion', ()
   const footer = shown.scene.filter(n => n.t === 'text' && shown.frame.footnoteNodeIds?.includes(n.id)).map(n => n.t === 'text' ? n.lines.join(' ') : '').join(' ');
   expect(footer).toContain(note!.text);
   const kept = layout(data, { ...options, excludeCurrentPeriod: false });
-  expect(kept.frame.noteList?.some(n => n.text.startsWith('Excluded: running period.'))).toBe(false);
+  expect(kept.frame.noteList?.some(n => n.text.startsWith('Excluded: running period.')) ?? false).toBe(false);
 });
 
 // A non-German exclusion note must stay visible once when its identical authored copy belongs to a list.
@@ -159,9 +159,9 @@ it('draws the exhibit forms on a phone card and names the periods left out', () 
     expect(shown.labels.filter(label => label.id.startsWith('cohort-') && label.hidden), id).toEqual([]);
     expect(shown.frame.noteList?.map(note => note.text).filter(text => /not shown/i.test(text)), id).toEqual(hidden);
   };
-  at280('retention-stepped-content', [1, 2, 3], ['M0 not shown: 100% of every cohort by definition.']);
+  at280('retention-stepped-content', [1, 2, 3], []);
   // Default number rule: the bases print "2.59M", not "2,592,600", so M3 fits; before [1, 2] and "Not shown for space: M3–M7.".
-  at280('crowded-average-bases', [1, 2, 3], ['M0 not shown: 100% of every cohort by definition.', 'Not shown for space: M4–M7.']);
+  at280('crowded-average-bases', [1, 2, 3], ['Not shown for space: M4–M7.']);
 });
 
 describe('cohort — shapes that make a triangle misleading are refused', () => {
@@ -411,16 +411,6 @@ describe('cohort — a cell the reader cannot see never votes in the average und
     expect(codes(geometry)).toContain('cohort-average-unsupported');
   });
 
-  it('states the empty periods to the reader, not only in the warning stream', () => {
-    const notes = readerText(layout(recovering, { basis: 'previous', averages: 'weighted' }));
-    // The word has to name the mark: the unsupported average is painted with
-    // the same hatch as an unmeasurable cell, so 'blank' described ink that is
-    // not there.
-    expect(notes).toContain('hatched there, not 0%');
-    expect(notes).toContain('M3');
-    expect(notes).not.toContain('blank there');
-  });
-
   it('keeps every contributing cohort on the support set it does have', () => {
     const averages = layout(recovering, { basis: 'previous', averages: 'weighted' }).derived
       .averages!;
@@ -455,10 +445,6 @@ describe('cohort — the computed row is not a cohort, and says how thin it is',
     expect(paintOf('big', 1)).toEqual({ token: 'series-1', theme: { kind: 'series', index: 0 }, tint: expect.any(Number) }); // the ramp is tints of series 1
   });
 
-  it('names the per-period support to the reader', () => {
-    const notes = readerText(layout(thinning, { averages: 'weighted' }));
-    expect(notes).toContain('Cohorts behind each average: 3 at M0, 1 at M2.');
-  });
 });
 
 describe('cohort — the ink says which blank is which, and where the ramp is anchored', () => {
@@ -519,16 +505,9 @@ describe('cohort — the ink says which blank is which, and where the ramp is an
     const cell = paintOf(geometry, 'cell:a:t1') as { token: string; tint: number };
     expect(cell.token).toBe('series-1');
     expect(anchor.tint).toBeGreaterThan(cell.tint);
-    // the anchor column is explained on request.
-    const notes = layout(clean(), { methodNote: true, notes: { show: ['note', 'disclosure', 'method'] } }).scene
-      .filter((n) => n.t === 'text')
-      .flatMap((n) => (n.t === 'text' ? n.lines : []))
-      .join(' ');
-    expect(notes).toContain('M0 is 100% by definition');
-    expect(notes).toContain('grey anchor column');
   });
 
-  it('tells the reader on the exhibit when a number was too small to print', () => {
+  it('warns when cell rates are too small to print', () => {
     const wide: CohortData = {
       periodLabel: 'Week',
       cohorts: Array.from({ length: 20 }, (_, i) => ({
@@ -538,12 +517,7 @@ describe('cohort — the ink says which blank is which, and where the ramp is an
       })),
     };
     const cramped = layout(wide, { notes: { show: ['note', 'disclosure', 'method'] }, size: { width: 420, height: 300 } });
-    const notes = cramped.scene
-      .filter((n) => n.t === 'text')
-      .flatMap((n) => (n.t === 'text' ? n.lines : []))
-      .join(' ');
     expect(codes(cramped)).toContain('cohort-values-suppressed');
-    expect(notes).toContain('read from colour alone');
     const roomy = layout(wide, { notes: { show: ['note', 'disclosure', 'method'] }, size: { width: 1400, height: 800 } });
     expect(codes(roomy)).not.toContain('cohort-values-suppressed');
     expect(
@@ -554,7 +528,7 @@ describe('cohort — the ink says which blank is which, and where the ramp is an
     ).not.toContain('read from colour alone');
   });
 
-  it('counts the loss in the ink instead of calling every rate "some"', () => {
+  it('counts suppressed rates in the warning', () => {
     // A 720x405 canvas pinned by the author (an unsized cohort now grows to
     // its rows), 16 cohorts and the computed row: every rate
     // on the exhibit is lost, and the note must count them, not say "some cells".
@@ -568,17 +542,11 @@ describe('cohort — the ink says which blank is which, and where the ramp is an
     };
     const geometry = layout(many, { averages: 'weighted', title: 'Retention holds', notes: { show: ['note', 'disclosure', 'method'] }, size: { width: 720, height: 405 } });
     expect(geometry.size).toEqual({ width: 720, height: 405 });
-    const notes = geometry.scene
-      .filter((n) => n.t === 'text')
-      .flatMap((n) => (n.t === 'text' ? n.lines : []))
-      .join(' ');
     const warning = geometry.warnings.find((w) => w.code === 'cohort-values-suppressed')!;
     const measured = /^(\d+) of (\d+) cells/.exec(warning.message)!;
     // Every rate is gone, the note says so, and the count it prints is the
     // count the layout that printed it measured — not a stale pass-1 number.
     expect(measured[1]).toBe(measured[2]);
-    expect(notes).toContain(`all ${measured[2]} rates read from colour alone`);
-    expect(notes).not.toContain('Some cells are too narrow');
 
     // The partial case names both halves, and the printed numerator is the
     // measured one, so the reader can tell how much of the grid is colour only.
@@ -708,24 +676,9 @@ describe('cohort — exhibit contract', () => {
     expect(note({})).not.toContain('Retention = active');
     expect(note({ methodNote: true })).toContain('Retention = active / cohort base (period 0)');
     expect(note({ basis: 'previous' })).toContain("previous period's active");
-    expect(note({ averages: 'weighted' })).toContain('never the mean of the percentages');
   });
 
-  // A previous-period total used active counts but its pure-exhibit note claimed cohort-size weights.
-  it('prints the weighted-average formula the basis actually computed', () => {
-    const note = (options: CohortOptions) => readerText(layout(clean(), options), ' | ');
-    const onBase = note({ averages: 'weighted' });
-    expect(onBase).toContain('Weighted average = total active / total base');
-    // Under basis 'previous' the denominator is the previous period's active,
-    // and the exhibit stated the BASE formula: a printed formula that is not the
-    // arithmetic performed misstates the number above it.
-    const onPrevious = note({ basis: 'previous', averages: 'weighted' });
-    expect(onPrevious).toContain(
-      'Weighted average = total active / total previous-period active',
-    );
-    expect(onPrevious).not.toContain('total active / total base');
-    expect(note({ basis: 'previous', variant: 'pure' })).toContain('Total is weighted by previous active count');
-    // And the printed formula reproduces the printed number.
+  it('weights previous-period averages by the previous active count', () => {
     const geometry = layout(clean(), { basis: 'previous', averages: 'weighted' });
     const rows = geometry.derived.cohorts.filter((r) => r.observedPeriods > 2);
     const numerator = rows.reduce((sum, r) => sum + r.active[2]!, 0);

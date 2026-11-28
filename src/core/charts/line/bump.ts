@@ -1,5 +1,4 @@
 import { chartString, localeStrings } from '../../strings/line';
-import { stringFields } from '../../strings';
 import type { StringsSpec } from '../../types/options';
 import type { Theme } from '../../types/theme';
 import { strokeToken } from '../../theme';
@@ -186,16 +185,6 @@ export function deriveBumpRanks(input: {
     for (let ci = 0; ci < cats.length; ci++) row[ci] = seriesRanks[ci]!;
   }
   return { direction, method: 'competition', maxRank, ranks, ties, participants, comparedAt: format ?? 'auto' };
-}
-
-export function bumpMethodNote(bump: BumpDerived | undefined, format: LineOptions['format'], strings?: StringsSpec): string[] {
-  if (!bump) return [];
-  const words = { ...localeStrings(), ...strings };
-  return [stringFields(words.rankMethod, {
-    direction: bump.direction === 'higherIsBetter' ? words.higherBetter : words.lowerBetter,
-    format: format ? stringFields(words.rankFormat, { format }) : '',
-    ring: bump.ties.length > 0 ? words.rankRing : '',
-  })];
 }
 
 export function buildBumpStartLabels(input: {

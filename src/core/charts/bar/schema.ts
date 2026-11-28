@@ -120,12 +120,7 @@ export const barOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     ])
     .optional()
     .describe('Football-field vertical current-value marker; number shorthand uses an automatic label.'),
-  methodNote: z
-    .boolean()
-    .optional()
-    .describe(
-      'Default false. true adds the method footnotes: the mid-point tick of a football-field range, drawn only with its note, and the one-at-a-time contract of a tornado. Hatched tornado bars and drivers that could not be drawn are required for interpretation and print regardless.',
-    ),
+  methodNote: z.boolean().optional().describe('Draw the supplied midpoint tick inside each football-field range. Default false.'),
   grandTotalLabels: z.boolean().optional().describe("Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack."),
   referenceStyle: z.enum(['tick', 'line', 'marker']).optional().describe("Reference-series mark style; defaults to tick. Line references use a 1.25px stroke."),
   referenceTick: z

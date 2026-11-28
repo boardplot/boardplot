@@ -3,9 +3,9 @@ import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
-import { requireGeometry, SIZE_TOLERANCE } from '../src/core/sizing';
+import { requireGeometry } from '../src/core/sizing';
 import { INTERACTIVE_LAYOUT } from '../src/core/footer';
-import { hiddenNoteLine, noteLine, withHiddenLabelNote } from '../src/core/frame';
+import { noteLine } from '../src/core/frame';
 import { noteTexts } from './helpers/notes';
 import { render } from '../src/cli/render';
 import { fixtures } from '../src/cli/fixtures';
@@ -15,7 +15,6 @@ import { segmentHitsRect } from '../src/core/geometry';
 import type { ChartReading } from '../src/core/reading';
 import type { LintWarning } from '../src/core/types/scene';
 
-// The "Not labelled on the chart" note rules (invented data).
 const days = Array.from({ length: 14 }, (_, i) => ({ id: `d${i}`, label: `09/${String(i + 1).padStart(2, '0')}` }));
 const twoLines = (annotations: unknown[]) => resolveChartRequest({
   type: 'line', target: 'slide',
@@ -28,20 +27,8 @@ const twoLines = (annotations: unknown[]) => resolveChartRequest({
 } as never);
 
 describe('note rules', () => {
-  // Counted values must not claim to be printed in a note or expose scene ids as their location.
-  it('distinguishes a counted value from a value listed in a printed note', () => {
-    const data = { categories: days, series: [{ id: 's', label: 'Sample series', values: days.map((_, i) => 100 + i) }] };
-    const request = resolveChartRequest({ type: 'line', data,
-      options: { valueLabels: 'all', size: { width: 320, height: 300 }, notes: { maxListed: 0 } } } as never);
-    const geo = requireGeometry(layoutResolvedRequest(request));
-    expect(geo.labels.some(label => label.noteCounted)).toBe(true);
-    expect(geo.labels.filter(label => label.noteCounted).every(label => label.noteLocation === 'Not shown on the chart; counted in the notes list')).toBe(true);
-    expect(geo.warnings.find(warning => warning.code === 'values-in-note')?.message).toContain('Notes can list or count these values');
-    expect(geo.warnings.find(warning => warning.code === 'values-in-note')?.message).not.toContain('are in the note');
-  });
-
   // A narrow sparkline can cut a value outside the solver; every surface must retain its full text.
-  it('keeps cut scene text in omissions and notes, and measures an enabled disclosure', () => {
+  it('keeps cut scene text in the reading', () => {
     const data = { columns: [
       { id: 'label', kind: 'rowLabel', label: 'Item' },
       { id: 'a', kind: 'value', label: 'First', format: '1.1' },
@@ -54,22 +41,11 @@ describe('note rules', () => {
       });
     const hidden = draw();
     expect(hidden.ok).toBe(true);
-    expect(hidden.reading.omissions).toContainEqual(expect.objectContaining({ labelId: 'sparkLast:sample:trend', text: '112.0', reason: 'truncated' }));
-    expect(hidden.notes.find(note => note.text.includes('Sample row — Trend: 112.0'))?.inFrame).toBe(false);
     expect(hidden.warnings.filter(warning => warning.code === 'label-truncated')).toHaveLength(1);
-    // A repeated number in an unrelated author note does not identify the cut value.
-    const repeated = draw({}, { footnotes: ['112.0 observations'] });
-    expect(repeated.notes.some(note => note.text.includes('Sample row — Trend: 112.0'))).toBe(true);
-    const shown = draw({ show: ['disclosure'], maxListed: 'all' });
-    expect(shown.notes.find(note => note.text.includes('Sample row — Trend: 112.0'))?.inFrame).toBe(true);
-    expect(shown.svg).toContain('Sample row — Trend: 112.0');
-    const counted = draw({ show: ['disclosure'], maxListed: 0 });
-    expect(counted.notes.find(note => note.text.includes('112.0'))?.short).not.toContain('112.0');
-    expect(counted.notes.find(note => note.text.includes('112.0'))?.text).toContain('112.0');
+    expect(hidden.reading.omissions).toContainEqual(expect.objectContaining({ labelId: 'sparkLast:sample:trend', text: '112.0', reason: 'truncated' }));
     const pinned = draw({}, { size: { width: 640, height: 260 }, footnotes: false });
     expect(pinned.reading.size.height).toBe(260);
-    expect(pinned.notes.find(note => note.text.includes('112.0'))?.inFrame).toBe(false);
-    // A panel's disclosure must not raise the height its slot needs and refuse the pinned grid around it.
+    // The pinned grid still fits the table with disclosure notes enabled.
     const enabled = { show: ['disclosure'], maxListed: 'all' };
     const grid = render({ spec: { type: 'grid', data: { panels: [{ id: 'panel', type: 'table', data, options: { notes: enabled } }] },
       options: { sharedScale: false, size: { width: 800, height: 121 }, notes: enabled } } }).body as { ok: boolean; errors?: unknown[] };
@@ -77,20 +53,11 @@ describe('note rules', () => {
     expect(grid.ok).toBe(true);
   });
 
-  // An axis under a month row reads '4', so a note that took the axis label would name a day without its month.
-  it('names a day by its date in the rendered note where the axis prints only the day number', () => {
-    const spec = (fixtures({ type: 'combo', id: 'daily-columns-rate-reference', kind: 'all' }, Infinity).body as { fixtures: { spec: object }[] }).fixtures[0]!.spec;
-    const notes = (render({ spec, return: ['svg'] }).body as { notes: { text: string }[] }).notes.map((note) => note.text).join(' ');
-    expect(notes).toContain('Daily count 1,069 (4 Sep)');
-    expect(notes).not.toMatch(/\(\d+\)/);
-  });
-
   // No other test checks the note cap.
   it('names the first 8 items, a lone ninth too, then "and N more"; maxListed 0 only counts', () => {
     const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     expect(noteLine('Lead', [...items, 'i'], {})).toEqual(['Lead: a, b, c, d, e, f, g, h, i.']);
-    expect(noteLine('Lead', [...items, 'i', 'j'], {}, 20)).toEqual(['Lead: a, b, c, d, e, f, g, h, and 2 more.']);
-    expect(noteLine('Lead', [...items, 'i'], { notes: { maxListed: 0 } }, 20)).toEqual(['Lead: 9 of 20 values.']);
+    expect(noteLine('Lead', [...items, 'i', 'j'], {})).toEqual(['Lead: a, b, c, d, e, f, g, h, and 2 more.']);
     expect(noteLine('Lead', ['a', 'b'], { notes: { maxListed: 0 } })).toEqual(['Lead: 2 items.']);
   });
 
@@ -102,18 +69,12 @@ describe('note rules', () => {
     expect(geo.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−2.8');
   });
 
-  it('a callout that prints ${value} is the label of its point: the note does not name the point', () => {
+  it('a callout that prints ${value} is the label of its point', () => {
     const geo = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start ${value}' }])));
     expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('Start 1,020');
     const point = geo.labels.find((label) => label.id === 'point:b:d0')!;
-    // Hidden at its point, printed in the callout, not in the note.
     expect(point.hidden).toBeDefined();
-    expect(point.noted).toBeUndefined();
     expect(point.printedIn).toBe('annotation:c1');
-    expect(noteTexts(geo).join(' ')).not.toContain('1,020');
-    // A callout without ${value} names nothing: the note keeps the point.
-    const plain = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start' }])));
-    if (plain.labels.find((label) => label.id === 'point:b:d0')?.hidden) expect(noteTexts(plain).join(' ')).toContain('Series B 1,020 (09/01)');
   });
 
   // A sentence-long callout at 720 px found no one-line seat and was left off the chart: it must wrap and draw.
@@ -218,22 +179,11 @@ describe('note rules', () => {
     expect(svg.indexOf('data-id="leader:annotation:abs-1"')).toBeLessThan(svg.indexOf('data-id="label:target-label:target:south:d2:0"'));
   });
 
-  // Reason: on a 320 px card the default note names only what fits two footer lines.
-  it('a default note takes at most two footer lines at 320 px', () => {
-    const fixture = getFixtures('column').find((entry) => entry.id === 'dense-ninety-value-subset')!;
-    const geo = requireGeometry(getChart('column')!.layout(fixture.data, { ...fixture.options, target: 'report', notes: { show: ['note', 'disclosure'] }, size: { width: 320 } } as never));
-    const ids = new Set(geo.frame.footnoteNodeIds ?? []);
-    const note = geo.scene.find((node) => node.t === 'text' && ids.has(node.id) && node.lines.join(' ').startsWith('Not labelled'));
-    expect(note && note.t === 'text' ? note.lines.length : 0).toBe(2);
-    expect(note && note.t === 'text' ? note.lines.join(' ') : '').toMatch(/, and \d+ more\.$/);
-  });
-
   // Reason: engine notes under the chart (a six-line rank key) squeezed a 34-column combo to a 71 px plot.
   it('prints no engine note by default; a numbered day row thins instead of taking ranks and the plot keeps its floor', () => {
     const fixture = getFixtures('combo').find((entry) => entry.id === 'band-label-headroom-rising-tail')!;
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'combo', data: fixture.data, options: fixture.options, annotations: fixture.annotations } as never)));
     expect(geo.frame.footnoteNodeIds ?? []).toEqual([]);
-    expect(geo.frame.noteList?.some((note) => note.kind === 'disclosure' && !note.inFrame)).toBe(true);
     expect(geo.warnings.map((warning) => warning.code)).not.toContain('labels-as-ranks');
     const names = geo.labels.filter((label) => label.kind === 'category' && !label.hidden).map((label) => label.text);
     expect(names).toEqual(expect.arrayContaining(['D0', 'D2', 'D4']));
@@ -242,19 +192,11 @@ describe('note rules', () => {
   });
 
   // Reason: disclosures asked for only by methodNote printed outside the line budget in a live chart and pushed the author's notes behind the pointer.
-  it('counts a disclosure asked for by methodNote against the live line budget, after the author notes', () => {
-    const fixture = getFixtures('cohort').find((entry) => entry.id === 'cumulative-conversion-pure')!;
-    const geo = requireGeometry(getChart('cohort')!.layout(fixture.data, { ...fixture.options, footnotes: ['First invented note.', 'Second invented note.'], [INTERACTIVE_LAYOUT]: true } as never));
+  it('counts the cohort formula asked for by methodNote against the live line budget, after the author notes', () => {
+    const fixture = getFixtures('cohort').find((entry) => entry.id === 'logo-retention-method-note')!;
+    const geo = requireGeometry(getChart('cohort')!.layout(fixture.data, { ...fixture.options, source: undefined, notes: { maxLines: 2, pointer: false }, footnotes: ['First invented note.', 'Second invented note.'], [INTERACTIVE_LAYOUT]: true } as never));
     expect(geo.frame.noteList!.filter((note) => note.inFrame).map((note) => note.text)).toEqual(['First invented note.', 'Second invented note.']);
-    expect(geo.frame.noteList!.some((note) => note.kind === 'disclosure')).toBe(true);
-    // Reason: a composing chart stopped handing the asked-for kinds to its host, so a pareto lost its rank numbers and their key.
-    const items = ['A', 'B', 'C'].map((name, i) => ({ id: name, label: `${'W'.repeat(120)} ${name}`, value: [60, 30, 10][i]! }));
-    const options = { size: { width: 720, height: 800 }, cumulative: false, threshold: false, methodNote: true, footnotes: ['One.', 'Two.', 'Three.'] };
-    const svg = String((render({ spec: { type: 'pareto', data: { items }, options }, return: ['svg'] }).body as { svg: string }).svg);
-    expect(svg).toContain('Columns by rank (1-3)');
-    // A drawn rank number does not read without its key, so the live frame keeps the key outside the budget.
-    const live = requireGeometry(getChart('pareto')!.layout({ items }, { ...options, [INTERACTIVE_LAYOUT]: true } as never));
-    expect(live.frame.noteList!.filter((note) => note.inFrame && note.kind === 'disclosure').map((note) => note.text)).toEqual([expect.stringMatching(/^Columns by rank \(1-3\)/)]);
+    expect(geo.frame.noteList!.some((note) => note.kind === 'method')).toBe(true);
   });
 
   it('a row of plain names keeps one name per column: it turns instead of thinning', () => {
@@ -270,17 +212,6 @@ describe('note rules', () => {
     const categories = Array.from({ length: 34 }, (_, i) => ({ id: `c${i}`, label: `Region number ${i}` }));
     requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories, series: [{ id: 's', label: 'Sales', values: categories.map((_, i) => 10 + i) }] }, options: { size: { width: 760, height: 340 } } } as never)));
     expect(cachedCategoryRowPlans()).toBe(0);
-  });
-
-  it('notes the author opts into refuse with size advice before they take the plot under its floor', () => {
-    const fixture = getFixtures('combo').find((entry) => entry.id === 'band-label-headroom-rising-tail')!;
-    const at = (height: number) => layoutResolvedRequest(resolveChartRequest({ type: 'combo', data: fixture.data, annotations: fixture.annotations,
-      options: { ...fixture.options, size: { width: 760, height }, notes: { show: ['note', 'disclosure'] } } } as never));
-    const refused = at(300);
-    expect(refused.refused).toBe(true);
-    const fix = (refused.warnings[0]!.expected as { minimum: { height: number } }).minimum.height;
-    // The named size draws compact (the `belowMinimum: 'compact'` contract), held to the floor as the engine holds it.
-    expect(requireGeometry(at(fix)).plot.h + SIZE_TOLERANCE).toBeGreaterThanOrEqual(160);
   });
 
   it('a metric-stack state marker prints with its engine-worded note where only disclosures are shown', () => {
@@ -404,49 +335,13 @@ describe('note rules', () => {
     }
   });
 
-  it.each([
-    // Three sources of the warning: noted labels (combo), a heatmap value note, a pie value note
-    // (at 480 px every pie label now finds a seat, so its case runs at 320 px; the heatmap case runs at 400 px).
-    ['combo', 'dense-12-months', 480], ['heatmap', 'dense-20x12', 400], ['pie', 'ten-tiny-slices', 320],
-  ] as const)('%s %s at %i px names its noted values in one values-in-note warning', (type, id, width) => {
-    const fixture = getFixtures(type).find((entry) => entry.id === id)!;
-    const geo = requireGeometry(getChart(type)!.layout(fixture.data, { ...fixture.options, annotations: fixture.annotations, target: 'report', size: { width } } as never));
-    const warnings = geo.warnings.filter((warning) => warning.code === 'values-in-note');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]!.severity).toBe('info');
-    const values = (warnings[0]!.detail as { values: string[] }).values;
-    expect(values.length).toBeGreaterThan(0);
-    for (const label of geo.labels.filter((entry) => entry.noted && entry.hidden !== undefined && entry.noteLocation === undefined)) {
-      expect(values, label.id).toContain(label.noteText ?? `${label.id} (${label.text})`);
-    }
-  });
-});
-
-// Prevents the note index from dropping another series' value or an annotation with the same digits.
-it('note coverage keeps its original owner and kind rules', () => {
-  const point = requireGeometry(layoutResolvedRequest(twoLines([]))).labels.find(label => label.kind === 'point')!;
-  for (const entry of [
-    { owner: { seriesId: 'a', categoryId: 'x' }, kind: 'series' as const, copies: 1 },
-    { owner: { seriesId: 'b', categoryId: 'x' }, kind: 'series' as const, copies: 2 },
-    { owner: { seriesId: 'a', categoryId: 'x', annotationId: 'note' }, kind: 'series' as const, copies: 2 },
-    { owner: { seriesId: 'a', categoryId: 'x' }, kind: 'point' as const, copies: 2 },
-    { owner: {}, kind: 'series' as const, copies: 2 },
-  ]) {
-    const labels = [
-      { ...point, id: 'plain', kind: 'point' as const, priority: 0, owner: { seriesId: 'a', categoryId: 'x' } },
-      { ...point, id: 'named', kind: entry.kind, priority: 0, owner: entry.owner },
-    ];
-    const options = withHiddenLabelNote({}, new Map([['plain', '780'], ['named', 'Series A 780']]), { data: {}, labels });
-    expect(hiddenNoteLine(options)?.match(/780/g) ?? []).toHaveLength(entry.copies);
-  }
 });
 
 // under notation at 480 px a taller pass seated every small label and dropped the largest slice's.
 it('a pie keeps the largest slice label when the ring is short of room', () => {
   const spec = (fixtures({ type: 'pie', id: 'ten-tiny-slices', kind: 'all' }, Infinity).body as { fixtures: { spec: { options?: object } }[] }).fixtures[0]!.spec;
-  const body = render({ spec: { ...spec, options: { ...spec.options, theme: 'notation', size: { width: 480 } } }, return: ['svg'] }).body as { warnings: { code: string; detail?: { values?: string[] } }[] };
-  const noted = (body.warnings.find(w => w.code === 'values-in-note')?.detail?.values ?? []).join(', ');
-  expect(noted).not.toContain('Market leader');
+  const body = render({ spec: { ...spec, options: { ...spec.options, theme: 'notation', size: { width: 480 } } }, return: ['svg'] }).body as { svg: string };
+  expect(body.svg).toContain('Market leader');
   // Removed: the note named "Challenger 10". The labels print shorter under the default rule, and the ring seats all 11.
 });
 
@@ -781,23 +676,6 @@ it('excludes a value printed by a visible callout from the loss warning', () => 
   expect(lost).not.toContain('point:s:c0');
 });
 
-// Heatmap value notes can bypass the solver, so the reading must name their full list too.
-it('names every heatmap value moved directly to a note and warns once', () => {
-  const categories = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, label: `Column ${i}` }));
-  const series = Array.from({ length: 12 }, (_, j) => ({ id: `s${j}`, label: `Row ${j}`,
-    values: categories.map((_, i) => (i % 2 ? 1 : -1) * (100.5 + (i * 7 + j * 11) % 13)),
-  }));
-  const body = render({ spec: { type: 'heatmap', data: { categories, series },
-    options: { margin: { top: 0, right: 0, bottom: 0, left: 0 }, labelDensity: 'full', size: { width: 480 } } },
-  return: ['reading'] }).body as { ok: boolean; reading: ChartReading; warnings: LintWarning[] };
-  expect(body.ok).toBe(true);
-  const values = body.warnings.find(w => w.code === 'values-in-note')?.detail?.values as string[];
-  expect(values).toHaveLength(240);
-  for (const text of values) expect(body.reading.omissions).toContainEqual(expect.objectContaining({ text, reason: 'note', destination: expect.any(String) }));
-  expect(body.warnings.filter(w => w.code === 'label-hidden')).toHaveLength(1);
-  expect(body.warnings.find(w => w.code === 'label-hidden')?.severity).toBe('warn');
-});
-
 // A fallback key already prints the authored last value; a second point label also put it in a duplicate note.
 it('keeps authored endpoint values out of their fallback key', () => {
   const body = render({ spec: { type: 'line', data: {
@@ -835,7 +713,7 @@ it('keeps each authored zero-tail label in omissions when the fallback key carri
 });
 
 // An unnamed Mekko column kept its total on the bar and repeated that total in its category note.
-it('names unnamed Mekko columns without repeating their values', () => {
+it('preserves Mekko values when a category name cannot fit', () => {
   const body = render({ spec: { type: 'mekko', data: {
     categories: Array.from({ length: 6 }, (_, i) => ({ id: `c${i}`, label: `Long category name ${i}` })),
     series: [{ id: 's', label: 'Cost', values: [17, 23, 31, 43, 59, 61] },
@@ -843,9 +721,6 @@ it('names unnamed Mekko columns without repeating their values', () => {
   }, options: { variant: 'bar', widthSeriesId: 'w', size: { width: 680 }, notes: { show: ['note', 'disclosure'] } } }, return: ['svg', 'reading'] }).body as {
     svg: string; notes: { text: string }[]; reading: ChartReading;
   };
-  const note = body.notes.find(note => note.text.startsWith('Not named in place'))!.text;
-  expect(note).toContain('Long category name 2');
-  expect(note).not.toMatch(/\(31\)|\(43\)|\(59\)/);
   for (const value of ['17', '23', '31', '43', '59', '61']) {
     expect(body.svg.includes(`>${value}</tspan>`) || body.reading.omissions.some(item => item.text.includes(value))).toBe(true);
   }
@@ -858,13 +733,4 @@ it('lists a value with labels off in the reading as its label would print it', (
   expect(shown).toContain('>0.1%<');
   const off = render({ spec: { type: 'line', data, options: { labels: false, size: { width: 640 } } }, return: ['reading'] }).body as { reading: ChartReading };
   expect(off.reading.omissions.find(item => item.labelId === 'point:s:a')?.text).toMatch(/(^|\s)0\.1%$/);
-});
-
-// A scatterplot with quadrant captions marked its noted labels only when the note heading was English, so a German chart counted fewer hidden labels than the same English chart.
-it('counts the same noted labels on a scatterplot in every language', () => {
-  const fixture = getFixtures('scatter').find(item => item.id === 'risk-impact-likelihood')!;
-  const noted = (locale?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'scatter', data: fixture.data,
-    options: { ...fixture.options, size: { width: 375 }, ...locale ? { locale } : {} }, annotations: fixture.annotations } as never))).labels.filter(label => label.noted).length;
-  expect(noted({ language: 'de' })).toBe(noted());
-  expect(noted()).toBeGreaterThan(0);
 });

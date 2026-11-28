@@ -335,8 +335,6 @@ export const fixtures: Fixture<RangeChartData, DotOptions>[] = [
       ],
     },
     options: {
-      // The one fixture that shows the range mid-point note.
-      methodNote: true,
       title: 'Degenerate and extreme ranges remain explicit',
       subtitle: { measure: 'Stress range', period: 'Synthetic torture input' },
       valueAxis: { show: true, gridlines: true },

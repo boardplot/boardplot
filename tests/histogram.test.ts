@@ -281,7 +281,7 @@ describe('histogram refuses what it cannot draw honestly', () => {
 });
 
 describe('histogram disclosures', () => {
-  it('prints or names counts above twelve nonempty bins through public measure, unless labels are suppressed', () => {
+  it('fits counts through public measure and uses the axis when labels cannot fit', () => {
     const data = { observations: Array.from({ length: 13 }, (_, i) => Array(100).fill(i + 0.5)).flat() };
     const options: HistogramOptions = {
       target: 'dashboard', title: false, bins: { width: 1, anchor: 0 },
@@ -309,9 +309,9 @@ describe('histogram disclosures', () => {
     expect(crowded.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
     expect((crowded.geometry!.derived as { frequencyAxisShown: boolean }).frequencyAxisShown).toBe(true);
     expect(crowded.geometry!.warnings.map(warning => warning.code)).toContain('histogram-counts-peak-only');
-    // An authored 'full' density keeps every count, as before.
+    // An authored full density keeps more counts beside their bars, with the axis available.
     const full = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 }, labelDensity: 'full' } });
-    expect(full.geometry!.labels.filter(label => label.kind === 'point' && (label.noted || !label.hidden))).toHaveLength(17);
+    expect(full.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden).length).toBeGreaterThan(crowdedCounts.length);
   });
 
   it('keeps every fitting count in a compact dashboard card', () => {
@@ -359,44 +359,20 @@ describe('histogram disclosures', () => {
     }
   });
 
-  it('states n and the bin width on the chart, where a host without footnotes still shows them', () => {
+  it('states the sample size when the frequency axis and author footnotes are off', () => {
     const fixture = fixtures.find((candidate) => candidate.id === 'order-value-distribution')!;
     const geometry = layoutHistogram(fixture.data, { ...fixture.options, footnotes: false, ...SHOW_NOTES });
-    // Every bin is labelled, so the axis gives way and the authored title leads the required base note.
-    // the short line keeps the bin width and the edge rule.
-    expect(geometry.scene.filter((node) => node.part === 'footnote').map(node2text)).toEqual(['Orders per 250 bin, lower edge included · n = 240.']);
-    // An authored strings.histogramBins wins over the short line, also after the request fills every default string.
-    const viaRequest = (strings?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'histogram', data: fixture.data, options: { ...fixture.options, footnotes: false, ...SHOW_NOTES, ...(strings ? { strings } : {}) } })))
-      .scene.filter((node) => node.part === 'footnote').map(node2text);
-    expect([viaRequest(), viaRequest({ histogramBins: '{count} bands of {width}' })]).toEqual([['Orders per 250 bin, lower edge included · n = 240.'], ['Orders · n = 240 · 10 bands of 250.']]);
+    expect(geometry.scene.filter((node) => node.part === 'footnote').map(node2text)).toEqual(['Orders · n = 240.']);
     expect(geometry.scene.some((node) => node.id === 'label:axis:y:title')).toBe(false);
     for (const id of ['order-value-distribution', 'cycle-time-days']) {
       const noTitle = fixtures.find((candidate) => candidate.id === id)!;
       const withoutAxis = layoutHistogram(noTitle.data, { ...noTitle.options, axisTitles: undefined, footnotes: false, ...SHOW_NOTES, size: { width: 720, height: 405 } });
-      // Whole days get one bin per value, so that line names the values instead of a width.
-      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|One bin per value · n = \d+/);
+      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/n = \d+/);
     }
   });
 
-  it('states the rule, the width, the interval convention and n in a footnote on request', () => {
-    const geometry = layoutHistogram({ observations: ramp(120, 1, 1) }, { ...SLIDE, methodNote: true });
-    const text = notes(geometry);
-    expect(text).toContain('bins of');
-    // One plain sentence carries the same facts.
-    expect(text).toContain('includes its lower bound');
-    // n prints once, in the restored caption or the method note when the axis is absent.
-    expect(readerText(geometry).match(/n = 120/g)).toHaveLength(1);
-    // The binning prints once: the method note carries it, so the base note leaves it out.
-    expect(readerText(geometry).match(/bins of/g)).toHaveLength(1);
-    // The note prints its numbers in the chart locale, as the bin labels do.
-    const german = layoutHistogram({ observations: [0.1, 0.4, 0.6, 0.9, 1.2, 1.4] }, { ...SLIDE, bins: { width: 0.5, anchor: 0 }, methodNote: true, locale: { language: 'de-DE' } } as HistogramOptions);
-    // The decimal mark follows the chart's number marks, as the edge labels print it.
-    // Before: "Klassen mit Breite 0,5 ab 0" beside the edge labels "0–0.5".
-    expect(notes(german)).toContain('Klassen mit Breite 0.5 ab 0');
-  });
-
-  it('keeps the sample base by default and says nothing about the opt-in method note ', () => {
-    for (const options of [SLIDE, { ...SLIDE, methodNote: false }, { ...SLIDE, footnotes: false as const }]) {
+  it('keeps the sample size in the notes list by default', () => {
+    for (const options of [SLIDE, { ...SLIDE, footnotes: false as const }]) {
       const geometry = layoutHistogram({ observations: ramp(120, 1, 1) }, options);
       expect(codes(geometry)).not.toContain('histogram-note-hidden');
       // The sample base is an engine note: by default it is in the notes list and off the canvas.
@@ -408,11 +384,8 @@ describe('histogram disclosures', () => {
   });
 
   it('warns that the rule is an artifact of the rule at small n', () => {
-    const small = layoutHistogram({ observations: ramp(12, 1, 1) }, { ...SLIDE, methodNote: true });
+    const small = layoutHistogram({ observations: ramp(12, 1, 1) }, { ...SLIDE });
     expect(codes(small)).toContain('histogram-small-sample');
-    expect(notes(small)).toContain(
-      'artifact of the rule',
-    );
     const large = layoutHistogram({ observations: ramp(120, 1, 1) }, SLIDE);
     expect(codes(large)).not.toContain('histogram-small-sample');
   });
@@ -427,24 +400,14 @@ describe('histogram disclosures', () => {
     expect(refusal('box', { legend: 'top' })).toMatch(/^'legend' is not implemented by 'box' — /);
   });
 
-  it('prints an unsnapped rule width rounded, and says so ', () => {
-    const fixture = fixtures.find((candidate) => candidate.id === 'order-value-distribution')!;
-    const geometry = layoutHistogram(fixture.data, { ...fixture.options, binSnap: false, methodNote: true, ...SHOW_NOTES });
-    // The base note, led by the authored axis title, keeps n; the method note states the binning once.
-    const base = geometry.scene.filter((node) => node.part === 'footnote').map(node2text).join(' ');
-    expect(base).toContain('Orders · n = 240.');
-    expect(notes(geometry)).toMatch(/bins of \d[\d,]*\.\d from .*shown rounded/);
-  });
-
   it('draws an authored bin count exactly, from the smallest to the largest observation ', () => {
     const observations = ramp(100, 1, 3.5);
-    const geometry = layoutHistogram({ observations }, { ...SLIDE, bins: 7, methodNote: true });
+    const geometry = layoutHistogram({ observations }, { ...SLIDE, bins: 7 });
     expect(geometry.warnings.some((entry) => entry.code === 'histogram-bin-count-adjusted')).toBe(false);
     expect(geometry.derived.counts).toHaveLength(7);
     const { edges } = geometry.derived.binning;
     expect([edges[0], edges.at(-1)]).toEqual([Math.min(...observations), Math.max(...observations)]);
     expect(geometry.derived.counts.reduce((sum, count) => sum + count, 0)).toBe(observations.length);
-    expect(notes(geometry)).toContain('7 bins of');
   });
 
   it('discloses thinned bin labels instead of letting the axis go quiet', () => {
@@ -577,7 +540,6 @@ describe('histogram: the two axes carry different quantities', () => {
   /** A EUR sample whose counts are large enough to be mistaken for money. */
   const money = ramp(200, 40, 1000);
   // Not whole numbers, so an authored count keeps its exact fractional width.
-  const halfUnits = ramp(200, 40, 1000.5);
 
   it('never renders a count in the measure format', () => {
     const geometry = layoutHistogram({ observations: money }, { ...SLIDE, format: '€1.234', bins: 8 });
@@ -618,48 +580,18 @@ describe('histogram: the two axes carry different quantities', () => {
     );
   });
 
-  it('states a bin width the bin edges can actually be rebuilt from', () => {
-    // width 497.5: at the edge column's precision the note must not say "498".
-    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 16, methodNote: true });
-    const { width, anchor, edges } = geometry.derived.binning;
-    expect(width).toBe(497.5);
-    const note = notes(geometry);
-    const statedWidth = /bins of ([\d,.]+) from ([\d,.]+)/.exec(note);
-    expect(statedWidth, note).not.toBeNull();
-    const unformat = (text: string): number => Number(text.replace(/,/g, ''));
-    expect(unformat(statedWidth![1]!)).toBe(width);
-    expect(unformat(statedWidth![2]!)).toBe(anchor);
-    // The reader's reconstruction must land on the engine's own edges.
-    const rebuilt = edges.map((_, index) =>
-      Number((unformat(statedWidth![2]!) + index * unformat(statedWidth![1]!)).toPrecision(12)),
-    );
-    expect(rebuilt).toEqual(edges);
-    expect(note).not.toContain('shown rounded');
-  });
-
-  it('says so when the width cannot be printed exactly, instead of certifying it', () => {
-    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 3, methodNote: true });
-    const note = notes(geometry);
-    expect(geometry.derived.binning.width).toBe(2653.33333333);
-    // One decimal past the edges, not six digits of float.
-    expect(note).toContain('bins of 2,653.3 from');
-    expect(note).toContain('width and first edge shown rounded');
-  });
 });
 
-describe('observations near 1e-6 keep readable edges and an honest note', () => {
-  it('prints a 5e-7 bin width nonzero, names every bin apart and blames no format', () => {
+describe('observations near 1e-6 keep readable edges', () => {
+  it('gives every bin a distinct edge label', () => {
     const observations = Array.from({ length: 50 }, (_, index) => 1e-6 + index * 3.7e-8);
-    const geometry = layoutHistogram({ observations }, { ...SLIDE, unit: 'rate', methodNote: true } as HistogramOptions);
+    const geometry = layoutHistogram({ observations }, { ...SLIDE, unit: 'rate' } as HistogramOptions);
     expect(codes(geometry)).not.toContain('histogram-edge-labels-collapsed');
     const labels = geometry.derived.binLabels;
     expect(new Set(labels).size).toBe(labels.length);
-    // Below the four-decimal floor the edges and the note print two significant digits and a power of ten.
+    // Below the four-decimal floor the edges print two significant digits and a power of ten.
     // Default number rule (no scientific notation by default): before "1.0 × 10⁻⁶–1.5 × 10⁻⁶".
     expect(labels[0]).toBe('0.0000010–0.0000015');
-    // The note prints the width and the first edge through the edge set, so the first edge reads as its label.
-    // Before: "4 bins of 5.0 × 10⁻⁷ from 1.0 × 10⁻⁶ (".
-    expect(notes(geometry)).toContain('4 bins of 0.0000005 from 0.0000010 (');
   });
 
   // Edges that need more than four decimals must not all print one scientific label ("1.0 × 10⁻⁶") for 1e-11 bins.
@@ -670,27 +602,14 @@ describe('observations near 1e-6 keep readable edges and an honest note', () => 
     expect(labels[0]).toBe('0.00000100000–0.00000100001');
   });
 
-  it('lifts the note precision on the figure the reader sees, at the example magnitude', () => {
+  it('separates edges at the authored magnitude', () => {
     const observations = Array.from({ length: 50 }, (_, index) => 1000000 + index * 0.037);
-    const geometry = layoutHistogram({ observations }, { ...SLIDE, format: '0.0000000 Mio.', methodNote: true } as HistogramOptions);
+    const geometry = layoutHistogram({ observations }, { ...SLIDE, format: '0.0000000 Mio.' } as HistogramOptions);
     expect(geometry.derived.binLabels[0]).toBe('1.0000000 Mio.–1.0000005 Mio.');
-    expect(notes(geometry)).toContain('4 bins of 0.0000005 Mio. from 1 Mio. (');
   });
 });
 
 /** The reader's notes: the footnote lines plus the notes the frame moved to the notes list. */
-function offFrameNotes(geometry: Geometry<HistogramMarks, HistogramDerived>): string[] {
-  return (geometry.frame.noteList ?? []).filter((note) => !note.inFrame).map((note) => note.text);
-}
-
-function notes(geometry: Geometry<HistogramMarks, HistogramDerived>): string {
-  return [...geometry.scene.filter((node) => node.part === 'footnote').map(node2text), ...offFrameNotes(geometry)].join(' ');
-}
-
-function readerText(geometry: Geometry<HistogramMarks, HistogramDerived>): string {
-  return [...geometry.scene.map(node2text), ...offFrameNotes(geometry)].join(' ');
-}
-
 function node2text(node: SceneNode | undefined): string {
   return node && 'lines' in node ? node.lines.join(' ') : '';
 }
@@ -736,21 +655,6 @@ describe('histogram boundaries and frequency', () => {
       const last = edge(g.derived.counts.length);
       expect(last.x + last.w).toBeCloseTo(axis.ticks.at(-1)!.pos, 6);
     }
-  });
-  it('uses German binning and method text and accepts a public strings override', () => {
-    const data = { observations: [0, 0.1, 0.4, 0.9, 1.1, 1.4] };
-    const german = layoutHistogram(data, { ...SLIDE, locale: { language: 'de' }, bins: { width: 0.5, anchor: 0 }, methodNote: true, ...SHOW_NOTES });
-    const germanNotes = notes(german);
-    // The method note carries the binning, so the German base text prints without it (default: base only).
-    const base = layoutHistogram(data, { ...SLIDE, locale: { language: 'de' }, bins: { width: 0.5, anchor: 0 }, ...SHOW_NOTES });
-    // Before: "Klassen der Breite 0,5" beside the edge labels "0–0.5" (the chart's marks).
-    expect(base.scene.filter((node) => node.part === 'footnote').map(node2text).join(' ')).toContain('Klassen der Breite 0.5, untere Grenze eingeschlossen · n = 6.');
-    expect(germanNotes).toContain('angegebene Klassenbreite');
-    expect(germanNotes).not.toContain('bins of');
-    // The restored axis caption draws the public binning-text override.
-    const custom = getChartDefinition('histogram')!.optionsSchema.parse({ ...SLIDE, bins: 2, valueAxis: { show: true }, strings: { histogramBins: '{count} bands of {width}: {from}–{to}' } });
-    const g = getChart('histogram')!.layout(data, custom) as Geometry<HistogramMarks, HistogramDerived>;
-    expect(node2text(g.scene.find((node) => node.id === 'label:axis:y:title'))).toContain('2 bands of 0.7: 0–1.4');
   });
   it('hides only the automatic frequency axis after every count has a drawn label', () => {
     const f = fixtures.find((f) => f.id === 'order-value-distribution')!;

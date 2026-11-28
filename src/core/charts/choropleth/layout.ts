@@ -436,15 +436,6 @@ function layoutMapPass(
   const legendOptions = legendRequired(options.legend, warnings, 'choropleth', theme);
   let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const userSource = options.source ? chartString(options, 'userSourceClause', { v1: options.source }) : '';
-  // The label selection and the pack's endorsement disclaimer are
-  // method notes (the disclaimer also stands in the attribution on the source
-  // line); the inset scale note changes how areas compare and stays.
-  const methodNote = options.methodNote === true;
-  const policyFootnote =
-    methodNote && labelPolicy.mode === 'auto' && pack.id === 'world' &&
-      labelPolicy.eligibleIds.size < pack.regions.length
-      ? chartString(options, 'mapLabelPolicy', { v1: labelPolicy.topN })
-      : undefined;
   const frameResult = solveFrame(
     {
       size,
@@ -456,11 +447,7 @@ function layoutMapPass(
       ...(pack.meta.credit ? { credit: pack.meta.credit } : { source: `${pack.meta.attribution}${userSource}` }),
       footnotes: [
         ...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote),
-        // The pack credit may already hold the disclaimer; the method note
-        // does not print it a second time.
-        ...(methodNote && pack.meta.chartNote && !(pack.meta.credit?.text ?? pack.meta.attribution).includes(pack.meta.chartNote) ? [pack.meta.chartNote] : []),
         ...(pack.meta.insetScaleNote ? [pack.meta.insetScaleNote] : []),
-        ...(policyFootnote ? [policyFootnote] : []),
         ...authoredNotes(options),
       ],
       // The colour key is drawn by layoutMapKeys beside the small members; the frame keeps the overlay key.

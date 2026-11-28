@@ -15,15 +15,11 @@ export const EN = {
   "mapUnlistedRegions": "{v1} regions are not in the data and use plain background. ",
   "overlaysSentence": "Overlays: {v1} ",
   "sourceSentence": "Source: {v1}{v2}",
-  "notPrintedTiles": "Not printed in tiles",
   "valueMissing": "Value missing",
-  "codesSentence": "Codes: {v1}.",
-  "overlays": "Overlays",
   "userSourceClause": " User source: {v1}",
   // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "No data",
   // The note and the reading for values the tiles do not print.
-  "valuesNotPrinted": "Values not printed in tiles",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -40,14 +36,10 @@ const DE: { [K in keyof typeof EN]: string } = {
   "mapUnlistedRegions": "{v1} {v1|Region|Regionen} {v1|ist|sind} nicht in den Daten und {v1|nutzt|nutzen} den einfachen Hintergrund. ",
   "overlaysSentence": "Zusatzzeichen: {v1} ",
   "sourceSentence": "Quelle: {v1}{v2}",
-  "notPrintedTiles": "Ohne Beschriftung in den Kacheln",
   "valueMissing": "Wert fehlt",
-  "codesSentence": "Kürzel: {v1}.",
-  "overlays": "Zusatzzeichen",
   "userSourceClause": " Nutzerquelle: {v1}",
   // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "Keine Daten",
-  "valuesNotPrinted": "Werte nicht in den Kacheln",
 };
 
 export const { chartString } = chartStrings(EN, DE);

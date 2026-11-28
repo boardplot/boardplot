@@ -228,7 +228,7 @@ describe('box fail-closed behaviour', () => {
     expect(geometry.labels.find((label) => label.id === 'boxN:flat')?.text).toBe('n = 6 · IQR = 0');
   });
 
-  it('warns when the outliers are switched off, and not about the opt-in method note', () => {
+  it('warns when the outliers are switched off', () => {
     // the method note is opt-in, so leaving it off is the default and
     // says nothing.
     expect(codes(lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }))).not.toContain('box-method-hidden');
@@ -314,22 +314,6 @@ describe('box contract surfaces', () => {
     expect(claims[7]!.output.raw).toBe(0);
   });
 
-  it('states the method on request, a non-Tukey rule always, and the receipt either way', () => {
-    const geometry = lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] });
-    expect(geometry.derived.method).toBe('type7+tukey1.5');
-    // the full Tukey method is a method note; its one-line rule always prints.
-    // The note is a method note: engine method notes print only on request (notes.show).
-    const shown = lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }, { notes: { show: ['note', 'disclosure', 'method'] } });
-    const plain = renderSvg(shown as never, resolveTheme());
-    expect(plain).toContain('Whiskers: 1.5 × IQR; circles: outliers beyond them.');
-    expect(plain).not.toContain('type-7 quantiles');
-    const svg = renderSvg(lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }, { methodNote: true, notes: { show: ['note', 'disclosure', 'method'] } }) as never, resolveTheme());
-    expect(svg).toContain('type-7 quantiles');
-    expect(svg).toContain('1.5×IQR');
-    expect(renderSvg(lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }, { whiskers: 'minmax', notes: { show: ['note', 'disclosure', 'method'] } }) as never, resolveTheme()))
-      .toContain('minimum and maximum');
-  });
-
   it('is deterministic and palette-responsive without changing judgment semantics', () => {
     const data: BoxData = { groups: [{ id: 'a', observations: [...ONE_TO_TEN, 400] }] };
     const once = renderSvg(lay(data) as never, resolveTheme());
@@ -344,7 +328,7 @@ describe('box contract surfaces', () => {
 /**
  * Box labels, tails and method notes must describe the values a reader sees.
  */
-describe('box labels and method notes', () => {
+describe('box labels and withheld observations', () => {
   const SALARY = 'salary-bands-p10p90';
   const fixtureOf = (id: string) => getFixtures(boxDefinition.type).find((f) => f.id === id)!;
   const layFixture = (id: string, extra: BoxOptions = {}) =>
@@ -392,11 +376,6 @@ describe('box labels and method notes', () => {
     const svg = renderSvg(censored as never, resolveTheme());
     expect(svg).toContain('3 observations outside the whisker rule');
     expect(svg).toContain('excluded from the value axis');
-    // 4. the trace survives methodNote: false — turning off a method statement
-    //    must not turn off a disclosure that observations are missing
-    expect(footnoteText(lay(data, { showOutliers: false, methodNote: false, notes: { show: ['note', 'disclosure', 'method'] } }))).toContain(
-      'excluded from the value axis',
-    );
     // 5. and it is silent when nothing was withheld
     expect(lay(data).derived.withheldBeyond).toEqual({});
     expect(footnoteText(lay(data, { notes: { show: ['note', 'disclosure', 'method'] } }))).not.toContain('excluded from the value axis');
@@ -537,10 +516,9 @@ describe('box labels and method notes', () => {
   });
 
   it('p10p90 never calls the outer deciles outliers', () => {
-    const geometry = layFixture(SALARY, { notes: { show: ['note', 'disclosure', 'method'] } });
+    const geometry = layFixture(SALARY);
     expect(geometry.derived.beyondAreOutliers).toBe(false);
     expect(geometry.derived.beyondMeaning).toContain('not outliers');
-    expect(renderSvg(geometry as never, resolveTheme())).toContain('which are not outliers');
     // the group field is not named `outliers` either
     expect(Object.keys(geometry.derived.groups[0]!)).not.toContain('outliers');
     expect(geometry.derived.groups[0]!.beyondWhiskers.length).toBe(12);
@@ -598,8 +576,4 @@ describe('box readability', () => {
     expect(geometry.labels.filter((label) => label.id.startsWith('obs:small:') && !label.hidden).map((label) => label.text).sort()).toEqual(['21', '4', '9']); // Default number rule: before "21.0 · 4.0 · 9.0".
   });
 
-  it('the filled highlighted box is named in a note', () => {
-    const svg = renderSvg(lay({ groups: [{ id: 'a', label: 'Alpha', observations: ONE_TO_TEN }, { id: 'b', observations: ONE_TO_TEN }] }, { highlight: ['a'], notes: { show: ['note', 'disclosure', 'method'] } }) as never, resolveTheme());
-    expect(svg).toContain('Filled box: Alpha, highlighted.');
-  });
 });

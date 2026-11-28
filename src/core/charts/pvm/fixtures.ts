@@ -51,16 +51,12 @@ export const fixtures: Fixture<PvmData, PvmOptions>[] = [
     hover: { owner: { categoryId: 'volume' } },
     data: productPortfolio,
     options: {
-      // The method footer needs more than a slide height leaves over the 0.60
-      // plot floor; a4 carries it.
       size: { width: 720, height: 511 },
       title: 'Revenue grew $8.8m: volume and new items added $14.4m, and adverse mix gave back $6.0m',
       subtitle: { company: 'Acme Software', measure: 'Product revenue', period: 'FY24 → FY25' },
       unit: '$k',
       source: 'Acme ERP order book; units and revenue per product, price derived',
-      // A teaching bridge names its convention and counting unit. The effects
-      // take their sign's colour, so the bridge sets no highlight.
-      methodNote: true,
+      notes: { placement: 'frame' },
     },
   },
   {
@@ -69,16 +65,13 @@ export const fixtures: Fixture<PvmData, PvmOptions>[] = [
     kind: 'example',
     data: regionPortfolio,
     options: {
-      // The method footer needs more than a slide height leaves over the 0.60
-      // plot floor; a4 carries it.
       size: { width: 720, height: 511 },
       interaction: 'separate',
       title: 'Revenue grew $10.3m: price added $3.7m at prior-year volumes, plus $1.9m where price and volume moved together',
       subtitle: { company: 'Acme Software', measure: 'Revenue by region', period: 'FY24 → FY25' },
       unit: '$k',
       source: 'Acme ERP order book; units and revenue per region, price derived',
-      // The note says what "Laspeyres" and the joint bar mean.
-      methodNote: true,
+      notes: { placement: 'frame' },
     },
   },
   {
@@ -87,9 +80,8 @@ export const fixtures: Fixture<PvmData, PvmOptions>[] = [
       'Torture: mix and volume are near-equal opposites, one quantity falls three orders of magnitude, and a line carries negative revenue',
     kind: 'torture',
     data: {
-      // Volume and Mix nearly cancel here, so the split between them
-      // rests on the counting unit, and the teaching note names it. Every
-      // line is counted in units shipped. The undeclared-unit guard
+      // Volume and Mix nearly cancel here, so the split rests on the counting unit.
+      // Every line is counted in units shipped. The undeclared-unit guard
       // (pvm-quantity-unit-undeclared) is covered in tests/pvm.test.ts.
       quantityUnit: 'units shipped',
       items: [
@@ -158,12 +150,10 @@ const revenueBridge = fixtures.find((fixture) => fixture.id === 'fy-revenue-brid
 fixtures.push({
   ...revenueBridge,
   id: 'revenue-bridge-method-note',
-  title: 'The revenue bridge with the method notes printed',
+  title: 'The revenue bridge with the value-axis break disclosed',
   tags: ['coverage'],
   options: {
     ...revenueBridge.options,
-    methodNote: true,
-    // The PNG font has no arrow glyph; the method note repeats the period.
     subtitle: { company: 'Acme Software', measure: 'Product revenue', period: 'FY24 to FY25' },
   },
 });
@@ -173,11 +163,10 @@ fixtures.push({
 fixtures.push({
   ...revenueBridge,
   id: 'revenue-bridge-notes-listed',
-  title: 'The revenue bridge on a slide with its method notes in the notes list',
+  title: 'The revenue bridge on a slide with notes placement set to list',
   tags: ['coverage'],
   options: {
     ...revenueBridge.options,
-    methodNote: true,
     target: 'slide',
     subtitle: { company: 'Acme Software', measure: 'Product revenue', period: 'FY24 to FY25' },
     notes: { placement: 'list' },

@@ -956,7 +956,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   const values = valueDomain({ ...core, cumTop, cumBot }, isBump, warnings, edgeValues);
   const anomaly: LineAnomaly | undefined = anomalyRun && {
     model: anomalyRun.anomaly, seriesId: anomalyRun.seriesId, statFmt,
-    ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, values.dLo, values.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, valueSpec.fmt)),
+    ...anomalyCorridor(anomalyRun.anomaly, values.dLo, values.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, valueSpec.fmt)),
   };
   const resolved = {
     ...core,
@@ -1006,7 +1006,7 @@ function lineAnomalyModel(
     const value = row[ci];
     return value === null || value === undefined || !Number.isFinite(value) ? [] : [{ categoryId: c.id, value }];
   });
-  return { ...anomalyModel(spec, present, d.fmt, d.statFmt, d.locale, d.warnings, d.strings, d.rule), seriesId: series.id };
+  return { anomaly: anomalyModel(spec, present, d.fmt, d.statFmt, d.locale, d.warnings, d.strings, d.rule), seriesId: series.id };
 }
 
 /** A reader follows at most this many rank lines. */

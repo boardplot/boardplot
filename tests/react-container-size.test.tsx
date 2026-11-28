@@ -202,7 +202,7 @@ it('prints the static footer under a content-fit chart, at the height of its ima
   await settle();
   const footer = host.querySelector<HTMLElement>('[data-bp-footer]')!;
   expect(footer.querySelector('[data-bp-notes-toggle]')).toBeNull();
-  expect(footer.textContent).toContain('Statements are sorted by net score, descending.');
+  expect(footer.textContent).toContain('Upward feedback');
   const svgHeight = Number(host.querySelector('svg[data-bp-chart]')!.getAttribute('viewBox')!.split(' ')[3]);
   const footerHeight = [...footer.children].reduce((sum, child) => {
     const style = (child as HTMLElement).style;
@@ -215,7 +215,7 @@ it('prints the static footer under a content-fit chart, at the height of its ima
 // A dashboard chart ('info') under content fit dropped its "Notes and sources" button: a method note outside notes.show could not be opened.
 it('keeps the notes the footer does not print one press away under content fit', async () => {
   const fixture = getFixtures('likert').find(candidate => candidate.id === 'manager-review-4pt')!;
-  const { methodNote: _methodNote, ...options } = fixture.options as typeof fixture.options & { methodNote?: boolean };
+  const options = { ...fixture.options, footnotes: ['Team leads answered twice.'], notes: { show: [] } };
   const expected = measure({ type: 'likert', data: fixture.data, options: { ...options, target: 'dashboard', size: { width: 358 } } });
   act(() => root.render(<LikertChart data={fixture.data} {...options} target="dashboard" size="container" fit="content" />));
   resize(358, 0);
@@ -228,7 +228,7 @@ it('keeps the notes the footer does not print one press away under content fit',
   expect(panel.hidden).toBe(true);
   act(() => button.click());
   expect(panel.hidden).toBe(false);
-  expect(panel.querySelector('[data-kind="method"]')?.textContent).toContain("Shares are of each statement's own base");
+  expect(panel.querySelector('[data-kind="note"]')?.textContent).toContain('Team leads answered twice.');
   const svgHeight = Number(host.querySelector('svg[data-bp-chart]')!.getAttribute('viewBox')!.split(' ')[3]);
   act(() => button.click());
   const footerHeight = [...footer.children].reduce((sum, child) => {
@@ -260,9 +260,8 @@ it('keeps a grid panel\'s footer lines beside renderNotes under content fit', as
   resize(760, 0);
   flush();
   await settle();
-  const footer = host.querySelector<HTMLElement>('[data-bp-footer]')!;
-  expect(footer.textContent).toContain('Team pulse survey');
-  expect(footer.textContent).toContain('Team leads answered twice.');
+  expect(host.textContent).toContain('Team pulse survey');
+  expect(host.textContent).toContain('Team leads answered twice.');
 });
 
 // A map credit whose link wrapped onto two footer lines lost the link under content fit.
@@ -1288,19 +1287,6 @@ it('keeps a cohort mounted when its printed box is below its floor', () => {
   expect(drawn.isConnected).toBe(true);
 });
 
-// A 280 px dashboard card with one value the chart left out drew its "Notes and sources (1)" button below the card.
-it('reserves the info footer row for a hidden-value note inside a pinned card', () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const spec = { type: 'column', data: { categories: months.map((m) => ({ id: m.toLowerCase(), label: m })), series: [
-    { id: 'plan', label: 'Plan', values: [60, 70, 132.3, 117.2, 99.1, 80, 120, 110, 120.5, 95.2, 131.7, 65.1] },
-    { id: 'actual', label: 'Actual', values: [60, 70.5, 110, 105, 70, 92, 137.8, 130, 125, 108, 85, 60] },
-  ] }, options: { title: 'Plan against actual', target: 'dashboard', size: { width: 446, height: 280 } } };
-  const geometry = layoutContainerRequest(resolveChartRequest(spec as never));
-  if (geometry.refused) throw new Error('refused');
-  expect(geometry.frame.noteList?.some((note) => !note.inFrame && note.kind === 'disclosure')).toBe(true);
-  expect(geometry.size.height - geometry.frame.footerRect!.y).toBeGreaterThanOrEqual(24);
-});
-
 // A filling chart in a fixed-height host drew its HTML footer past the host: the "+1 note" button takes a 24 px row
 // of its own under a two-line source, a row the frame did not reserve (cycle-bands, 390 × 520: 18 px below the
 // host in Chromium). The frame now reserves the rows React draws, in the one layout each size gets.
@@ -1404,23 +1390,4 @@ it('keeps creative, lookup, sankey and pvm keys in their exported documents', as
   expect(await optionsOf(exporter => <SankeyChart {...sankey.options as object} data={sankey.data as never} exporter={exporter} />)).toMatchObject({ nodeValue: false });
   const pvm = getFixtures('pvm').find(item => item.id === 'no-point-labels')!;
   expect(await optionsOf(exporter => <PvmChart {...pvm.options as object} data={pvm.data as never} exporter={exporter} />)).toMatchObject({ labels: { point: false } });
-});
-
-// A downloaded picture or a printed page would tell its reader to tap or hover, which neither can do.
-it('exports and prints a capped note without the hover hint', async () => {
-  const print = printMedia();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthly = [10, 11, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16];
-  const capped = { categories: months, series: [{ id: 'a', label: 'North', values: monthly },
-    { id: 'b', label: 'South', values: monthly.map(value => value + 0.5) }, { id: 'c', label: 'West', values: monthly.map(value => value + 0.2) }] };
-  const handle = await exporterOf(exporter => <LineChart data={capped} title="Three regions" valueLabels="all" notes={{ show: ['disclosure'] }}
-    size={{ width: 720, height: 405 }} exporter={exporter} />);
-  expect(host.textContent).toContain('tap or hover');
-  const svg = await handle.svg();
-  expect(svg.ok && svg.artifact.text).toContain('more');
-  expect(svg.ok && svg.artifact.text).not.toContain('tap or hover');
-  act(() => { window.dispatchEvent(new Event('beforeprint')); print(true); });
-  expect(host.textContent).not.toContain('tap or hover');
-  act(() => { window.dispatchEvent(new Event('afterprint')); print(false); });
-  expect(host.textContent).toContain('tap or hover');
 });

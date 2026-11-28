@@ -277,23 +277,15 @@ function zoneLabelRequests(sites: ZoneLabelSite[], area: ScatterPlotArea, env: S
  * `.y`. Reformatting the number here is what put a threshold on the chart that
  * the classifier had not used.
  */
-function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: ScatterEnv, requests: LabelRequest[], pts: readonly { x: number; y: number }[], printed: { x?: Id; y?: Id }): void {
+function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: ScatterEnv, requests: LabelRequest[], printed: { x?: Id; y?: Id }): void {
   const quadrants = q.derived!;
   const { plot } = area;
   // Measured in the emphasis the layout draws a value line in, so the seat holds the drawn tag.
   const font = { ...area.fonts.label, weight: emphasisWeight(env.theme) };
-  // A point exactly on a cut counts right of it or above it. The tag says so
-  // on the drawing whenever a point sits there: the footnote that also says
-  // it may be off the drawing, and then a point on the line sat in one box
-  // with nothing saying why.
-  const tie = {
-    x: pts.some((p) => p.x === quadrants.x) ? chartString(env.options, 'pointsCountRight') : '',
-    y: pts.some((p) => p.y === quadrants.y) ? chartString(env.options, 'pointsCountAbove') : '',
-  };
   // Plain words on the line: 'Cut at 1', or 'Median 3' when the
   // engine computed it.
   const tag = (id: 'x' | 'y', source: string, text: string, candidates: (tsize: { width: number; height: number }) => SlotCandidate[]): LabelRequest => {
-    const line = `${chartString(env.options, source === 'declared' ? 'cutAt' : source === 'median' ? 'medianName' : 'cutMeanCapital')} ${text}${tie[id]}`;
+    const line = `${chartString(env.options, source === 'declared' ? 'cutAt' : source === 'median' ? 'medianName' : 'cutMeanCapital')} ${text}`;
     return {
       id: `quadrant:cut:${id}`,
       claimIds: [`scatter:quadrant:${id}`],
@@ -307,10 +299,8 @@ function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: Scatter
       candidates: candidates(env.measure(line, font)),
     };
   };
-  // A cut value that prints bold in its axis row needs no tag on the line,
-  // unless a point sits on it and the tag says which side it counts to.
-  const tagged = { x: !printed.x || tie.x !== '', y: !printed.y || tie.y !== '' };
-  if (q.drawX && tagged.x) {
+  // A cut value that prints bold in its axis row needs no tag on the line.
+  if (q.drawX && !printed.x) {
     const qx = area.x(quadrants.x);
     // The tag slides ALONG its own line before it gives up: top end first
     // (where a reader looks for a rule's name), then down the line on
@@ -327,7 +317,7 @@ function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: Scatter
       (rect) => ({ x: qx, y: rect.y + rect.h / 2 }),
     )));
   }
-  if (q.drawY && tagged.y) {
+  if (q.drawY && !printed.y) {
     const qy = area.y(quadrants.y);
     requests.push(tag('y', quadrants.ySource, quadrants.yText, (tsize) => dividerTagCandidates(
       tsize,
@@ -822,7 +812,7 @@ export function planScatterLabels(
   const bubbles = domain.bubbleMode ? geometry.placed : [];
   const requests = zoneLabelRequests(geometry.zones.labels, area, env, bubbles);
   if (domain.quadrants.derived) {
-    dividerTagRequests(domain.quadrants, area, env, requests, domain.pts, geometry.cutTicks);
+    dividerTagRequests(domain.quadrants, area, env, requests, geometry.cutTicks);
     quadrantCaptionRequests(env, domain, area, geometry.split, requests, warnings, bubbles);
   }
   pointLabelRequests(env, domain, area, geometry.placed, geometry.rules, paints, requests, warnings, geometry.seatMemo ??= new Map(), geometry.paintMemo ??= new Map());

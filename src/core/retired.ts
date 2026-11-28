@@ -41,12 +41,20 @@ export function linkRetiredSettings(type: string, settings: readonly RetiredSett
 /** A shared row may list several places that share the rest of the row. */
 type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly string[] };
 
+const RETIRED_NOTE_WORDS = new Set([
+  'hatchedBaseNote', 'histogramAbout', 'histogramMethod', 'histogramRounded', 'histogramRuleCount', 'histogramRuleWidth', 'histogramSmallSample', 'histogramSnapped', 'mixedCoverage', 'mixedShares', 'nearZeroChange', 'nearZeroNote', 'rangeMidNote', 'rankFormat', 'rankMethod', 'rankRing', 'sensitivityNote', 'stackAverages', 'valuesNotBesideMarks', 'valuesNotOnColumns',
+]);
+
 const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.animate', use: 'The SVG is static. Set options.interactive to add hover and focus semantics.' },
   { at: 'options.debug', use: 'Boardplot has no debug output.' },
   { at: 'options.secondaryAxis.acknowledge', use: "A combo line or area with axis: 'secondary' draws a second value scale and warns dual-axis." },
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.strings.partialTotals', use: 'Set options.strings.knownPartsTotals to change the footer wording.' },
+  { at: 'options.methodNote', types: ['box', 'choropleth', 'dot', 'histogram', 'likert', 'line', 'pareto', 'pvm', 'pyramid', 'scatter'],
+    values: { true: null, false: null }, use: 'The method note is no longer printed.' },
+  { at: 'options.notes.show.[]', values: { ranks: null } },
+  { at: 'options.quadrants.axisNames', types: ['scatter'] },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
   // Unused options and data fields.
   { at: ['options.endpointLabelDefault', 'options.lineLabels'], types: ['line', 'combo'], use: 'Set seriesLabels and valueLabels.' },
@@ -114,7 +122,8 @@ function setAt(root: unknown, path: readonly (string | number)[], value: unknown
   const own = node as Record<PropertyKey, unknown>;
   const current = Object.hasOwn(own, key!) ? own[key!] : undefined;
   const next = rest.length ? setAt(current, rest, value) : value;
-  if (next === undefined) delete own[key!];
+  if (next === undefined && Array.isArray(node) && typeof key === 'number') node.splice(key, 1);
+  else if (next === undefined) delete own[key!];
   else if (Array.isArray(node)) own[key!] = next;
   else Object.defineProperty(own, key!, { value: next, writable: true, enumerable: true, configurable: true });
   return node;
@@ -355,9 +364,14 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
   reportRetained = true,
 ): { chart: C; warnings: LintWarning[] } {
   let { next, warnings } = settlePanels(type, chart, (panelType, panel) => retireChartSettings(panelType, panel, canonical, reportRetained), canonical);
-  for (const entry of [...RETIRED_SETTINGS, ...OWN_SETTINGS.get(type) ?? []]) {
+  const strings = readAt(next, ['options', 'strings']);
+  const retiredWords = isRecord(strings) ? Object.keys(strings).filter(key => RETIRED_NOTE_WORDS.has(key)) : [];
+  const settings = retiredWords.length ? [...RETIRED_SETTINGS, {
+    at: retiredWords.map(key => `options.strings.${key}`),
+  } satisfies SharedRetiredSetting] : RETIRED_SETTINGS;
+  for (const entry of [...settings, ...OWN_SETTINGS.get(type) ?? []]) {
     if (entry.types && !entry.types.includes(type)) continue;
-    for (const path of [entry.at].flat()) for (const at of places(next, path.split('.'))) {
+    for (const path of [entry.at].flat()) for (const at of places(next, path.split('.')).reverse()) {
       const value = readAt(next, at);
       // An empty annotation list draws what no list draws: it goes without a warning.
       if (ANNOTATIONS_RETIRED.includes(type) && at.at(-1) === 'annotations' && Array.isArray(value) && value.length === 0) { next = setAt(next, at, undefined); continue; }

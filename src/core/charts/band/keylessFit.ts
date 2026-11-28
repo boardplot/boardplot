@@ -2,7 +2,7 @@ import { HOST_CLAIMS } from '../../claims/ids';
 import { staticFrame } from '../../footer';
 import type { FrameResult } from '../../frame';
 import { zeroLifts } from '../../formatPrecision';
-import { rankKeyShown, withEngineNotes } from '../../notes';
+import { disclosuresShown, withEngineNotes } from '../../notes';
 import type { ChartOptions } from '../../registry';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { heightOmitted, PLOT_FLOOR_PX } from '../../sizing';
@@ -13,7 +13,7 @@ import type { Geometry } from '../../types/scene';
 
 export function keylessAreaFits(options: ChartOptions, frame: FrameResult, plot: { h: number }, height: number, printedDisclosure: boolean): boolean {
   return (frame.frame.minHeight ?? Infinity) <= height && (frame.frame.plotMinHeight ?? Infinity) <= height
-    && (heightOmitted(options.size) || !rankKeyShown(options) || !printedDisclosure
+    && (heightOmitted(options.size) || !disclosuresShown(options) || !printedDisclosure
       || plot.h >= PLOT_FLOOR_PX[options.target ?? DEFAULT_TARGET]);
 }
 
@@ -43,8 +43,10 @@ export function bandKeyFirst(measureBody: MeasureBody) {
     const unnamed = new Set(data.series.filter(s => !categories.has(s.id) &&
       (type !== 'combo' || (s.axis === 'secondary' ? secondary : primary).length > 1)).map(s => s.id));
     if (!unnamed.size) return;
-    if (!speculate(() => measureBody(data, band, opening), false)) return;
+    const keylessCountable = speculate(() => measureBody(data, band, opening) ? staticFrame.countable : undefined, undefined);
+    if (keylessCountable === undefined) return;
+    // Skip the keyless draw if its probe finds no list note that could trigger a footer retry.
     return (key: Geometry<object, object>) => key.mode === (options.mode === 'compact' ? 'compact' : 'full') && !!key.legend?.items.some(item => unnamed.has(item.id))
-      && (!staticFrame.pinned || staticFrame.countable || options.notes?.maxListed === 0);
+      && (!staticFrame.pinned || !keylessCountable || staticFrame.countable || options.notes?.maxListed === 0);
   };
 }
