@@ -110,6 +110,6 @@ export type BoardplotSpec = (ChartSpec & { name?: string; theme?: ThemeRef | The
   version: 1;
   type?: never;
   theme?: ThemeRef | Theme;
-  locale?: string;
+  locale?: string | Options.LocaleSpec;
   charts: [ChartSpec & { name: string }];
 };

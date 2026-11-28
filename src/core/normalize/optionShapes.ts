@@ -1,9 +1,18 @@
 import { DEFAULT_THEME } from '../themeDefault';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
+import type { LocaleSpec } from '../types/options';
 import type { LintWarning } from '../types/scene';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+
+export function mergeLocale(inherited: LocaleSpec | string | undefined, own: LocaleSpec | string | undefined): LocaleSpec | undefined {
+  const base = typeof inherited === 'string' ? { language: inherited } : inherited;
+  const override = typeof own === 'string' ? { language: own } : own;
+  if (override === undefined) return base;
+  if (!isRecord(base) || !isRecord(override)) return override;
+  return { ...base, ...Object.fromEntries(Object.entries(override).filter(([, value]) => value !== undefined)) };
+}
 
 /** An object with only overrides supplies the default preset implicitly. */
 export function themeShape<T>(value: T): T {

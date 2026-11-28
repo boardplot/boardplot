@@ -525,7 +525,7 @@ function resolveRequest(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEn
     type: validated.definition.type, data: validated.data, options: withHostMeasure(validated.options),
     annotations: validated.chart.annotations as Annotation[] | undefined,
     ...(target === undefined ? {} : { target }),
-  }, { theme: doc.theme, locale: typeof doc.locale === 'string' ? doc.locale : undefined });
+  }, { theme: doc.theme, locale: doc.locale });
   return { validated, request };
 }
 

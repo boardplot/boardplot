@@ -15,10 +15,11 @@ import { getChart } from '../registry';
 import { collectSeriesIdentities, identityAppearance, needsSeriesKey } from '../seriesIdentity';
 import { prepareFitLayout, type FitLayout } from '../sizing';
 import { authoredStrings } from '../strings';
+import { mergeLocale } from '../normalize/optionShapes';
 import { panelTypeClass, resolveTheme, typeWidthClass } from '../theme';
 import type { TextMeasurer } from '../text';
 import type { ChartCore, ChartOptions } from '../registry';
-import type { GridOptions, LegendOptions } from '../types/options';
+import type { GridOptions, LegendOptions, LocaleSpec } from '../types/options';
 import type { Geometry, LayoutResult, LintWarning } from '../types/scene';
 
 /** Internal grid option: the series ids the grid's key row lists. Authored JSON cannot set it. */
@@ -64,7 +65,8 @@ export function collectGridLegendItems(panels: LegendPanel[], options: LegendGri
       ...definition.defaults, ...panelOptions,
       ...(panel.annotations ? { annotations: panel.annotations } : {}),
       ...(options.palette !== undefined && panelOptions.palette === undefined ? { palette: options.palette } : {}),
-      target: options.target, theme: panelOptions.theme ?? options.theme, locale: panelOptions.locale ?? options.locale,
+      target: options.target, theme: panelOptions.theme ?? options.theme,
+      locale: mergeLocale(options.locale, (panelOptions.locale ?? undefined) as LocaleSpec | string | undefined),
       ...hatchStrengthFor(panelOptions, options),
       ...(options.strings ? { strings: { ...authoredStrings(options), ...(panelOptions.strings as object) } } : {}),
       size: options.size, measure, typeClass,

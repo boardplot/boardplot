@@ -18,6 +18,7 @@ import { boundsOf, sameRect, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
+import { mergeLocale } from '../normalize/optionShapes';
 import { captionSizedPanelLayouts, getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
 import { withBlankCategoryLabelsOmitted } from '../calendarData';
@@ -30,7 +31,7 @@ import { lineBoxes } from '../textClip';
 import { canvasMargin, panelTypeClass, resolveTheme, themeForWidth, typeWidthClass, type TypeWidthClass } from '../theme';
 import type { GridData, GridPanel } from '../types/data';
 import type { ThemeRef } from '../types/theme';
-import type { GridOptions, LegendOptions } from '../types/options';
+import type { GridOptions, LegendOptions, LocaleSpec } from '../types/options';
 import type { AxisGeometry, Geometry, LayoutResult, LintWarning, PlacedLabel, SceneNode } from '../types/scene';
 import { isRecord } from '../lint/shared';
 import { maxOf, minOf } from '../arrays';
@@ -417,7 +418,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
         : {}),
       ...inheritedScaleUnit(panelOpts, panel.data, options.unit),
       target: options.target, theme: panelOpts.theme ?? options.theme,
-      locale: panelOpts.locale ?? options.locale,
+      locale: mergeLocale(options.locale, (panelOpts.locale ?? undefined) as LocaleSpec | string | undefined),
       ...hatchStrengthFor(panelOpts as Record<string, unknown>, options),
       ...(options.strings ? { strings: { ...authoredStrings(options), ...(panelOpts.strings as object) } } : {}),
       size: { width: slot.w, height: slot.h },

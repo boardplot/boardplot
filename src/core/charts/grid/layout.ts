@@ -42,6 +42,7 @@ import {
   type SolveCtx,
 } from '../../label/solver';
 import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValues, resolveCanvasOptions, resolveHighlight, resolveSize } from '../../normalize/shared';
+import { mergeLocale } from '../../normalize/optionShapes';
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
@@ -70,7 +71,7 @@ import { STACK_ROOM } from '../band/labels';
 import { KEEP_PANEL_LABEL_SELECTION } from '../band/crowdedRow';
 import { cellMeta, cellValue, type OwnerRef } from '../../types/cell';
 import type { ThemeRef } from '../../types/theme';
-import type { LegendOptions } from '../../types/options';
+import type { LegendOptions, LocaleSpec } from '../../types/options';
 import type { ChartData } from '../../types/data';
 import type {
   AxisGeometry,
@@ -1819,6 +1820,7 @@ function layoutAuthoredChild(
   const panelOptions = parentOptions.sharedAxis === 'category' && panels.indexOf(panel) !== sharedCategoryLabelOwner(panels)
     ? { ...authoredOptions, labels: withoutCategoryLabels(authoredOptions.labels) } : authoredOptions;
   const authoredMargin = isRecord(panelOptions.margin) ? panelOptions.margin : {};
+  const locale = mergeLocale(parentOptions.locale, (panelOptions.locale ?? undefined) as LocaleSpec | string | undefined);
   // `definition.type`: an alias such as `profile` lays out as its chart type.
   const anchored: PanelAnchoring = panelAnchoring(definition.type, panelOptions);
   let recordOptions: object;
@@ -1832,7 +1834,7 @@ function layoutAuthoredChild(
       ...definition.defaults,
       ...panelOptions,
       ...(compactTiers ? { [KEEP_PANEL_LABEL_SELECTION]: true as const } : {}),
-      ...((panelOptions.locale ?? parentOptions.locale) === undefined ? {} : { locale: panelOptions.locale ?? parentOptions.locale }),
+      ...(locale === undefined ? {} : { locale }),
       ...(Object.keys(authoredStrings(parentOptions) ?? {}).length ? { strings: { ...authoredStrings(parentOptions), ...(panelOptions.strings as object) } } : {}),
       ...(compactTiers && panelOptions.title !== false && (authoredTitle !== undefined || panel.type === 'variance') ? { title: '' } : {}),
       ...(hasKpiFigure(panel.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),

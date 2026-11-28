@@ -39,7 +39,7 @@ import { retireChartSettings } from './retired';
 import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
 import { tableFitThemeTokens, themeGeometryTokens } from './themeGeometry';
 import type { OptionsInput } from './types/optionInput';
-import { normalizeOptionShapes } from './normalize/optionShapes';
+import { mergeLocale, normalizeOptionShapes } from './normalize/optionShapes';
 
 /** Chart-specific options can replace these three shared fields. */
 export type RequestOptions = Omit<BaseOptions, 'labels' | 'legend' | 'mode'> & {
@@ -161,15 +161,12 @@ export function resolveChartRequest<D, O extends object>(
   input = shaped.chart;
   const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
   input = retired.chart;
-  const inheritedLocale = typeof context.locale === 'string' ? { language: context.locale } : context.locale;
+  const locale = mergeLocale(mergeLocale(context.locale, input.options?.locale), input.locale);
   const authoredOptions = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
     ...(context.theme === undefined ? {} : { theme: context.theme }),
-    ...(inheritedLocale ? { locale: inheritedLocale } : {}),
     ...Object.fromEntries(Object.entries(input.options ?? {}).filter(([, value]) => value !== undefined)),
     ...(input.theme === undefined ? {} : { theme: input.theme }),
-    ...(input.locale === undefined ? {} : {
-      locale: typeof input.locale === 'string' ? { language: input.locale } : input.locale,
-    }),
+    ...(locale === undefined ? {} : { locale }),
     ...(input.size === undefined ? {} : { size: input.size }),
     ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
     ...(input.fontMetrics === undefined ? {} : { measure: input.fontMetrics === 'bundled' ? defaultMeasurer : input.fontMetrics }),

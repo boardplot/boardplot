@@ -1,4 +1,5 @@
 import { themeGeometryTokens } from '../core/themeGeometry';
+import { mergeLocale } from '../core/normalize/optionShapes';
 import type { ResolvedChartRequest } from '../core/request';
 import { resolveThemeRequest } from './themeRequest';
 import { scenePaint } from './scenePaint';
@@ -19,7 +20,10 @@ export function BoardplotTheme({ children, ...options }: BoardplotThemeProps) {
   const supplied = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined));
   const suppliedStrings = Object.fromEntries(Object.entries(options.strings ?? {}).filter(([, value]) => value !== undefined));
   const strings = useStableValue({ ...parent?.strings, ...suppliedStrings });
-  const value = useStableValue({ ...parent, ...supplied, strings, ...requestMethods, repaint: repaintGeometry, repaintScene, scenePaint });
+  const parentLocale = parent?.locale;
+  const locale = typeof parentLocale === 'object' || typeof options.locale === 'object'
+    ? mergeLocale(parentLocale, options.locale) : options.locale ?? parentLocale;
+  const value = useStableValue({ ...parent, ...supplied, locale, strings, ...requestMethods, repaint: repaintGeometry, repaintScene, scenePaint });
   return <BoardplotThemeContext.Provider value={value}>{children}</BoardplotThemeContext.Provider>;
 }
 

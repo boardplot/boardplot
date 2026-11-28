@@ -1,5 +1,5 @@
 import { lazy, Suspense, useContext, useEffect, useRef, type ReactNode, type ReactElement } from 'react';
-import { normalizeOptionShapes } from '../core/normalize/optionShapes';
+import { mergeLocale, normalizeOptionShapes } from '../core/normalize/optionShapes';
 import type { BaseOptions } from '../core/types/options';
 import { NormalizeError, resolveSize } from '../core/normalize/shared';
 import { canvasMargin, resolveTheme, themeForWidth } from '../core/theme';
@@ -27,8 +27,7 @@ export default function ReaderBox({ theme: ref, options: authored = {}, size: ex
   const options = normalizeOptionShapes('', { options: authored }).chart.options as BaseOptions;
   const settings = useContext(BoardplotThemeContext);
   const full = fullDiagnostics(settings?.diagnostics);
-  const locale = options.locale ?? settings?.locale;
-  const language = typeof locale === 'string' ? locale : locale?.language;
+  const language = mergeLocale(settings?.locale, options.locale)?.language;
   const { strings, heading, hint, content: children } = readerText({ kind, result, renderRefused, children: suppliedChildren }, language, settings?.strings);
   const minimum = findings[0]?.expected?.minimum as Record<string, number> | undefined;
   const legacy = full && kind === 'refused' && settings?.strings?.refusalMessage?.includes('{')
