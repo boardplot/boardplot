@@ -139,7 +139,7 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       ],
     },
     options: {
-      secondaryAxis: { acknowledge: true, show: false },
+      secondaryAxis: { show: false },
       axisTitles: { primary: 'Revenue, $m', secondary: 'EBITDA margin, %' },
       valueAxis: { show: true },
       // Every quarter's margin prints, not only the two ends.
@@ -169,7 +169,7 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       ],
     },
     options: {
-      secondaryAxis: { acknowledge: true, show: false },
+      secondaryAxis: { show: false },
       axisTitles: { primary: 'Orders, k', secondary: 'Conversion, %' },
       valueAxis: { show: true },
       valueLabels: 'extremes',
@@ -186,7 +186,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     kind: 'example',
     data: revenueUnitsData,
     options: {
-      secondaryAxis: { acknowledge: true },
       axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k' },
       valueAxis: { show: true },
       valueLabels: 'none',
@@ -229,7 +228,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       ],
     },
     options: {
-      secondaryAxis: { acknowledge: true },
       labels: { segment: ['percent'] },
       title: 'Partner grows to over half of Q3 revenue',
       subtitle: { measure: 'Revenue by channel and margin', period: 'FY26' },
@@ -318,7 +316,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       // The axis titles carry the two units; a chart unit would put "$m"
       // on the traffic as well.
       subtitle: { measure: 'Sales and store traffic', period: 'FY25 by month' },
-      secondaryAxis: { acknowledge: true },
       // The sales scale runs to 200 so the traffic line runs over the columns and its values sit on the page.
       valueAxis: { max: 200 },
       axisTitles: { primary: 'Sales, $m', secondary: 'Store traffic, k visits' },
@@ -397,7 +394,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       interpolate: 'monotone',
       title: 'Utilization accelerates as the installed base scales',
       subtitle: { measure: 'Installed base and utilization', period: 'FY22–FY27' },
-      secondaryAxis: { acknowledge: true },
       axisTitles: { primary: 'Installed base, k units', secondary: 'Utilization, %' },
       source: 'Illustrative operating plan',
       legend: 'bottom',
@@ -414,7 +410,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       })),
     },
     options: {
-      secondaryAxis: { acknowledge: true },
       axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k' },
       valueAxis: { show: true },
       title: 'Units sold rise faster than revenue',
@@ -438,7 +433,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     data: revenueUnitsData,
     options: {
       theme: { preset: 'standard', overrides: { valueAxis: { dualAxis: true } } },
-      secondaryAxis: { acknowledge: true },
       axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k' },
       valueAxis: { show: true, gridlines: true },
       title: 'Units grew four times as fast as revenue',
@@ -457,7 +451,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     kind: 'example',
     data: revenueUnitsData,
     options: {
-      secondaryAxis: { acknowledge: true },
       dualAxis: { anatomy: true, growth: true },
       axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k' },
       valueAxis: { show: true, gridlines: true },
@@ -481,7 +474,7 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     options: {
       target: 'dashboard', size: { width: 1168, height: 340 },
       title: 'Daily count and rate', valueAxis: { show: true },
-      secondaryAxis: { acknowledge: true, domain: [0, 10] },
+      secondaryAxis: { domain: [0, 10] },
       valueLabels: 'ends', footnotes: false,
       annotations: [{ id: 'before', kind: 'valueLine', value: 5.5, axis: 'secondary', format: '0.0%', label: 'Before 5.5%' }],
     },
@@ -505,7 +498,6 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       title: 'Margin swings while revenue holds',
       subtitle: { company: 'Northwind Outdoor', measure: 'Revenue and margin', period: 'Monthly' },
       unit: 'EUR m',
-      secondaryAxis: { acknowledge: true },
       axisTitles: { primary: 'Revenue, EUR m', secondary: 'Margin, %' },
       source: 'Invented example',
     },
@@ -588,7 +580,6 @@ fixtures.push(
       // Each axis names its measure and unit, led by its series' swatch, so the subtitle does not put $k on both.
       subtitle: { measure: 'Spend and cost per order', period: 'W32–W37' },
       axisTitles: { primary: 'Spend, $k', secondary: 'Cost per order, $' },
-      secondaryAxis: { acknowledge: true },
       source: 'Illustrative data',
     },
   },
@@ -664,7 +655,6 @@ fixtures.push({
   },
   options: {
     interpolate: 'linear',
-    secondaryAxis: { acknowledge: true },
     axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k units' },
     valueAxis: { show: true },
     title: 'Long names read whole at a generous size',
@@ -686,7 +676,6 @@ fixtures.push({
   data: revenueUnitsData,
   options: {
     interpolate: 'linear',
-    secondaryAxis: { acknowledge: true },
     axisTitles: { primary: 'Revenue, $m', secondary: 'Units sold, k units' },
     valueAxis: { show: true },
     theme: {
@@ -888,7 +877,6 @@ fixtures.push({
     // The average keeps all 16 weeks, and its label says so.
     averageMarker: true,
     // The right axis has a title, so it shows its ticks; eight points print every value.
-    secondaryAxis: { acknowledge: true },
     valueLabels: 'all',
     axisTitles: { primary: 'Revenue, $k', secondary: 'Conversion, %' },
     valueAxis: { show: true },
@@ -915,7 +903,6 @@ fixtures.push({
   },
   options: {
     anomaly: { method: 'mad', baseline: 'median' },
-    secondaryAxis: { acknowledge: true },
     dualAxis: { anatomy: true },
     axisTitles: { primary: 'Revenue, $k', secondary: 'Average order value, $' },
     valueAxis: { show: true },
@@ -939,7 +926,7 @@ fixtures.push(
     id: 'secondary-domain-format',
     title: 'A secondary axis pinned to 0 to 60 with one-decimal ticks',
     tags: ['coverage'],
-    options: { ...revenueUnitsTickOptions, secondaryAxis: { acknowledge: true, domain: [0, 60], format: '1.0' } },
+    options: { ...revenueUnitsTickOptions, secondaryAxis: { domain: [0, 60], format: '1.0' } },
   },
   {
     ...stepAfter,
@@ -1116,7 +1103,7 @@ fixtures.push({
       { id: 'rate', label: 'Conversion rate', kind: 'line', axis: 'secondary', unit: '%', format: '0.0%', valueKind: 'fraction', values: [0.153, 0.17, 0.187] },
     ],
   },
-  options: { title: 'Orders and conversion rate rise', secondaryAxis: { acknowledge: true }, valueAxis: { show: true } },
+  options: { title: 'Orders and conversion rate rise', valueAxis: { show: true } },
 });
 
 // A band label over a rising tail: the plot gives up headroom above it.
@@ -1132,7 +1119,7 @@ fixtures.push({
       { id: 's2', label: 'Conversion index', kind: 'line', axis: 'secondary', values: Array.from({ length: 34 }, (_, i) => (i < 28 ? 40 + ((i * 7) % 20) : 85 + (i - 28) * 6)) },
     ],
   },
-  options: { target: 'report', title: 'Daily sessions and conversion index', secondaryAxis: { acknowledge: true }, size: { width: 760, height: 340 } },
+  options: { target: 'report', title: 'Daily sessions and conversion index', size: { width: 760, height: 340 } },
   annotations: [{ kind: 'band', from: 'd28', to: 'd33', label: 'After a press article', tone: 'muted' }],
 });
 
@@ -1149,7 +1136,7 @@ fixtures.push({
       { id: 'roas', label: 'ROAS', kind: 'line', axis: 'secondary', values: Array.from({ length: 16 }, (_, i) => 1.5 + ((i * 7) % 20) / 10) },
     ],
   },
-  options: { title: 'Spend and ROAS by campaign', secondaryAxis: { acknowledge: true }, size: { width: 480 }, notes: { show: ['note', 'disclosure'] }, source: 'Invented example' },
+  options: { title: 'Spend and ROAS by campaign', size: { width: 480 }, notes: { show: ['note', 'disclosure'] }, source: 'Invented example' },
 });
 
 // notes.show 'ranks' prints the rank key alone: the same campaigns read as
@@ -1165,7 +1152,7 @@ fixtures.push({
       { id: 'roas', label: 'ROAS', kind: 'line', axis: 'secondary', values: Array.from({ length: 16 }, (_, i) => 1.5 + ((i * 7) % 20) / 10) },
     ],
   },
-  options: { title: 'Spend and ROAS by campaign', secondaryAxis: { acknowledge: true }, size: { width: 480 }, notes: { show: ['note', 'ranks'] }, source: 'Invented example' },
+  options: { title: 'Spend and ROAS by campaign', size: { width: 480 }, notes: { show: ['note', 'ranks'] }, source: 'Invented example' },
 });
 
 // An area behind columns: the columns, the corridor and the launch period all
@@ -1223,7 +1210,7 @@ fixtures.push({
       { id: 'line2', label: 'Rate 2', kind: 'line', values: comboDays.values(90) },
     ],
   },
-  options: { title: 'Invented daily measures', secondaryAxis: { acknowledge: true }, valueLabels: 'all', size: { width: 400 } },
+  options: { title: 'Invented daily measures', valueLabels: 'all', size: { width: 400 } },
 });
 
 registerFixtures('combo', fixtures);
