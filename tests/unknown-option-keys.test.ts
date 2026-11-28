@@ -277,7 +277,7 @@ describe('unknown option keys are refused on every type', () => {
     const grid = getFixtures('grid').find(fixture => fixture.id === 'repeat-regions')!;
     const template = (grid.data as { template: { options?: object } }).template;
     const specs = [
-      { type: 'combo', data: combo.data, options: { ...combo.options, labels: { growth: true } } },
+      { type: 'combo', data: combo.data, options: { ...combo.options, secondaryAxis: undefined, labels: { growth: true } } },
       { type: 'grid', data: { ...grid.data as object, template: { ...template, options: { ...template.options, strings: { highlight: 'Old' } } } }, options: grid.options },
     ];
     for (const spec of specs) {
