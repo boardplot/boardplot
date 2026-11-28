@@ -82,13 +82,21 @@ describe('built-in wording block', () => {
       .toContain('Quelle: Brevinth label analytics, FY25');
   });
 
+  // The warning named "Source:" only, so an author who fixed it still printed the English "Others" without notice.
+  it('names every built-in English word of a French chart with its strings key, and stays quiet once they are set', () => {
+    const fixture = pieFixture();
+    const warnings = (options: Record<string, unknown>) => layout('pie', fixture, { locale: { language: 'fr' }, topN: { n: 3 }, ...options }).warnings.filter(warning => warning.code === 'mixed-language');
+    expect(warnings({})).toMatchObject([{ message: expect.stringMatching(/Others \(strings\.others\).*Source \(strings\.source\)|Source \(strings\.source\).*Others \(strings\.others\)/) }]);
+    expect(warnings({ strings: { source: 'Source', others: 'Autres' } })).toEqual([]);
+  });
+
   // A French chart can print a built-in English source prefix, while the author's wording and hidden prefixes should stay quiet.
   it('reports only the built-in source prefix visible in the scene', () => {
     const fixture = pieFixture();
     const warnings = (options: Record<string, unknown>) => layout('pie', fixture, options).warnings.filter(warning => warning.code === 'mixed-language');
     const french = { locale: { language: 'fr-FR' } };
     expect(warnings(french)).toMatchObject([{
-      severity: 'warn', message: "Chart text for 'fr-FR' includes built-in English wording (Source:).",
+      severity: 'warn', message: "Chart text for 'fr-FR' includes built-in English wording: Source (strings.source).",
       suggest: expect.stringContaining('options.strings.source'),
     }]);
     for (const source of ['Provenance', '', 'Source']) {

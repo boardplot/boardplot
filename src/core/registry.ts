@@ -10,7 +10,8 @@ import { defaultMeasurer } from './text';
 import { prepareFractionAnnotations } from './normalize/fraction';
 import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
-import { englishSourceFallback, withChartDefaultStrings, withLocaleStrings } from './strings';
+import { lacksWordTable, recordEnglishWords, withChartDefaultStrings, withLocaleStrings } from './strings';
+import { mixedLanguageWarning } from './mixedLanguage';
 import { withNumberMarks } from './numberMarks';
 import type { Annotation, AnnotationKind } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
@@ -41,7 +42,6 @@ import { isOwnMark } from './label/solver';
 import { reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
 import { staticFrame } from './footer';
-import { sourceLine } from './notes';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
@@ -884,26 +884,18 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const options = withDefaultTarget(authored);
     return withLayoutMemo(() => {
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
-      let geo = loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
+      // diagram and creative take no options.strings, so the author has no way to replace a word there.
+      const recorded = def.type === 'diagram' || def.type === 'creative' ? undefined
+        : recordEnglishWords(options, () => loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options));
+      let geo = recorded ? recorded.result : loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
       if (!geo.refused) {
         finishCutLabelNotes(geo);
         reportLabelOmissions(geo, options, data);
-        const sourceId = geo.frame?.sourceNodeId;
-        const source = options?.source;
-        // diagram and creative take no options.strings, so the author has no way to replace the word there.
-        const fallback = sourceId && source && def.type !== 'diagram' && def.type !== 'creative' ? englishSourceFallback(options) : undefined;
-        if (fallback && source && sourceLine(source, fallback.word) !== source) {
-          const { word, language } = fallback;
-          const node = geo.scene.find(item => item.id === sourceId);
-          const message = `Chart text for '${language}' includes built-in English wording (${word}:).`;
-          if (node?.t === 'text' && node.lines[0]?.startsWith(`${word}:`)
-            && !geo.warnings.some(warning => warning.code === 'mixed-language' && warning.message === message)) {
-            geo.warnings = [...geo.warnings, {
-              code: 'mixed-language', severity: 'warn', field: ['options', 'source'], message,
-              suggest: 'Set options.strings.source to the word to print.',
-            }];
-          }
+        const language = recorded && lacksWordTable(options);
+        const warning = recorded && language ? mixedLanguageWarning(geo, options ?? {}, language, recorded.words, loadedDeferred('footer') === undefined) : undefined;
+        if (warning && !geo.warnings.some(item => item.code === 'mixed-language' && item.message === warning.message)) {
+          geo.warnings = [...geo.warnings, warning];
         }
       }
       if (!(options as { [FULL_LAYOUT_PROBE]?: boolean })[FULL_LAYOUT_PROBE]

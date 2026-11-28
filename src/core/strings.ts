@@ -3,7 +3,7 @@ import { wordLanguage } from './numberMarks';
 import type { BaseOptions } from './types/options';
 
 /** Built-in chart wording. Unsupported languages use English. */
-const EN = {
+export const EN = {
   "storyBack": "‹ Back",
   "storyNext": "Next ›",
   "storyCounter": "{step} / {count}",
@@ -282,13 +282,36 @@ export function authoredStrings(options: Pick<BaseOptions, 'strings'>): Record<s
   return (options as Authored)[LOCALE_STRINGS] ?? options.strings as Record<string, string | undefined> | undefined;
 }
 
-/** The built-in source word when the chart asked for a language that has no wording table. */
-export function englishSourceFallback(options: Pick<BaseOptions, 'locale' | 'strings'> | undefined): { language: string; word: string } | undefined {
+/**
+ * The built-in English templates a layout read while it drew a chart for a language that has no wording table
+ * (neither English nor German), and no caller word replaced. Null outside such a layout, so an English or
+ * German chart pays one null check per word.
+ */
+let readEnglish: Map<string, string> | null = null;
+
+/** Whether the chart's language has no wording table of its own. */
+export function lacksWordTable(options: { locale?: { language?: string } } | undefined): string | undefined {
   const language = wordLanguage(options?.locale?.language);
-  if (options && language && !/^(?:en|de)(?:[-_]|$)/i.test(language) && authoredStrings(options)?.source === undefined) {
-    return { language, word: EN.source };
+  return language && !/^(?:en|de)(?:[-_]|$)/i.test(language) ? language : undefined;
+}
+
+/** Runs `run` and returns the key and English template of every built-in word it read for such a language. */
+export function recordEnglishWords<T>(options: Pick<BaseOptions, 'locale' | 'strings'> | undefined, run: () => T): { result: T; words: ReadonlyMap<string, string> } {
+  if (!lacksWordTable(options)) return { result: run(), words: new Map() };
+  const outer = readEnglish;
+  const own = new Map<string, string>();
+  readEnglish = own;
+  try {
+    return { result: run(), words: own };
+  } finally {
+    readEnglish = outer;
+    if (outer) for (const [key, template] of own) outer.set(key, template);
   }
-  return undefined;
+}
+
+/** The words the caller set; a key that is not among them prints the built-in English. */
+export function authoredWordKeys(options: Pick<BaseOptions, 'strings'>): ReadonlySet<string> {
+  return new Set(Object.keys(authoredStrings(options) ?? {}).filter((key) => authoredStrings(options)![key] !== undefined));
 }
 
 /**
@@ -316,6 +339,7 @@ function languageOf(options: StringOptions): string | undefined {
 
 function fillChartString(options: StringOptions, key: string, fields: StringFields | undefined, words: Record<string, string>): string {
   const template = (options?.strings as Record<string, string | undefined> | undefined)?.[key] ?? words[key]!;
+  if (readEnglish !== null && (options === undefined || authoredStrings(options as Pick<BaseOptions, 'strings'>)?.[key] === undefined)) readEnglish.set(key, words[key]!);
   if (fields === undefined || !template.includes('{')) return template;
   const language = languageOf(options);
   const localized = Object.fromEntries(Object.entries(fields).map(([name, value]) =>
