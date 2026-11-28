@@ -1,7 +1,7 @@
 import { chartString } from '../strings/a11y-categoryVariants';
 import type { BarDerived, BarMarks } from '../charts/bar/layout';
 import type { VarianceDerived, VarianceMarks } from '../charts/variance/layout';
-import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
+import { categoryNameWithGroup, normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
 import type { ChartData } from '../types/data';
 import type { VarianceOptions } from '../types/options';
 import { compareValues, unavailableValue } from './comparison';
@@ -17,9 +17,10 @@ function tornadoRecords(ctx: RecordContext): InteractionRecord[] | undefined {
   const number = (value: number) => numericValue(value, ctx.request.options.unit, ctx.request.options.format);
   return derived.tornado.rows.map(row => {
     const mark = marks.rows.find(mark => mark.id === row.id);
+    const category = categories.find(category => category.id === row.id);
     const rank = derived.tornado!.ties.find(tie => tie.categoryIds.includes(row.id))?.rank;
     return makeRecord(ctx, { categoryId: row.id }, derivedValue(row.swing, ctx.request.options.unit, ctx.request.options.format), {
-      label: categories.find(category => category.id === row.id)?.label ?? row.id,
+      label: category ? categoryNameWithGroup(category) : row.id,
       anchor: mark?.rect,
       fields: [
         { key: 'low', label: chartString(ctx.request.options, 'lowCase'), value: number(row.low) },

@@ -591,7 +591,7 @@ function layoutRows(
     const band = compactNames ? compactBand(cats.length, valueBody, compactNames.nameBlock, compactBar, compactRowGap, gapAfter)
       : bandScale(cats.length, [valueBody.y, valueBody.y + valueBody.h], { paddingInner: 1 - fraction, gapAfter });
     let groups;
-    if (!callerNames && gapAfter) {
+    if (!callerNames && labelOn('category') && gapAfter) {
       // A compact name already fitted across the chart keeps every pixel of its longest line.
       const nameRoom = compactNames ? plot0.w - maxOf(compactNames.names.map(name => compactNameRight(name, 0, tickFont, emphasisWeight(theme), measure))) : Infinity;
       groups = barGroupColumn(cats, band, compactNames ? tickFont : catLines[0]!.font, measure, {
@@ -674,7 +674,7 @@ function layoutRows(
   const labelRequests: LabelRequest[] = axisShown && axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: rowPlan.titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (rowPlan.titleRow ? tickRowH + 2 : 0) }, 'end', 'axis:x:title')]
     : [];
-  if (rowPlan.categoryTitle) labelRequests.push(rowPlan.categoryTitle.request(categoryX, plot0.y, 'start'));
+  if (rowPlan.categoryTitle) labelRequests.push(rowPlan.categoryTitle.request(plot0.x, plot0.y, 'start', rowPlan.groups?.width));
   if (rowPlan.groups) pushAll(labelRequests, rowPlan.groups.labels);
   const currentX = spine ? x(spine.value) : undefined;
   const canvas: Rect = { x: 0, y: 0, w: size.width, h: size.height };

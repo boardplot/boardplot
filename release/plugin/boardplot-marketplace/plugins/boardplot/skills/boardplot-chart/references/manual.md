@@ -358,7 +358,7 @@ In a stacked column, bar or combo, `null` means a value that is unknown. A stack
 
 ### Two stacks per period
 
-Give each stack a year as its `label` and each consecutive pair the same quarter as its `group`. The quarter appears once below the pair on a column chart or to its left on a bar chart. A half-step gap separates adjacent quarters. Each stack has its own total. There are no group totals.
+Give each stack a year as its `label` and each consecutive pair the same quarter as its `group`. When every stack name fits horizontally and in full, the quarter appears once below the pair on a column chart or to its left on a bar chart. When the names need more room, each stack label includes its quarter, such as `FY24 Q1`. A half-step gap separates adjacent quarters in either layout. Each stack has its own total. Setting `labels.category` to `false` hides the stack and group names.
 
 ```json
 {

@@ -27,7 +27,7 @@ import type { BarOptions } from '../../types/options';
 const categorySchema = categorySchemaOf({
   date: categoryDateSchema.optional().describe("ISO 8601 category date, yyyy-mm-dd; strictly increasing dates permit date-axis promotion where supported."),
   fields: {
-    group: z.string().optional().describe('One name centred to the left of consecutive bars that share this group.'),
+    group: z.string().trim().min(1).optional().describe('Group name for consecutive bars. It appears to the left of the stacks when their names fit in full, or after each stack name.'),
     total100: z.number().optional().describe("Authored quantity represented by 100%; otherwise percentage variants derive their basis from the category values."),
     gapAfter: z
       .union([z.boolean(), z.number().nonnegative()])

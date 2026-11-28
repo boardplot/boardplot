@@ -27,6 +27,7 @@ import type { Rect, rowLabelX, Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
 import { stackParts, withoutShareAnnotations } from '../band/stacks';
 import { labelsToNodes } from '../../label/emit';
+import { inlineCategoryGroups } from '../../label/categoryGroups';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, solveLabels, type SolveCtx, type SolveResult } from '../../label/solver';
 import { NormalizeError } from '../../normalize/shared';
@@ -44,10 +45,10 @@ import type { BarOptions } from '../../types/options';
 import type { Geometry, LintWarning, PlacedAnnotation, PlacedLabel, ShownMark } from '../../types/scene';
 import { layoutBarLocalAnnotations } from './annotations';
 import { displayFor, prepareBar, toDateOnValues } from './domain';
-import { valueLineLabelsOn } from '../labelOn';
+import { labelOn, valueLineLabelsOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
-import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
+import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPlotArea, solveBarFrame, barPassText } from './plot';
 import { toleranceKeyed } from '../../valueLineDomain';
 import { keepBandTotals } from '../band/valueNotes';
@@ -532,6 +533,9 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
   const framed = solveBarFrame(domain, paints, warnings);
   const occupied = framed.claims;
   const area = barPlotArea(domain, framed.frame, warnings, features);
+  const inline = !area.groupLabels && labelOn(options, 'category') && !(options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN]
+    ? inlineCategoryGroups(data, domain.cats) : undefined;
+  if (inline) return layoutStandardBar(inline, options, features, annotationPass, finish, rowsForFrame);
   // The cut row names go to the notes once; the note moves the plot, so the chart refits.
   if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
     return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, features, annotationPass, finish, rowsForFrame);

@@ -78,7 +78,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | categories[].id | string | yes | Category identity used to match keyed values and annotation anchors. |
 | categories[].label | string |  | Displayed category name; defaults to the category id and supports line breaks. A date id or `date` without a label prints a short date such as '4 Sep'. |
 | categories[].date | string |  | ISO 8601 category date, yyyy-mm-dd; strictly increasing dates permit date-axis promotion where supported. |
-| categories[].group | string |  | One name centred to the left of consecutive bars that share this group. |
+| categories[].group | string |  | Group name for consecutive bars. It appears to the left of the stacks when their names fit in full, or after each stack name. |
 | categories[].total100 | number |  | Authored quantity represented by 100%; otherwise percentage variants derive their basis from the category values. |
 | categories[].gapAfter | boolean \| number |  | Extra spacing after this category in band steps. Adjacent named groups have a half-step gap. An explicit value overrides the group gap (true = 0.5, false = 0). |
 | categories[].breakAfter | boolean |  | Category axis break after this category: a gap of at least half a band step with the straight break glyph on the category baseline. Series connectors and net-line steps do not cross it. |

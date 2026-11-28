@@ -1,5 +1,6 @@
 import { a11yDescription } from '../../a11yDescription';
 import { valueLineLabelsOn } from '../labelOn';
+import { inlineCategoryGroups } from '../../label/categoryGroups';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
@@ -1154,6 +1155,8 @@ function layoutColumnPass(
   const framed = settled.framed;
   const occupied = framed.claims;
   let area = settled.area;
+  const inline = !area.groupRow && kindSetting(options, 'category') !== false ? inlineCategoryGroups(data, domain.cats) : undefined;
+  if (inline) return layoutColumnPass(inline, options, keepEachValue);
   if (domain.activeBreak && domain.variant !== 'grouped' && stackBreakReversesOrder(area.y, domain.stacks)) {
     domain.activeBreak = undefined;
     // The frame has no break note; only the plot's total row and scale change.

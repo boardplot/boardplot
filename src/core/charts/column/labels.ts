@@ -939,8 +939,7 @@ export function planColumnLabels(
   if (area.showCatRow) categoryRequests(domain, area, requests);
   if (area.groupRow) {
     const names = area.catPlan();
-    const bottom = area.showCatRow ? area.catRowY + (domain.anomaly ? 4 : 6) + names.rowHeight - (names.title?.bandHeight ?? 0)
-      : area.plot.y + area.plot.h;
+    const bottom = area.catRowY + (domain.anomaly ? 4 : 6) + names.rowHeight - (names.title?.bandHeight ?? 0);
     pushAll(requests, area.groupRow.requests(bottom));
   }
   if (domain.options.categoryAxis?.title) {

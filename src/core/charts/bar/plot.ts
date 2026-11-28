@@ -421,9 +421,11 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const band = bandScale(cats.length, [plot.y, plot.y + plot.h], {
     paddingInner: 1 - bandFraction, paddingOuter: (1 - bandFraction) / 2, gapAfter,
   });
-  const groups = noNameColumn ? undefined : barGroupColumn(cats, band, catLines[0]?.font ?? tickFont, measure, {
-    cap: capW, wider: nameTrack ?? gutterBudget(24, plot0.w), spare: plotW - 10, gap: CAT_BAND_GAP, x: plot0.x,
-  });
+  const groups = nameColumn && cats.some(cat => cat.group !== undefined)
+    && catLines.every(label => label.title === undefined) && plotW - 10 >= CAT_BAND_GAP + measure('…', tickFont).width
+    ? barGroupColumn(cats, band, catLines[0]?.font ?? tickFont, measure, {
+      cap: capW, wider: nameTrack ?? gutterBudget(24, plot0.w), spare: plotW - 10, gap: CAT_BAND_GAP, x: plot0.x,
+    }) : undefined;
   const categoryX = plot0.x + (groups?.width ?? 0);
   if (groups) {
     plot.x += groups.width;
@@ -557,7 +559,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
     availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, categoryX, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
     ...(groups ? { groupLabels: groups.labels } : {}),
-    ...(categoryTitle ? { categoryTitle: categoryTitle.request(categoryX, plot0.y, 'start') } : {}),
+    ...(categoryTitle ? { categoryTitle: categoryTitle.request(plot0.x, plot0.y, 'start', groups?.width) } : {}),
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),
     segmentStep: Math.ceil(Math.max(segmentBar, groupedH) / bandFraction),

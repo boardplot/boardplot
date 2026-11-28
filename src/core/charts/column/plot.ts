@@ -723,6 +723,7 @@ function columnBand(
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   const authored = authoredDateTicks(cats, options, warnings);
   bandedCrossesBetween(options, warnings);
+  const groupedNames = !stair && kindSetting(options, 'category') !== false && cats.some(cat => cat.group !== undefined);
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
@@ -746,7 +747,7 @@ function columnBand(
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
-      ...(!ticked && cats.some(cat => cat.group !== undefined) ? { everyName: 'including-periods' as const } : {}),
+      ...(groupedNames && !ticked ? { ordered: false, everyName: true } : {}),
       ...ticked?.plan,
       ...(typeClassCap() === 'XS' && !ticked && calendarLike(row.labels)
         ? { pinned: cats.map((_, i) => i === cats.length - 1 || row.pinned?.[i] === true) } : {}),
@@ -1076,8 +1077,8 @@ export function columnPlotArea(
       plot.w = Math.max(10, plot.w - valueAxisReserve);
     }
     // Take the new row from the existing plot. A pinned chart keeps its original size floor.
-    const groupRow = cats.some(cat => cat.group !== undefined)
-      ? columnGroupRow(cats, band, showCatRow ? catPlan() : { font: tickFont, typeRole: 'axis' }, measure, plot.h - minPlot)
+    const groupRow = showCatRow && cats.some(cat => cat.group !== undefined)
+      ? columnGroupRow(cats, band, catPlan(), measure, plot.h - minPlot)
       : undefined;
     const plotBeforeGroupRow = groupRow ? { ...plot } : undefined;
     if (groupRow) plot.h = Math.max(1, plot.h - groupRow.height);

@@ -50,7 +50,7 @@ const categorySchema = categorySchemaOf({
   label: z.string().optional().describe("Displayed category name; defaults to the category id and supports line breaks. A date id or `date` without a label prints a short date such as 'Sep'. Day ticks include the month ('2 Oct', or 'Fri 2 Oct' where room allows). A separate row carries the year under day, month and quarter ticks."),
   date: categoryDateSchema.optional().describe("ISO 8601 category date, yyyy-mm-dd; strictly increasing dates permit date-axis promotion where supported."),
   fields: {
-    group: z.string().optional().describe('One name centred below consecutive columns that share this group.'),
+    group: z.string().trim().min(1).optional().describe('Group name for consecutive columns. It appears below the stacks when their names fit horizontally and in full, or after each stack name.'),
     total100: z.number().optional().describe("Authored quantity represented by 100%; otherwise percentage variants derive their basis from the category values."),
     gapAfter: z
       .union([z.boolean(), z.number().nonnegative()])

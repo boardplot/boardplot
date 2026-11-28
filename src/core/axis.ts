@@ -467,7 +467,7 @@ export function axisTitleAllowed(labels: BaseOptions['labels']): boolean {
 export interface CategoryTitle {
   height: number;
   bandHeight: number;
-  request(x: number, y: number, align: 'start' | 'end'): LabelRequest;
+  request(x: number, y: number, align: 'start' | 'end', startInset?: number): LabelRequest;
 }
 
 /** A category title takes one tick-font line. It gives up the row when the text is too wide. */
@@ -483,7 +483,9 @@ export function planCategoryTitle(
   }
   const title = { text, lines: [text], font, ...size };
   return { height: size.height, bandHeight: size.height + AXIS_TITLE_GAP,
-    request: (x, y, align) => axisTitleRequest(title, { x, y }, align, 'axis:category:title') };
+    // A long bar title can span the group column on its own line above the names.
+    request: (x, y, align, startInset = 0) => axisTitleRequest(title,
+      { x: size.width <= width - startInset ? x + startInset : x, y }, align, 'axis:category:title') };
 }
 
 /**

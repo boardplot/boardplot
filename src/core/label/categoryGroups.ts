@@ -1,8 +1,10 @@
 import type { BandScale } from '../scale';
 import type { FontSpec, TextMeasurer } from '../text';
-import type { Category } from '../types/data';
+import type { Category, ChartData } from '../types/data';
 import type { Rect } from '../geometry';
-import { planCategoryRow, type CategoryRowPlan } from './categoryRow';
+import { maxOf } from '../arrays';
+import type { CategoryRowPlan } from './categoryRow';
+import { categoryNameWithGroup } from '../normalize/shared';
 import { fitText, lineBox } from './fitText';
 import { fitBand } from './rowFit';
 import { PRIORITY, type LabelRequest } from './solver';
@@ -19,6 +21,13 @@ export function categoryGapAfter(category: Pick<Category, 'group' | 'gapAfter' |
   const gap = category.gapAfter ?? (category.group !== undefined && next?.group !== undefined && category.group !== next.group);
   // An axis break and a total column still need room for their marks.
   return Math.max(category.breakAfter || next?.role === 'total' ? 0.5 : 0, gap === true ? 0.5 : Number(gap));
+}
+
+/** The single-name recipe keeps the original data order and the gaps of the displayed order. */
+export function inlineCategoryGroups(data: ChartData, ordered: readonly Category[]): ChartData | undefined {
+  if (!ordered.some(cat => cat.group !== undefined)) return;
+  const names = new Map(ordered.map((cat, i) => [cat.id, { label: categoryNameWithGroup(cat), gapAfter: categoryGapAfter(cat, ordered[i + 1]) }]));
+  return { ...data, categories: data.categories.map(cat => cat.group === undefined ? cat : { ...cat, ...names.get(cat.id), group: undefined }) };
 }
 
 function categoryGroups(categories: readonly Category[], band: BandScale): Group[] {
@@ -46,46 +55,30 @@ function groupLabel(group: Group, fitted: { lines: string[]; title?: string }, f
 }
 
 /** The stack names keep their own fit. Each group gets only the span of its stacks. */
-export function columnGroupRow(categories: readonly Category[], band: BandScale, names: Pick<CategoryRowPlan, 'font' | 'typeRole'>,
+export function columnGroupRow(categories: readonly Category[], band: BandScale, names: CategoryRowPlan,
   measure: TextMeasurer, availableHeight: number) {
+  if (names.rotation || !names.keep.every(Boolean)
+    || names.infos.some(info => info.truncated || info.title !== undefined || !info.lines.some(line => line.trim()))) return;
   const groups = categoryGroups(categories, band);
   if (!groups.length) return;
   const { font, typeRole } = names;
-  const row = planCategoryRow({
-    labels: groups.map(group => group.name), centers: groups.map(group => group.center), widths: groups.map(group => group.span),
-    step: band.step, fonts: [font], rotate: false, everyName: 'including-periods', padding: 0, measure,
-  });
   const gap = 4;
-  const maxLines = Math.max(1, Math.min(3, Math.floor((availableHeight - gap) / lineBox(font))));
-  const ellipsisWidth = measure('…', font).width;
-  const rows: { right: number; height: number; top: number }[] = [];
-  const labels = groups.map((group, index) => {
-    const info = row.infos[index]!;
-    // A category tick may be thinned or abbreviated. A group always gets a horizontal label and a title for a cut.
-    const width = group.span;
-    const fitted = !info.truncated && !info.title && info.w <= width && info.lines.length <= maxLines ? info
-      : fitText(group.name, font, Math.max(ellipsisWidth, width), width < ellipsisWidth ? 1 : maxLines, measure, { hyphenRetry: true });
+  const maxLines = Math.min(3, Math.floor((availableHeight - gap) / lineBox(font)));
+  if (maxLines < 1) return;
+  const labels: { group: Group; fitted: ReturnType<typeof fitText>; x: number }[] = [];
+  let right = -Infinity;
+  for (const group of groups) {
+    const fitted = fitText(group.name, font, group.span, maxLines, measure, { hyphenRetry: true });
     const x = group.center - fitted.w / 2;
-    // When even adjacent ellipses touch, use another line and keep each centre on its group.
-    let line = rows.find(line => line.right + gap <= x);
-    if (!line) {
-      line = { right: 0, height: 0, top: 0 };
-      rows.push(line);
-    }
-    line.right = x + fitted.w;
-    line.height = Math.max(line.height, fitted.h);
-    return { group, fitted, x, line };
-  });
-  let height = 0;
-  for (const line of rows) {
-    line.top = height + gap;
-    height = line.top + line.height;
+    if (x < right + gap || !fitted.lines.some(Boolean)) return;
+    labels.push({ group, fitted, x });
+    right = x + fitted.w;
   }
   return {
-    height,
+    height: gap + maxOf(labels.map(label => label.fitted.h)),
     requests(top: number) {
-      return labels.map(({ group, fitted, x, line }) => groupLabel(group, fitted, font, typeRole,
-        { x, y: top + line.top, w: fitted.w, h: fitted.h }, 'below'));
+      return labels.map(({ group, fitted, x }) => groupLabel(group, fitted, font, typeRole,
+        { x, y: top + gap, w: fitted.w, h: fitted.h }, 'below'));
     },
   };
 }

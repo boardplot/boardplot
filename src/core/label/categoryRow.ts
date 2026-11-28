@@ -103,7 +103,7 @@ export interface CategoryRowInput {
   padding?: number;
   /** Allow the 45° rotation step for prose (default true). */
   rotate?: boolean;
-  /** Ordered prose (line axes) wraps, then uses a uniform stride before rotation. */
+  /** True for an ordered line axis, false for stack names within a group. Otherwise infer the order from the labels. */
   ordered?: boolean;
   /** Line-family rows count equal label steps back from the latest period. */
   strideFromEnd?: boolean;
@@ -199,9 +199,8 @@ export interface CategoryRowInput {
    * Names that are not an ordered row (a numbered sequence, periods) keep one name per column:
    * where 45° has no room the row turns -90°, else it cuts with an ellipsis, and it never thins
    * by fit. Column and combo set it where no rank key prints (notes.show without 'disclosure').
-   * 'including-periods' fits even dates and numbered stacks as names instead of thinning their ticks.
    */
-  everyName?: boolean | 'including-periods';
+  everyName?: boolean;
 }
 
 interface CategoryLabelInfo {
@@ -1059,8 +1058,7 @@ const PROSE_FLOOR_LINES = 3;
 function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?: (fit: FitRotation) => void): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
-  const allNames = input.everyName === 'including-periods';
-  const dateNumeric = !allNames && ((input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels));
+  const dateNumeric = input.ordered !== false && ((input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels));
   const periodRow = dateNumeric || input.periods === true || calendarLike(labels);
   // A period row keeps the muted secondary role but prints at the label step. A narrow card keeps the ink: its names are 12 px and its secondary text 11 px.
   const secondary = periodRow && typeClassCap() !== 'XS' && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
@@ -1088,7 +1086,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
   const allowRotate = input.rotate ?? true;
-  const orderedProse = !allNames && !dateNumeric && (input.ordered || input.strideFromEnd || numberedSequence(labels));
+  const orderedProse = !dateNumeric && (input.ordered ?? (input.strideFromEnd || numberedSequence(labels)));
   const baseFont = fonts[0]!;
   const bundled = sourceMeasure === defaultMeasurer || sourceMeasure === measureText;
   // A space-separated name with nonnegative advances cannot fit whole if a word exceeds its slot.
@@ -1337,7 +1335,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   // every category must not skip a name the author put there.
   const blank = labels.map((label) => label.replace(/[\s\u200b]/g, '') === '');
   const names = blank.filter((isBlank) => !isBlank).length;
-  if (!allNames && periodRow && names > 0 && names * 2 < n) {
+  if (periodRow && names > 0 && names * 2 < n) {
     // A name yields only where it collides with another name: the later one drops, unless it is pinned (the latest period).
     for (let f = 0; ; f++) {
       const font = fonts[f]!;
@@ -1495,7 +1493,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
     if (!flat.some((info) => info.truncated) && flat.every((info, i) => info.w <= widthAt(i)) && fits(flat, all, 4)) return plan(font, flat, all, font === baseFont ? 'fit' : 'font-down');
   }
   // A nominal row that keeps every name turns -90° only where 45° has no room.
-  const everyName = !!input.everyName && !orderedProse;
+  const everyName = input.everyName === true && !orderedProse;
   const room45 = allowRotate && rotateFonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
   if (allowRotate && (input.rotate90 || everyName && !room45)) {
     // Vertical names stand side by side: the pitch holds one line and 2 px.
@@ -1625,7 +1623,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   // A cut that leaves a name nothing but the ellipsis names nothing: the
   // label drew as an empty line with its name only in the <title>. Such a
   // row thins to a stride of whole names instead.
-  if (!allNames && last.infos.some((info, i) => all[i] && info.truncated && /^…?$/.test(info.lines[0]!.trim()))) {
+  if (last.infos.some((info, i) => all[i] && info.truncated && /^…?$/.test(info.lines[0]!.trim()))) {
     return namesByFit(labels, single, baseFont, requested, pinned, input.priority, fits, plan, ownsItsRoom);
   }
   const cut = labels.filter((_, i) => last.infos[i]!.lines.some((line) => line.includes('…')));

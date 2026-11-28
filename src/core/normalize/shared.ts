@@ -98,6 +98,11 @@ export function normalizeCategory(raw: string | Category, index: number): Catego
   return { ...raw, label: raw.label ?? raw.id };
 }
 
+export function categoryNameWithGroup(category: Category): string {
+  const name = category.label ?? category.id;
+  return category.group === undefined ? name : `${name} ${category.group}`;
+}
+
 /** Bare number ⇒ NumberCell; null passes through. */
 export function normalizeCell(raw: unknown, path: string): Cell {
   if (raw === null || raw === undefined) return null;
