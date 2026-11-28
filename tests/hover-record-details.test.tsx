@@ -740,6 +740,60 @@ describe('default card rows', () => {
     expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
   });
 
+  // A pie slice named in a note can show a different share on hover when its label is missing.
+  it('uses the rounded share in the pie record and hover card for a slice named in a note', () => {
+    const fixture = getFixtures('pie').find(entry => entry.id === 'ten-tiny-slices')!;
+    const { request, geometry } = build({ type: 'pie', data: fixture.data, options: { ...fixture.options, size: { width: 320, height: 320 } } });
+    const noted = geometry.warnings.find(warning => warning.code === 'values-in-note')?.detail?.values;
+    expect(noted).toContain('Challenger 9 1.7 (3%)');
+    const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'c9')!;
+    expect(record.share?.percent.displayed).toBe('3%');
+    expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toMatch(/^Share: 3% of /);
+  });
+
+  // A pie label can show 34% while the hover card says 33% when the label only shows the value.
+  it('uses the rounded share in the hover card when pie labels only show values', () => {
+    const { request, geometry } = build({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 's', values: [33.3, 33.3, 33.4] }],
+    }, options: { format: '0%', labels: { outsidePie: ['category', 'absolute'] }, size: { width: 640, height: 360 } } });
+    const label = geometry.labels.find(entry => entry.kind === 'outsidePie' && !entry.hidden && entry.owner.categoryId === 'c');
+    expect(label?.text).toBe('c 34%');
+    const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'c')!;
+    expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toBe('Share: 34% of 100%');
+  });
+
+  // Hover cards showed 1% beside a slice labeled <1% and 100% beside a pie with another slice.
+  it('keeps printed pie share bounds in records and hover cards', () => {
+    const split = { values: [99, 0.5, 0.5], shares: ['99%', '<1%', '1%'] };
+    const cases: { values: number[]; shares: string[]; format?: string; labels?: object; shownValues?: string[] }[] = [
+      { ...split },
+      { values: [9999, 1], shares: ['>99.9%', '<0.1%'] },
+      { values: [99999, 1], format: '0.00%', shares: ['>99.99%', '<0.01%'] },
+      { ...split, format: '0%', shownValues: split.shares },
+      { ...split, format: '0%', labels: { outsidePie: ['category', 'absolute'] }, shownValues: split.shares },
+    ];
+    for (const { values, shares, format, labels, shownValues } of cases) {
+      const { request, geometry } = build({ type: 'pie', data: {
+        categories: ['a', 'b', 'c'].slice(0, values.length).map(id => ({ id })),
+        series: [{ id: 's', values }],
+      }, options: { format, labels, size: { width: 640, height: 360 } } });
+      const drawnLabels = geometry.labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+      expect(drawnLabels.map(label => label.lines.at(-1)?.split(' · ').at(-1))).toEqual(shares);
+      const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+      const cards = records.map(record => labelCardContent(record, undefined, { hundredPercent: true }).rows);
+      const sharedRows = sharedLabelCardContent(records).rows.filter(row => row.kind === 'value');
+      expect(records.map(record => record.share?.percent.displayed)).toEqual(shares);
+      expect(cards.map(rows => rows.find(row => row.kind === 'share')?.value)).toEqual(shares);
+      expect(sharedRows.map(row => row.share)).toEqual(shares);
+      if (shownValues) {
+        expect(records.map(record => record.value.displayed)).toEqual(shownValues);
+        expect(cards.map(rows => rows.find(row => row.kind === 'value')?.value)).toEqual(shownValues);
+        expect(sharedRows.map(row => row.value)).toEqual(shownValues);
+      }
+    }
+  });
+
   // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
   it('prints the total the stack draws', () => {
     const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
@@ -753,6 +807,14 @@ describe('default card rows', () => {
     // With a part missing and no authored whole, the known part is no 100 % share.
     expect(card({ type: 'column', data: { categories: cats, series: [...two([10, 12], [5, 6]), { id: 'c', label: 'C', values: [null, null] }] },
       options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'a').slice(1)).toEqual([['A:', '12', true], ['B:', '6', false], ['C:', '–', false], ['Total:', '18 (partial)']]);
+  });
+
+  // A stack whose total nets to nearly zero lost its unit in the hover card ("Total: <1" beside "$150") when pie bounds were kept as printed.
+  it('keeps the unit on a stack total that rounds to a bound', () => {
+    const rows = card({ type: 'column', data: { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }], series: [
+      { id: 'in', label: 'Inflow', values: [150, 120] }, { id: 'out', label: 'Outflow', values: [-149.6, -100] }] },
+    options: { variant: 'stacked', unit: '$', size: { width: 640, height: 360 } } }, 'q1', 'in');
+    expect(rows.find(row => row[0] === 'Total:')?.[1]).toBe('<$1');
   });
 
   // The rules against repeated numbers dropped a value that only matched by chance: a KPI's value, a funnel's conversion, a variance total.

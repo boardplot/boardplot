@@ -3,7 +3,7 @@
  * printed so they add up to 100%. Its own module, so only the types that
  * implement the option (mekko, pie) carry it.
  */
-import { formatPercent, shareText } from './format';
+import { formatPercent } from './format';
 import { quietMethodNote } from './notes';
 import { chartString } from './strings/shareRounding';
 import { roundHalfUp, shareSetDecimals } from './formatPrecision';
@@ -53,6 +53,12 @@ export function shareRoundingNotes(
   return sentences.length > 0 ? [quietMethodNote(sentences.join(' '))] : [];
 }
 
+function formatRoundedShare(share: number, rounded: number, decimals: number, format: (value: number) => string): string {
+  if (rounded === 0 && share > 0) return `<${format(10 ** -decimals)}`;
+  if (rounded === 100 && share < 100) return `>${format(100 - 10 ** -decimals)}`;
+  return format(rounded);
+}
+
 /**
  * Shares of one whole printed so they add up to 100% (the largest-remainder
  * rule). Every share prints at the finest precision
@@ -67,9 +73,10 @@ export function sumConsistentShares(shares: readonly number[], locale?: string, 
   if (Math.abs(shares.reduce((sum, share) => sum + share, 0) - 100) > 1e-6) return null;
   // One precision for the whole the one its shares print at unrounded.
   const decimals = format?.decimals ?? decimalsOverride ?? shareSetDecimals(shares);
+  const display = (value: number) => format ? formatWithSpec(value, format) : formatPercent(value, decimals, false, locale);
   if (!Number.isSafeInteger(100 * 10 ** decimals)) return {
     values: [...shares],
-    texts: shares.map(share => format ? formatWithSpec(share, format) : formatPercent(share, decimals, false, locale)),
+    texts: shares.map(display),
     moved: shares.map(() => false),
     warning: `${decimals} decimals exceed the safe limit of 13`,
   };
@@ -93,11 +100,10 @@ export function sumConsistentShares(shares: readonly number[], locale?: string, 
     steps[pick] = steps[pick]! + (up ? 1 : -1);
     gap += up ? -1 : 1;
   }
+  const values = steps.map(step => step / unit);
   return {
-    values: steps.map(step => step / unit),
-    // A nonzero share that rounds to 0 counts as 0 in the sum and prints "<0.1%", never "0.0%".
-    texts: steps.map((step, index) => format ? formatWithSpec(step / unit, format)
-      : step === 0 && shares[index]! > 0 ? shareText(shares[index]!, decimals, locale) : formatPercent(step / unit, decimals, false, locale)),
+    values,
+    texts: values.map((value, index) => formatRoundedShare(shares[index]!, value, decimals, display)),
     moved: steps.map((step, index) => step !== nearest[index]),
   };
 }
@@ -148,9 +154,11 @@ export function roundWholes(
     whole.parts.forEach((part, index) => {
       const own = formats[index];
       const display = own ? (value: number) => formatWithSpec(value, own) : fallback;
-      const printed = own || common ? display(rounded.values[index]!) : rounded.texts[index]!;
+      const value = rounded.values[index]!;
+      const printed = own === common ? rounded.texts[index]!
+        : rounded.warning ? display(value) : formatRoundedShare(part.share, value, precision, display);
       texts.set(`${whole.id}\0${part.id}`, printed);
-      values.set(`${whole.id}\0${part.id}`, rounded.values[index]!);
+      values.set(`${whole.id}\0${part.id}`, value);
       if (rounded.moved[index]) {
         adjustments.push({ whole: whole.name, part: part.name, share: Math.round(part.share * 1e4) / 1e4, nearest: display(part.share), printed });
       }

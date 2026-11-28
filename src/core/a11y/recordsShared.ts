@@ -123,8 +123,8 @@ function indexNodes(ctx: RecordContext): Map<string, string[]> {
  * drawn, or `geometry.marks.shown` where the value has no node). A default
  * format prints every value of a set by one rule, so an undrawn value reads
  * as its set prints it. The layout names the value; nothing here reads a
- * number out of a text. A value without such a text keeps none. A bound
- * ("<0.001") does not state the number, so it is no shown text.
+ * number out of a text. A value without such a text keeps none. Pie shares
+ * keep their bounds, including when the slice value uses the same text.
  */
 export function withShownTexts(records: InteractionRecord[], geometry: Geometry): InteractionRecord[] {
   const drawn = new Map<string, Record<string, string>>();
@@ -132,7 +132,10 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
   const add = (index: Map<string, Record<string, string>>, owner: OwnerRef, shows: ShownTexts) => {
     const key = ownerKey(owner);
     const into = index.get(key) ?? {};
-    for (const [slot, text] of Object.entries(shows)) if (!printsBound(text)) into[slot] ??= text;
+    const pieShare = geometry.type === 'pie' ? shows['share.percent'] : undefined;
+    for (const [slot, text] of Object.entries(shows)) {
+      if (!printsBound(text) || (text === pieShare && (slot === 'share.percent' || slot === 'value'))) into[slot] ??= text;
+    }
     index.set(key, into);
   };
   const marks = geometry.marks as { shown?: readonly ShownMark[]; wouldShow?: unknown } | undefined;

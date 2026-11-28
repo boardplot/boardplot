@@ -356,14 +356,16 @@ function layoutPiePass(
   const sid = ser.id;
   let cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const cells = normalizeSeriesValues(ser, cats, 0, 'values', data.series);
-  // A percent options.format sets the precision of the computed shares. It prints the slice values too
-  // only when they are percents (a % unit, percent cells, or values adding to 100); counts or money would read as percent.
-  const shareExample = shareFormatExample(options);
+  // A percent format can set the precision of the computed shares. A percent options.format prints
+  // slice values only when they are percents (a % unit, percent cells, or values adding to 100).
+  const optionShareExample = shareFormatExample(options);
+  const shareExample = ser.format ? shareFormatExample(options, [ser]) : optionShareExample;
+  const isPercentWhole = (sum: number): boolean => Math.abs(sum - 100) <= 0.05;
   const valuesArePercent = [options.unit, ser.unit].some((unit) => unit?.includes('%'))
     || cells.every((cell) => cell === null || isPctCell(cell))
-    || Math.abs(cells.map(cellValue).reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0) - 100) <= 0.05;
-  const valueExample = shareExample && !valuesArePercent ? undefined : options.format;
-  if (shareExample && !valuesArePercent) {
+    || isPercentWhole(cells.map(cellValue).reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0));
+  const valueExample = optionShareExample && !valuesArePercent ? undefined : options.format;
+  if (optionShareExample && !valuesArePercent) {
     warnings.push({
       code: 'percent-format-on-values',
       severity: 'warn',
@@ -380,7 +382,6 @@ function layoutPiePass(
   const sharesFormatter = (percents: Iterable<number>): { decimals: number; format: (percent: number) => string } =>
     shareExample ? { decimals: parseFormatExample(shareExample).decimals, format: formatterFromExample(shareExample, options.locale?.language) }
       : shareSetFormatter(percents, options.locale?.language);
-  const sliceText = (slice: { v: number; format?: string }): string => slice.format ? formatterFromExample(slice.format, options.locale?.language)(slice.v) : fmt(slice.v);
   interface Slice {
     cat: Category;
     v: number | null;
@@ -565,14 +566,26 @@ function layoutPiePass(
   // widest such line and the leader gap, measured before the frame.
   const columns = insideContent === null && outsideContent !== null;
   const shownSlices = slices.filter((slice) => (slice.v ?? 0) > 0);
-  const preShares = sharesFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100));
+  const shareOf = (slice: Slice): number => ((slice.v ?? 0) / total) * 100;
+  // Use the same rounded shares to measure the columns and draw the labels.
+  const rounded = options.rounding !== 'nearest'
+    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: shownSlices.map((slice) => ({ id: slice.cat.id, name: slice.cat.label ?? slice.cat.id, share: shareOf(slice) })) }], options.locale?.language, shareExample ? parseFormatExample(shareExample) : undefined)
+    : undefined;
+  const shareSet = sharesFormatter(shownSlices.map(shareOf));
+  const shareText = (slice: Slice): string => rounded?.texts.get(`${sid}\0${slice.cat.id}`) ?? shareSet.format(shareOf(slice));
+  const sliceText = (slice: Slice): string => {
+    const value = slice.v ?? 0;
+    if (rounded && shareExample && (slice.format ?? ser.format ?? valueExample) === shareExample &&
+      Math.abs(value - shareOf(slice)) <= 4 * Number.EPSILON * value) return shareText(slice);
+    return slice.format ? formatterFromExample(slice.format, options.locale?.language)(value) : fmt(value);
+  };
   // A name wraps to a label column before the reserve is measured, so a long name does not take the room
   // the circle needs: up to two lines in the narrowest column that holds them, between COLUMN_NAME_SHARE
   // and COLUMN_NAME_WIDEST of the plot width. A name that still does not fit is cut.
   const plotEstimate = Math.max(0, size.width - margin.left - margin.right);
   const columnName = (name: string) => fitText(name, labelFont, COLUMN_NAME_SHARE * plotEstimate, 2, measure, { wider: COLUMN_NAME_WIDEST * plotEstimate });
   const wrappedName = (name: string): string => columns ? columnName(name).lines.join('\n') : name;
-  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], wrappedName(slice.cat.label ?? slice.cat.id), sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
+  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], wrappedName(slice.cat.label ?? slice.cat.id), sliceText(slice), shareText(slice), ser.label ?? sid);
   // Each label column's height and widest line, from the slices' angles
   // (they do not depend on the radius); index 0 is the right side.
   const column = (() => {
@@ -821,14 +834,7 @@ function layoutPiePass(
     return Math.max(40, centred, edge - RING_GAP - 2, columns ? plot.w / 2 - baseFit - columnGap(plot.w) - 2 : 0);
   };
 
-  // rounding 'sum-consistent': the drawn slices' shares print so they add up to 100%.
-  const rounded = options.rounding === 'sum-consistent'
-    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language, shareExample ? parseFormatExample(shareExample) : undefined)
-    : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
-  // The slices' shares print at one precision, "8%" beside "92%".
-  const shareSet = sharesFormatter(geoms.map((g) => g.share * 100));
-  const shareText = (g: SliceGeom): string => rounded?.texts.get(`${sid}\0${g.cat.id}`) ?? shareSet.format(g.share * 100);
   // A slice's value text is made once: its mark, its label parts, its authored text and its record all read it.
   const valueTexts = new WeakMap<SliceGeom, string>();
   const geomText = (g: SliceGeom): string => valueTexts.get(g) ?? valueTexts.set(g, sliceText(g)).get(g)!;
@@ -936,8 +942,7 @@ function layoutPiePass(
   };
   let sliceLabels = buildSliceLabels();
 
-  // The printed shares of the drawn slices sum to 100, or the drift is
-  // disclosed; no share is bent to close it.
+  // Nearest rounding can leave the printed shares with a total other than 100%.
   if (!rounded && sliceLabels.some((sl) => (sl.insideEligible ? insideContent : outsideContent)?.includes('percent'))) {
     warnShareRoundingDrift(warnings, [{ name: ser.label ?? sid, shares: geoms.map((g) => g.share * 100), decimals: shareSet.decimals }]);
   }
@@ -1233,7 +1238,8 @@ function layoutPiePass(
     const label = solved.placed.find((l) => !l.hidden && (l.kind === 'insidePie' || l.kind === 'outsidePie') && l.owner.categoryId === g.cat.id);
     // An inside label that landed outside prints its outside form.
     const drawn = label ? shownParts(g, label.kind === 'insidePie' && !(label.slot === 'outside' && outsideForms.has(label.id)) ? insideContent : outsideContent) : {};
-    return [...(Object.keys(drawn).length > 0 ? [{ owner, shows: drawn, drawn: true as const }] : []), { owner, shows: { value: geomText(g) } }];
+    const fallback = { value: geomText(g), 'share.percent': shareText(g) };
+    return [...(Object.keys(drawn).length > 0 ? [{ owner, shows: drawn, drawn: true as const }] : []), { owner, shows: fallback }];
   });
   // What a hidden slice label would have said, name first, for the note.
   const unlabelled = new Map<Id, string>();

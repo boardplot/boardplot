@@ -285,10 +285,22 @@ describe('data gaps', () => {
     }
   });
 
-  it('discloses printed shares that do not add to 100 without bending them', () => {
-    const g = lay('pie', { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [1, 1, 1] }] });
-    expect(texts(g).filter((t) => t.includes('(33%)') || t.includes('· 33%'))).toHaveLength(3);
-    expect(codes(g)).toContain('share-rounding-drift');
+  // Independently rounded pie labels could add up to 103% when the slices represent a whole.
+  it('prints pie shares that total 100% by default and warns if nearest rounding drifts', () => {
+    const data = {
+      categories: ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ id })),
+      series: [{ id: 's', values: [16.5, 16.5, 16.5, 16.5, 16.5, 17.5] }],
+    };
+    const shares = (g: Geometry) => texts(g).join(' ').match(/\b\d+%/g)?.sort();
+    const pie = lay('pie', data);
+    expect(shares(pie)).toEqual(['16%', '16%', '17%', '17%', '17%', '17%']);
+    expect(codes(pie)).not.toContain('share-rounding-drift');
+
+    const nearest = lay('pie', data, { rounding: 'nearest' });
+    expect(shares(nearest)).toEqual(['17%', '17%', '17%', '17%', '17%', '18%']);
+    expect(nearest.warnings).toContainEqual(expect.objectContaining({
+      code: 'share-rounding-drift', severity: 'info', message: expect.stringContaining('103%'),
+    }));
   });
 
   // A 100% bar or area chart drew "8%" and "92%" for one whole and warned that its shares sum to 100.3%: the warning rounded

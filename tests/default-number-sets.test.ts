@@ -43,6 +43,61 @@ describe('default number sets', () => {
       categories: ['n', 's', 'e', 'w'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'mass', values: [41_200, 33_800, 9_800, 0.0000031] }],
     }, options: { unit: 'kg', size: { width: 960 } } } as never);
     const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter((label) => label.kind === 'outsidePie').map((label) => label.text);
-    expect(texts).toEqual(['N 41,200 · 48.6%', 'S 33,800 · 39.9%', 'E 9,800 · 11.6%', 'W 0.0000031 · <0.1%']);
+    expect(texts).toEqual(['N 41,200 · 48.6%', 'S 33,800 · 39.9%', 'E 9,800 · 11.5%', 'W 0.0000031 · <0.1%']);
+  });
+
+  // A pie that measures 10% as 9% can move labels that fit into a note.
+  it('fits all five pie labels when rounded shares need a wider column', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['North', 'South', 'East', 'West', 'Central'].map(label => ({ id: label.toLowerCase(), label })),
+      series: [{ id: 'amount', values: [62_400_000, 9_400_000, 9_400_000, 9_400_000, 9_400_000] }],
+    }, options: { format: 'EUR 1,234,567', size: { width: 352, height: 320 } } });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels).toHaveLength(5);
+    expect(labels.filter(label => label.text.endsWith(' · 10%'))).toHaveLength(2);
+  });
+
+  // A pie can print two different percentages on one label when its values are already shares of the whole.
+  it('uses the same rounded percentage for the pie value and share', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 'amount', values: [33.3, 33.3, 33.4] }],
+    }, options: { format: '0%' } });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels.map(label => label.text)).toContain('c 34% · 34%');
+  });
+
+  // A tiny positive slice can make the pie print 101% or make the largest slice look like the whole pie.
+  it('prints bounds when small pie slices round to zero', () => {
+    const shares = (values: number[], format?: string) => {
+      const request = resolveChartRequest({ type: 'pie', data: {
+        categories: ['a', 'b', 'c'].slice(0, values.length).map(id => ({ id })),
+        series: [{ id: 'amount', values }],
+      }, options: { format, labels: { outsidePie: ['category', 'percent'] }, size: { width: 640, height: 360 } } });
+      return requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden).map(label => label.text);
+    };
+    expect(shares([99, 0.5, 0.5])).toEqual(['a 99%', 'b <1%', 'c 1%']);
+    expect(shares([9999, 1])).toEqual(['a >99.9%', 'b <0.1%']);
+    expect(shares([99999, 1], '0.00%')).toEqual(['a >99.99%', 'b <0.01%']);
+  });
+
+  // Dropping a slice can change the computed shares and overwrite the source values on the labels.
+  it('keeps source percentages beside the shares of the filtered pie', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 'amount', values: [60, 39.96, 0.04] }],
+    }, options: { format: '0.00%', topN: { n: 2, rest: false } } });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels.map(label => label.text)).toEqual(['a 60.00% · 60.02%', 'b 39.96% · 39.98%']);
+  });
+
+  // A percent format on a pie series can give one slice two different labels for the same percentage.
+  it('uses the same rounded percentage when the pie series sets the format', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 'amount', values: [33.3, 33.3, 33.4], unit: '%', format: '0%' }],
+    }, options: {} });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels.map(label => label.text)).toContain('c 34% · 34%');
   });
 });
