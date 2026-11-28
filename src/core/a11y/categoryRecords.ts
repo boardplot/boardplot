@@ -89,10 +89,11 @@ function comparisons(ctx: RecordContext, matrix: Matrix, source: Matrix['series'
   const stackedComponent = stacked &&
     matrix.series.filter(series => series.role !== 'reference' &&
       (ctx.request.type !== 'combo' || !series.kind || series.kind === 'column')).length > 1;
+  const hasSecondAxis = ctx.request.type === 'combo' && ctx.geometry.derived.secondaryDomain !== undefined;
   return refs.map(({ series: reference, scenario }) => {
     const duplicates = refs.filter(candidate => candidate.scenario === scenario);
     const reason = duplicates.length > 1 ? 'More than one series has this comparison scenario'
-      : (reference.axis ?? 'primary') !== (source.axis ?? 'primary') ? 'Comparison uses a different axis'
+      : hasSecondAxis && (reference.axis ?? 'primary') !== (source.axis ?? 'primary') ? 'Comparison uses a different axis'
       : stackedComponent && reference.role === 'reference' ? 'A stacked component has no per-component comparison reference' : undefined;
     return {
       ...compareValues(value, valueFor(ctx, matrix, reference, categoryId), reference, scenario, reason),

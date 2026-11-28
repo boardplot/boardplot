@@ -1038,11 +1038,26 @@ function categoryDateWarnings(data: unknown, options: RequestOptions & { xAxis?:
   }];
 }
 
+function lineSecondaryAxisWarnings(data: unknown): LintWarning[] {
+  if (!isRecord(data) || !Array.isArray(data.series)) return [];
+  const ids = data.series.flatMap(series => isRecord(series) && series.axis === 'secondary' && typeof series.id === 'string'
+    ? [`'${series.id}'`] : []);
+  if (ids.length === 0) return [];
+  return [{
+    code: 'secondary-axis-ignored', severity: 'warn', field: ['data', 'series'],
+    message: `Series ${ids.join(', ')} requested a second axis. The line chart draws every series on the shared scale. `
+      + "Use type 'combo' with options.secondaryAxis set to { acknowledge: true } to draw two axes.",
+  }];
+}
+
 function requestInputWarnings(type: string, data: unknown, options: RequestOptions, annotationsPath = ''): LintWarning[] {
   if (type !== 'grid') return [
     ...percentScaleWarnings(data, options, type),
     ...fractionLineWarnings(data, options.annotations, annotationsPath),
-    ...(type === 'line' ? categoryDateWarnings(data, options) : []),
+    ...(type === 'line' ? [
+      ...categoryDateWarnings(data, options),
+      ...lineSecondaryAxisWarnings(data),
+    ] : []),
   ];
   return inputPanels(data).flatMap(panel => {
     const definition = getChart(panel.type);

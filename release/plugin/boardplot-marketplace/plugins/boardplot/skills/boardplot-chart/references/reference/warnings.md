@@ -801,6 +801,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `scatter-dense-paths` | info |  | scatter |
 | `scenario-unexplained` | info |  | core/lint/partner.ts |
 | `schema-hint-unusable` | warn |  | core/doc/document.ts |
+| `secondary-axis-ignored` | warn |  | core/request.ts |
 | `segment-identity-mismatch` | warn |  | waterfall |
 | `segment-labels-hidden` | info |  | column |
 | `segment-share-mixed-signs` | warn |  | band |

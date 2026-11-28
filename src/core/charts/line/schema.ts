@@ -24,7 +24,7 @@ import {
   dataValueKindSchema,
   categorySchemaOf,
 } from '../../schema/shared';
-import { addSeriesKindIssues, seriesAxisField, seriesKindField } from '../../schema/seriesKind';
+import { addSeriesKindIssues, lineSeriesAxisField, seriesKindField } from '../../schema/seriesKind';
 import { othersShadeDescribe } from '../../othersShade';
 import { timeAnnotationAnchors } from '../../timeAxis';
 import type { LineChartData } from '../../types/data';
@@ -75,7 +75,7 @@ const categorySchema = categorySchemaOf({
 /** Positional cells or point-keyed { categoryId, value } entries. */
 const seriesSchema = z.strictObject({
   kind: seriesKindField,
-  axis: seriesAxisField,
+  axis: lineSeriesAxisField,
   valueKind: valueKindSchema,
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
   label: z.string().optional().describe("Displayed series name; defaults to the series id. The hover card names each value with it (\"North: 65.8\")."),

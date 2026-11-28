@@ -401,6 +401,21 @@ it('gives a value with labels off the text its label would print', () => {
   expect(labelCardContent(record).rows.map(row => row.text)).toContain('Revenue: $78.0');
 });
 
+// An ignored secondary-axis setting hid the prior-year comparison on a line chart with one scale.
+it('shows the prior-year comparison on a line chart with an ignored secondary axis', () => {
+  const { request, geometry } = build({ type: 'line', data: {
+    categories: ['Jan', 'Feb', 'Mar'],
+    series: [
+      { id: 'ac', label: 'Actual', scenario: 'AC', values: [100, 120, 150] },
+      { id: 'py', label: 'Prior year', scenario: 'PY', axis: 'secondary', values: [80, 100, 120] },
+    ],
+  } });
+  const january = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+    .find(record => record.categoryLabel === 'Jan' && record.target.owner.seriesId === 'ac')!;
+  expect(january.comparisons[0]).toMatchObject({ delta: { raw: 20 }, percent: { raw: 25 } });
+  expect(labelCardContent(january).rows.find(row => row.kind === 'comparison')?.text).toBe('vs Prior year: +20 (+25%)');
+});
+
 // Scenario codes hid reference series names, and KPI hover rows added a second comparison prefix.
 it('uses a reference series label and prints each KPI comparison label once', () => {
   const cardRows = (spec: object) => {

@@ -12,7 +12,7 @@ import { invertedRangeTorture } from '../src/core/charts/dot/fixtures';
 import { getFixtures } from '../src/fixtures';
 import { resolveTheme } from '../src/core/theme';
 import { renderSvg } from '../src/core/svg/renderSvg';
-import type { Geometry, SceneNode } from '../src/core/types/scene';
+import type { Geometry, LintWarning, SceneNode } from '../src/core/types/scene';
 import { BarChart } from '../src/react/charts/bar';
 import { BarTableChart } from '../src/react/charts/bartable';
 import { CohortChart } from '../src/react/charts/cohort';
@@ -25,6 +25,7 @@ import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { createChartComponent } from '../src/react/createChartComponent';
 import { DotChart } from '../src/react/charts/dot';
 import { KpiChart } from '../src/react/charts/kpi';
+import { LineChart } from '../src/react/charts/line';
 import { TableChart } from '../src/react/charts/table';
 import { SceneRenderer } from '../src/react/SceneRenderer';
 
@@ -112,6 +113,26 @@ describe('React adapter boundary', () => {
     );
     expect(html).toContain('data-bp-spec-error');
     expect(layout).not.toHaveBeenCalled();
+  });
+
+  // The typed LineChart must tell the author when a requested second axis draws on the shared scale.
+  it('reports one ignored secondary axis warning through onWarnings', async () => {
+    const onWarnings = vi.fn<(warnings: LintWarning[]) => void>();
+    await act(async () => root.render(<LineChart
+      data={{
+        categories: ['Jan', 'Feb', 'Mar', 'Apr'].map(id => ({ id })),
+        series: [
+          { id: 'a', label: 'Units', values: [100, 300, 500, 600] },
+          { id: 'b', label: 'Revenue', values: [3, 4, 5, 6], axis: 'secondary' },
+        ],
+      }}
+      size={{ width: 720, height: 400 }}
+      onWarnings={onWarnings}
+    />));
+    expect(container.querySelector('svg[role="img"]')).not.toBeNull();
+    const warnings = onWarnings.mock.calls.flatMap(([warnings]) => warnings)
+      .filter(warning => warning.code === 'secondary-axis-ignored');
+    expect(warnings).toMatchObject([{ severity: 'warn', field: ['data', 'series'] }]);
   });
 
   // A chart that drew its refusal card kept its state: a dimswitch that refused empty facts opened every row once its data came.

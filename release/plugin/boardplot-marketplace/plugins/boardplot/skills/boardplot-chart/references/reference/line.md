@@ -95,7 +95,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | partial | array |  | With data.x: the x values whose period the readings cover only in part, such as a first or last week that starts or ends mid-week. Each marks its reading as categories[].partial does (hollow marker, a note naming it). Each must be the x of a reading, read as data.x is read; one that names no reading warns (x-partial-no-reading) and marks nothing. Example: ['2026-01-05']. |
 | series | array | yes | Series supplying values for each category, with optional reference series for comparisons. |
 | series[].kind | string |  | Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. One of `'column'`, `'line'`, `'area'`. |
-| series[].axis | string |  | On line and column, only 'primary' is accepted and it has no effect. For a second axis, use type 'combo', set each series' kind to 'line' or 'column', and set options.secondaryAxis: { acknowledge: true }. One of `'primary'`, `'secondary'`. |
+| series[].axis | string |  | Line charts draw all series on one scale and report secondary-axis-ignored for 'secondary'. For a second axis, use type 'combo', set each series' kind to 'line' or 'column', and set options.secondaryAxis: { acknowledge: true }. One of `'primary'`, `'secondary'`. |
 | series[].valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. The hover card names each value with it ("North: 65.8"). |

@@ -6,11 +6,37 @@ import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { LineMarks } from '../src/core/charts/line/layout';
+import { lineDataSchema } from '../src/core/charts/line/schema';
 import { contrastRatio } from '../src/core/color';
 import { paintColor, resolveTheme, strokeToken } from '../src/core/theme';
 import { arrowLook } from '../src/core/annotationArrow';
+import type { LineSeries } from '../src/core/types/data';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
+
+// A second-axis request must preserve the line drawing and tell the author which series share the scale.
+it('draws line series on the shared scale and reports one warning for the ignored second axis', () => {
+  const categories = ['Jan', 'Feb', 'Mar', 'Apr'];
+  const units = { id: 'a', label: 'Units', values: [100, 300, 500, 600] };
+  const revenue = { id: 'b', label: 'Revenue', values: [3, 4, 5, 6] };
+  const revenueOnSecondary = { ...revenue, axis: 'secondary' as const };
+  const draw = (series: LineSeries[]) => requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'line', data: lineDataSchema.parse({ categories, series }), options: { size: { width: 720, height: 400 } },
+  })));
+  const axisWarnings = (geometry: Geometry) => geometry.warnings.filter(warning => warning.code === 'secondary-axis-ignored');
+
+  const requested = draw([units, revenueOnSecondary]);
+  const shared = draw([units, revenue]);
+  expect(requested.axes).toEqual(shared.axes);
+  expect(requested.scene).toEqual(shared.scene);
+  expect(axisWarnings(shared)).toEqual([]);
+  expect(axisWarnings(requested)).toMatchObject([{
+    severity: 'warn', field: ['data', 'series'], message: expect.stringContaining("'b'"),
+  }]);
+  expect(axisWarnings(draw([{ ...units, axis: 'secondary' }, revenueOnSecondary]))).toMatchObject([
+    { message: expect.stringContaining("'a', 'b'") },
+  ]);
+});
 
 // Extra endpoint room must not move a flagged trough value into notes when the centred reserve can still print it.
 it('keeps the flagged 942 trough visible at 900 px', () => {
