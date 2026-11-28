@@ -34,17 +34,27 @@ export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
 /** The chart types that take the narrow dashboard class. The others keep their sizes under 400 px. */
 const NARROW_TYPES = new Set(['line', 'bar', 'waterfall', 'column']);
 
-let narrowOff = false;
-/** Runs a layout with the narrow dashboard class off: a card the narrow sizes refuse can draw in the usual sizes. */
-export function withoutNarrow<T>(run: () => T): T {
-  const outer = narrowOff;
-  narrowOff = true;
-  try { return run(); } finally { narrowOff = outer; }
+export type NarrowMode = 'on' | 'off';
+let narrowMode: NarrowMode | undefined;
+/** Runs a layout with the narrow dashboard class forced on or off, whatever the width is. `undefined` leaves it to the width. */
+export function withNarrow<T>(mode: NarrowMode | undefined, run: () => T): T {
+  const outer = narrowMode;
+  narrowMode = mode;
+  try { return run(); } finally { narrowMode = outer; }
 }
-export const narrowIsOff = (): boolean => narrowOff;
+export const narrowModeKey = (): string => narrowMode ?? '';
 
 export function narrowDashboard(target: RenderTarget | undefined, width: number, type: string): boolean {
-  return !narrowOff && target === 'dashboard' && width < 400 && NARROW_TYPES.has(type);
+  return target === 'dashboard' && NARROW_TYPES.has(type) && (narrowMode ? narrowMode === 'on' : width < 400);
+}
+
+/** A refused card from 400 px draws in the narrow sizes up to this width, where the canvas margins and the type class step up. */
+const NARROW_FLIP_LIMIT = 600;
+
+/** The other class for a refused card of a type that has a narrow class: the usual sizes under 400 px, the narrow sizes from 400 to 599 px. */
+export function narrowFlip(target: RenderTarget | undefined, width: number, type: string): NarrowMode | undefined {
+  if (target !== 'dashboard' || !NARROW_TYPES.has(type)) return undefined;
+  return width < 400 ? 'off' : width < NARROW_FLIP_LIMIT ? 'on' : undefined;
 }
 
 let classCap: TargetTypeClass | undefined;
