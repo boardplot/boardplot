@@ -19,10 +19,14 @@ import { canonicalJson, prepareChartRender, requestRenderKey, type PreparedChart
 import { prepareTableRender, type PreparedTable } from './preparedTable';
 import type { BoardplotThemeOptions } from './themeContext';
 import { resolveThemeRequest } from './themeRequest';
+import { canonicalChartType } from '../core/registry';
 import { LiveDataError } from '../core/live/types';
 import { rowsKey } from './rowsStore';
 import { rowsModule } from './rowsModule';
-import { dataHash, preparedInputKey } from './preparedInput';
+import { dataHash, preparedInputKey, zoomPageKey } from './preparedInput';
+import { drawnGrain, readZoomRange, wantedGrain, zoomAxis, zoomSpec, type ZoomSpec } from '../core/zoom';
+import { withAnnotationOrigins } from '../core/annotationOrigin';
+import { languageOf } from './zoomHook';
 
 /** The spec that `parseChartSpec` read, on the request it returns (parseChartSpec.ts writes it): `prepareChart` keys the page of that spec. */
 const SPEC_SOURCE = Symbol.for('boardplot.specSource');
@@ -40,7 +44,7 @@ export function linkedPlanner() {
 }
 
 async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeOptions = {}): Promise<PreparedChart | PreparedTable> {
-  const { size, fallbackSize, fit, window, rows, columns, ...authored } = input;
+  const { size, fallbackSize, fit, window, rows, columns, zoom, ...authored } = input;
   // Rows map as the component maps them, and a refused mapping throws its InputError, as specFromRows does.
   const adapted = rows === undefined && columns === undefined ? undefined
     : rowsModule.adaptRows({ type: input.type, data: input.data }, columns, { argument: '/rows', load: () => ({ rows }) });
@@ -50,7 +54,13 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const container = size === 'container';
   const activeFit = container ? containerFit(input.type, fit) : undefined;
   const frame = container ? resolveSize(fallbackSize, request.target ?? request.options?.target ?? context.target) : size;
-  const resolveFor = (chart: Omit<ChartRequest, 'size'>) => resolveThemeRequest({ ...chart, options: (window ? { ...chart.options, window } : chart.options) as ChartRequest['options'], size: frame }, context);
+  // A line chart with a zoom aggregate opens on the view the live chart opens on. Its page keys carry the zoom (zoomPageKey).
+  // A container chart needs its measured width for the grain, so no page shows it in the first frame.
+  const zoomed = typeof zoom === 'object' && zoom && zoom.aggregate && canonicalChartType(input.type) === 'line' ? zoom : undefined;
+  const resolveFor = (chart: Omit<ChartRequest, 'size'>) => {
+    if (zoomed) chart = openingView(chart, zoomed, frame, context);
+    return resolveThemeRequest({ ...chart, options: (window ? { ...chart.options, window } : chart.options) as ChartRequest['options'], size: frame }, context);
+  };
   const resolved = resolveFor(request);
   // A patched theme travels with the snapshot; a preset is the same object in every bundle.
   const theme = typeof resolved.options.theme === 'object' && resolved.options.theme.overrides !== undefined ? { theme: resolved.theme } : {};
@@ -60,13 +70,26 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
   const geometry = adapted ? { ...laidOut, warnings: rowsModule.rewriteWarningFields(laidOut.warnings, adapted.pathMap) } as typeof laidOut : laidOut;
   const mapped = adapted && { rows: { key: rowsKey({ type: resolved.type, data: input.data }, rows, columns), data: adapted.spec.data,
     reading: { rows: adapted.rows, ignoredColumns: adapted.ignoredColumns, states: adapted.states } } };
-  const inputKeys = window ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, resolved, resolveFor, 'theme' in theme);
+  const inputKeys = window || (zoomed && container) ? [] : await pageKeys(authored, adapted && ((page: Record<string, unknown>) => rowsModule.adaptRows({ type: page.type as string, data: page.data }, columns, { argument: '/rows', load: () => ({ rows }) }).spec.data), { size, fit, fallbackSize, rows, columns }, context, resolved, resolveFor, 'theme' in theme, zoomed);
   const prepared = { ...prepareChartRender(resolved, geometry), ...mapped, ...(inputKeys.length ? { inputKeys } : {}) };
   if (geometry.refused) return { ...prepared, fit: activeFit, records: [], ...theme };
   const records = interactionRecords({ request: resolved, geometry, scope: resolved.scope, claims: claimsForChart(resolved.type, geometry) });
   return JSON.parse(canonicalJson({ ...prepared, fit: activeFit, records, ...theme,
     overlay: overlayInputs(resolved, geometry),
     paintThemes: sceneThemeBindings(geometry) })) as PreparedChart;
+}
+
+/** The chart as the live chart draws it at the start: the settings of `useZoom` on the full range. */
+function openingView(chart: Omit<ChartRequest, 'size'>, zoom: NonNullable<PrepareChartRequest['zoom']> & object, frame: unknown, context: BoardplotThemeOptions): Omit<ChartRequest, 'size'> {
+  const annotations = chart.annotations ?? chart.options?.annotations;
+  const spec = { type: 'line', data: chart.data, options: annotations === undefined ? chart.options : { ...chart.options, annotations: withAnnotationOrigins(annotations, chart.annotations ? ['annotations'] : ['options', 'annotations']) } } as ZoomSpec;
+  const axis = zoomAxis(spec);
+  if (!axis) return chart;
+  const range = zoom.range ? readZoomRange(axis, zoom.range) : axis.start;
+  const drawn = drawnGrain(axis, wantedGrain(axis, range, ((frame as { width?: number } | undefined)?.width ?? 600) * 0.85, zoom), zoom);
+  const language = languageOf(chart.locale ?? chart.options?.locale) ?? languageOf(context.locale);
+  const view = zoomSpec(spec, axis, range, drawn, zoom, language, context.strings as Record<string, unknown> | undefined);
+  return view === spec ? chart : { ...chart, data: view.data, options: view.options, annotations: view.options?.annotations as ChartRequest['annotations'] } as Omit<ChartRequest, 'size'>;
 }
 
 type Page = [spec: Record<string, unknown>, host: { theme?: unknown; target?: unknown }, parsed: Record<string, unknown>];
@@ -79,7 +102,7 @@ type Page = [spec: Record<string, unknown>, host: { theme?: unknown; target?: un
  * Each key also stands for the pages of the same form, see `pageForm` in preparedInput.ts.
  */
 async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((page: Record<string, unknown>) => unknown) | undefined, sizing: Record<string, unknown>, context: BoardplotThemeOptions,
-  prepared: ResolvedChartRequest, resolveFor: (chart: Omit<ChartRequest, 'size'>) => ResolvedChartRequest, carriesTheme: boolean): Promise<string[]> {
+  prepared: ResolvedChartRequest, resolveFor: (chart: Omit<ChartRequest, 'size'>) => ResolvedChartRequest, carriesTheme: boolean, zoom?: object): Promise<string[]> {
   const { theme, target, [SPEC_SOURCE]: source, ...rest } = authored;
   const { theme: optionTheme, target: optionTarget, ...options } = (rest.options ?? {}) as Record<string, unknown>;
   const T = theme ?? optionTheme, G = target ?? optionTarget;
@@ -125,7 +148,7 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
       if (!parses.has(form)) parses.set(form, parseChartSpec(mapRows ? { ...form, data: mapRows(form) } : form));
       const { request } = await parses.get(form)!;
       const live = { ...request, options: { ...request.options, ...Object.fromEntries(Object.entries(host).filter(([, value]) => value !== undefined)) } };
-      if (page && apart(resolveFor(live)) === key) keys.add(page);
+      if (page && apart(resolveFor(live)) === key) keys.add(zoomPageKey(page, zoom));
     } catch { /* a page the parser refuses shows no prepared chart */ }
   }
   return [...keys];
