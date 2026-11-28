@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { fmtPathNumber as pf } from '../../curve';
 import { DEFAULT_REST_MIN, DEFAULT_TOP_N, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { chartPalette, chartTheme } from '../chartEnv';
@@ -43,13 +44,7 @@ import {
   type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { authoredNotes, frameTextOptions, valueNoteLine, normalizeLegendOption, settledAutoHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { disclosureNote, disclosuresShown } from '../../notes';
@@ -1326,13 +1321,6 @@ function layoutPiePass(
 
   const axes: AxisGeometry[] = [];
   const shapeName = chartString(options, hole > 0 ? 'doughnutName' : 'pieName');
-  const a11yDesc =
-    (negatives.length
-      ? chartString(options, 'pieDescNoTotal', { v1: shapeName, v2: geoms.length, v3: ser.label ?? sid })
-      : chartString(options, 'pieDesc', { v1: shapeName, v2: geoms.length, v3: ser.label ?? sid, v4: fmt(total) })) +
-    chartString(options, 'sharesSentence', { v1: geoms
-      .map((g) => `${g.cat.label ?? g.cat.id} ${shareText(g)}`)
-      .join(', ') });
 
   const geometry: Geometry<PieMarks, PieDerived> = {
     type: 'pie',
@@ -1352,12 +1340,7 @@ function layoutPiePass(
     frame: frameResult.frame,
     marks,
     derived: { total: cleanFloat(total), shares, stackParts: { [sid]: Object.fromEntries(geoms.map((g) => [g.cat.id, g.v])) }, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}) },
-    a11y: {
-      title:
-        accessibleTitle(options.title, chartString(options, 'pieTitle', { v1: shapeName, v2: ser.label ?? sid, v3: geoms.length })),
-      counts: [structureCount('slices', geoms.length, undefined, options)],
-      desc: a11yDesc,
-    },
+    a11y: a11yDescription(options, [`${shapeName} chart`, `${shapeName}diagramm`], [structureCount('slices', geoms.length, undefined, options)]),
     warnings,
     ...(paintWarningRules.length ? { paintWarningRules } : {}),
     debug: {

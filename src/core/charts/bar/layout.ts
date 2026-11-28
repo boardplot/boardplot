@@ -1,7 +1,7 @@
+import { a11yDescription } from '../../a11yDescription';
 /** Native horizontal bars, including tornado drivers and football-field ranges. */
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/barIntervals';
-import { chartString as barString } from '../../strings/bar';
 import { separationStroke, withSegmentSeams } from '../../markVisibility';
 import { stringFields } from '../../strings';
 import { structureCount, type StructureCount } from '../../structureCounts';
@@ -13,13 +13,7 @@ import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect } from '../
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
@@ -215,9 +209,8 @@ interface RowIntervalPlan {
    * what its accessible text says.
    */
   valueFmt?: (value: number) => string;
-  a11yTitle: string;
+  a11yTypeName: readonly [string, string];
   a11yTitleCounts: StructureCount[];
-  a11yDesc: string;
 }
 
 interface RowPlanCtx {
@@ -1020,11 +1013,10 @@ function layoutRows(
     legend: frameResult.legend,
     marks,
     derived: plan.derived,
-    a11y: {
-      title: accessibleTitle(options.title, plan.a11yTitle),
+    a11y: a11yDescription(options, plan.a11yTypeName, plan.a11yTitleCounts, {
       titleCounts: plan.a11yTitleCounts,
-      desc: plan.a11yDesc,
-    },
+      counts: undefined,
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),
@@ -1264,15 +1256,7 @@ function planFootballField(
       mean,
     },
     a11yTitleCounts: [structureCount('methods', cats.length, undefined, options)],
-    a11yTitle: chartString(options, 'footballTitle', { v1: cats.length }),
-    a11yDesc:
-      chartString(options, 'footballDesc', { v1: cats
-        .map(
-          (cat, ci) =>
-            barString(options, 'namedRange', { v1: cat.label ?? cat.id, v2: fmt(cells[ci]!.range.low), v3: fmt(cells[ci]!.range.high) }),
-        )
-        .join('; ') }) +
-      (current ? chartString(options, 'currentValueSentence', { v1: fmt(current.value) }) : ''),
+    a11yTypeName: ['Football-field valuation', 'Bewertung mit Spannendiagramm'],
   };
 }
 
@@ -1718,9 +1702,6 @@ function planTornado(
     });
   }
 
-  const lowCaseLabel = lowSeries.label ?? lowSeries.id;
-  const highCaseLabel = highSeries.label ?? highSeries.id;
-  const inverseCount = ordered.filter((row) => row.inverse).length;
 
   // THE ONE NUMBER EVERY BAR IS MEASURED FROM.
   //
@@ -1806,35 +1787,7 @@ function planTornado(
       },
     },
     a11yTitleCounts: [structureCount('drivers', ordered.length, undefined, options)],
-    a11yTitle: chartString(options, 'tornadoTitle', { v1: ordered.length }),
-    a11yDesc:
-      chartString(options, 'tornadoDescStart') +
-      chartString(options, 'tornadoDescEffects') +
-      chartString(options, 'tornadoBaseDesc', { v1: fmt(base.value) }) +
-      ordered
-        .map(
-          (row) =>
-            // Driver labels may carry an authored line break for the input
-            // range echo; spoken text takes it as a space.
-            // The two case outputs are LEVELS and keep the level format; the
-            // swing is a DIFFERENCE, so on a percent metric it is spoken in
-            // percentage points. "swing 9.0%" off a gross-margin tornado reads
-            // as a 9% relative move and means 9pp — two different numbers.
-            chartString(options, 'tornadoDriverDesc', { v1: (row.cat.label ?? row.cat.id).replace(/\s+/g, ' '), v2: lowCaseLabel, v3: fmt(row.low), v4: highCaseLabel, v5: fmt(row.high), v6: formatDifference(fmt, row.swing), v7: row.inverse ? chartString(options, 'inverseClause') : '', v8: row.straddles ? '' : chartString(options, 'baseOutsideClause') }),
-        )
-        .join('; ') +
-      `.` +
-      (inverseCount > 0
-        ? chartString(options, 'inverseDriversDesc', { v1: inverseCount, v2: ordered.length })
-        : '') +
-      // A driver dropped for a missing case output vanished from the canvas AND
-      // from the spoken text; a reader handed either could not know it existed.
-      // The row itself cannot be drawn — there is no interval — but its absence
-      // is now stated, which is the repo's n.m. convention on the one channel
-      // that can carry it.
-      (droppedDrivers.length > 0
-        ? chartString(options, 'missingDriversDesc', { v1: droppedDrivers.length, v2: droppedDrivers.length === 1 ? '' : 's', v3: droppedDrivers.join(', '), v4: droppedDrivers.length === 1 ? 'is' : 'are', v5: droppedDrivers.length === 1 ? 'one is' : 'at least one is' })
-        : ''),
+    a11yTypeName: ['Sensitivity tornado', 'Sensitivitätstornado'],
   };
 }
 /**

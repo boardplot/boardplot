@@ -3,15 +3,10 @@
  * non-additive data as complete, and never leaves a slice or a stage unnamed.
  * Missing values must stay distinct from zero and leave a visible explanation.
  */
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
-import { renderSvg } from '../src/core/svg/renderSvg';
-import { resolveTheme } from '../src/core/theme';
-import { SceneRenderer } from '../src/react/SceneRenderer';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
@@ -87,7 +82,6 @@ describe('data gaps', () => {
       expect(g.derived).toMatchObject({ ac: { missing: null, zero: 0, complete: 100 }, deltaAbs: { missing: null, zero: -100, complete: 0 }, deltaPct: { missing: null, zero: -100, complete: 0 } });
       expect(g.scene.find((n) => n.id === 'missing:missing')?.display?.state).toBe('missing');
       expect(g.scene.some((n) => n.owner.categoryId === 'missing' && n.part === 'bar')).toBe(false);
-      expect(g.a11y.desc).toContain('missing n/a');
       const claims = claimsForChart('variance', g);
       for (const id of ['var:abs:missing', 'var:pct:missing']) expect(claims.find((c) => c.id === id)?.output).toMatchObject({ raw: null, state: 'missing' });
       const request = resolveChartRequest({ type: 'variance', data, options: { variant, variance: { of: 'total', vs: 'plan' } } } as never);
@@ -265,9 +259,6 @@ describe('data gaps', () => {
     expect((emptyBar.derived as { totals: Record<string, number> }).totals).not.toHaveProperty('q1');
     // An empty row is n/a, not a partial composition, so it does not warn as one.
     expect(codes(emptyBar)).not.toContain('incomplete-composition');
-    // The accessible description reads n/a for it, never a zero.
-    expect(emptyBar.a11y.desc).toContain('Q1 n/a');
-    expect(lay('column', empty, { variant: 'stacked' }).a11y.desc).toContain('Q1 n/a');
     // null for a part that does not apply made every total partial, and the advice never named 0.
     const absent = { categories: cats2, series: [{ id: 'a', values: [40, null] }, { id: 'b', values: [null, 55] }] };
     const advice = lay('column', absent, { variant: 'stacked', grandTotalLabels: true }).warnings.find((w) => w.code === 'incomplete-composition')?.suggest;
@@ -501,34 +492,19 @@ describe('data gaps', () => {
   });
 });
 
-// a line that bridged its nulls drew the bridge solid and the missing points not at all.
-describe('stack totals in the description', () => {
+describe('stack totals', () => {
   const datedCats = [{ id: 'q1', label: 'Q1', date: '2024-12-31' }, { id: 'q2', label: 'Q2', date: '2025-12-31' }];
   const shares = { categories: cats2, series: [{ id: 'web', label: 'Web share %', values: [55, 60] }, { id: 'app', label: 'App share %', values: [30, 25] }] };
   const money = { categories: cats2, series: [{ id: 'web', label: 'Web', values: [55, 60] }, { id: 'app', label: 'App', values: [30, 25] }] };
-  /** The SVG <desc>, checked against the React one. */
-  const desc = (g: Geometry): string => {
-    const text = (markup: string) => /<desc[^>]*>([^<]*)<\/desc>/.exec(markup)![1]!;
-    const theme = resolveTheme();
-    const svg = text(renderSvg(g, theme));
-    expect(text(renderToStaticMarkup(createElement(SceneRenderer, { geometry: g, theme })))).toBe(svg);
-    return svg;
-  };
   const totals = (g: Geometry) => (g.derived as { stackTotals: Record<string, number> }).stackTotals;
 
-  it('writes totals only for a stack whose parts add', () => {
+  it('derives totals only for a stack whose parts add', () => {
     const grouped = lay('column', shares, { variant: 'grouped' });
-    expect(desc(grouped)).not.toContain('Totals');
     expect(totals(grouped)).toEqual({});
     const undeclared = lay('column', shares, { variant: 'stacked' });
-    expect(desc(undeclared)).not.toContain('Totals');
     expect(totals(undeclared)).toEqual({});
     const declared = lay('column', shares, { variant: 'stacked', sharesOfOneWhole: true });
-    expect(desc(declared)).toContain('Totals: Q1 85, Q2 85.');
     expect(totals(declared)).toEqual({ q1: 85, q2: 85 });
-    expect(desc(lay('column', money, { variant: 'stacked' }))).toContain('Totals: Q1 85, Q2 85.');
-    const combo = lay('combo', { categories: cats2, series: shares.series.map((series) => ({ ...series, kind: 'column' })) });
-    expect(desc(combo)).not.toContain('Column totals');
   });
 
   it('prints no total, hover share or anchored sum on screen for a stack that does not add', () => {
@@ -582,17 +558,13 @@ describe('stack totals in the description', () => {
   });
 
   it('gives a bar row totals only where the parts add, and no receipt for a total that is not one', () => {
-    const rowSums = 'Q1 85, Q2 85';
     const barTotals = (g: Geometry) => (g.derived as { totals: Record<string, number> }).totals;
     const grouped = lay('bar', shares, { variant: 'grouped' });
-    expect(desc(grouped)).not.toContain(rowSums);
     expect(barTotals(grouped)).toEqual({});
     const undeclared = lay('bar', shares, { variant: 'stacked' });
-    expect(desc(undeclared)).not.toContain(rowSums);
     expect(barTotals(undeclared)).toEqual({});
     for (const [data, extra] of [[shares, { sharesOfOneWhole: true }], [money, {}]] as const) {
       const g = lay('bar', data, { variant: 'stacked', ...extra });
-      expect(desc(g)).toContain(rowSums);
       expect(barTotals(g)).toEqual({ q1: 85, q2: 85 });
     }
     // The receipts: a CAGR between two stacks is derived from their totals, so it exists only where they add.
@@ -653,7 +625,6 @@ describe('a blank category as an annotation anchor', () => {
       return {
         drawn: g.labels.some((label) => label.owner.annotationId === 'cagr-1' && !label.hidden),
         warned: g.warnings.some((warning) => warning.code === 'bad-anchor'),
-        desc: g.a11y.desc,
       };
     };
     for (const type of ['column', 'bar', 'combo']) {
@@ -661,13 +632,11 @@ describe('a blank category as an annotation anchor', () => {
       expect(grown(type, 0), type).toMatchObject({ drawn: true, warned: false });
     }
     expect(grown('column', null, { variant: 'stacked' })).toMatchObject({ drawn: false, warned: true });
-    expect(grown('combo', null).desc).toContain('2024 n/a');
-    // A mekko column with an unknown part has no total, so it has no change either and the description omits it.
+    // A mekko column with an unknown part has no total, so it has no change either.
     const mekko = lay('mekko', { categories: ['A', 'B'], series: [{ id: 'x', values: [100, 120] }, { id: 'y', values: [100, null] }] },
       { annotations: [{ kind: 'diff', from: 'A', to: 'B', mode: 'relative' }] });
     expect(mekko.warnings.some((warning) => warning.code === 'bad-anchor')).toBe(true);
     expect(mekko.labels.some((label) => label.owner.annotationId === 'diff-1' && !label.hidden)).toBe(false);
-    expect(mekko.a11y.desc).toContain('Totals: A 200.');
   });
 });
 

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/grid';
 import { localeStrings } from '../../strings';
 /** Parent-owned geometry for the category-sharing metric-stack mode. */
@@ -8,7 +9,7 @@ import { fmtPathNumber as n } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { solveLabels, PRIORITY, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { generatedIdWarnings, type GeneratedIdKey } from '../../schema/generatedColumns';
 import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
 import { partialFootnotes, partialIds, runningPeriodIds, saysToDate } from '../../partialPeriod';
@@ -500,7 +501,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // Let the shared sizing pass verify the wider frame and return its size fix.
   const needsWidth = (width: number): Geometry<GridMarks, GridDerived> => ({ type:'grid',size,plot:frame.plot,scene:[],labels:[],axes:[],annotations:[],frame:frame.frame,marks:{panels:[]},derived:{},
     sizing:{aspect:'content',fit:'content',minWidth:width,minHeight:0,measuredMinWidth:width,measuredMinHeight:0,naturalWidth:width,naturalHeight:size.height,comfortableWidth:width,comfortableHeight:size.height},
-    a11y:{title:chartString(options, 'metricStack'),desc:chartString(options, 'metricStackWidth', { v1: width })},warnings:[],debug:{occupied:[],decisions:[]} });
+    a11y:a11yDescription(options, chartString(options, 'metricStack')),warnings:[],debug:{occupied:[],decisions:[]} });
   if (size.width < minimumWidth) return needsWidth(minimumWidth);
   // A narrow readout: name and unit on one row, headline and span on the next, each pair side by side where it fits.
   const heads = !narrow ? undefined : computed.panels.map((p,i) => {
@@ -629,7 +630,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       // Return its measured floor before attempting labels outside that frame.
       return { type:'grid',size,plot:frame.plot,scene:[],labels:[],axes:[],annotations:[],frame:frame.frame,marks:{panels:[]},derived:{},
         sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight:floorHeight,measuredMinWidth:size.width,measuredMinHeight:floorHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
-        a11y:{title:chartString(options, 'metricStack'),desc:chartString(options, 'metricStackHeight', { v1: floorHeight })},warnings:[],debug:{occupied:[],decisions:[]} };
+        a11y:a11yDescription(options, chartString(options, 'metricStack')),warnings:[],debug:{occupied:[],decisions:[]} };
     }
   }
   else if (!stack.heights && frame.plot.h > neededPlotHeight) {
@@ -989,11 +990,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const segmentShares=new Set(computed.panels.flatMap(p=>(p.segmentShares??[]).flatMap(column=>column?.map(share=>share.claimId)??[])));
   if(segmentShares.size) derived.readouts=derived.readouts.map(readout=>({...readout,claims:readout.claims.map(claim=>segmentShares.has(claim.id)&&!requested.has(claim.id)?{...claim,output:{...claim.output,displayed:''}}:claim)}));
   const unprinted=derived.readouts.flatMap(readout=>readout.claims.filter(claim=>!requested.has(claim.id)).map(claim=>claim.id));
-  const readoutDescription = look ? computed.panels.map((p, i) => {
-    const { value, change, from } = texts[i]!;
-    return `${p.panel.title}: ${[value, ...[change, from, readouts[i]!.partial?.wording].filter(Boolean)].join(' ')}.`;
-  }).join(' ') : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ');
   return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:categoryX(i),...(periodAxis || categoryNames[i] === '' ? {} : {labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
-    a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: readoutDescription })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
+    a11y: a11yDescription(options, chartString(options, 'metricStack'), [
+      structureCount('panels', data.panels.length, undefined, options),
+      structureCount('categories', data.categories.length, undefined, options),
+      structureCount('series', data.measures.length, undefined, options),
+    ], { counts }),
+    warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
 }

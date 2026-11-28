@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/gantt';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { structureCount } from '../../structureCounts';
@@ -44,7 +45,7 @@ import { leaderPieces, solveLabels, type SolveResult } from '../../label/solver'
 import { authoredFootnoteCount, type FrameResult, type InternalFootnoteOptions } from '../../frame';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { rectContains, rectsOverlap, segmentHitsRect, type Rect } from '../../geometry';
-import { accessibleTitle, resolveSize } from '../../normalize/shared';
+import { resolveSize } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, sameContent, sideKeyGivesWay } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -59,11 +60,11 @@ import { dayNum } from './calendar';
 import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
-import { flagRowItems, fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
+import { flagRowItems, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
 import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
 import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { ganttBody, ganttFrame, type GanttFrameMeasurements, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
-import { maxOf, minOf, pushAll } from '../../arrays';
+import { maxOf, pushAll } from '../../arrays';
 
 /** Per-chart options, declared through optionsSchema. */
 export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels' | 'format'> {
@@ -114,26 +115,6 @@ export interface GanttDerived {
   /** Rendered (padded) calendar span, ISO dates, end inclusive. */
   span: { start: string; end: string };
   granularity: GanttGranularity;
-}
-
-/** One sentence per row for the accessible description. */
-function rowSummaries(env: GanttEnv, domain: GanttDomain): string[] {
-  return domain.rows.map((r) => {
-    const name = r.sublabel ? `${r.label}, ${r.sublabel}` : r.label;
-    if (r.cadence) {
-      const days = r.cadence.events.map((event) => event.day);
-      return chartString(env.options, 'cadenceSummary', { v1: name, v2: days.length, v3: fmtDay(env, minOf(days)), v4: fmtDay(env, maxOf(days)) });
-    }
-    if (r.shared) return chartString(env.options, 'sharedMilestonesSummary', { v1: r.items.map((it) => `${it.label ?? it.id} ${fmtDay(env, it.startDay)}`).join(', ') });
-    if (r.items.length === 0) return name;
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const it of r.items) {
-      lo = Math.min(lo, it.startDay);
-      hi = Math.max(hi, it.endDay);
-    }
-    return `${name} ${fmtDay(env, lo)} – ${fmtDay(env, hi - 1)}`;
-  });
 }
 
 /** Placed labels to text nodes, each in the font its request was measured in. */
@@ -285,12 +266,10 @@ function assembleGanttGeometry(input: {
       },
       granularity,
     },
-    a11y: {
-      titleCounts: [structureCount('activities', rows.filter(row => !row.shared).length, undefined, env.options)],
-      title: accessibleTitle(options.title, chartString(options, 'ganttTitle', { v1: rows.filter((row) => !row.shared).length })),
+    a11y: a11yDescription(env.options, 'Gantt', [structureCount('activities', rows.filter(row => !row.shared).length, undefined, env.options)], {
       counts: [...domain.rows.flatMap(row => row.cadence ? [structureCount('events', row.cadence.events.length, chartString(options, 'cadenceEvents', { v1: row.cadence.events.length }))] : [])],
-      desc: chartString(options, 'ganttDesc', { v1: chartString(options, ({ days: 'ganttDays', weeks: 'ganttWeeks', months: 'ganttMonths', quarters: 'ganttQuarters', years: 'ganttYears' } as const)[granularity]), v2: fmtDay(env, d0Day), v3: fmtDay(env, d1Day - 1), v4: rowSummaries(env, domain).join('; ') }),
-    },
+      titleCounts: [structureCount('activities', rows.filter(row => !row.shared).length, undefined, env.options)],
+    }),
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
   }, [...input.geometry.elapsed, ...input.annotated.placed.filter((annotation) => !annotation.labelId)].map((annotation) => `annotation:${annotation.id}`));

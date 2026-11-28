@@ -150,7 +150,6 @@ it('prints trend rates with their value units and calendar periods', () => {
     const out = layoutLine({ categories, series: [{ id: 'a', label: 'Output', values: [10, 12, 14], ...c.series }] },
       lineOptionsSchema.parse({ trend: true, variant, size: { width: 960, height: 540 }, ...c.options }));
     expect(sceneText(out)).toContain(c.expected);
-    expect(out.a11y.desc).toContain(c.expected);
   }
   const skipped = layoutLine({ categories: [{ id: 'FY2020', date: '2020-01-01' }, { id: 'FY2022', date: '2022-01-01' }, { id: 'FY2025F', date: '2025-01-01' }], series: [{ id: 'a', values: [10, 14, 20] }] },
     lineOptionsSchema.parse({ trend: true, unit: '$m', size: { width: 960, height: 540 } }));

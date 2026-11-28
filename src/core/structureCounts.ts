@@ -9,7 +9,7 @@ export const STRUCTURE_COUNT_KINDS = [
 export interface StructureCount {
   what: typeof STRUCTURE_COUNT_KINDS[number];
   n: number;
-  /** Exact phrase in the accessible description. */
+  /** Localized wording for this count. */
   text: string;
 }
 

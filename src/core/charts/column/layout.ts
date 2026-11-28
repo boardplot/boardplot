@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { engineNoteMeta, knownPartsLead, withEngineNotes } from '../../notes';
 import { hasBold } from '../../inlineBold';
 import { valueLineLabelsOn } from '../labelOn';
@@ -34,7 +35,6 @@ import { applyValueAxisTitleInk, valueAxisTitleRequest } from '../../axis';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { PARTIAL_KEY, partialIds, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
-import { NOT_AVAILABLE } from '../../format';
 import { noTotal } from '../../stackAdds';
 import { emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
@@ -46,9 +46,8 @@ import type { OccupiedClaim, OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, copyFitDrawing, plotFloorRows, sameContent, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
-import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
-import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
+import { addRatioTierRequests, finalizeRatioTier, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
 import { currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
 import { requestMemo } from '../../layoutPlan';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
@@ -64,7 +63,7 @@ import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, rightEdgeSeriesLabels, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, COLUMN_LABEL_PAD, firstSegmentHidesRow, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
+import { COLUMN_LABEL_PAD, firstSegmentHidesRow, planColumnLabels, planColumnTotals, planColumnValueLabels, planTickEnds, positionColumnLabels, seatExtremeValue, type DigitSeats } from './labels';
 import { layoutColumnMarks, stackSegmentRect, stackPaddingProbe } from './marks';
 import { compactStaircaseNamesFit, stackedStaircaseSeatsFit } from './staircaseSeats';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -399,37 +398,6 @@ function totalsAdd(domain: ColumnDomain): boolean {
   return domain.dataSeries.length === 1 || (domain.variant !== 'grouped' && domain.partsAdd);
 }
 
-/** The accessible description: variant, totals, PY growth, ranges, the anomaly rule, the ratio tier. */
-function columnA11yDesc(domain: ColumnDomain, area: ColumnArea, rangeMarks: RangeMark[], points: IntegratedVariancePoint[]): string {
-  const { cats, dataSeries, refSeries, variant, fmt, totalFmt, stackTotals, anomaly } = domain;
-  const labelOf = (id: Id) => cats.find((category) => category.id === id)?.label ?? id;
-  // One series reads out each value as its label prints it; a 100% stack of one series keeps its total.
-  const oneValueText = (ci: number) => dataSeries.length === 1 && variant !== 'stacked100' ? cellValueText(domain, dataSeries[0]!, ci) : null;
-  const variantName =
-    variant === 'grouped' ? chartString(domain.options, 'clustered') : variant === 'stacked100' ? chartString(domain.options, 'stacked100') : chartString(domain.options, 'stackedLower');
-  return chartString(domain.options, 'columnDescStart', { v1: variantName, v2: cats.length, v3: dataSeries.length }) +
-    (refSeries.length ? chartString(domain.options, 'referenceSeriesClause', { v1: refSeries.length }) : '') +
-    (totalsAdd(domain) ? chartString(domain.options, 'totalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.stacks[ci]!.hasValue ? oneValueText(ci) ?? totalFmt(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
-    (points.length
-      ? chartString(domain.options, 'growthVersus', { v1: domain.pyRef!.label, v2: points
-          .map((point) => `${labelOf(point.categoryId)} ${point.text}`)
-          .join(', ') })
-      : '') +
-    (rangeMarks.length
-      ? chartString(domain.options, 'rangesClause', { v1: rangeMarks
-          .map((range) => chartString(domain.options, 'namedRange', { v1: range.categoryId, v2: fmt(range.low), v3: fmt(range.high) }))
-          .join(', ') })
-      : '') +
-    (anomaly
-      ? chartString(domain.options, 'anomalyDesc', { v1: anomaly.rule, v2: domain.corridorNote }) +
-        (anomaly.flags.length === 0
-          ? chartString(domain.options, 'noFlaggedPeriod')
-          : chartString(domain.options, 'flaggedSentence', { v1: anomaly.flags
-              .map((flag) => `${labelOf(flag.categoryId)} ${fmt(flag.value)}`)
-              .join(', ') }))
-      : '') +
-    ratioTierA11y(area.tier);
-}
 
 /**
  * A sliver whose digits fit its segment prints there, at the cap height, once every other
@@ -613,12 +581,9 @@ function assembleColumnGeometry(
       ...(points.length ? { integratedVariance: points } : {}),
       ...(anomaly ? { anomaly: anomalyReceipt(anomaly) } : {}),
     },
-    a11y: {
-      title:
-        accessibleTitle(domain.options.title, chartString(domain.options, 'columnTitle', { v1: dataSeries.map((s) => s.label).join(', '), v2: cats.length })),
+    a11y: a11yDescription(domain.options, ['Column chart', 'Säulendiagramm'], [structureCount('series', domain.dataSeries.length, undefined, domain.options), structureCount('categories', domain.cats.length, undefined, domain.options)], {
       counts: [...(domain.anomaly?.counts ?? []), structureCount('categories', domain.cats.length, undefined, domain.options), structureCount('series', domain.dataSeries.length, undefined, domain.options), ...(domain.refSeries.length ? [structureCount('reference-series', domain.refSeries.length, chartString(domain.options, 'referenceSeriesCount', { v1: domain.refSeries.length }))] : [])],
-      desc: columnA11yDesc(domain, area, scene.rangeMarks, points),
-    },
+    }),
     warnings,
     paintWarningRules,
     debug: {

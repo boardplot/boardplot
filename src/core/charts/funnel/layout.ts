@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/funnel';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -39,14 +40,7 @@ import {
   type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeSeriesValues,
-  normalizeScenario,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, normalizeScenario, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { linearScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { rowSizing, sideKeyOff } from '../../sizing';
@@ -1064,20 +1058,6 @@ export function layoutFunnel(
             : chipMode && l.kind === 'segment' && highlights.has(l.owner.categoryId ?? '') ? strongFont : labelFont, nodes,
     ));
 
-  const first = stages[0]!;
-  const last = stages[stages.length - 1]!;
-  const a11yParts = stages.map((c, ci) => {
-    const total = shownTotals[c.id] ?? null;
-    let p = `${c.label} ${total === null ? chartString(options, 'missing') : totalFmt(total)}`;
-    const conv = conversions.find((cv) => cv.fromId === c.id);
-    if (conv) {
-      const to = stages[ci + 1]!;
-      p += conv.rate > 1
-        ? chartString(options, 'funnelIncreaseDesc', { v1: c.label, v2: to.label })
-        : chartString(options, 'funnelConversionDesc', { v1: c.label, v2: to.label, v3: fmtPct(conv.rate) });
-    }
-    return p;
-  });
 
   const labelH = Math.max(maxOf(catInfo.map((label) => label.h)), maxOf(totalSizes.map((label) => label.height)));
   // Chip rows: a thin bar, its chip line and a caption gap per step, and the
@@ -1121,11 +1101,9 @@ export function layoutFunnel(
     frame: frameResult.frame,
     marks,
     derived: { stageTotals, conversions, ...(worstDrop ? { worstDrop } : {}) },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'funnelTitle', { v1: first.label, v2: last.label })),
+    a11y: a11yDescription(options, ['Funnel', 'Trichter'], [structureCount('stages', stages.length, undefined, options)], {
       counts: [structureCount('stages', stages.length, chartString(options, 'stagesCount', { v1: stages.length, v2: stages.length === 1 ? '' : 's' }))],
-      desc: chartString(options, 'funnelDesc', { v1: stages.length, v2: stages.length === 1 ? '' : 's', v3: a11yParts.join('; ') }),
-    },
+    }),
     warnings,
     paintWarningRules,
     debug: {

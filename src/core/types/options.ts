@@ -468,7 +468,7 @@ export interface BaseOptions {
   /**
    * Accessible presentation. `title` emits the SVG hover title (default false);
    * accessible naming is always retained. `description` replaces the generated
-   * accessible description with the author's text; omitted, the chart writes it.
+   * accessible description with the author's text. The default gives the chart type and counts. Tables start with an empty description.
    * `table` asks the React chart components for the record-derived accessible
    * data table: 'hidden' keeps it available to assistive technology only,
    * 'toggle' adds a disclosure control, and 'below' renders it visibly under the chart. BoardplotChart includes it in
@@ -1363,7 +1363,7 @@ export interface ScatterOptions extends BaseOptionsFor<'scatter'> {
   /**
    * Format-by-example per axis, such as { x: '$0', y: '0%' }. Each falls back
    * to `format`. Ticks, point values, hover values, zone and clamp text and
-   * the accessible description print each coordinate in its own axis format.
+   * records print each coordinate in its own axis format.
    */
   axisFormat?: { x?: string; y?: string };
   /** `value: true` prints each point's value: the size on a bubble chart, y otherwise. */

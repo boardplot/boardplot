@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/bartable';
 import { chartPalette } from '../chartEnv';
 import { withSegmentSeams } from '../../markVisibility';
@@ -34,7 +35,7 @@ import { createOccupiedIndex } from '../../label/occupied';
 import { fittedLabel } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { formatAutomaticPercent, formatShare, numberRange } from '../../format';
 import { fixedHeightCanvas, rowDrivenHeight } from '../../rowCanvas';
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing } from '../../sizing';
@@ -1450,7 +1451,6 @@ export function layoutBarTable(
   pushAll(scene, texts);
   pushAll(warnings, solved.warnings);
 
-  const segmentNames = series.map((s) => s.label ?? s.id).join(', ');
   // On one shared scale a panel is as wide as its total: the smallest total sets the width, and the refusal names it.
   const tightest = sharedScale ? minTracks.reduce((best, min, p) => (spans[p]! > 0 && min / spans[p]! > minTracks[best]! / spans[best]! ? p : best), 0) : -1;
   const widest = spans.indexOf(maxOf(spans));
@@ -1508,16 +1508,9 @@ export function layoutBarTable(
         ...(cascade.adjustments.length > 0 ? { roundingAdjustments: cascade.adjustments.map(adjustment => ({ ...adjustment })) } : {}),
       } : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'bartableTitle', { v1: rows.length })),
+    a11y: a11yDescription(options, ['Bar table', 'Balkentabelle'], [structureCount('rows', rows.length, undefined, options), structureCount('panels', panels.length, undefined, options)], {
       counts: [structureCount('rows', rows.length, undefined, options), structureCount('panels', panels.length, panels.length === 1 ? chartString(options, 'barPanelOne') : chartString(options, 'barPanels', { v1: panels.length }))],
-      desc: chartString(options, 'bartableDescStart', { v1: rows.length, v2: columns.length ? chartString(options, 'tableColumnsClause', { v1: numberTracks.map((track) => track.name).join(', ') }) : '' }) +
-        `${panels.length === 1 ? chartString(options, 'barPanelOne') : chartString(options, 'barPanels', { v1: panels.length })}, ${panels.map((entry) => entry.head).join('; ')}, ${sharedScale ? chartString(options, 'sharedScale') : chartString(options, 'ownScale')}. ` +
-        `${cascade ? chartString(options, 'cascadeDesc', { v1: showShare ? chartString(options, 'shareColumnClause') : '', v2: bracketRows ? chartString(options, 'combinedShareBracket', { v1: bracketLabel }) : '', v3: growth ? chartString(options, 'lastColumnClause', { v1: growth.head }) : '' }) : ''}` +
-        chartString(options, 'segmentsSentence', { v1: segmentNames, v2: !valuesPrinted ? '' : cascade ? chartString(options, 'cascadeValueLabels') : chartString(options, 'barEndTotalRange') + (solved.placed.some((placed) => placed.id.startsWith('part:')) ? chartString(options, 'barPartValues') : '') }) +
-        `${ranged ? chartString(options, 'rangeBarDesc') : ''}` +
-        `${showTotal ? chartString(options, 'tableTotalRow', { v1: totalLabel }) : ''}`,
-    },
+    }),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };

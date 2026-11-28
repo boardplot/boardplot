@@ -34,7 +34,6 @@ describe('warnings of the exhibit keys', () => {
     expect(geometry.marks.sizeCells).toEqual([]);
     expect(printed(geometry)).toContain('base 2,400');
     expect(geometry.derived.total?.base).toBe(2400);
-    expect(geometry.a11y.desc).not.toContain('cohort-size');
   });
 
   // Without heads nothing else names the periods, the corner's unit or the numbers behind Low and High.
@@ -153,8 +152,6 @@ describe('heatmap total and visiblePeriods', () => {
     expect(claims.filter((id) => /:t(0|3)$/.test(id))).toEqual([]);
     const geometry = layout(options);
     expect(geometry.marks.cells.every((cell) => [1, 2].includes(cell.periodIndex))).toBe(true);
-    expect(geometry.a11y.desc).not.toContain('M3');
-    expect(geometry.a11y.desc).not.toContain('Period 0');
     expect(printed(geometry)).not.toContain('M0 base');
     expect(printed(geometry)).not.toContain('too narrow');
   });

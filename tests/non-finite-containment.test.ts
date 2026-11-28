@@ -65,7 +65,7 @@ const TIER_HOSTS: Array<[string, (data: unknown, options: unknown) => unknown]> 
 ];
 
 describe('a ratio that overflows fails closed on every surface at once', () => {
-  it.each(TIER_HOSTS)('%s: badge, JSON, <desc> and warning all agree', (_name, layout) => {
+  it.each(TIER_HOSTS)('%s: badge, JSON and warning all agree', (_name, layout) => {
     const geometry = layout(OVERFLOW_DATA, { ratioTier: OVERFLOW_TIER }) as TierGeometry;
     const svg = renderSvg(geometry as never, theme);
     const badges = geometry.derived.ratioTier!.badges;
@@ -88,12 +88,10 @@ describe('a ratio that overflows fails closed on every surface at once', () => {
     expect(q1.text).toBe(NOT_MEANINGFUL);
     expect(JSON.parse(JSON.stringify(q1)).value).toBeNull();
 
-    // Painted SVG and screen-reader description carry the same glyph.
+    // The painted SVG carries the same glyph.
     const svgText = [...svg.matchAll(/>([^<>]+)</g)].map((match) => match[1]!);
     expect(svgText).toContain(NOT_MEANINGFUL);
-    expect(geometry.a11y.desc).toContain(`Q1 ${NOT_MEANINGFUL}`);
     expect(svg).not.toMatch(/NaN|Infinity|∞/);
-    expect(geometry.a11y.desc).not.toMatch(/NaN|Infinity|∞/);
 
     // The tier did not vanish: the neighbour still carries its real computed
     // rate, and the text a reader sees equals the value the engine computed.

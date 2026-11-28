@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { staticFrame } from '../../footer';
 import { COMPACT_RETRY, SIZING_ONLY, HEAD_LINES, TIGHT_SPACING, HEAD_AIR_MIN, HEAD_LOOSE, TIGHT_PAD, SUB_LINES, REGULAR_SPACING, type LayoutOptions } from './fitPolicy';
 export { REGULAR_SPACING } from './fitPolicy';
@@ -25,7 +26,7 @@ import { authoredNotes, collectFrameClaims, frameTextOptions, legendOff, legendR
 import type { Margin, Rect, Size } from '../../geometry';
 import type { OccupiedClaim } from '../../label/occupied';
 import { parseFormatExample } from '../../formatSpec';
-import { accessibleTitle, resolveSize } from '../../normalize/shared';
+import { resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, ellipsize, WIDTH_SAFETY, type FontSpec, type TextMeasurer } from '../../text';
 import { composedTextRole } from '../../textRole';
 import { groundTextWarnings } from '../../paintWarnings';
@@ -468,13 +469,10 @@ function prepareTableView(data: TableData, options: TableOptions, table: Resolve
 const tableViews = new WeakMap<ResolvedTable, { key: string; view: ReturnType<typeof prepareTableView> }>();
 
 /** The visible semantic structure is shared across every numeric frame and spacing probe. */
-/** The table's accessible name, counts and summary, in the table's language. */
-function tableA11y(options: TableOptions, rowCount: number, columnCount: number) {
-  return {
-    title: accessibleTitle(options.title, chartString(options, 'tableTitle')),
+function tableA11y(options: TableOptions, rowCount: number, columnCount: number): Geometry['a11y'] {
+  return a11yDescription(options, chartString(options, 'tableTitle'), false, {
     counts: [structureCount('rows', rowCount, undefined, options), structureCount('columns', columnCount, undefined, options)],
-    desc: chartString(options, 'tableDesc', { v1: String(rowCount), v2: String(columnCount) }),
-  };
+  });
 }
 
 function sharedTableView(data: TableData, options: TableOptions, table: ResolvedTable) {
@@ -1130,7 +1128,7 @@ function prepareTableCandidate(
   function sizingProbe(sizing: ReturnType<typeof tableSizing>, marks: TableMarks, pad = cellPadX): Geometry<TableMarks, TableDerived> {
     const probe: Geometry<TableMarks, TableDerived> = {
       type: 'table', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [], frame: frame.frame, marks,
-      derived: { table, computedCells: resolved.computedCells }, a11y: { title: '', desc: '', counts: [] }, warnings,
+      derived: { table, computedCells: resolved.computedCells }, a11y: a11yDescription(options, chartString(options, 'tableTitle'), false, { counts: [] }), warnings,
       debug: { occupied: [], decisions: [] },
     };
     cellPads.set(probe, pad);

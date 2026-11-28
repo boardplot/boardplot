@@ -204,7 +204,6 @@ it('accepts short option shapes and preserves their content', async () => {
   expect(card.labels.some(label => label.id === 'category:label')).toBe(false);
   expect(card.scene.some(node => node.t === 'text' && node.lines.join('') === '')).toBe(false);
   expect(card.a11y.title).toBe('KPI');
-  expect(card.a11y.desc).toContain('1,234.5');
   expect(card.labels.find(label => label.id === 'total:value')!.rect.y).toBe(card.plot.y);
 
   const base = resolveTheme();

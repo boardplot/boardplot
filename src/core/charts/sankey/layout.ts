@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/sankey';
 /**
  * Sankey. Flows run left to right from sources to ends, in columns (stages).
@@ -25,7 +26,7 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, resolveHighlight, resolveSize } from '../../normalize/shared';
+import { resolveHighlight, resolveSize } from '../../normalize/shared';
 import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
 import { widthsThatFit } from '../../generatedWidths';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -474,9 +475,6 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
     shareOfTarget: clean(nodes[link.target]!.in > 0 ? (link.value / nodes[link.target]!.in) * 100 : 0),
   }));
   const { total } = graph;
-  const largest = [...links].sort((a, b) => b.value - a.value || a.first - b.first).slice(0, 3)
-    .map((link) => chartString(options, 'flowReading', { v1: nodeName(nodes[link.source]!), v2: nodeName(nodes[link.target]!), v3: fmt(link.value) })).join('; ');
-  const desc = chartString(options, 'sankeyDesc', { v1: links.length, v2: nodes.length, v3: columnCount, v4: fmt(total) }) + chartString(options, 'largestFlows', { v1: largest });
   const minWidth = Math.ceil(size.width - plot.w + minPlotW);
   const geometry: Geometry<SankeyMarks, SankeyDerived> = {
     type: 'sankey', size,
@@ -492,11 +490,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       crossings: clean(weightedCrossings(order, layered.segments, layered.nodes)),
       formatsShares: percentExample !== undefined,
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'sankeyTitle', { v1: links.length, v2: nodes.length, v3: fmt(total) })),
-      counts: [structureCount('flows', links.length, undefined, options), structureCount('nodes', nodes.length, undefined, options)],
-      desc,
-    },
+    a11y: a11yDescription(options, 'Sankey', [structureCount('flows', links.length, undefined, options), structureCount('nodes', nodes.length, undefined, options)]),
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
   markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);

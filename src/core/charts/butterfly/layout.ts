@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { effectiveFill } from '../../theme';
 import { positionBarLabel } from '../band/labelPosition';
 import { chartString } from '../../strings/butterfly';
@@ -35,14 +36,7 @@ import {
   type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeScenario,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeScenario, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { bandScale, linearScale, niceDomain } from '../../scale';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowSizing, sideKeyOff } from '../../sizing';
@@ -557,7 +551,7 @@ export function layoutButterfly(
     return {
       type: 'butterfly', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [],
       frame: frameResult.frame, marks: { left: [], right: [], center: plot }, derived: { diffs: {} },
-      a11y: { title: chartString(options, 'butterflyName'), desc: chartString(options, 'rowsNeedHeight') },
+      a11y: a11yDescription(options ?? {}, chartString(options, 'butterflyName')),
       warnings: [{ code: 'size-below-floor', severity: 'error', message: `butterfly needs at least ${sizing.minWidth} × ${sizing.minHeight}px`,
         suggest: `use a height of at least ${sizing.minHeight}px` }], debug: { occupied: [], decisions: [] },
     };
@@ -1328,9 +1322,6 @@ export function layoutButterfly(
   }
 
   // Each value reads as its label prints it (its shown text): the cell format, else the pane's.
-  const a11yDesc = rows
-    .map((r) => `${r.label}: ${aLabel} ${r.a === null ? '–' : valueText(r.a, r.aMeta, 'a')}, ${bLabel} ${r.b === null ? '–' : valueText(r.b, r.bMeta, 'b')}`)
-    .join('; ');
 
   return {
     type: 'butterfly',
@@ -1356,11 +1347,7 @@ export function layoutButterfly(
     frame: frameResult.frame,
     marks,
     derived: { diffs },
-    a11y: {
-      title: accessibleTitle(opts.title, chartString(options, 'butterflyTitle', { v1: aLabel, v2: bLabel })),
-      counts: [structureCount('categories', rows.length, undefined, opts)],
-      desc: chartString(options, 'butterflyDesc', { v1: aLabel, v2: bLabel, v3: rows.length, v4: a11yDesc }),
-    },
+    a11y: a11yDescription(opts, chartString(opts, 'butterflyName'), [structureCount('categories', rows.length, undefined, opts)]),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },
   };

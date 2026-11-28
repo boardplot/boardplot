@@ -1277,8 +1277,8 @@ export function builtInStringsSchema<S extends z.ZodRawShape>(shape: S) {
 export const stringsShape = {
       newItems: z.string().min(1).optional().describe('PVM entry-bar name; default New items.'),
       lostItems: z.string().min(1).optional().describe('PVM exit-bar name; default Lost items.'),
-      cohortMeasure: z.string().trim().min(1).optional().describe('Cohort measure name for notes, keys and accessible descriptions; default Retention. Use Cumulative conversion for converted counts divided by cohort base.'),
-      cohortFormula: z.string().trim().min(1).optional().describe('Complete cohort formula sentence for method notes and accessible descriptions. Wording only: rates still use the count and denominator selected by basis.'),
+      cohortMeasure: z.string().trim().min(1).optional().describe('Cohort measure name for notes and keys; default Retention. Use Cumulative conversion for converted counts divided by cohort base.'),
+      cohortFormula: z.string().trim().min(1).optional().describe('Complete cohort formula sentence for method notes. Wording only: rates still use the count and denominator selected by basis.'),
       others: z.string().min(1).optional().describe('Name of the aggregated rest bucket; default Others, and an explicit topN.restLabel still wins.'),
       total: z.string().min(1).optional().describe('Label of a computed total row; default Total.'),
       source: z.string().optional().describe('Word introducing the authored source credit; default Source. An empty string prints the source without a prefix or colon.'),
@@ -1401,7 +1401,7 @@ export const baseOptionsSchema = z.object({
   textSize: textSizeSchema.optional(),
   a11y: z.strictObject({
     title: z.boolean().optional().describe('Emit an SVG title element for hover text; default false. Accessible naming remains available.'),
-    description: z.string().min(1).optional().describe('Accessible description of the chart, in place of the generated one, in the SVG desc element and the React chart. Omitted: the description comes from the chart.'),
+    description: z.string().min(1).optional().describe('Accessible description of the chart, in place of the generated one, in the SVG desc element and the React chart. By default, the description gives the chart type and structural counts. Tables start with an empty description.'),
     table: z.enum(['hidden', 'toggle', 'below']).optional().describe("Record-derived accessible data table rendered by the React chart components: 'hidden' keeps it available to assistive technology only, 'toggle' adds a disclosure control, 'below' renders it visibly under the chart. BoardplotChart includes it in the server output; a per-type component adds it after mount. Omitted: no table. The SVG is unchanged."),
   }).optional().describe('Accessible presentation options; visible chart title is controlled separately by title.'),
   mode: z.enum(['full', 'compact']).optional().describe('Presentation framing. Omitted: full at or above the chart minimum width, compact below it where the type draws there. Compact keeps the title at the theme smallest title size. Some chart-specific schemas use a different mode vocabulary.'),

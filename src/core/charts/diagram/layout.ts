@@ -1,16 +1,17 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/diagram';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { optionKey, requestMemo } from '../../layoutPlan';
-import { structureCount, type StructureCount } from '../../structureCounts';
+import { structureCount } from '../../structureCounts';
 import { rectContains, rectsOverlap, sameRect, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
 import { frameTextOptions, solveFrame, type LegendItemInput } from '../../frame';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, isCachedTextMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
 import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { classStepWidth, layoutStepKey, emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
@@ -713,7 +714,16 @@ function layoutDiagramPass(
   }
   pushAll(warnings, solvedEdges.warnings);
   const labels = [...solvedStructural.placed, ...solvedEdges.placed];
-  const a11y = diagramA11y(data, options, preset.readingOrder, preset.edges);
+  const variantName = chartString(options, ({
+    hierarchy: 'diagramHierarchy',
+    'issue-tree': 'diagramIssueTree',
+    'linear-process': 'diagramLinearProcess',
+    'customer-journey': 'diagramCustomerJourney',
+    'circular-process': 'diagramCircularProcess',
+    'strategy-house': 'diagramStrategyHouse',
+    roadmap: 'diagramRoadmap',
+    architecture: 'diagramArchitecture',
+  } as const)[options.variant]);
   // A node label that is hidden or would be cut is required content either
   // way: both count toward the size that fits, and both refusals name it.
   const nodeLabelLosses = warnings.filter((warning) => warning.code === 'diagram-node-label-unplaced');
@@ -831,7 +841,10 @@ function layoutDiagramPass(
       clearance: u,
       ...(preset.trajectory ? { trajectory: preset.trajectory } : {}),
     },
-    a11y,
+    a11y: a11yDescription(options, [`${variantName} diagram`, variantName], [
+      structureCount('nodes', data.nodes.length, undefined, options),
+      structureCount('relationships', preset.edges.length, undefined, options),
+    ]),
     warnings,
     debug: {
       occupied: occupied.snapshot(),
@@ -1437,64 +1450,6 @@ function measuredDiagramMinimum(
     size = structural[axis] === size[axis] || fits(structural) ? structural : minimum(false);
   }
   return size;
-}
-
-function diagramA11y(
-  data: {
-    nodes: DiagramNode[];
-    groups: NonNullable<DiagramData['groups']>;
-    lanes: NonNullable<DiagramData['lanes']>;
-    groupEnds?: NormalizedDiagram['groupEnds'];
-    inset?: NormalizedDiagram['inset'];
-  },
-  options: DiagramOptions,
-  readingOrder: readonly string[],
-  edges: readonly { id?: string; source: { nodeId: string }; target: { nodeId: string } }[],
-): { title: string; desc: string; counts: StructureCount[] } {
-  const labels = new Map(data.nodes.map((node) => {
-    const copies = node.repeat ? chartString(options, 'diagramCopies', { v1: node.label, v2: node.repeat }) : node.label;
-    return [node.id, node.protected ? chartString(options, 'diagramProtected', { v1: copies }) : copies];
-  }));
-  const end = (edge: typeof edges[number], side: 'source' | 'target') => {
-    const group = data.groupEnds?.get(edge.id ?? '')?.[side];
-    return group !== undefined ? data.groups.find((item) => item.id === group)?.title ?? group : labels.get(edge[side].nodeId) ?? edge[side].nodeId;
-  };
-  const order = readingOrder.map((id) => labels.get(id) ?? id).join('; ');
-  const relationships = edges
-    .map((edge) => `${end(edge, 'source')} → ${end(edge, 'target')}`)
-    .join('; ');
-  const groups = data.groups
-    .map((group) => {
-      const members = data.nodes
-        .filter((node) => node.groupId === group.id)
-        .map((node) => node.label)
-        .join(', ');
-      return chartString(options, 'containsMembers', { v1: group.title, v2: members || chartString(options, 'noNodes') });
-    })
-    .join('; ');
-  const lanes = data.lanes
-    .map((lane) => {
-      const members = data.nodes
-        .filter((node) => node.laneId === lane.id)
-        .map((node) => node.label)
-        .join(', ');
-      return chartString(options, 'containsMembers', { v1: lane.label ?? lane.id, v2: members || chartString(options, 'noNodes') });
-    })
-    .join('; ');
-  return {
-    title: accessibleTitle(options.title, chartString(options, 'diagramTitle', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]) })),
-    counts: [structureCount('nodes', data.nodes.length, undefined, options), structureCount('relationships', edges.length, undefined, options)],
-    desc: [
-      chartString(options, 'diagramDesc', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]), v2: data.nodes.length, v3: edges.length }),
-      chartString(options, 'readingOrder', { v1: order }),
-      relationships ? chartString(options, 'relationshipsSentence', { v1: relationships }) : '',
-      data.inset ? `${data.inset.title}: ${[...(data.inset.kpis ?? []).map((kpi) => `${kpi.value} ${kpi.label}`), ...(data.inset.rows ?? []).map((row) => `${row.label} ${row.value}`)].join('; ')}.` : '',
-      groups ? chartString(options, 'groupsSentence', { v1: groups }) : '',
-      lanes ? chartString(options, 'lanesSentence', { v1: lanes }) : '',
-    ]
-      .filter(Boolean)
-      .join(' '),
-  };
 }
 
 function diagramCategoryKeys(items: readonly { role?: string; paletteKey?: string }[]): string[] {

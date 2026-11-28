@@ -54,7 +54,7 @@ export interface AnomalyDerived {
   n: number;
   /** False when the rule could not be evaluated; nothing is flagged. */
   usable: boolean;
-  /** The sentence printed on the exhibit, in the receipt and in a11y.desc. */
+  /** The sentence printed on the exhibit and in the receipt. */
   rule: string;
   flags: AnomalyFlag[];
 }

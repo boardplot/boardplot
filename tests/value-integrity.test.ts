@@ -313,15 +313,6 @@ describe('value integrity on the chart', () => {
     expect(texts('bar', three, { topN: { n: 1 } })).toContain('30%');
   });
 
-  // The described totals of a mekko with an n/a column still read "0" for a column of shares with no amount.
-  it('a mekko description names no total for shares of an unknown whole', () => {
-    const data = { categories: [{ id: 'A' }, { id: 'Z' }], series: [{ id: 'v', values: [{ pct: 70 }, 0] }, { id: 'w', values: [{ pct: 30 }, 0] }] };
-    const svg = renderGolden(getChart('mekko')! as never, { id: 'probe', data, options: {} } as Fixture, 'authored').output;
-    const desc = /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)![1]!;
-    expect(desc).toContain('Suppressed: Z (n/a)');
-    expect(desc).not.toContain('A 0');
-  });
-
   // The value axis ticks of column, bar and dot charts of percent cells read as counts, with no '%'.
   it('a value axis of percent cells prints percent ticks; an authored format keeps winning', () => {
     const ticks = (type: string, values: unknown[], options: Record<string, unknown>): string[] => {

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/line';
 import { withLocaleStrings } from '../../strings';
@@ -26,7 +27,7 @@ import { BAND_PAD, GAP_BRACKET_REFUSED, GAP_BRACKET_RESERVE, hiddenValueLineRese
 import { gapBracketEngine } from '../../annotateGapBracket';
 import { canvasMargin } from '../../theme';
 import { NOTED_LABELS, type InternalFootnoteOptions } from '../../frame';
-import { applyValueAxisTitleInk, tickFormatter } from '../../axis';
+import { applyValueAxisTitleInk } from '../../axis';
 import { PARTIAL_KEY, partialIds, saysToDate, toDateFits } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { zoneYearSpan } from '../../timeAxis';
@@ -40,8 +41,7 @@ import { labelsToNodes } from '../../label/emit';
 import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { TickBandDerived } from '../../label/tickRow';
 import { labelCtx, leaderPieces, seatLeader, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { accessibleTitle } from '../../normalize/shared';
-import { finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry } from '../../ratioTier';
+import { finalizeRatioTier, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry } from '../../ratioTier';
 import { defaultAnnotationId, type AnchorRef } from '../../types/annotations';
 import { noTotal } from '../../stackAdds';
 import type { Id, OwnerRef } from '../../types/cell';
@@ -56,24 +56,21 @@ import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
 import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from '../../grid/lineKeyTrial';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, PLOT_END_AIR, bumpNamesMuted, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, PLOT_END_AIR, bumpNamesMuted, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
 import { viewportMeanSpan } from '../../viewport';
-import { anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
+import { anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
 import type { AnomalyDerived } from '../column/types';
 import type { TextMeasurer } from '../../text';
 import type { NearZeroTail } from './nearZero';
 import { lineText, linePaints } from './paints';
 import { linePlotArea, lineReserves, sigRound, solveLineFrame } from './plot';
 import { layoutLineMarks } from './scene';
-import { referenceBandsA11y } from './referenceBands';
-import { defaultSetSpec } from '../../formatSpec';
 import type { LineOptions } from './types';
 import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import type { LineTrend } from './trend';
-import { lineTrendLabel } from './trend';
 
 import type { EmittedLane } from '../../eventLane';
 import { pushAll } from '../../arrays';
@@ -493,69 +490,13 @@ function annotateLine(
   });
 }
 
-/** "Final standings" are the standings IN THE FINAL PERIOD, not each entity's last held rank. */
-function lineStandings(env: LineEnv, domain: LineDomain, text: LineText, shownText: ShownTextOf): { endpointDesc: string; bumpExitedDesc: string } {
-  const { cats, dataSeries, bumpDerived, endpoints, variant, rebased, lastIdxOf } = domain;
-  const finalCi = cats.length - 1;
-  const bumpFinal = bumpDerived
-    ? dataSeries.map((s) => ({ s, rank: bumpDerived!.ranks[s.id]?.[finalCi] ?? null }))
-    : [];
-  const bumpExited = bumpFinal.filter((entry) => entry.rank === null && endpoints[entry.s.id]);
-  const endpointDesc = env.isBump
-    ? bumpFinal
-        .filter((entry): entry is { s: NormSer; rank: number } => entry.rank !== null)
-        .sort((a, b) => a.rank - b.rank)
-        .map((entry) => chartString(domain.options, 'entityRank', { v1: entry.s.label, v2: entry.rank }))
-        .join(', ')
-    : dataSeries
-        .filter((s) => endpoints[s.id])
-        .map((s) => {
-          const cell = s.vals[lastIdxOf.get(s.id)!]!;
-          // The value as the chart shows it: its drawn label, or the label it would print. A rebased
-          // chart plots an index, and its would-be texts hold the source values of the records.
-          const shown = variant === 'stacked100-area'
-            ? shownText(s.id, endpoints[s.id]!.categoryId, 'share.percent', false)
-            : shownText(s.id, endpoints[s.id]!.categoryId, 'value', !rebased);
-          if (shown !== undefined) return `${s.label} ${shown}`;
-          const shareText = domain.shareTexts.get(`${endpoints[s.id]!.categoryId}\0${s.id}`);
-          if (shareText !== undefined) return `${s.label} ${shareText}`;
-          const source = rebased ? undefined : cell.format ? { ...s, format: cell.format } : s;
-          return `${s.label} ${text.composeEndText(variant === 'stacked100-area' ? ['percent'] : ['absolute'], endpoints[s.id]!.value, endpoints[s.id]!.value, '', '', endUnitSuffix(domain.options, rebased), cell.isPct, source)}`;
-        })
-        .join(', ');
-  const lastRankedLabel = (id: Id): string => {
-    const row = bumpDerived?.ranks[id] ?? [];
-    let at = -1;
-    row.forEach((rank, i) => {
-      if (rank !== null) at = i;
-    });
-    return at === -1 ? chartString(domain.options, 'noPeriod') : (cats[at]!.label ?? cats[at]!.id);
-  };
-  const bumpExitedDesc =
-    bumpExited.length > 0
-      ? chartString(domain.options, 'bumpExitedDesc', { v1: cats[finalCi]!.label ?? cats[finalCi]!.id, v2: bumpExited
-          .map(
-            (entry) =>
-              chartString(domain.options, 'bumpLastRankDesc', { v1: entry.s.label, v2: lastRankedLabel(entry.s.id), v3: endpoints[entry.s.id]!.value }),
-          )
-          .join(', ') })
-      : '';
-  return { endpointDesc, bumpExitedDesc };
-}
-
-/** The text a point's value shows (ShownTexts slot): drawn, else the would-be text. */
-/** A point's shown text; `would` also takes the text its label would print (a computed share takes none). */
-type ShownTextOf = (seriesId: Id, categoryId: Id, slot: string, would: boolean) => string | undefined;
-
 /**
  * The value texts the records read where no label of their own states them:
  * the would-be texts of the points, and the value
  * one series' label draws for others (the first member of a near-zero group,
- * a tie's note or its kept value). With the lookup the description reads:
- * the drawn text of a value, else its would-be
- * text, the same order the records take them in.
+ * a tie's note or its kept value).
  */
-function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; wouldShow: DeferredShownMarks | undefined; shownText: ShownTextOf } {
+function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; wouldShow: DeferredShownMarks | undefined } {
   const visible = new Map(labels.filter((label) => label.hidden === undefined).map((label) => [String(label.id), label] as const));
   const shown: ShownMark[] = [];
   // A rebased chart plots an index; the record of a point holds its source value, which prints as its own set.
@@ -577,79 +518,7 @@ function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLa
     const last = domain.lastIdxOf.get(seriesId);
     if (last !== undefined && legend?.items.some((item) => item.id === seriesId)) shown.push({ owner: { seriesId, categoryId: domain.cats[last]!.id }, shows, drawn: true });
   }
-  const drawn = new Map<string, Record<string, string>>();
-  const would = new Map<string, Record<string, string>>();
-  const key = (seriesId: Id | undefined, categoryId: Id | undefined) => `${seriesId}\0${categoryId}`;
-  const add = (index: Map<string, Record<string, string>>, owner: OwnerRef, shows: ShownTexts) => {
-    if (Object.keys(owner).length !== 2 || owner.seriesId === undefined || owner.categoryId === undefined) return;
-    const into = index.get(key(owner.seriesId, owner.categoryId)) ?? {};
-    for (const [slot, text] of Object.entries(shows)) into[slot] ??= text;
-    index.set(key(owner.seriesId, owner.categoryId), into);
-  };
-  for (const label of labels) if (label.hidden !== undefined && label.shows) add(would, label.owner, label.shows);
-  for (const mark of shown) add(mark.drawn ? drawn : would, mark.owner, mark.shows);
-  for (const label of visible.values()) if (label.shows) add(drawn, label.owner, label.shows);
-  return {
-    shown,
-    wouldShow: plan.wouldShow.any ? new DeferredShownMarks(plan.wouldShow.all) : undefined,
-    shownText: (seriesId, categoryId, slot, wouldToo) => drawn.get(key(seriesId, categoryId))?.[slot]
-      ?? (wouldToo ? would.get(key(seriesId, categoryId))?.[slot] ?? plan.wouldShow.at(seriesId, categoryId)?.[slot] : undefined),
-  };
-}
-
-/** The accessible description: variant, series, presets, standings, suppressed compositions, ratio tier. */
-function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: LineMarks, variantName: string, text: LineText, shownText: ShownTextOf): string {
-  const { options, cats, drawnSeries, refSeries, interpolationFor, rebased, bumpDerived, fan, variant, nmCats100, naCats100 } = domain;
-  const { endpointDesc, bumpExitedDesc } = lineStandings(env, domain, text, shownText);
-  const finalCi = cats.length - 1;
-  const suppressedCompositionDesc =
-    variant === 'stacked100-area' && (nmCats100.size > 0 || naCats100.size > 0)
-      ? chartString(domain.options, 'areaCompositionsDesc', { v1: cats
-          .filter((category) => !nmCats100.has(category.id) && !naCats100.has(category.id))
-          .map((category) => category.label ?? category.id)
-          .join(', ') || chartString(domain.options, 'none'), v2: cats
-          .filter((category) => nmCats100.has(category.id) || naCats100.has(category.id))
-          .map((category) => `${category.label ?? category.id} (${nmCats100.has(category.id) ? 'n.m.' : 'n/a'})`)
-          .join(', ') })
-      : '';
-  const fanDesc = fan
-    ? chartString(domain.options, 'fanDesc', { v1: fan.of.label, v2: fan.bands.map((band) => band.label).join(', ') }) +
-      (fan.origin === null
-        ? chartString(domain.options, 'fanZeroWidth')
-        : chartString(domain.options, 'fanOrigin', { v1: cats.find((category) => category.id === fan!.origin)?.label ?? fan.origin }))
-    : '';
-  const effectiveInterpolationDesc = [...new Set(drawnSeries.map(interpolationFor))].filter(
-    (mode) => mode !== 'linear',
-  );
-  return chartString(domain.options, 'lineDescStart', { v1: variantName, v2: drawnSeries.length, v3: cats.length }) +
-    (options.valueAxis?.log ? chartString(domain.options, 'lineLogScaleClause') : '') +
-    fanDesc +
-    (refSeries.length ? chartString(domain.options, 'referenceSeriesClause', { v1: refSeries.length }) : '') +
-    (effectiveInterpolationDesc.length === 0
-      ? ''
-      : chartString(domain.options, 'interpolationClause', { v1: effectiveInterpolationDesc.map(value => chartString(domain.options, ({"linear":"linearInterpolation","step-after":"stepAfterInterpolation","step-before":"stepBeforeInterpolation","monotone":"monotoneInterpolation"} as const)[value])).join(' / ') })) +
-    (marks.gapFills
-      ? chartString(domain.options, 'lineDifferenceDesc', { v1: options.gapFill!.between[0], v2: options.gapFill!.between[1] })
-      : '') +
-    (marks.targets ? chartString(domain.options, 'lineTargetsDesc', { v1: marks.targets.length, v2: marks.targets.length === 1 ? '' : 's' }) : '') +
-    (marks.phases
-      ? chartString(domain.options, 'linePhasesDesc', { v1: marks.phases.length })
-      : '') +
-    (rebased ? chartString(domain.options, 'lineIndexed') : '') +
-    (bumpDerived
-      ? chartString(domain.options, 'lineRanksDesc', { v1: bumpDerived.maxRank, v2: chartString(domain.options, bumpDerived.direction === 'higherIsBetter' ? 'higherBetter' : 'lowerBetter') }) +
-        (bumpDerived.ties.length > 0
-          ? chartString(domain.options, 'lineRankTies', { v1: bumpDerived.ties.length, v2: bumpDerived.ties.length === 1 ? '' : 's' })
-          : '')
-      : '') +
-    (endpointDesc
-      ? chartString(domain.options, 'lineEndpointsDesc', { v1: env.isBump ? chartString(domain.options, 'standingsPeriod', { v1: cats[finalCi]!.label ?? cats[finalCi]!.id }) : chartString(domain.options, 'latestValues'), v2: endpointDesc })
-      : '.') +
-    bumpExitedDesc +
-    suppressedCompositionDesc +
-    (domain.trends.length ? ` ${domain.trends.map(fit => lineTrendLabel(domain, fit)).join('. ')}.` : '') +
-    anomalyA11y(domain) +
-    ratioTierA11y(area.ratioTier);
+  return { shown, wouldShow: plan.wouldShow.any ? new DeferredShownMarks(plan.wouldShow.all) : undefined };
 }
 
 /** The corridor rules and flag markers over the one drawn series (options.anomaly). */
@@ -903,18 +772,10 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   const variantName = isBump
     ? chartString(domain.options, 'bumpVariant')
     : variant === 'line' ? chartString(domain.options, 'lineName') : variant === 'area' ? chartString(domain.options, 'areaName2') : variant === 'stacked-area' ? chartString(domain.options, 'stackedArea') : chartString(domain.options, 'percentArea');
-  // A band reads as the axis does ("$1,000", "12%"): the axis format over
-  // the band levels, at the decimals they need; on a 100% composition at the
-  // decimals its level needs, which the whole-percent ticks would round.
-  const bandLevels = (input.reserves.referenceBands?.entries ?? []).flatMap((entry) => [entry.low, entry.high]);
-  const bandFmt = variant === 'stacked100-area'
-    ? tickFormatter({ ...defaultSetSpec(bandLevels, domain.options.locale?.language, undefined, { kind: 'percent' }), suffix: '%' }, bandLevels)
-    : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
+  const localizedName = variant === 'line' || variant === 'area' ? `${variantName}diagramm` : variantName;
   const lineShown = lineShownTexts(domain, input.reserves, plan, allLabels, area.frame.legend);
   if (lineShown.shown.length > 0) marks.shown = lineShown.shown;
   if (lineShown.wouldShow) marks.wouldShow = lineShown.wouldShow;
-  const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text, lineShown.shownText) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
-    + (usesEndLabelKey(options) ? chartString(domain.options, 'lineEndKeyDesc') : '');
   // A trend's key prints its slope and r², never its intercept. Without its key entry no text prints either.
   const keyed = new Set(area.frame.legend?.items.map((item) => item.id));
   return withUnprintedClaims({
@@ -932,20 +793,18 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     frame: area.frame.frame,
     marks,
     derived: lineDerived(domain, area, input.reserves, scene, input.ratioTierResult),
-    a11y: {
-      title:
-        accessibleTitle(options.title, chartString(domain.options, 'lineTitle', { v1: variantName, v2: drawnSeries.map((s) => s.label).join(', '), v3: cats.length })),
-      // The default title counts periods ("over 24 periods"); a grid reports that count when it prints the title.
-      titleCounts: [structureCount('periods', cats.length, undefined, domain.options)],
+    a11y: a11yDescription(domain.options, [`${variantName} chart`, localizedName], [
+      structureCount('series', domain.drawnSeries.length, undefined, domain.options),
+      structureCount('periods', cats.length, undefined, domain.options),
+    ], {
       counts: [...(domain.anomaly?.model?.counts ?? []), structureCount('series', domain.drawnSeries.length, undefined, domain.options), structureCount('categories', domain.cats.length, undefined, domain.options),
         ...(domain.refSeries.length ? [structureCount('reference-series', domain.refSeries.length, chartString(domain.options, 'referenceSeriesCount', { v1: domain.refSeries.length }))] : []),
         ...(marks.targets ? [structureCount('markers', marks.targets.length, chartString(domain.options, 'targetMarkersCount', { v1: marks.targets.length, v2: marks.targets.length === 1 ? '' : 's' }))] : []),
         ...(marks.phases ? [structureCount('phases', marks.phases.length, chartString(domain.options, 'lifecyclePhasesCount', { v1: marks.phases.length }))] : []),
         ...(domain.bumpDerived?.ties.length ? [structureCount('groups', domain.bumpDerived.ties.length, chartString(domain.options, 'tiedGroupsCount', { v1: domain.bumpDerived.ties.length, v2: domain.bumpDerived.ties.length === 1 ? '' : 's' }))] : [])],
-      desc: a11yDesc,
-      // A compact card below its plot floor leaves the rebase note off the page; the notes list keeps it.
+      titleCounts: [structureCount('periods', cats.length, undefined, domain.options)],
       ...(domain.rebaseCompact ? { compactNotes: [rebaseNotes(domain.rebaseSuppressed, options).join(' ')] } : {}),
-    },
+    }),
     warnings,
     paintWarningRules: scene.paintWarningRules,
     debug: {

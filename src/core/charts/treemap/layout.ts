@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/treemap';
 /**
  * Treemap. Every item is one cell whose area is proportional to its value;
@@ -27,7 +28,7 @@ import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { atHardMinimum, HARD_COMPACT_PLOT, CARD_HEIGHT_MEMO, type CardHeightMemo, chartSizing, resolveSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textSizeOf } from '../../typeFloors';
@@ -775,10 +776,6 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const groupsDerived: TreemapGroupDerived[] = groups.map((g) => ({ id: g.id, label: g.label, total: round6(g.total), share: round6((g.total / total) * 100) }));
   const unitIterations = unit?.iterations;
   const nGroups = grouped ? groups.length : 0;
-  const desc = chartString(options, 'treemapDesc', { v1: shape === 'circle' ? chartString(options, 'circular') : chartString(options, 'rectangular'), v2: ordered.length, v3: nGroups > 0 ? chartString(options, 'groupsClause', { v1: nGroups }) : '', v4: fmt(total) }) +
-    (nGroups > 0
-      ? groups.map((g) => `${g.label} ${fmt(g.total)} (${shareFmt((g.total / total) * 100)}): ${g.items.map((i) => `${i.label} ${fmt(i.value)}`).join(', ')}.`).join(' ')
-      : `${ordered.map((i) => `${i.label} ${fmt(i.value)}`).join(', ')}.`);
   // A circle between two leader columns still reads at 96 px (the 320 px card at 13 px type); rectangles need 160.
   const minSide = shape === 'circle' ? 88 : atHardMinimum(options) ? HARD_COMPACT_PLOT : 160;
   const geometry: Geometry<TreemapMarks, TreemapDerived> = {
@@ -792,11 +789,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
       variant: shape, total: round6(total), groups: groupsDerived, items: itemsDerived, maxAreaError: round6(maxAreaError),
       ...(unitIterations ? { iterations: { ...unitIterations } } : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'treemapTitle', { v1: ordered.length, v2: fmt(total) })),
-      counts: [structureCount('cells', ordered.length, undefined, options), ...(nGroups > 0 ? [structureCount('groups', nGroups, undefined, options)] : [])],
-      desc,
-    },
+    a11y: a11yDescription(options, ['Treemap', 'Flächenbaum'], [structureCount('cells', ordered.length, undefined, options), ...(nGroups > 0 ? [structureCount('groups', nGroups, undefined, options)] : [])]),
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
   markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);

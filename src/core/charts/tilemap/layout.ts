@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { staticFrame } from '../../footer';
 import { chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/tilemap';
@@ -26,7 +27,7 @@ import {
   type SolveResult,
 } from '../../label/solver';
 import { EMPTY_DATA } from '../../emptyData';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, emphasisWeight, paintColor, panelTypeClass, resolveSemanticPaletteTheme, spaceTokens } from '../../theme';
 import type { RenderTarget } from '../../types/options';
@@ -39,7 +40,7 @@ import type {
   TilemapMarks,
   TilemapOptions,
 } from './types';
-import { buildGeoScale, decimalsOf, geoLabelFont, quietLandPaint, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
+import { buildGeoScale, decimalsOf, geoLabelFont, quietLandPaint, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateCounts, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
 import { ruleFormatter } from '../../numberSets';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from '../choropleth/overlays';
@@ -209,7 +210,6 @@ function layoutTilemapPass(
     ? planSteppedKey(scale, margin.left, size.width - margin.left - margin.right, spaceTokens(theme, size.width).gapLegend, theme, options.target!, measure, fmt)
     : undefined;
   let key = steppedKey();
-  const userSource = options.source ? chartString(options, 'userSourceClause', { v1: options.source }) : '';
   // Fit the occupied lattice, excluding any empty edge rows or columns.
   const rowMin = minOf(pack.regions.map((region) => region.row));
   const colMin = minOf(pack.regions.map((region) => region.col));
@@ -635,28 +635,11 @@ function layoutTilemapPass(
         attribution: pack.meta.attribution,
       },
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'tilemapTitle', { v1: pack.id })),
+    a11y: a11yDescription(options, ['Tile map', 'Kachelkarte'], [structureCount('regions', pack.regions.length, undefined, options)], {
       counts: [...geoStateCounts(statesById.values(), options), structureCount('regions', pack.regions.length, chartString(options, 'regionCountPrefix', { v1: pack.regions.length })),
         structureCount('regions', missingCount, chartString(options, 'listedRegions', { v1: missingCount })),
         ...(unlistedCount ? [structureCount('regions', unlistedCount, undefined, options)] : [])],
-      desc:
-        chartString(options, 'equalTileGrid', { v1: pack.regions.length }) +
-        (scale.min === null
-          ? chartString(options, 'noNumericValues')
-          : chartString(options, 'mappedRange', { v1: fmt(scale.min), v2: fmt(scale.max!) })) +
-        // The inverted judgment is an encoding — hue must not carry it alone
-        // (variance appends the same phrase for its direction).
-        (scale.polarity === 'lowerIsBetter' ? chartString(options, 'lowerFavorable') : '') +
-        chartString(options, 'tileMissingRegions', { v1: missingCount }) +
-        (valueLines.length ? chartString(options, 'tileValuesSentence', { v1: valueEntries.map((entry) => entry.text).join(', ') }) : '') +
-        (unlistedCount ? chartString(options, 'mapUnlistedRegions', { v1: unlistedCount }) : '') +
-        geoStateSummary(statesById.values(), options) +
-        (overlayResult.descriptions.length
-          ? chartString(options, 'overlaysSentence', { v1: overlayResult.descriptions.join(' ') })
-          : '') +
-        chartString(options, 'sourceSentence', { v1: pack.meta.attribution, v2: userSource }),
-    },
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

@@ -1,3 +1,5 @@
+import { a11yDescription } from '../a11yDescription';
+import { structureCount } from '../structureCounts';
 import { alignCategoryPanels, alignValuePanels, type PanelAnchoring } from './panelAlignment';
 import { GRID_LINE_KEY_TRIAL, INLINE_FALLBACK_MAX_WIDTH, type GridLineKeyTrial } from './lineKeyTrial';
 import { CATEGORY_INSET, panelAnchoring, type CategoryInset } from './categoryInset';
@@ -17,7 +19,7 @@ import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierChromeFloor, varia
 import { boundsOf, sameRect, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
-import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
+import { NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
 import { mergeLocale } from '../normalize/optionShapes';
 import { captionSizedPanelLayouts, getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
@@ -1023,16 +1025,12 @@ function layoutGridPass(data: GridData, options: GridOptions = {}, groups?: Tier
       sharedPlotW: sharedW,
       ...(compactTiers ? { tierGap: effectiveTierGap } : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'gridChartsTitle', { v1: n })),
+    a11y: a11yDescription(options, chartString(options, share === 'category' && n > 1 ? 'alignedExhibit' : 'chartGrid'), [structureCount('panels', n, undefined, options)], {
       counts: children.flatMap((child, i) =>
         [...(child.geo.a11y.counts ?? []), ...(child.geo.a11y.titleCounts ?? [])]
           .filter(count => marks.panels[i]!.title.includes(count.text))),
-      desc: chartString(options, 'gridChartsDesc', { v1: share === 'category' && n > 1 ? chartString(options, 'alignedExhibit') : chartString(options, 'chartGrid'), v2: marks.panels
-        .map((p) => p.title)
-        .join('; '), v3: compactNotes.length > 0 ? chartString(options, 'notesClause', { v1: compactNotes.join('; ') }) : '' }),
       ...(compactNotes.length > 0 ? { compactNotes } : {}),
-    },
+    }),
     warnings,
     debug: { occupied: occupiedAll, decisions },
   };

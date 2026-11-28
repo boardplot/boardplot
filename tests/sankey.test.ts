@@ -100,7 +100,6 @@ it('totals every source node, also one in a later column', () => {
   const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', size: { width: 640, height: 400 } } });
   const geometry = requireGeometry(layoutResolvedRequest(request));
   expect((geometry.derived as unknown as SankeyDerived).total).toBe(100);
-  expect(geometry.a11y.desc).toContain('total 100');
 });
 
 // A folded Other node that is part source and part target must not change the total: 1 + 100 + 1 flow in from outside.
@@ -111,7 +110,6 @@ it('keeps the total when a source folds into an Other node that has inflow', () 
     const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', size: { width: 640, height: 400 }, ...options } });
     const geometry = requireGeometry(layoutResolvedRequest(request));
     expect((geometry.derived as unknown as SankeyDerived).total).toBe(102);
-    expect(geometry.a11y.desc).toContain('total 102');
   }
 });
 

@@ -582,9 +582,6 @@ export function geoStateLegend(states: Iterable<NamedColumnState>, options?: Pic
     id: `state:${state}`, label: geoStateLabel(state, options), paint: { token: 'inkMuted' }, pattern: geoStatePattern(state),
   }));
 }
-export function geoStateSummary(states: Iterable<NamedColumnState>, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>): string {
-  return geoStateCounts(states, options).map(count => count.text).join('');
-}
 
 export function geoStateCounts(states: Iterable<NamedColumnState>, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>) {
   const values = [...states];

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { positionBarLabel, refuseLabelPosition } from '../band/labelPosition';
 import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/variance';
@@ -61,14 +62,7 @@ import {
   type SolveCtx,
   type SolveResult,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeScenario,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeScenario, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleRequest } from '../../axis';
@@ -1599,18 +1593,6 @@ export function layoutVariance(
     })),
   });
 
-  const modeName =
-    mode === 'absolute' ? chartString(options, 'absoluteVariance') : mode === 'relative' ? chartString(options, 'relativeVariance') : chartString(options, 'integratedVariance');
-  const deltaText = (ci: number): string => {
-    const d = deltaOf(ci);
-    if (d === null) return chartString(options, 'notApplicable');
-    return mode === 'relative' ? pctSigned(d, ci) : absolute(d, ci, true);
-  };
-  const a11yDesc =
-    chartString(options, 'varianceDesc', { v1: tierName, v2: modeName, v3: refSeries.label, v4: cats.length }) +
-    `${direction === 'lowerIsBetter' ? chartString(options, 'lowerBetterClause') : ''}. ` +
-    cats.map((c, ci) => `${c.label ?? c.id} ${deltaText(ci)}`).join(', ') +
-    '.';
 
   // The narrowest plot in which the printed values still read (waterfall/bandFloor.ts).
   const sizing = bandFloorSizing('variance', size, plot, allLabels, [...marks.bars, ...marks.pins].map((mark) => ({
@@ -1657,11 +1639,7 @@ export function layoutVariance(
           }
         : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, `${tierName}: ${modeName} vs ${refSeries.label}`),
-      counts: [structureCount('categories', cats.length, undefined, options)],
-      desc: a11yDesc,
-    },
+    a11y: a11yDescription(options, chartString(options, mode === 'relative' ? 'relativeVariance' : 'absoluteVariance'), [structureCount('categories', cats.length, undefined, options)]),
     ...(paintWarningRules.length ? { paintWarningRules } : {}),
     warnings,
     debug: {

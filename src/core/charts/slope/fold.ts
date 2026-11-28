@@ -63,7 +63,7 @@ export interface SlopeFoldRecord {
   shares: { from: number; to: number };
   /** Endpoint totals the shares were measured against. */
   totals: { from: number; to: number };
-  /** The sentence the footnote and the accessible description carry. */
+  /** Wording for the footnote. */
   note: string;
 }
 

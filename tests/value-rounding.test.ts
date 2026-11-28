@@ -11,7 +11,6 @@ import './helpers/link-core';
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { layoutColumn } from '../src/core/charts/column/layout';
-import { layoutCombo } from '../src/core/charts/combo/layout';
 import { layoutCreative } from '../src/core/charts/creative/layout';
 import { creativePlaceholderFixture } from '../src/core/charts/creative/fixtures';
 import { layoutHeatmap } from '../src/core/charts/heatmap/layout';
@@ -25,7 +24,6 @@ import type { Geometry } from '../src/core/types/scene';
 
 type Laid = Geometry<object, object>;
 const text = (geometry: Laid, id: string) => geometry.labels.find((label) => label.id === id)?.text;
-const desc = (geometry: Laid) => geometry.a11y.desc;
 const annotation = (geometry: Laid, kind: string) => geometry.annotations.find((a) => a.kind === kind)?.computedText;
 const codes = (geometry: Laid) => (geometry.warnings ?? []).map((w) => w.code);
 
@@ -66,7 +64,6 @@ describe('column and combo stack totals stay exact until printed', () => {
     const column = layoutColumn(data, { variant: 'stacked' } as never);
     expect(text(column, 'grandTotal:c0')).toBe('0.025');
     expect(text(column, 'grandTotal:c1')).toBe('0.025');
-    expect(desc(column)).toContain('Totals: C0 0.025, C1 0.025.');
   });
 
   // Under a whole-number format a stack total of 0.4 printed "0" on column and bar, while a mekko total took the digit it needs.
@@ -77,21 +74,7 @@ describe('column and combo stack totals stay exact until printed', () => {
     expect(text(layoutResolvedRequest(resolveChartRequest({ type: 'bar', data, options: { variant: 'stacked', format: '1,234' } } as never) as never) as Laid, 'grandTotal:c0')).toBe('0');
   });
 
-  it('the description and the label of a single-series column state one total', () => {
-    const data = { categories: cats('c0', 'c1', 'c2'), series: [{ id: 'a', label: 'A', values: [0.04, 0.025, 0.01] }] };
-    const column = layoutColumn(data, {});
-    expect(desc(column)).toContain('Totals: C0 0.040, C1 0.025, C2 0.010.');
-  });
-
-  it('combo column totals and pareto bars print the exact sums', () => {
-    const combo = layoutCombo({
-      categories: cats('c0', 'c1'),
-      series: [
-        { id: 'a', label: 'A', kind: 'column', values: [0.004, 0.002] },
-        { id: 'b', label: 'B', kind: 'column', values: [0.001, 0.001] },
-      ],
-    } as never, {} as never);
-    expect(desc(combo)).toContain('Column totals: C0 0.005, C1 0.003.');
+  it('pareto bars print the exact sums', () => {
     const pareto = requireGeometry(layoutPareto({
       items: [{ id: 'a', label: 'A', value: 0.04 }, { id: 'b', label: 'B', value: 0.025 }, { id: 'c', label: 'C', value: 0.01 }],
     }, {}));
@@ -105,7 +88,6 @@ describe('the KPI card never prints a nonzero value as 0', () => {
   it('lifts the business default for a value under 0.05', () => {
     const card = kpi({ value: 0.042 });
     expect(text(card, 'total:value')).toBe('0.042');
-    expect(desc(card)).toContain('Rate 0.042');
   });
 
   it('keeps the hero and its delta on one footing', () => {
@@ -148,7 +130,6 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     expect(text(card, 'point:compareLabel:0')).toBe('vs PY');
     // Default number rule: before "+3.1% (+3.0)". The absolute change joins the levels 100 and 97.
     expect(text(card, 'point:compare:1')).toBe('+3.1% (+3)');
-    expect(desc(card)).toContain('+1.4 vs PY');
   });
 
   // A loss of 42.5 against a plan of +18.2 printed "−333.5% vs PL", a percent that measures no gap.
@@ -178,11 +159,10 @@ describe('heatmap means are exact, and a row without values has none', () => {
       categories: cats('a', 'b'),
       series: [{ id: 'n', label: 'N', values: [0.0012, 0.0034] }, { id: 's', label: 'S', values: [0.002, 0.004] }],
     }, { unit: 'rate' });
-    expect(desc(grid)).toContain('Row means: N 0.0023, S 0.0030.');
     expect(grid.derived.rowMeans.n).toBeCloseTo(0.0023, 12);
   });
 
-  it('describes an all-null row as unavailable and sorts it last', () => {
+  it('sorts an all-null row last and leaves its mean empty', () => {
     const grid = layoutHeatmap({
       categories: cats('a', 'b'),
       series: [
@@ -192,22 +172,10 @@ describe('heatmap means are exact, and a row without values has none', () => {
       ],
     }, { sort: { segments: 'desc' } });
     expect(grid.derived.rowMeans.n).toBeNull();
-    expect(desc(grid)).toContain('Row means: U 4, S −4, N n/a.');
     expect(grid.axes.find((axis) => axis.axis === 'y')!.ticks.map((tick) => tick.at)).toEqual(['u', 's', 'n']);
   });
 
-  // The cells printed each series in its own format, and the reading printed the same values in the chart format.
-  it('reads the range and each row mean in the series format', () => {
-    const grid = layoutHeatmap({
-      categories: cats('a', 'b', 'c'),
-      series: [
-        { id: 'rev', label: 'Revenue', format: '$1.2M', values: [1_250_000, 2_400_000, 980_000] },
-        { id: 'mar', label: 'Margin', format: '12.3%', values: [12.3, 24.5, 8.7] },
-      ],
-    });
-    expect(desc(grid)).toContain('Values range 8.7% to $2.4M.');
-    expect(desc(grid)).toContain('Row means: Revenue $1.5M, Margin 15.2%.');
-  });
+
 });
 
 // A signed format ("+0.0%") printed "++0.1%" on the colour key while the cells read "+0.1%".
@@ -248,7 +216,6 @@ describe('the standalone sparkline prints its value through the exhibit formatte
     const wide = spark([1.2e9, 1.3e9, 1.1e9, 1.5e9], { size: { width: 520, height: 220 } });
     // Default number rule: before "1,500,000,000".
     expect(text(wide, 'spark:last')).toBe('1.5B');
-    expect(desc(wide)).toContain('ending at 1.5B');
     // Default number rule: before "13.12".
     expect(text(spark([12.3456789, 12.1, 12.9, 13.123456789]), 'spark:last')).toBe('13.1');
     // Default number rule: before "150,000".

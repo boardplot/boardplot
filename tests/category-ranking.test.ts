@@ -64,7 +64,6 @@ it('sorts bullet rows by attainment without inverting lower-is-better values', (
   expect(bullet.marks.rows.map((row) => row.id)).toEqual(['margin', 'orders', 'missing']);
   expect(pointText(g, 'margin')).toBe('24%');
   expect(g.labels.find((label) => label.id === 'target-value:margin')?.text).toBe('20%');
-  expect(g.a11y.desc.indexOf('Margin')).toBeLessThan(g.a11y.desc.indexOf('Orders'));
   expect(interactionRecords({ request, geometry: g, scope: request.scope, claims: [] }).map((record) => record.target.owner.categoryId))
     .toEqual(['margin', 'orders', 'missing']);
   expect(layoutBullet(data, { ...options, density: 'compact' }).marks.rows.map((row) => row.id)).toEqual(['margin', 'orders', 'missing']);

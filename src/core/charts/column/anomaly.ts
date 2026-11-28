@@ -470,7 +470,7 @@ export function anomalyCorridor(
    * a suppression leaves a mark where the reader would look, and the reader
    * looks at the exhibit — a CLI info line is invisible in the SVG or PNG a
    * reader is handed. This clause is appended to the rendered rule sentence
-   * and to a11y.desc, so the page itself says which bound is not drawn.
+   * so the page says which bound the chart omits.
    */
   const words = { ...localeStrings(), ...strings };
   let corridorNote = '';
@@ -801,14 +801,4 @@ export function seatFlaggedValues(
       ...onColumn(`${side}Shifted`, { x, y: flag.up ? flag.py + h + 4 : flag.py - 2 * h - 4, w, h }, 22),
     );
   }
-}
-
-/** The anomaly rule and its flags, as column states them. Line and combo. */
-export function anomalyA11y(domain: { options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>; anomaly?: { model: AnomalyModel; corridorNote: string }; fmt: (v: number) => string; cats: { id: Id; label?: string }[] }): string {
-  const anomaly = domain.anomaly;
-  if (!anomaly) return '';
-  const { model } = anomaly;
-  const name = (id: Id) => domain.cats.find((c) => c.id === id)?.label ?? id;
-  return chartString(domain.options, 'anomalyRuleDesc', { v1: model.rule, v2: anomaly.corridorNote }) +
-    (model.flags.length === 0 ? chartString(domain.options, 'noFlaggedPeriodClause') : chartString(domain.options, 'flaggedClause', { v1: model.flags.map((f) => `${name(f.categoryId)} ${domain.fmt(f.value)}`).join(', ') }));
 }

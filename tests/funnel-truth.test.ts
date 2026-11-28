@@ -179,7 +179,7 @@ describe('funnel truth contract', () => {
     }
   });
 
-  it('derives sliver conversions from adjacent stage totals; the column shows the rate, the description names both stages', () => {
+  it('derives and prints sliver conversions from adjacent stage totals', () => {
     const { data, geometry } = fixture('sliver-segments');
     const expected = expectedRates(data);
 
@@ -190,8 +190,6 @@ describe('funnel truth contract', () => {
         .filter((label) => label.id.startsWith('conv:'))
         .map((label) => label.text),
     ).toEqual(['50% advance', '49% advance', '48% advance']);
-    expect(geometry.a11y.desc).toContain('Enquiries → Screened: 50% conversion');
-    expect(geometry.a11y.desc).toContain('Shortlist → Placed: 48% conversion');
   });
 
   it('does not depend on status-advanced values when stage totals are unchanged', () => {
@@ -207,26 +205,9 @@ describe('funnel truth contract', () => {
 
     const changedGeometry = layout(changed, fixture('lead-funnel').options);
     expect(changedGeometry.derived.conversions).toEqual(geometry.derived.conversions);
-    expect(changedGeometry.a11y).toEqual(geometry.a11y);
   });
 
-  // 999,999 beside 2,000,000 printed "2,000k · 1,000k", because it rounds up to 1M. Each value takes the scale word of
-  // its own size before rounding, so the set prints "2.0M · 1,000k".
-  it('prints a value just below a million at the thousand scale beside millions', () => {
-    const geometry = layout({ categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [2000000, 999999] }] }, { target: 'report' });
-    // Before: "A 2M" and "B 1M". The rule prints "2.0M · 1,000k" for this set: 999,999 does
-    // not join the M group at one decimal.
-    expect(geometry.a11y.desc).toContain('A 2.0M');
-    expect(geometry.a11y.desc).toContain('B 1,000k');
-  });
-
-  // A series format printed "1.18B" on the bar, but the description switched to the set's "1,180M".
-  it.each(['rows', 'centered'])('keeps the totals of a funnel with a series format in the %s variant', (variant) => {
-    const geometry = layout({ categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', format: '1.23B', values: [1180000000, 590000000] }] }, { target: 'report', variant });
-    expect(geometry.a11y.desc).toContain('A 1.18B');
-  });
-
-  it('warns on growth and fails closed in visible and accessible labels', () => {
+  it('warns on growth and withholds the conversion label', () => {
     const geometry = layout({
       categories: [
         { id: 'a', label: 'Applications' },
@@ -242,10 +223,6 @@ describe('funnel truth contract', () => {
     const label = geometry.labels.find((item) => item.id === 'conv:a:b')!;
     expect(label.text).toBe('↑ increased');
     expect(label.text).not.toMatch(/\d+%/);
-    expect(geometry.a11y.desc).toContain(
-      'Applications → Approved: stage total increased; conversion percentage not shown',
-    );
-    expect(geometry.a11y.desc).not.toContain('240%');
   });
 
   it('keeps every visible fixture label in its own lane', () => {

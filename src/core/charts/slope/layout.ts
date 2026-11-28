@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/slope';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { chartWording } from '../../strings';
@@ -26,7 +27,7 @@ import { stepDownFont } from '../../label/rowFit';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { spread1DResult, sweepHide, warnSpreadOverflow } from '../../collide';
-import { formatAuthoredPercent, formatAutomaticNumber } from '../../format';
+import { formatAuthoredPercent } from '../../format';
 import { formatterFromExample, formatWithSpec, percentChangeSpec, seriesRasterFormatter } from '../../formatSpec';
 import { clamp, cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -38,14 +39,7 @@ import {
   type LabelRequest,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeScenario,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeScenario, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
 import { disclosureNote } from '../../notes';
@@ -80,7 +74,6 @@ import type {
   ShownTexts,
 } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
-import { autoDecimals } from '../../formatPrecision';
 import {
   foldShareRefusal,
   planSlopeFold,
@@ -1080,22 +1073,6 @@ function layoutSlopeLines(data: ChartData, options: SlopeOptions, heightOnly = f
     },
   ];
 
-  // ---- a11y: name the steepest changes ----
-  const changeText = (sid: Id): string => {
-    const s = plottedById.get(sid)!;
-    const ch = changes[sid]!;
-    const pctPart = ch.pct !== null ? ` (${pctChangeText(ch.pct, '%')})` : '';
-    const absPart = options.format ? formatAutomaticNumber(ch.abs, { locale: options.locale?.language, signed: true, decimals: autoDecimals(ch.abs) }) : absText(s)(s.b.v!, s.a.v!);
-    return `${s.label} ${absPart}${pctPart}`;
-  };
-  const steepParts: string[] = [];
-  if (steepestUp) steepParts.push(chartString(options, 'steepestRiser', { v1: changeText(steepestUp) }));
-  if (steepestDown) steepParts.push(chartString(options, 'steepestFaller', { v1: changeText(steepestDown) }));
-  const a11yDesc =
-    chartString(options, 'slopeDesc', { v1: plottedSeries.length, v2: c0.label ?? c0.id, v3: c1.label ?? c1.id }) +
-    (steepParts.length ? `${steepParts.join('; ')}.` : chartString(options, 'seriesUnchanged')) +
-    (fold ? ` ${fold.record.note}` : '');
-
   const derived: SlopeDerived = {
     changes,
     ...(steepestUp !== undefined ? { steepestUp } : {}),
@@ -1115,12 +1092,9 @@ function layoutSlopeLines(data: ChartData, options: SlopeOptions, heightOnly = f
     frame: frameResult.frame,
     marks,
     derived,
-    a11y: {
-      title:
-        accessibleTitle(options.title, chartString(options, 'slopeTitle', { v1: plottedSeries.length, v2: c0.label ?? c0.id, v3: c1.label ?? c1.id })),
+    a11y: a11yDescription(options, ['Slope chart', 'Steigungsdiagramm'], [structureCount('series', plottedSeries.length, undefined, options)], {
       counts: [structureCount('series', plottedSeries.length, undefined, options), ...(fold ? [structureCount('series', fold.record.memberIds.length, undefined, options)] : [])],
-      desc: a11yDesc,
-    },
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

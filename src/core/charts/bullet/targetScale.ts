@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/bullet';
 import { emphasisWeight, secondaryType, strokeToken } from '../../theme';
 import { structureCount } from '../../structureCounts';
@@ -25,7 +26,6 @@ import type { OccupiedIndex } from '../../label/occupied';
 import { fittedLabel, gutterBudget } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle } from '../../normalize/shared';
 import { linearScale } from '../../scale';
 import { heightOmitted, rowSizing } from '../../sizing';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -705,14 +705,6 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     const share = shares[index];
     if (share !== undefined) shareById[row.id] = Math.round(share * 100) / 100;
   });
-  const describeRow = (row: TargetScaleRow, index: number): string => {
-    const share = shares[index];
-    const value = input.valueText(row) ?? 'n/a';
-    const delta = input.deltaVsTarget[row.id];
-    return `${row.label}${hidden('actual') ? '' : ` ${value}`}` +
-      (share === undefined ? '' : `,${hidden('share') ? '' : ` ${shareText(share)} ${chartString(options, 'ofTarget', { v1: target })},`} ${input.targetText(row)}`) +
-      (delta === undefined || hidden('delta') ? '' : ` (${input.deltaText(row, delta)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[input.deltaTone(row, delta)])})`);
-  };
 
   return {
     type: 'bullet',
@@ -744,19 +736,10 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     frame: frameResult.frame,
     marks,
     derived: { deltaVsTarget: input.deltaVsTarget, percentOfTarget: shareById },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'bulletTargetTitle', { v1: rows.length, v2: target })),
-      titleCounts: [structureCount('rows', rows.length, chartString(options, 'kpisCount', { v1: rows.length }))],
+    a11y: a11yDescription(options, ['Bullet chart', 'Bullet-Diagramm'], [structureCount('rows', rows.length, undefined, options)], {
       counts: [structureCount('rows', rows.length, chartString(options, 'kpiRowsCount', { v1: rows.length }))],
-      desc:
-        chartString(options, 'bulletTargetDesc', { v1: rows.length, v2: target, v3: hi }) +
-        // A card of neutral rows only draws no better side, so it has its own band text.
-        (directions.every(direction => direction === 'neutral') ? chartString(options, 'bulletNeutralOnlyBandsDesc', { v1: target })
-          // A card names only the zones it draws: the mirrored text needs rows of both better sides.
-          : chartString(options, !directions.includes('lowerIsBetter') ? 'bulletBandsDesc' : directions.includes('higherIsBetter') ? 'bulletMirroredBandsDesc' : 'bulletLowerBandsDesc', { v1: target, v2: target }) +
-            (directions.includes('neutral') ? chartString(options, 'bulletNeutralBandsDesc', { v1: target }) : '')) +
-        `${rows.map(describeRow).join('; ')}.`,
-    },
+      titleCounts: [structureCount('rows', rows.length, chartString(options, 'kpisCount', { v1: rows.length }))],
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

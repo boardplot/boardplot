@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString as boxString } from '../../strings/box';
 import { chartTheme } from '../chartEnv';
 import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
@@ -43,7 +44,7 @@ import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { applyAxisBounds, bandScale, brokenLinearScale, crossesLinearBreak, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { horizontalLogAxis, horizontalLogTicks, logScale, logValueDomain, nonpositive } from '../logAxis';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
@@ -1393,22 +1394,14 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     frame: frameResult.frame,
     marks,
     derived,
-    a11y: {
-      titleCounts: [structureCount('groups', rows.length, undefined, options)],
-      title: accessibleTitle(options.title, chartString(options, 'boxTitle', { v1: rows.length })),
+    a11y: a11yDescription(options, ['Box plot', 'Box-Diagramm'], [structureCount('groups', rows.length, undefined, options)], {
       counts: [...rows.flatMap(row => row.state === 'empty' ? [] : [
           structureCount('observations', row.n, `n = ${row.n}`),
           ...(row.state !== 'points' && row.beyondWhiskers.length ? [structureCount('observations', row.beyondWhiskers.length, `${row.beyondWhiskers.length} ${chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[whiskerRule])}`)] : []),
         ]),
         ...(withheldTotal > 0 ? [structureCount('observations', withheldTotal, chartString(options, 'boxWithheldCount', { v1: withheldTotal }))] : [])],
-      desc:
-        chartString(options, 'boxDescStart', { v1: METHOD_BY_RULE[whiskerRule] }) +
-        rows.map((row) => describeRow(row, statText, whiskerRule, options)).join(' ') +
-        chartString(options, 'boxRuleDesc', { v1: whiskerRule, v2: chartString(options, ({ tukey: 'boxBeyondMeaningtukey', minmax: 'boxBeyondMeaningminmax', p10p90: 'boxBeyondMeaningp10p90' } as const)[whiskerRule]) }) +
-        (withheldTotal > 0
-          ? chartString(options, 'boxWithheldDesc', { v1: withheldTotal })
-          : ''),
-    },
+      titleCounts: [structureCount('groups', rows.length, undefined, options)],
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),
@@ -1433,29 +1426,4 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
 }
 
 type BoxStat = 'min' | 'q1' | 'median' | 'q3' | 'max' | 'whiskerLow' | 'whiskerHigh';
-
-/**
- * One row of the description, each statistic in the text the chart prints for
- * it (statText): its drawn label's text, else the text its label would print.
- */
-function describeRow(
-  row: BoxGroupDerived,
-  text: (row: BoxGroupDerived, stat: BoxStat) => string,
-  rule: WhiskerRule,
-  options: BoxOptions,
-): string {
-  if (row.state === 'empty') return chartString(options, 'emptyBoxRow', { v1: row.label });
-  if (row.state === 'points') {
-    return chartString(options, 'pointsBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'min'), v4: text(row, 'max'), v5: text(row, 'median') });
-  }
-  // The noun follows the RULE. Under p10p90 these are the outer deciles, and
-  // reading them out as "outliers" would tell a screen-reader user the sample
-  // has outliers when it has none.
-  const beyond =
-    row.beyondWhiskers.length === 0 ? '' : `, ${row.beyondWhiskers.length} ${chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[rule])}`;
-  if (row.state === 'median-only') {
-    return chartString(options, 'medianBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'median'), v4: beyond });
-  }
-  return chartString(options, 'fullBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'q1'), v4: text(row, 'median'), v5: text(row, 'q3'), v6: text(row, 'whiskerLow'), v7: text(row, 'whiskerHigh'), v8: beyond });
-}
 

@@ -1161,17 +1161,6 @@ it('keeps the status cuts of one column distinct and states a square drawn alone
   expect(cut(false)).toBe(cut(true));
 });
 
-// A bullet card of neutral rows only described an "on target or better" zone and lower-is-better bands it does not draw.
-it('describes the bands of a neutral-only bullet card', () => {
-  const desc = (direction?: string) => layout('bullet', { rows: [
-    { id: 'a', label: 'A', value: 5, target: 6, direction: 'neutral' },
-    { id: 'b', label: 'B', value: 7, target: 6, ...(direction === undefined ? {} : { direction }) },
-  ] }, { sharedScale: 'percentOfTarget' }).a11y.desc;
-  expect(desc('neutral')).toContain('No side is better');
-  expect(desc('neutral')).not.toContain('or better');
-  expect(desc()).not.toContain('lower is better');
-});
-
 // A column-count threshold must not remove cell padding while the frame has room for all columns.
 it('keeps cell padding in a wide table with free frame space', () => {
   const columns: TableData['columns'] = [{ id: 'label', kind: 'rowLabel', label: 'Item' },

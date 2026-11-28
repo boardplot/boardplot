@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/creative';
 import { canvasMargin, emphasisWeight, panelTypeClass, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
 import type { Rect } from '../../geometry';
@@ -10,7 +11,7 @@ import { assertEmbeddedImage } from '../../image';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -796,7 +797,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
       fatigueTexts: { ...(fatigue.changePct === null ? {} : { change: numbers.fatigue(fatigue.changePct, true) }),
         ...(fatigue.baseline.mean === null ? {} : { baseline: numbers.fatigueMean(fatigue.baseline.mean) }),
         ...(fatigue.current.mean === null ? {} : { current: numbers.fatigueMean(fatigue.current.mean) }) } },
-    a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
+    a11y: a11yDescription(options, 'Creative exhibit'),
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }
 

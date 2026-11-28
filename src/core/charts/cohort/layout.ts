@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/cohort';
 import { structureCount } from '../../structureCounts';
 /**
@@ -26,7 +27,6 @@ import { structureCount } from '../../structureCounts';
 
 import { chartTheme } from '../chartEnv';
 import { clamp } from '../../geometry';
-import { accessibleTitle } from '../../normalize/shared';
 import { layoutHeatmap, type HeatmapLayoutOptions } from '../heatmap/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { sideKeyGivesWay } from '../../sizing';
@@ -34,9 +34,9 @@ import { paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '.
 import type { Cell, Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
-import type { Geometry, Paint, PlacedLabel, SceneNode } from '../../types/scene';
+import type { Geometry, Paint, SceneNode } from '../../types/scene';
 import { AVERAGE_ROW_ID, deriveRetention, missingCohortRate } from './retention';
-import { cohortBasisWarnings, cohortFormula, cohortMeasure } from './wording';
+import { cohortBasisWarnings, cohortFormula } from './wording';
 import { layoutCohortExhibit, normalizeVisiblePeriods } from './exhibit';
 import { cohortOptionRefusals } from './optionRefusals';
 import type {
@@ -46,7 +46,6 @@ import type {
   CohortMarks,
   CohortOptions,
 } from './types';
-import { defaultSetSpec, formatWithSpec } from '../../formatSpec';
 import { ruleFormatter } from '../../numberSets';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
@@ -434,13 +433,11 @@ export function layoutCohort(
     type: 'cohort',
     marks: { cells },
     derived,
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'title', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(visible.length) })),
+    a11y: a11yDescription(options, ['Cohort triangle', 'Kohorten-Dreieck'], [structureCount('cohorts', derived.cohorts.length, undefined, options), structureCount('periods', visible.length, undefined, options)], {
       counts: [structureCount('cohorts', derived.cohorts.length, undefined, options), structureCount('periods', visible.length, undefined, options),
         structureCount('cells', unobserved, chartString(options, 'cells', { count: String(unobserved) })),
         ...(derived.averages ? [derived.averages[visible[0]!]!, derived.averages[visible.at(-1)!]!].flatMap(a => a.value === null ? [] : [structureCount('cohorts', a.support, chartString(options, 'support', { count: String(a.support) }))]) : [])],
-      desc: describe(derived, periodNames, unobserved, options, visible, host.labels),
-    },
+    }),
     warnings,
   };
 }
@@ -663,48 +660,4 @@ function shownNotMeaningful(data: CohortData, derived: CohortDerived, visible: r
     const from = visible.find((t) => t < row.observedPeriods && row.retention[t] === null && !missingCohortRate(row, t, derived.basis));
     return from === undefined ? [] : [`'${data.cohorts[index]!.label ?? row.id}' from period ${from}`];
   });
-}
-
-function describe(derived: CohortDerived, periodNames: string[], unobserved: number, options: CohortOptions, visible: readonly number[], labels: readonly PlacedLabel[]): string {
-  const first = derived.cohorts[0]!;
-  const last = derived.cohorts[derived.cohorts.length - 1]!;
-  // A rate reads as its cell prints it (the cell label's shown text); under an
-  // authored format a cell too small for its label reads as the label would.
-  const cellText = (rowId: Id, t: number): string | undefined => {
-    const label = labels.find((item) => item.owner.seriesId === rowId && item.owner.categoryId === `t${t}` && item.shows?.value !== undefined);
-    return label && (label.hidden === undefined || options.format !== undefined) ? label.shows!.value : undefined;
-  };
-  // A rate no cell label states prints in the set of the shown rates, as the heatmap prints its cells.
-  const shownRates = [
-    ...visible.flatMap((t) => derived.averages?.[t]?.value ?? []),
-    ...derived.cohorts.flatMap((row) => visible.flatMap((t) => t < row.observedPeriods && row.retention[t] != null ? [row.retention[t]!] : [])),
-  ].map((r) => r * 100);
-  const rateSpec = defaultSetSpec(shownRates, options.locale?.language, undefined, { kind: 'percent', cell: true });
-  const pct = (v: number, rowId?: Id, t?: number): string =>
-    (rowId === undefined || t === undefined ? undefined : cellText(rowId, t))
-      ?? `${formatWithSpec(v * 100, rateSpec)}%`;
-  const at = (index: number): string => {
-    const row = derived.cohorts[index]!;
-    // The latest period this cohort reached that the chart shows.
-    const t = derived.visiblePeriods === undefined ? row.observedPeriods - 1 : visible.filter((period) => period < row.observedPeriods).at(-1);
-    if (t === undefined) return chartString(options, 'atPeriod', { value: chartString(options, 'notReached'), period: periodNames[visible[0]!] });
-    const r = row.retention[t] ?? null;
-    return r === null ? chartString(options, 'atPeriod', { value: chartString(options, missingCohortRate(row, t, derived.basis) ? 'missing' : 'notMeaningful'), period: periodNames[t] }) : chartString(options, 'atPeriod', { value: pct(r, row.id, t), period: periodNames[t] });
-  };
-  // A support set of nothing has no average, and the description has to say
-  // that rather than read out a number the exhibit does not print.
-  const average = (a: { value: number | null; support: number }, t: number): string =>
-    a.value === null
-      ? derived.cohorts.some(row => missingCohortRate(row, t, derived.basis)) ? chartString(options, 'missingAt', { period: periodNames[t] }) : chartString(options, 'blankAverage')
-      : chartString(options, 'valueSupport', { value: pct(a.value, AVERAGE_ROW_ID, t), count: String(a.support) });
-  const basisWord = cohortFormula(options, derived.basis);
-  return (
-    chartString(options, 'descStart', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(visible.length), formula: basisWord }) +
-    chartString(options, visible.includes(0) ? 'descReach' : 'descReachShown', { first: at(0), last: at(derived.cohorts.length - 1) }) +
-    chartString(options, 'descBlank', { count: String(unobserved) }) +
-    (derived.averages
-      ? chartString(options, 'descAverage', { first: average(derived.averages[visible[0]!]!, visible[0]!), last: average(derived.averages[visible.at(-1)!]!, visible.at(-1)!) })
-      : '') +
-    chartString(options, 'descBases', { first: String(first.base), last: String(last.base) })
-  );
 }

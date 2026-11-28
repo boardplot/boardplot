@@ -4,7 +4,7 @@
 
 # Built-in words
 
-Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 1180 keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
+Every word a chart prints itself can be replaced in `options.strings`, or for all charts in `BoardplotTheme`. This page lists all 885 keys with their English default. A key that is not listed is refused with the nearest key as the hint. Authored text, such as titles and series names, is never changed.
 
 A word with a field in braces, such as `{count}`, keeps the field in the replacement. A word written for a plural, such as `{v1|slice|slices}`, keeps that form.
 
@@ -38,21 +38,14 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `anomalyCentreMedian` | `centre = median {median}` | shared |
 | `anomalyCentreZero` | `centre 0, spread from median {median}` | shared |
 | `anomalyCountOf` | `{v1} of the` | column |
-| `anomalyDesc` | ` Anomaly rule — {v1}.{v2} ` | column |
 | `anomalyMadRule` | `Flagged: \|modified z\| > {k} ({centre} ± {k} × {factor} × MAD {mad} = {low} to {high}, n = {count})` | shared |
-| `anomalyRuleDesc` | ` Anomaly rule — {v1}.{v2}` | column |
 | `anomalySmallSample` | `Not flagged: {count} of the {minimum} periods a modified-z rule needs` | shared |
 | `anomalyThresholdRule` | `Flagged: {bounds} (authored bounds, n = {count})` | shared |
 | `anomalyZeroMad` | `Not flagged: MAD is 0 over {count} periods, so \|modified z\| has no denominator (no mean ± σ substitute is applied)` | shared |
-| `areaCompositionsDesc` | ` Valid 100% compositions: {v1}. Suppressed: {v2}.` | line |
-| `areaName` | `area` | scatter |
 | `areaName2` | `area` | line |
 | `atOrAboveTarget` | `at or above {v1}` | bullet |
-| `atPeriod` | `{value} at {period}` | cohort |
 | `attainment` | `Attainment` | a11y-businessRecords |
-| `attainmentNonpositive` | `, {v1} attainment not meaningful because the reference is nonpositive` | kpi |
 | `authoredRegionsCount` | `{v1} authored regions` | scatter |
-| `authoredRestHolds` | `The authored rest also` | pareto |
 | `authoredRows` | `Authored {v1}` | grid |
 | `authoredSharesBrief` | `Authored shares; no n supplied.` | likert |
 | `authoredSharesFull` | `Shares are the authored percentages; no n was supplied, so they cannot be audited.` | likert |
@@ -68,25 +61,15 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `axisLow` | `Lower` | shared |
 | `band` | `Band` | a11y-businessRecords |
 | `bandWidthClause` | ` {v1}-wide` | pyramid |
-| `bandsWidth` | `All bands are {v1} wide.` | pyramid |
-| `barDesc` | `{v1} horizontal bar chart with {v2} series.{v3}` | bar |
-| `barEndTotalRange` | `The label at the end of each bar is the row total or its range.` | bartable |
-| `barMekko` | `bar-mekko` | mekko |
 | `barPanelOne` | `one stacked-bar panel` | bartable |
 | `barPanels` | `{v1} stacked-bar panels` | bartable |
-| `barPartValues` | ` A part wide enough prints its value inside the bar.` | bartable |
-| `barTitle` | `Bar chart: {v1} categories` | bar |
 | `bartableBlankHeading` | `{v1} marks a sum left blank because a part is missing` | bartable |
 | `bartableBlankTotal` | `; the Total of that panel with it` | bartable |
-| `bartableDescStart` | `Table of {v1} rows{v2} and ` | bartable |
 | `bartableMissingHeading` | `{v1} marks a missing value` | bartable |
-| `bartableTitle` | `Bar table: {v1} rows` | bartable |
 | `baseCase` | `Base case {value}` | shared |
 | `baseCaseName` | `Base case` | a11y-categoryVariants |
 | `baseFormula` | `cohort base (period 0)` | cohort |
 | `baseHead` | `n` | likert |
-| `baseNotStated` | `base not stated` | likert |
-| `baseOutsideClause` | `, base outside the swing` | barIntervals |
 | `baseShared` | `n = {v1}` | likert |
 | `baseValue` | `base {value}` | cohort |
 | `baselineObservations` | `Baseline observations` | a11y-creativeRecords |
@@ -98,13 +81,11 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `belowTarget` | `Below {v1}` | bullet |
 | `belowTarget80` | `below 80% of {v1}` | bullet |
 | `belowZero` | `{series} below 0 ({meaning})` | shared |
-| `beside` | `beside` | choropleth |
 | `better` | `better` | shared |
 | `betterCapital` | `Better` | bullet |
 | `betterPole` | `, better` | geoScale |
 | `beyond` | `beyond` | variance |
 | `biggestDrop` | `Biggest drop: {v1}` | funnel |
-| `blankAverage` | `blank, with no contributing cohort` | cohort |
 | `blankCells` | `Blank cells: {v1}.` | heatmap |
 | `blankNoData` | `Blank cells: no data.` | heatmap |
 | `bold` | `Bold: {measure} above {threshold}%{after}.` | cohort |
@@ -120,7 +101,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `boxBeyondNountukey` | `outliers` | box |
 | `boxBriefNoPoints` | `Whiskers: 1.5 × IQR; values beyond them are not drawn.` | box |
 | `boxBriefPoints` | `Whiskers: 1.5 × IQR; circles: outliers beyond them.` | box |
-| `boxDescStart` | `Box plot, {v1}. ` | box |
 | `boxEmptyN` | `{v1} · no observations` | box |
 | `boxHiddenCount` | ` · {v1} not shown` | box |
 | `boxHighlight` | `Filled box: {v1}, highlighted.` | box |
@@ -129,60 +109,32 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `boxP10P90NoPoints` | `Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = 10th and 90th percentile (type-7); the outer deciles are not drawn; n per group shown.` | box |
 | `boxP10P90Points` | `Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = 10th and 90th percentile (type-7); dots = the outer deciles, which every sample has by construction and which are not outliers; n per group shown.` | box |
 | `boxPointsN` | `{v1} · observations shown` | box |
-| `boxRuleDesc` | ` Whisker rule: {v1}; values outside it are {v2}.` | box |
 | `boxSmallN` | `{v1} · too few for a box` | box |
 | `boxSmallSample` | `Groups with fewer than 5 observations draw every value as a filled dot instead of a box.` | box |
-| `boxTitle` | `Distribution comparison across {v1} groups` | box |
 | `boxTukeyNoPoints` | `Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = most extreme values within 1.5×IQR; values beyond those fences are not drawn; n per group shown.` | box |
 | `boxTukeyPoints` | `Box: Q1–Q3 (type-7 quantiles); line = median; whiskers = most extreme values within 1.5×IQR; dots = outliers beyond those fences; n per group shown.` | box |
 | `boxValuesCount` | `{v1} values` | box |
 | `boxValuesSpan` | `{v1} values, {v2} to {v3}` | box |
 | `boxWithheldCount` | `{v1} of them are not drawn` | box |
-| `boxWithheldDesc` | ` {v1} of them are not drawn and are excluded from the value axis (showOutliers: false).` | box |
 | `boxWithheldNote` | `{v1} observation{v2} outside the whisker rule ({v3}) {v4} not drawn and {v5} excluded from the value axis, so the spread shown is narrower than the data (showOutliers: false).` | box |
 | `bubbleName` | `Bubble` | scatter |
-| `bubbleScaleWord` | `bubble{v1}` | heatmap |
-| `bubbleSizeDesc` | ` Bubble {v1} encodes size; largest: {v2} ({v3}).` | scatter |
-| `buildDownClause` | ` (build-down)` | waterfall |
-| `bulletBandsDesc` | `. Bands mark below 80% of {v1}, 80 to 100%, and at or above {v2}; one line marks 100%. ` | bullet |
 | `bulletBelowLower` | `Below {v1}, lower is better` | bullet |
-| `bulletDescStart` | `Bullet chart with {v1} KPI rows: a dark bar shows the actual value` | bullet |
-| `bulletLowerBandsDesc` | `. Bands mark more than 20% off {v1}, up to 20% off, and on {v2} or better, where lower is better: above 120%, 100 to 120% and up to 100%; one line marks 100%. ` | bullet |
-| `bulletMirroredBandsDesc` | `. Bands mark more than 20% off {v1}, up to 20% off, and on {v2} or better: below 80%, 80 to 100% and 100% and above where higher is better, above 120%, 100 to 120% and up to 100% where lower is better; one line marks 100%. ` | bullet |
-| `bulletNeutralBandsDesc` | `Neutral rows have no better side: up to 20% off {v1} runs from 80 to 120%, more than 20% off lies beyond, and only the line marks on {v1}. ` | bullet |
-| `bulletNeutralOnlyBandsDesc` | `. No side is better: bands mark up to 20% off {v1}, from 80 to 120%, and more than 20% off beyond that; one line marks 100%. ` | bullet |
-| `bulletSeparateScale` | ` Each row is drawn on its own scale, so bar lengths compare within a row, not across rows.` | bullet |
-| `bulletShadingDesc` | ` Background bands shade from darker grey (poor) to lighter grey (good); rows where lower is better invert the shading.` | bullet |
-| `bulletTargetDesc` | `Bullet chart with {v1} KPI rows on one scale in percent of {v2} from 0 to {v3}%` | bullet |
-| `bulletTargetTick` | ` and a vertical tick marks the {v1}.` | bullet |
-| `bulletTargetTitle` | `Bullet chart: {v1} KPIs in percent of {v2}` | bullet |
-| `bulletTitle` | `Bullet chart: {v1} KPIs vs {v2}` | bullet |
-| `bumpExitedDesc` | ` Not ranked in {v1}: {v2}.` | line |
-| `bumpLastRankDesc` | `{v1} (last ranked {v2} at rank {v3})` | line |
 | `bumpRank` | `rank {v1}` | line |
 | `bumpTied` | `{v1} tied` | line |
 | `bumpVariant` | `bump (rank over time)` | line |
-| `butterflyDesc` | `Butterfly chart comparing {v1} (left) and {v2} (right) across {v3} categories. {v4}.` | butterfly |
 | `butterflyName` | `Butterfly` | butterfly |
-| `butterflyTitle` | `Butterfly: {v1} vs {v2}` | butterfly |
 | `cadenceEvents` | `{v1} cadence events` | gantt |
-| `cadenceSummary` | `{v1} {v2} cadence events from {v3} to {v4}` | gantt |
 | `cagrStartNotPositive` | `cagr '{v1}': the start value is not positive, so no growth rate is defined` | annotate |
 | `caption` | `Caption` | a11y-structuralRecords |
 | `cardTabHint` | `Press Tab to reach the card.` | hover |
-| `cascadeDesc` | `Each panel is a cascade: a row's bar starts where the row above ended, on a light track over the panel total{v1}{v2}{v3}. ` | bartable |
-| `cascadeValueLabels` | `Each bar prints its value inside or beside it.` | bartable |
 | `categoriesNotShown` | `Not shown` | slope |
 | `category` | `Category` | AccessibleTable |
-| `category2` | `category` | pareto |
 | `categoryState` | `Category state` | a11y-structuralRecords |
-| `categoryTotals` | `category totals` | mekko |
 | `causesOfCount` | `{v1} of {v2} causes` | pareto |
 | `cellNotApplicable` | `n/a` | bartable |
 | `cellNote` | `One cell = {value}` | shared |
 | `cells` | `Cells` | a11y-businessRecords |
 | `cellsLower` | `cells` | heatmap |
-| `centeredFunnelDesc` | `Centered funnel chart with {v1} equal-height stage bands; width at each boundary is proportional to the stage total. {v2}.` | funnel |
 | `change` | `Change` | waterfall |
 | `changeHead` | `Change` | slope |
 | `changeUnavailable` | `Change unavailable.` | creative |
@@ -191,54 +143,31 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `chartGrid` | `Chart grid` | layoutGrid |
 | `checkSegmentsNote` | `{v1} is drawn at {v2}, the sum of its segments; the data states {v3}` | waterfall |
 | `checkTotalNote` | `{v1} is drawn at {v2}, the sum of its steps; the data states {v3}` | waterfall |
-| `choroplethTitle` | `{v1} choropleth` | choropleth |
-| `circleAreaSize` | ` (circle area shows size)` | heatmap |
 | `circleShape` | `circle` | choropleth |
 | `circles` | `circles` | heatmap |
-| `circular` | `circular` | treemap |
 | `clampedFunnelNote` | `{v1} {v2} below zero shown as 0.` | funnel |
 | `clevelandName` | `Cleveland dot` | dot |
-| `clipAbove` | `above` | scatter |
-| `clipBelow` | `below` | scatter |
-| `clipBottom` | `bottom` | scatter |
-| `clipLeft` | `left` | scatter |
-| `clipLeftOf` | `left of` | scatter |
-| `clipRight` | `right` | scatter |
-| `clipRightOf` | `right of` | scatter |
-| `clipTop` | `top` | scatter |
 | `clippedAt` | `clipped at {v1}` | scatter |
 | `clippedAtAxis` | `{v1} ({v2})` | scatter |
 | `clippedAtJoin` | ` and at ` | scatter |
-| `clippedPointsDesc` | ` {v1} {v2} {v3} drawn at the ` | scatter |
-| `clippedPointsEdge` | `{v1} edge: {v2}{v3}.` | scatter |
 | `clippedPointsNote` | `{v1} clipped at {v2} ({v3}).` | scatter |
 | `close` | `Close` | shared |
 | `closedBands` | `{v1} closed bands` | pyramid |
-| `clustered` | `clustered` | column |
 | `codesSentence` | `Codes: {v1}.` | tilemap |
 | `cohort` | `Cohort` | cohort |
 | `cohortBasis` | `cohort size` | cohort |
 | `cohortSize` | `Cohort size` | cohort |
 | `cohortSizeLabel` | `{v1} / cohort size` | a11y-statisticsRecords |
 | `columnCount` | `column {v1}` | scatter |
-| `columnDescStart` | `{v1} column chart, {v2} categories × {v3} series` | column |
-| `columnName` | `column` | pareto |
-| `columnTitle` | `Column chart: {v1} by {v2} categories` | column |
-| `columnTotalsSentence` | `. Column totals: {v1}.` | combo |
 | `columnsRankNote` | `Columns by rank ({v1}): {v2}.` | combo |
 | `combinedRowLabel` | `Top {v1} combined` | bartable |
 | `combinedShadedLead` | `Shaded rows, {v1}` | bartable |
-| `combinedShareBracket` | ` and a bracket with the combined share of {v1}` | bartable |
 | `combinedShareNote` | `{v1}: {v2} of {v3}{v4} of {v5} ({v6}).` | bartable |
 | `combinedShareRangeNote` | `{v1}: {v2} of {v3}{v4} of {v5} at the low end ({v6}); {v7} of {v8}{v4} at the high end ({v9}).` | bartable |
 | `combinedShareZero` | `share not defined: total is zero` | bartable |
-| `comboDescStart` | `Combo chart, {v1} categories: {v2}` | combo |
 | `comboOwnScale` | `Each series on its own scale.` | combo |
-| `comboTitle` | `Combo chart: {v1} by {v2} categories` | combo |
 | `comparisonLabel` | `vs {label}:` | hover |
 | `compositionColumns` | `by {v1} composition` | grid |
-| `containsMembers` | `{v1} contains {v2}` | diagram |
-| `continuous` | `continuous` | heatmap |
 | `corridor` | `Corridor (\|modified z\| ≤ {value})` | shared |
 | `corridorBounds` | `Corridor (authored bounds)` | shared |
 | `countActivities` | `{v1} activities` | structureCounts |
@@ -276,7 +205,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `countedQuantities` | `quantities counted in {v1}` | pvm |
 | `countedValues` | `{count} of {total} values` | shared |
 | `creativeColumn` | `Creative` | creative |
-| `creativeDesc` | `{v1}. Creative metrics and authored account medians. {v2}` | creative |
 | `creativeFrequency` | `Frequency` | creative |
 | `creativeHoldRate` | `Hold rate` | creative |
 | `creativeHookRate` | `Hook rate` | creative |
@@ -291,13 +219,9 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `current` | `Current` | a11y-categoryVariants |
 | `currentObservations` | `Current observations` | a11y-creativeRecords |
 | `currentValue` | `Current value {value}` | shared |
-| `currentValueSentence` | ` Current value {v1}.` | barIntervals |
-| `curvePoint` | `curve point` | pareto |
 | `cutAt` | `Cut at` | scatter |
 | `cutLabels` | `Full text of shortened labels` | frame |
-| `cutMean` | `mean` | scatter |
 | `cutMeanCapital` | `Mean` | scatter |
-| `cutMedian` | `median` | scatter |
 | `cutProvenance` | `{v1} of the {v2} plotted values` | scatter |
 | `cvrSpanHeader` | `Conversion rate` | funnel |
 | `dailyHeading` | `Daily, {v1}` | creative |
@@ -311,75 +235,42 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `declaredLower` | `declared` | scatter |
 | `decrease` | `Decrease` | waterfall |
 | `deltaColumn` | `vs {v1}` | bullet |
-| `descAverage` | `Weighted averages run from {first} to {last}. ` | cohort |
-| `descBases` | `Bases: {first} for the oldest cohort, {last} for the newest.` | cohort |
-| `descBlank` | `{count} cell{count\|\|s} are blank because those cohorts have not reached that period. ` | cohort |
-| `descReach` | `Period 0 is 100% by construction. The oldest cohort reaches {first}; the newest reaches {last}. ` | cohort |
-| `descReachShown` | `The oldest cohort reaches {first}; the newest reaches {last}. ` | cohort |
-| `descStart` | `Cohort {measure} triangle, {cohorts} cohorts by {periods} periods since start. {formula} ` | cohort |
 | `description` | `Description` | a11y-structuralRecords |
 | `diagramArchitecture` | `architecture` | diagram |
 | `diagramCircularProcess` | `circular-process` | diagram |
-| `diagramCopies` | `{v1} ({v2} copies)` | diagram |
 | `diagramCustomerJourney` | `customer-journey` | diagram |
-| `diagramDesc` | `{v1} diagram with {v2} nodes and {v3} relationships.` | diagram |
 | `diagramHierarchy` | `hierarchy` | diagram |
 | `diagramIssueTree` | `issue-tree` | diagram |
 | `diagramLinearProcess` | `linear-process` | diagram |
-| `diagramProtected` | `{v1} (marked protected)` | diagram |
 | `diagramRoadmap` | `roadmap` | diagram |
 | `diagramStrategyHouse` | `strategy-house` | diagram |
-| `diagramTitle` | `{v1} diagram` | diagram |
-| `diameterName` | `diameter` | scatter |
 | `diamondShape` | `diamond` | choropleth |
 | `dimswitchLabels` | `Labels` | table |
 | `dimswitchRange` | `Range` | table |
 | `disagreeLower` | `disagree` | likert |
 | `disagreeSide` | `the disagree side` | likert |
-| `discrete` | `discrete` | heatmap |
-| `divergingSlopeDesc` | `Diverging slope chart, {v1} series, one panel per group, {v2} above and {v3} below zero, from {v4} to {v5}. ` | slope |
-| `divergingSlopeTitle` | `Diverging slope chart: {v1} groups, {v2} to {v3}` | slope |
-| `dotDesc` | `{v1} chart with {v2} series. {v3}.` | dot |
-| `dotRangeDesc` | `{v1}, range {v2} to {v3}{v4}` | dot |
-| `dotTitle` | `{v1} chart: {v2} categories` | dot |
 | `doughnutName` | `doughnut` | pie |
-| `down` | `down` | kpi |
 | `dropValue` | `Drop {v1}` | funnel |
 | `droppedPointsNote` | `{v1} with a count below {v2} dropped: {v3}.` | scatter |
 | `dumbbellName` | `Dumbbell` | dot |
-| `eachPanel` | `each panel` | waffle |
 | `elapsed` | `Elapsed` | gantt |
 | `elapsedToday` | `Elapsed to today` | gantt |
-| `emptyBoxRow` | `{v1}: no observations.` | box |
-| `emptyCellsClause` | `, {v1} of {v2} cells empty` | waffle |
 | `emptyUnobserved` | `{anchor}empty cells are unobserved.` | cohort |
 | `end` | `End` | a11y-businessRecords |
-| `endingAt` | `, ending at {v1}` | kpi |
-| `entityRank` | `{v1} rank {v2}` | line |
+| `endingAt` | `, ending at {v1}` | sparkline |
 | `equalBandsMethod` | ` All {v1} bands are{v2}.` | pyramid |
-| `equalTileGrid` | `{v1}-region equal-tile grid; every region has identical visual area. ` | tilemap |
 | `eventName` | `Event` | gantt |
 | `eventPeriod` | `{v1}, period` | eventLane |
-| `eventsSentence` | ` Events: {v1}.` | eventReading |
 | `everySupport` | `Every average rests on {count} cohort{count\|\|s}.` | cohort |
 | `excludedRunning` | `Excluded: running period. Cohort {cohort}; last observation of each earlier cohort.` | cohort |
-| `exhibitDesc` | `{measure} table with a separate cohort-size column and periods {periods}. {formula} Empty cells are unobserved{anchor}.{missing}{total}` | cohort |
-| `exhibitDescAnchor` | `; period 0 is 100% by definition` | cohort |
-| `exhibitDescMissing` | ` A dash marks a missing count, or a rate or total that needs it.` | cohort |
-| `exhibitDescNoSize` | `{measure} table with periods {periods}. {formula} Empty cells are unobserved{anchor}.{missing}{total}` | cohort |
-| `exhibitDescTotal` | ` The total row is weighted by {basis}.` | cohort |
-| `exhibitTitle` | `Cohort {measure} table: {count} cohorts` | cohort |
 | `factsEnded` | `{v1} · ran {v2}` | creative |
 | `factsLive` | `{v1} · live since {v2}` | creative |
 | `factsSpend` | `Spend to date {v1} · as of {v2}` | creative |
 | `fallCapital` | `Fall` | creative |
-| `fallsLower` | `falls` | a11y-accessibility |
+| `fallsLower` | `falls` | scatter |
 | `fanAt` | `{v1} at {v2}` | line |
-| `fanDesc` | `; uncertainty fan around {v1}: {v2}, declared as series pairs and not derived from any distribution` | line |
 | `fanGap` | `Interval not declared at {categories}: the band is drawn only where both bounds were supplied. The gap does not mean that the interval closed.` | shared |
-| `fanOrigin` | `, widening from {v1}` | line |
 | `fanWidest` | ` (widest)` | line |
-| `fanZeroWidth` | `, every band zero-width so none is painted` | line |
 | `fatigueInsufficientData` | `insufficient data` | creative |
 | `fatigueMissingData` | `missing data` | creative |
 | `fatigueNoRule` | `no rule` | creative |
@@ -395,15 +286,10 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `fell` | `Fell` | dot |
 | `firstCount` | `The first {v1}` | pareto |
 | `flagged` | `Flagged ({count} of {total})` | shared |
-| `flaggedClause` | ` Flagged: {v1}.` | column |
-| `flaggedSentence` | `Flagged: {v1}.` | column |
-| `flowReading` | `{v1} to {v2} {v3}` | sankey |
-| `footballDesc` | `Football-field range chart. {v1}.` | barIntervals |
 | `footballMethodWithoutRange` | `Method '{v1}' has no range and was left out.` | barIntervals |
 | `footballMethodsLeftOutNote` | `Not shown (no range)` | barIntervals |
 | `footballRangeRequired` | `A football field needs at least one method with a range.` | bar |
 | `footballRangeSuggest` | `Give at least one method a range with low and high values.` | bar |
-| `footballTitle` | `Football-field valuation: {v1} methods` | barIntervals |
 | `footnote` | `Footnote` | a11y-categoryRecords |
 | `forcedChoiceBrief` | `Forced choice, {v1} points, no neutral option.` | likert |
 | `forcedChoiceFull` | `Forced-choice {v1}-point scale: the centre line is the boundary between the two sides and there is no neutral option.` | likert |
@@ -411,20 +297,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `forecastHeader` | `FC` | shared |
 | `formula` | `{measure} = active / {basis}` | cohort |
 | `formulaCount` | `{formula}; n per cohort in the row label.` | cohort |
-| `frontierDesc` | ` A dotted Pareto line joins the {v1} points no other point beats on both axes ({v2} x and {v3} y are better): {v4}.` | scatter |
-| `fullBoxRow` | `{v1}: n = {v2}, Q1 {v3}, median {v4}, Q3 {v5}, whiskers {v6} to {v7}{v8}.` | box |
-| `funnelConversionDesc` | ` ({v1} → {v2}: {v3} conversion)` | funnel |
-| `funnelDesc` | `Funnel chart with {v1} stage{v2}. {v3}.` | funnel |
-| `funnelIncreaseDesc` | ` ({v1} → {v2}: stage total increased; conversion percentage not shown)` | funnel |
-| `funnelTitle` | `Funnel: {v1} to {v2}` | funnel |
 | `funnelUndefined` | `{v1}: not defined, the previous stage is zero.` | funnel |
-| `ganttDays` | `days` | gantt |
-| `ganttDesc` | `Gantt chart at {v1} scale from {v2} to {v3}. {v4}.` | gantt |
-| `ganttMonths` | `months` | gantt |
-| `ganttQuarters` | `quarters` | gantt |
-| `ganttTitle` | `Gantt: {v1} activities` | gantt |
-| `ganttWeeks` | `weeks` | gantt |
-| `ganttYears` | `years` | gantt |
 | `gapAbove` | `above {v1}` | bullet |
 | `gapBelow` | `below {v1}` | bullet |
 | `gapBetween` | `Gap between {first} and {second}` | shared |
@@ -433,27 +306,16 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `gapLead` | `gap` | bar |
 | `gapOn` | `on {v1}` | bullet |
 | `gridCellsCount` | `{v1} grid cells` | scatter |
-| `gridChartsDesc` | `{v1}: {v2}.{v3}` | layoutGrid |
-| `gridChartsTitle` | `Grid of {v1} charts` | layoutGrid |
-| `gridComposition` | `Authored {v1} by {v2} composition: {v3}.{v4}` | grid |
-| `gridPanelsTitle` | `Grid of {v1} panels` | grid |
 | `group` | `Group` | a11y-businessRecords |
-| `groupedCapital` | `Grouped` | bar |
-| `groupsClause` | ` in {v1} groups` | treemap |
 | `groupsCount` | `{v1} group{v2}` | scatter |
-| `groupsSentence` | `Groups: {v1}.` | diagram |
-| `growthVersus` | ` Growth versus {v1}: {v2}.` | column |
-| `harveyBallName` | `Harvey-ball` | heatmap |
 | `hatchMissing` | `Hatched cells = missing count, or a rate or average that needs it.` | cohort |
 | `hatchNm` | `Hatched cells = not meaningful: {periods}, no survivors in the previous period.` | cohort |
 | `hatchedBaseNote` | `Hatched bars do not contain the base case: at base inputs the model does not reproduce the stated base.` | shared |
 | `hatchedCells` | `Hatched cells: {v1}.` | heatmap |
 | `hatchedNoData` | `Hatched cells: no data.` | heatmap |
 | `heatmapBaseNote` | `Hatched {v1}: base below n = {v2}, read with care.` | heatmap |
-| `heatmapDescStart` | `{v1} matrix, {v2} rows × {v3} columns. ` | heatmap |
 | `heatmapLeadHigh` | `{v1} high` | heatmap |
 | `heatmapLeadLow` | `{v1} low` | heatmap |
-| `heatmapTitle` | `Heatmap: {v1} × {v2} matrix` | heatmap |
 | `heatmapTopValuesNote` | `Values shown in the largest circles.` | heatmap |
 | `hiddenLabels` | `Not labelled on the chart` | shared |
 | `hiddenMapLabels` | `Not labelled on the map` | choropleth |
@@ -485,7 +347,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `horizontal` | `horizontal` | bullet |
 | `horizontalWaterfall` | `Horizontal waterfall chart` | waterfall |
 | `hoverMoreListed` | `and {count} more (tap or hover shows each value)` | createChartComponent |
-| `inUnitClause` | ` in {v1}` | pyramid |
 | `inUnitClause2` | `, in {v1}` | variance |
 | `includes` | `Includes` | a11y-businessRecords |
 | `incomplete` | `(partial)` | shared |
@@ -495,14 +356,9 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `independentScalesNote` | `Independent scales: bar lengths compare within a pane, not across it.` | butterfly |
 | `inflow` | `Inflow` | a11y-businessRecords |
 | `insideRest` | `inside the authored rest` | pareto |
-| `integratedVariance` | `integrated variance` | variance |
-| `interpolationClause` | ` with {v1} interpolation` | line |
 | `intervalAtLeast` | `{v1} or more` | a11y-statisticsRecords |
 | `intervalClosed` | `{v1} to {v2} inclusive` | format |
 | `intervalOpen` | `{v1} to under {v2}` | format |
-| `inverseClause` | `, inverse` | barIntervals |
-| `inverseDriversDesc` | ` {v1} of {v2} drivers are inverse: their high input produces the lower output.` | barIntervals |
-| `invertedRowsDesc` | `Lower is better for {v1}. ` | heatmap |
 | `itemsCount` | `{v1} items` | pvm |
 | `keyBetter` | `Highlighted: better than median` | creative |
 | `keyBoth` | `Highlighted: better or worse than median` | creative |
@@ -510,28 +366,17 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `knownPartsShares` | `{categories}: shares of known parts only.` | shared |
 | `knownPartsTotals` | `Totals add the known parts only` | shared |
 | `kpiRowsCount` | `{v1} KPI rows` | bullet |
-| `kpiSparkDesc` | `. Trend over {v1} periods{v2}` | kpi |
-| `kpiTitle` | `KPI: {v1}` | kpi |
 | `kpisCount` | `{v1} KPIs` | bullet |
 | `labelsShowTotals` | `Labels show totals` | grid |
-| `lanesSentence` | `Lanes: {v1}.` | diagram |
-| `largestFlows` | `Largest flows: {v1}.` | sankey |
-| `lastColumnClause` | `; the last column is {v1}` | bartable |
-| `lastElement` | `The last {v1}` | pareto |
 | `lastRegardlessSize` | `last regardless of size` | pareto |
 | `latest` | `latest` | a11y-businessRecords |
-| `latestValues` | `Latest values` | line |
 | `left` | `left` | bullet |
-| `legendItemsCount` | `{v1} legend items.` | grid |
 | `legendName` | `Legend` | grid |
 | `lifecyclePhasesCount` | `{v1} contiguous lifecycle phases` | line |
 | `likertBaseBrief` | `Shares of each statement's base, n = {v1}.` | likert |
 | `likertBaseFull` | `Shares are of each statement's own base, n = {v1} for every statement, counted over the declared response options only.` | likert |
 | `likertBasesBrief` | `Shares of each statement's base, n = {v1}–{v2}.` | likert |
 | `likertBasesFull` | `Shares are of each statement's own base ({v1}–{v2} responses), counted over the declared response options only.` | likert |
-| `likertDescStart` | `Diverging stacked Likert chart: {v1} statement{v2} on a {v3}-point scale from '{v4}' to '{v5}'.` | likert |
-| `likertExcludeDesc` | ` The neutral option '{v1}' is excluded from the bars, so they do not sum to the base.` | likert |
-| `likertForcedDesc` | ` The scale is forced-choice: the centre line is the boundary between the two sides.` | likert |
 | `likertNetBrief` | `Net = agree minus disagree, in points.` | likert |
 | `likertNetFull` | `Net = share on {v1} minus share on {v2}, in percentage points; the neutral option counts on neither side.` | likert |
 | `likertNetNamedBrief` | `Net = {v1} minus {v2}, in points.` | likert |
@@ -541,96 +386,57 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `likertNeutralFull` | `'{v1}' is split evenly across the centre line, so the centre marks the middle of the neutral share, not {v2}. ` | likert |
 | `likertNeutralSideBrief` | `'{v1}' counts on {v2}.` | likert |
 | `likertNeutralSideFull` | `'{v1}' is counted entirely on {v2}, so the centre line is not {v3}.` | likert |
-| `likertResponseDesc` | `{v1}: {v2} {v3}, {v4} neutral, {v5} {v6}, net {v7} points, {v8}` | likert |
-| `likertSideDesc` | ` The neutral option '{v1}' is counted entirely on {v2}.` | likert |
-| `likertSplitDesc` | ` The neutral option '{v1}' is split in half across the centre line, so the zero rule marks the midpoint of the neutral segment rather than {v2}.` | likert |
-| `likertTitle` | `Likert chart: {v1} statements on a {v2}-point scale` | likert |
 | `lineAreaSeriesCount` | `{v1} line/area series` | combo |
-| `lineAreaSeriesDesc` | `{v1} line/area series ({v2})` | combo |
-| `lineDescStart` | `{v1} chart, {v2} series × {v3} categories` | line |
-| `lineDifferenceDesc` | `; shaded difference between {v1} and {v2}` | line |
-| `lineEndKeyDesc` | ` End labels use a key, ordered by latest value from highest to lowest, because they cannot fit within three label line heights of their endpoints.` | line |
-| `lineEndpointsDesc` | `. {v1}: {v2}.` | line |
-| `lineIndexed` | `, indexed (first period = 100)` | line |
-| `lineLogScaleClause` | `; vertical axis on a log scale` | line |
 | `lineName` | `line` | line |
-| `linePhasesDesc` | `; {v1} contiguous lifecycle phases under the single curve` | line |
-| `lineRankTies` | `, {v1} tied group{v2} sharing a rank` | line |
-| `lineRanksDesc` | `; ranks 1–{v1} derived by standard competition ranking ({v2}), rank 1 at the top` | line |
-| `lineTargetsDesc` | `; {v1} authored target marker{v2}` | line |
-| `lineTitle` | `{v1} chart: {v2} over {v3} periods` | line |
 | `lineTrendKey` | `{v1}, {v2}: {v3} {v4}; r² {v5}` | line |
-| `linearInterpolation` | `linear` | line |
 | `linearTrend` | `Linear trend` | line |
 | `listedInNote` | `Listed in note {n}` | frame |
 | `listedInNotes` | `Full text is in the notes list` | frame |
 | `listedRegions` | `{v1} listed regions` | choropleth |
-| `logScaleClause` | ` on a log scale` | scatter |
 | `lollipopName` | `Lollipop` | dot |
 | `lostItems` | `Lost items` | shared |
 | `low` | `Low` | a11y-structuralRecords |
 | `lowCase` | `Low case` | a11y-categoryVariants |
 | `lower` | `lower` | scatter |
 | `lowerBetter` | `lower is better` | shared |
-| `lowerBetterClause` | ` (lower is better)` | variance |
 | `lowerBetterHint` | ` · lower is better` | bullet |
 | `lowerBound` | `the lower bound {value}` | shared |
 | `lowerCpaBetter` | `lower CPA is better` | creative |
-| `lowerFavorable` | `Lower values are favorable. ` | choropleth |
+| `lowerFavorable` | `Lower values are favorable. ` | tilemap |
 | `lowerIsBetterCapital` | `Lower is better` | geoScale |
 | `lowerMiddle` | `Lower middle` | bullet |
 | `lowestFirst` | `lowest first` | hover |
 | `mapCredit` | `Map` | shared |
-| `mapEqualArea` | `{v1}-region equal-area map. ` | choropleth |
-| `mapHiddenRegions` | `{v1} regions are listed with their values under Not labelled on the map. ` | choropleth |
 | `mapLabelPolicy` | `Labels: top {v1} by value; full region list in data` | choropleth |
-| `mapMissingHatch` | `visible region geometry uses a hatched no-data trace. ` | choropleth |
-| `mapMissingRegions` | `{v1} listed regions have a missing value; ` | choropleth |
-| `mapSmallMissing` | `visible no-data geometry is hatched where the region can contain the hatch ink; {v1} region{v2} too small for contained hatch ink and carr{v3} the no-data state on the region outline alone. ` | choropleth |
 | `mapStateCount` | `{v1} listed region{v2} {v3} and use{v4} a distinct pattern. ` | geoScale |
-| `mapTable` | `A table {v1} the map lists every region with its value. ` | choropleth |
-| `mapUnlistedRegions` | `{v1} regions are not in the data and use plain background. ` | choropleth |
-| `mappedRange` | `Mapped range {v1} to {v2}. ` | choropleth |
+| `mapUnlistedRegions` | `{v1} regions are not in the data and use plain background. ` | tilemap |
+| `mappedRange` | `Mapped range {v1} to {v2}. ` | tilemap |
 | `matureCohort` | `Mature cohort` | grid |
 | `maturingCohortNote` | `Maturing cohorts have not had the full time to produce an outcome. Their scoped values are provisional.` | grid |
 | `maturingHidden` | `Maturing value not shown` | a11y-structuralRecords |
 | `measure` | `Retention` | cohort |
 | `median` | `Median {value}` | shared |
 | `medianBasis` | `Median basis: {v1}.` | creative |
-| `medianBoxRow` | `{v1}: n = {v2}, IQR 0 at {v3}{v4}.` | box |
 | `medianName` | `Median` | a11y-statisticsRecords |
 | `medianPopulation` | `Median population` | a11y-creativeRecords |
 | `medianWindow` | `Median window` | a11y-creativeRecords |
-| `mekkoDesc` | `{v1}, {v2} columns × {v3} series; column widths proportional to ` | mekko |
-| `mekkoInvalidDesc` | `. Valid totals: {v1}. Suppressed: {v2}.` | mekko |
 | `mekkoMissingNote` | `Not available: {v1}.` | mekko |
 | `mekkoNegativeNote` | `Not drawn (negative total): {v1}.` | mekko |
-| `mekkoPercentAxis` | `percent-axis marimekko` | mekko |
-| `mekkoTitle` | `Mekko chart: {v1} by {v2} categories` | mekko |
-| `mekkoUnitAxis` | `unit-axis mekko` | mekko |
 | `mekkoUnnamedNote` | `Not named in place, left to right: {v1}.` | mekko |
-| `mekkoValidDesc` | `{v1}; {v2} valid composition columns × {v3} series; column widths proportional to ` | mekko |
 | `mekkoZeroNote` | `Not drawn (total 0 or too thin): {v1}.` | mekko |
 | `metric` | `Metric` | creative |
 | `metricStack` | `Metric stack` | grid |
-| `metricStackDesc` | `Metric stack: {v1}. Top-down order: {v2}. Independent scales start at zero. {v3}` | grid |
-| `metricStackHeight` | `Metric stack needs {v1} px height.` | grid |
-| `metricStackTitle` | `Metric stack of {v1} panels` | grid |
-| `metricStackWidth` | `Metric stack needs {v1} px width.` | grid |
 | `midMissing` | `{v1} not reported for {v2}.` | dot |
 | `midMissingCount` | `{v1} not reported for {v2} rows.` | dot |
 | `midName` | `Midpoint` | dot |
 | `middle` | `middle` | scatter |
 | `middle3` | `Middle` | bullet |
 | `middle5` | `Middle` | bullet |
-| `midpointClause` | `, midpoint {v1}` | dot |
 | `milestone` | `Milestone` | diagram |
 | `milestoneOnBar` | `Milestone on a bar` | gantt |
 | `minimumDotSize` | `the smallest dot is larger than its size` | scatter |
 | `minmaxSampled` | ` · min-max sampled` | viewport |
-| `missing` | `missing` | cohort |
-| `missingAt` | `missing at {period}, a count it needs is missing` | cohort |
-| `missingDriversDesc` | ` {v1} further driver{v2} — {v3} — {v4} not shown: not measurable, because a one-at-a-time swing needs both case outputs and {v5} missing.` | barIntervals |
+| `missing` | `missing` | funnel |
 | `missingExclude` | `exclude` | creative |
 | `missingExhibit` | `— = missing count, or a rate or total that needs it; blank = not reached yet.` | cohort |
 | `missingStack` | `Missing values at {categories}: 0 used; totals partial.` | shared |
@@ -638,11 +444,9 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `missingUnavailable` | `unavailable` | creative |
 | `mixedCoverage` | `n.m.: not meaningful, the compared totals cover different rows.` | shared |
 | `mixedShares` | `{categories}: n.m., the parts mix positive and negative values, so they are no shares of a whole.` | shared |
-| `monotoneInterpolation` | `monotone` | line |
-| `moreInTable` | `, and {v1} more in the data table` | scatter |
 | `moreListed` | `and {count} more` | shared |
 | `moreRows` | `… {count} more {count\|row\|rows}` | hover |
-| `namedRange` | `{v1} {v2} to {v3}` | bar |
+| `namedRange` | `{v1} {v2} to {v3}` | column |
 | `namedSide` | `the '{v1}' side` | likert |
 | `narrowSharesNotPrinted` | `Shares on narrow segments are not printed.` | likert |
 | `nearZeroChange` | `n.m.: not meaningful, the base is near zero.` | shared |
@@ -661,10 +465,8 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `noFlaggedPeriod` | `No period is flagged.` | column |
 | `noFlaggedPeriodClause` | ` No period flagged.` | column |
 | `noMedia` | `No media` | creative |
-| `noNodes` | `no nodes` | diagram |
-| `noNumericValues` | `No numeric values are available. ` | choropleth |
+| `noNumericValues` | `No numeric values are available. ` | tilemap |
 | `noObservation` | `No observation for this period` | cohort |
-| `noPeriod` | `no period` | line |
 | `noPositionNote` | `{v1} with no x or y not drawn: {v2}.` | scatter |
 | `noPrecedingStage` | `No preceding stage` | a11y-businessRecords |
 | `noRank` | `no rank` | shared |
@@ -687,7 +489,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `noteMany` | `+{count} notes` | shared |
 | `noteOne` | `+{count} note` | shared |
 | `notesAndSources` | `Notes and sources` | shared |
-| `notesClause` | ` Notes: {v1}.` | grid |
+| `notesClause` | ` Notes: {v1}.` | layoutGrid |
 | `numberCount` | `{v1}` | pareto |
 | `observationUnavailable` | `Unavailable (no observation)` | a11y-valueText |
 | `observations` | `Observations` | histogram |
@@ -696,8 +498,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `observedCausesDrawn` | `{v1} observed causes (drawn as {v2} columns)` | pareto |
 | `observedChange` | `Observed change: {v1}.` | creative |
 | `ofAllClause` | `, {v1} of all` | pyramid |
-| `ofGroupClause` | ` of {v1}` | scatter |
-| `ofTarget` | `of {v1}` | bullet |
 | `ofValueClause` | ` of {v1}` | hover |
 | `offTargetOver20` | `more than 20% off {v1}` | bullet |
 | `offTargetUpTo20` | `up to 20% off {v1}` | bullet |
@@ -706,13 +506,11 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `onTargetOrBetter` | `on {v1} or better` | bullet |
 | `oneItem` | `1 item` | pvm |
 | `oneUnitSits` | `One unit sits` | scatter |
-| `openBandDesc` | `{v1} closed bands{v2} plus the open-ended '{v3}', whose row is not width-comparable.` | pyramid |
 | `openBandRequired` | `{v1} is an open-ended band ({v2} and over).` | pyramid |
 | `openBandsMethod` | ` {v1} bands are{v2}. '{v3}' is open-ended and not width-comparable.` | pyramid |
 | `openPeriod` | `Open period` | a11y-structuralRecords |
 | `orderedBands` | `{v1} ordered bands` | pyramid |
 | `otherMembers` | `{v1}: {v2}` | sankey |
-| `otherPanels` | `the other panels` | waffle |
 | `others` | `Others` | shared |
 | `outflow` | `Outflow` | a11y-businessRecords |
 | `outsideBounds` | `outside {low} to {high}` | shared |
@@ -734,29 +532,18 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `overlayStatusDesc` | `{v1}: {v2} status {v3}` | choropleth |
 | `overlayWarn` | `Warning` | choropleth |
 | `overlays` | `Overlays` | tilemap |
-| `overlaysSentence` | `Overlays: {v1} ` | choropleth |
-| `ownScale` | `each on its own scale` | bartable |
+| `overlaysSentence` | `Overlays: {v1} ` | tilemap |
+| `ownScale` | `· each line on its own scale` | creative |
 | `panelsCount` | `{v1} {v2}` | waffle |
-| `paretoAuthoredRestDesc` | `The authored rest is last and counts in the total. Concentration is computed over the named causes. ` | pareto |
-| `paretoColumnsClause` | ` and drawn as {v1} columns` | pareto |
-| `paretoCurveDesc` | ` The cumulative curve is derived from the plotted values and ends at the grand total.` | pareto |
-| `paretoCurveOffDesc` | ` The cumulative curve is off.` | pareto |
-| `paretoDescStart` | `Pareto chart, {v1} causes sorted descending` | pareto |
 | `paretoFoldedMethod` | `{v1}: the {v2} smallest causes, {v3} in total, plotted {v4} and counted in the grand total and in the {v5}-cause denominator above.` | pareto |
 | `paretoHiddenHighlights` | ` {v1} of those causes sit inside {v2} and carry no highlight of their own.` | pareto |
 | `paretoHighlightNote` | `Highlighted: the {v1} of {v2} that together reach the {v3} reference ({v4} of {v5}).` | pareto |
 | `paretoLine` | `Pareto line` | scatter |
 | `paretoNoConcentrationNote` | `No concentration: {v1} of {v2} are needed to reach {v3}, so no vital few is highlighted. The {v4} reference is a convention, not a property of the data.` | pareto |
-| `paretoNoReachDesc` | `The named causes do not reach the threshold; no vital few is highlighted.` | pareto |
 | `paretoNoReachNote` | `No concentration: the named causes do not reach {v1} of the total, so no vital few is highlighted.` | pareto |
-| `paretoNoThresholdDesc` | `No threshold reference is drawn and no vital few is highlighted.` | pareto |
 | `paretoNoThresholdNote` | `No threshold reference is drawn, so no vital few is highlighted.` | pareto |
-| `paretoNotConcentratedDesc` | `{v1} of {v2} causes are needed to reach {v3}: this distribution is not concentrated and no vital few is highlighted.` | pareto |
-| `paretoReachDesc` | `The first {v1} of {v2} ({v3}) reach {v4}, crossing the {v5} reference at '{v6}'.` | pareto |
 | `paretoReferenceConvention` | ` The reference is a convention, not a property of the data.` | pareto |
-| `paretoRestDesc` | ` {v1} aggregates {v2} smaller causes summing to {v3}.` | pareto |
 | `paretoRestMethod` | `The authored rest counts in the total and is excluded from ranking. Concentration is computed over the named causes.` | pareto |
-| `paretoTitle` | `Pareto chart: {v1} causes, total {v2}` | pareto |
 | `paretoTop` | `Top {v1}{v2}` | pareto |
 | `paretoUnlabelled` | `Columns with no room for a label, by rank: {v1}.` | pareto |
 | `partial` | `Partial` | shared |
@@ -768,17 +555,12 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `periodObservationMissing` | `No observation for this period` | a11y-statisticsRecords |
 | `periodsHidden` | `Not shown for space: {periods}.` | cohort |
 | `phaseRange` | `{v1}: {v2} to {v3}` | line |
-| `pieDesc` | `{v1} chart, {v2} slices of {v3}, total {v4}. ` | pie |
-| `pieDescNoTotal` | `{v1} chart, {v2} slices of {v3}. ` | pie |
 | `pieHiddenSlices` | `{v1} {v2} not labelled` | pie |
 | `pieName` | `pie` | pie |
 | `pieNegativeNote` | `Not drawn (negative value, so no total shown): {v1}.` | pie |
-| `pieTitle` | `{v1} chart: {v2} across {v3} slices` | pie |
 | `placeholder` | `Placeholder` | creative |
 | `plan` | `PL` | shared |
-| `plusClause` | ` plus ` | combo |
 | `pointLabelsOff` | `Labels off beyond {v1} points.` | scatter |
-| `pointsBoxRow` | `{v1}: n = {v2}, individual observations from {v3} to {v4}, median {v5}.` | box |
 | `pointsCount` | `{v1} point{v2}` | scatter |
 | `pointsCountAbove` | `, points on it count above` | scatter |
 | `pointsCountRight` | `, points on it count right` | scatter |
@@ -812,21 +594,14 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `pvmSplitInvariant` | `their sum does not.` | pvm |
 | `pvmSplitNote` | `Volume and mix are separated on {v1}; that split moves with the counting unit, ` | pvm |
 | `pyramidBandsMethod` | `Each band runs from its lower bound up to, but not including, its upper bound. The youngest band is at the bottom.` | pyramid |
-| `pyramidCounts` | `Bars are counts{v1}. ` | pyramid |
-| `pyramidDesc` | `Population pyramid: {v1} (left) and {v2} (right) across {v3} ordered bands, ` | pyramid |
 | `pyramidShareGroupSubtitle` | `% of each group` | pyramid |
 | `pyramidShareSnapshotSubtitle` | `% of each snapshot` | pyramid |
 | `pyramidShareSubtitle` | `% of the grand total` | pyramid |
-| `pyramidShares` | `Bars are shares of that grand total across both groups, so the two sides do not each sum to 100%. ` | pyramid |
 | `pyramidSharesDisclosure` | ` Values are shares of the grand total across both groups ({v1}), so the two sides do not each sum to 100%.` | pyramid |
-| `pyramidSharesOfGroup` | `Bars are shares of their own group total, so each side sums to 100%. ` | pyramid |
-| `pyramidTitle` | `Population pyramid: {v1} vs {v2}` | pyramid |
-| `pyramidTotals` | ` {v1} totals {v2}{v3}, {v4} totals {v5}{v6}, grand total {v7}{v8}. ` | pyramid |
 | `quadrantAllUnits` | `All {v1} units fall in the {v2} box; the other three are empty.` | scatter |
 | `quadrantCutShort` | `Cuts: {v1} at {v2} and {v3} at {v4}; a point on a cut counts right and above.` | scatter |
 | `quadrantCutX` | `Quadrant cut points: horizontal axis at {v1} ({v2}), ` | scatter |
 | `quadrantCutY` | `vertical axis at {v1} ({v2}). ` | scatter |
-| `quadrantDesc` | ` Quadrants: horizontal cut at {v1} ({v2}), vertical cut at {v3} ({v4}); ` | scatter |
 | `quadrantEquality` | `A unit exactly on a cut point is counted to the right of it and above it.` | scatter |
 | `quadrantOnThreshold` | `{v1} exactly on a cut point ({v2}).` | scatter |
 | `quadrantOutsideRange` | `The {v1} cut point ({v2}) does not fall strictly inside the plotted range {v3} to {v4}: no divider is drawn on that axis and the exhibit is a 1x2, not a 2x2.` | scatter |
@@ -834,17 +609,15 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `quantityUnit` | `quantities in {v1}` | pvm |
 | `quartiles` | `Quartiles` | a11y-statisticsRecords |
 | `range` | `Range, low to high` | shared |
-| `rangeBarDesc` | ` A bar with a range fills its segments to the low end and runs a light outlined extension to the high end.` | bartable |
 | `rangeMidNote` | `Tick inside a range marks its mid-point as supplied.` | shared |
 | `rangeName` | `Range` | dot |
-| `rangesClause` | ` Ranges: {v1}.` | bar |
+| `rangesClause` | ` Ranges: {v1}.` | column |
 | `rankFormat` | ` (format '{format}')` | shared |
 | `rankLabel` | `Rank:` | hover |
 | `rankMethod` | `Rank derived from the plotted measure by standard competition ranking ({direction}), rank 1 at the top. Tied entities share a rank and the next rank is skipped. Values are compared as printed{format}, so equal printed values share a rank.{ring}` | shared |
 | `rankOmitted` | `Ranked but not drawn (rank in {period}, of {count}): {entries}.` | shared |
 | `rankRing` | ` A ring marks a rank held by more than one entity.` | shared |
 | `rankValue` | `{v1} of {v2}, {v3}` | hover |
-| `readingOrder` | `Reading order: {v1}.` | diagram |
 | `reasonAComparisonOperandIsUnavailable` | `A comparison operand is unavailable` | reasons |
 | `reasonASignedCompositionHasNoShareOfANonnegativeTotal` | `A signed composition has no share of a nonnegative total` | reasons |
 | `reasonComparisonRequiresNumericValues` | `Comparison requires numeric values` | reasons |
@@ -868,13 +641,10 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `recordKind` | `Kind` | a11y-eventRecords |
 | `recordSource` | `Source` | a11y-structuralRecords |
 | `recordTarget` | `Target` | a11y-structuralRecords |
-| `rectangular` | `rectangular` | treemap |
 | `recurringEvent` | `Recurring event` | gantt |
-| `referenceBandsSentence` | ` Reference bands: {v1}.` | line |
-| `referenceClause` | `, reference {v1}` | sparkline |
 | `referenceKey` | `Dashed outline = {label}` | waffle |
 | `referenceNonpositive` | `Reference is nonpositive` | a11y-businessRecords |
-| `referenceSeriesClause` | ` plus {v1} reference series` | column |
+| `referenceSeriesClause` | ` plus {v1} reference series` | line |
 | `referenceSeriesCount` | `{v1} reference series` | column |
 | `region` | `Region` | a11y-statisticsRecords |
 | `regionBoundaryDesc` | `{v1}: strategy region spanning {v2} boundary points` | scatter |
@@ -884,7 +654,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `regionsCount` | `{v1} regions` | choropleth |
 | `regionsLeftOutNote` | `Not on this map` | choropleth |
 | `regionsPlural` | `{v1} region{v2}` | choropleth |
-| `relationshipsSentence` | `Relationships: {v1}.` | diagram |
 | `relativeVariance` | `relative variance` | variance |
 | `residualKey` | `Rest rows` | bartable |
 | `responseShare` | `Response share` | a11y-businessRecords |
@@ -892,34 +661,21 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `retentionNotMeaningful` | `Retention is not meaningful for this period` | a11y-statisticsRecords |
 | `right` | `right` | diagram |
 | `riseCapital` | `Rise` | creative |
-| `risesLower` | `rises` | a11y-accessibility |
+| `risesLower` | `rises` | scatter |
 | `rose` | `Rose` | dot |
 | `rowCount` | `row {v1}` | scatter |
-| `rowMeansSentence` | `Row means: {v1}.` | heatmap |
 | `rowMissing` | `A row is missing` | a11y-structuralRecords |
-| `rowsNeedHeight` | `The rows need a taller canvas.` | butterfly |
-| `runsFlat` | `runs flat` | scatter |
 | `sampleSize` | `Sample size` | a11y-businessRecords |
 | `sampleSizeMissing` | `Sample size not supplied` | a11y-businessRecords |
-| `sankeyDesc` | `Sankey of {v1} flows between {v2} nodes in {v3} columns, total {v4}. ` | sankey |
 | `sankeyHiddenLead` | `Smaller nodes` | sankey |
-| `sankeyTitle` | `Sankey: {v1} flows between {v2} nodes, total {v3}` | sankey |
 | `scalePointsCount` | `{v1}-point scale` | likert |
-| `scatterAxesDesc` | `. X from {v1} to {v2}{v3}, Y from {v4} to {v5}{v6}.` | scatter |
-| `scatterDescStart` | `{v1} chart with {v2} points` | scatter |
-| `scatterGroupDesc` | ` in {v1} group{v2} ({v3})` | scatter |
 | `scatterName` | `Scatter` | scatter |
-| `scatterTitle` | `{v1} chart: {v2} points` | scatter |
-| `secondaryAxisDesc` | `. Some series use a second value scale` | combo |
-| `segmentsSentence` | `Segments: {v1}. {v2}` | bartable |
 | `sensitivityNote` | `One-at-a-time sensitivity: each driver is varied alone with every other driver held at its base input. The swings do not sum to a total and interaction effects are not shown.` | shared |
 | `seriesCount` | `{v1} series` | waffle |
 | `seriesSpan` | `{v1} to {v2}` | annotate |
-| `seriesUnchanged` | `All series unchanged.` | slope |
 | `share` | `Share` | shared |
 | `shareChangeSpan` | `{v1} share change, pp` | bartable |
 | `shareColumn` | `% of {v1}` | bullet |
-| `shareColumnClause` | `, with a share column beside it` | bartable |
 | `shareHeading` | `Share` | bartable |
 | `shareLabel` | `Share:` | hover |
 | `shareOfSource` | `Share of source outflow` | a11y-businessRecords |
@@ -927,10 +683,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `shareOfTotal` | `Share of total` | a11y-categoryRecords |
 | `shareRoundingMoved` | `Printed shares are moved by one step so each whole adds up to 100%. The reading lists the moved shares.` | shareRounding |
 | `shareRoundingRescaled` | `{v1}: the authored parts do not add up to 100, so each share is its part divided by the stack total.` | shareRounding |
-| `sharedMilestonesSummary` | `Shared milestones {v1}` | gantt |
-| `sharedScale` | `on one shared scale` | bartable |
-| `sharesNotPrinted` | `Shares not printed on the bars` | likert |
-| `sharesSentence` | `Shares: {v1}.` | pie |
 | `showDataTable` | `Show data table` | AccessibleTable |
 | `showingPeriods` | `Showing {v1} of {v2} periods{v3}` | viewport |
 | `sizeAbsentPlus` | `a plus has no size` | scatter |
@@ -940,18 +692,14 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `sliverKnown` | ` ({v1} in the parts drawn)` | bartable |
 | `sliverNote` | `Too short to compare on the shared{v1} scale, which runs to {v2}` | bartable |
 | `slopeBaseNote` | `Hatched: base below {v1} respondents ({v2}); read with care.` | slope |
-| `slopeDesc` | `Slope chart, {v1} series from {v2} to {v3}. ` | slope |
 | `slopeEndpointsOnly` | `Slope draws the first category, '{v1}', and the last, '{v2}'. {v3}` | slope |
 | `slopeFoldEnd` | `{v1} at {v2}.` | slope |
 | `slopeFoldHead` | `{v1}: the {v2} series below {v3} of the endpoint total at both ends ` | slope |
 | `slopeFoldSum` | `summed to {v1} at {v2} and ` | slope |
-| `slopeLowBaseDesc` | ` Low base: {v1}.` | slope |
 | `slopeNeedsTwoCategories` | `A slope needs at least two categories (time points).` | slope |
 | `slopeNetKey` | ` = {v1} − {v2} in {v3} (change vs {v4})` | slope |
 | `slopeNetName` | `Net` | slope |
-| `slopeNetRiseDesc` | `Net score rose in {v1} of them; highest in {v2}: {v3} {v4}.` | slope |
 | `slopeResponseRest` | `{v1} and {v2} do not add to 100: the rest ({v3} per group and period) chose neither answer.` | slope |
-| `slopeTitle` | `Slope chart: {v1} series, {v2} to {v3}` | slope |
 | `smallerCauses` | `{v1} smaller causes` | pareto |
 | `someSuppressed` | `{count} of {total} rates are too narrow to print and read from colour alone.` | cohort |
 | `sortedCauses` | `{v1} causes sorted descending` | pareto |
@@ -959,9 +707,8 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `sortedNetFull` | `Statements are sorted by net score, descending.` | likert |
 | `source` | `Source` | shared |
 | `sourceMeasures` | `{v1} source measures` | grid |
-| `sourceSentence` | `Source: {v1}{v2}` | choropleth |
+| `sourceSentence` | `Source: {v1}{v2}` | tilemap |
 | `spanText` | `{v1} to {v2}` | a11y-statisticsRecords |
-| `sparklineDesc` | `Trend over {v1} points{v2}{v3}.` | sparkline |
 | `sparklineName` | `Sparkline` | sparkline |
 | `spendTitle` | `Spend` | creative |
 | `spendToDate` | `Spend to date` | a11y-creativeRecords |
@@ -981,33 +728,22 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `stackRightMethod` | `Right: volume-weighted mature rates and remaining per 100` | grid |
 | `stackRightRates` | `Right: volume-weighted mature rates` | grid |
 | `stackRightRemaining` | `Right: remaining per 100` | grid |
-| `stacked100` | `100% stacked` | bar |
+| `stacked100` | `100% stacked` | column |
 | `stackedArea` | `stacked area` | line |
-| `stackedCapital` | `Stacked` | bar |
 | `stackedColumnSeriesCount` | `{v1} stacked column series` | combo |
-| `stackedColumnSeriesDesc` | `{v1} stacked column series ({v2})` | combo |
-| `stackedLower` | `stacked` | column |
 | `stage` | `Stage` | a11y-businessRecords |
 | `stageAdvance` | `{v1} advance` | funnel |
 | `stageConversion` | `Stage conversion` | a11y-businessRecords |
-| `stageCvrDesc` | `{v1} {v2}; stage CVR {v3}; total CVR {v4}` | funnel |
 | `stageIncreased` | `↑ increased` | funnel |
 | `stagePair` | `{v1} to {v2}` | funnel |
 | `stageTotal` | `Stage total` | a11y-businessRecords |
 | `stagesCount` | `{v1} stage{v2}` | funnel |
-| `standingsPeriod` | `Standings in {v1}` | line |
 | `start` | `Start` | a11y-businessRecords |
 | `state` | `State` | a11y-structuralRecords |
 | `stateNa` | `Not applicable` | heatmap |
 | `stateNm` | `Not meaningful` | heatmap |
 | `stateSuppressed` | `Suppressed` | heatmap |
 | `statementsCount` | `{v1} statement{v2}` | likert |
-| `statusDesc` | `Categorical status matrix, {v1} rows by {v2} columns. {v3}.` | status |
-| `statusTitle` | `Status matrix: {v1} by {v2}` | status |
-| `steepestFaller` | `steepest faller: {v1}` | slope |
-| `steepestRiser` | `Steepest riser: {v1}` | slope |
-| `stepAfterInterpolation` | `step-after` | line |
-| `stepBeforeInterpolation` | `step-before` | line |
 | `stepCvr` | `Step conversion` | funnel |
 | `stepCvrShort` | `Step` | funnel |
 | `steppedBlank` | `{anchor}blanks = unobserved or zero denominator.{weighting}` | cohort |
@@ -1016,7 +752,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `storyNext` | `Next ›` | shared |
 | `storyStep` | `Step {step} of {count}` | shared |
 | `storyStepDesc` | `Story step {step} of {count}:` | story |
-| `strategyZonesDesc` | ` Strategy zones: {v1}. {v2}` | scatter |
 | `support` | `{count} cohort{count\|\|s}` | cohort |
 | `supportRange` | `{first} to {last} cohorts` | cohort |
 | `suppressed` | `Suppressed` | geoScale |
@@ -1036,7 +771,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `tableBelowAverage` | `below the average` | table |
 | `tableBelowFor` | `{where} for {columns}` | table |
 | `tableBelowTotal` | `below the total` | table |
-| `tableColumnsClause` | ` with the columns {v1}` | bartable |
 | `tableDesc` | `Table with {v1} rows and {v2} columns` | table |
 | `tableFavourableGood` | `The good tone marks a favourable change. {direction} is better for {columns}.` | table |
 | `tableFavourableGreen` | `Green marks a favourable change. {direction} is better for {columns}.` | table |
@@ -1061,7 +795,6 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `tableRoundingNote` | `Figures may not add due to rounding.` | table |
 | `tableSuppressedNote` | `{marker} Suppressed: value withheld, not missing.` | table |
 | `tableTitle` | `Table` | table |
-| `tableTotalRow` | ` A {v1} row closes the table.` | bartable |
 | `target` | `target` | shared |
 | `targetColumn` | `Target` | bullet |
 | `targetMarkersCount` | `{v1} authored target marker{v2}` | line |
@@ -1069,44 +802,31 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `tied` | `Tied` | shared |
 | `tiedGroupsCount` | `{v1} tied group{v2}` | line |
 | `tiedSymbol` | `○` | shared |
-| `tileMissingRegions` | `{v1} listed regions have a missing value and a hatched trace. ` | tilemap |
-| `tileValuesSentence` | `Values: {v1}. ` | tilemap |
 | `tilemapNoData` | `No data` | tilemap |
-| `tilemapTitle` | `{v1} tile map` | tilemap |
 | `timeZoneChangeNote` | `Time zone: {v1} ({v2})` | line |
 | `timeZoneNote` | `Time zone: {v1}` | line |
-| `title` | `Cohort {measure}: {cohorts} cohorts over {periods} periods` | cohort |
 | `toDate` | `to date` | shared |
 | `today` | `Today` | gantt |
 | `todayDate` | `Today, {v1}` | gantt |
-| `toneBad` | `bad` | bullet |
-| `toneGood` | `good` | bullet |
-| `toneNeutral` | `neutral` | bullet |
-| `toneWarn` | `warn` | bullet |
+| `toneBad` | `bad` | choropleth |
+| `toneGood` | `good` | choropleth |
+| `toneNeutral` | `neutral` | choropleth |
+| `toneWarn` | `warn` | choropleth |
 | `top` | `top` | bullet |
 | `topLeft` | `top-left` | scatter |
 | `topRight` | `top-right` | scatter |
-| `tornadoBaseDesc` | `Base case {v1}. Drivers by swing: ` | barIntervals |
-| `tornadoDescEffects` | `so the swings do not sum to a total and interaction effects are not shown. ` | barIntervals |
-| `tornadoDescStart` | `Sensitivity tornado, one-at-a-time: each driver is varied alone with every other driver held at its base input, ` | barIntervals |
-| `tornadoDriverDesc` | `{v1}, {v2} {v3}, {v4} {v5}, swing {v6}{v7}{v8}` | barIntervals |
-| `tornadoTitle` | `Sensitivity tornado: {v1} drivers` | barIntervals |
 | `total` | `Total` | shared |
-| `totalClause` | `, total {v1}. ` | pareto |
 | `totalCvr` | `Total conversion` | funnel |
 | `totalCvrShort` | `Total` | funnel |
 | `totalLabel` | `Total` | hover |
-| `totalsSentence` | `. Totals: {v1}.` | column |
+| `totalsSentence` | `. Totals: {v1}.` | mekko |
 | `treemapCircleHiddenLead` | `Too small to label` | treemap |
-| `treemapDesc` | `Treemap, {v1}, {v2} cells{v3}, total {v4}. ` | treemap |
 | `treemapItemLeftOut` | `Item '{v1}' was left out: value {v2} gives no cell area.` | treemap |
 | `treemapLeftOutNote` | `Not drawn (no value above 0)` | treemap |
 | `treemapNegativeValue` | `Treemap value {v1} for '{v2}' is negative: a cell area is its value, so a negative value cannot be drawn.` | treemap |
 | `treemapNoPositiveValues` | `A treemap needs at least one item with a value above 0.` | treemap |
 | `treemapRectHiddenLead` | `Smaller items` | treemap |
-| `treemapTitle` | `Treemap: {v1} cells, total {v2}` | treemap |
 | `trendFitLabel` | `{v1}{v2}: slope {v3}, r² {v4}` | scatter |
-| `trendLineDesc` | ` A dashed least-squares trend line {v1} across {v2} points{v3}.` | scatter |
 | `trendPerDay` | `per day` | line |
 | `trendPerHour` | `per hour` | line |
 | `trendPerMinute` | `per minute` | line |
@@ -1121,16 +841,13 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `trendUndefined` | `undefined` | line |
 | `twoSidesBoundary` | `the boundary between the two sides` | likert |
 | `unavailable` | `Unavailable` | creative |
-| `unchanged` | `unchanged` | kpi |
 | `unchangedPair` | `{v1} unchanged` | dot |
 | `uncountedSuppressed` | `Some cells are too narrow to print their rate and read from colour alone.` | cohort |
-| `under` | `under` | choropleth |
 | `underValue` | `Under {v1}` | geoScale |
 | `undrawnBounds` | ` Not drawn: {bounds} — outside the plotted range.` | shared |
 | `unitsSit` | `{v1} units sit` | scatter |
 | `unknownRegionLeftOut` | `Region '{v1}' is not in pack '{v2}' and was left out.` | choropleth |
 | `unsupportedAverage` | `No cohort has a readable rate at {periods}: the average is hatched there, not 0%.` | cohort |
-| `up` | `up` | kpi |
 | `upperBound` | `the upper bound {value}` | shared |
 | `upperMiddle` | `Upper middle` | bullet |
 | `userSourceClause` | ` User source: {v1}` | choropleth |
@@ -1148,30 +865,19 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `valueLineValue` | `Value` | a11y-valueLineRecords |
 | `valueMissing` | `Value missing` | choropleth |
 | `valueName` | `Value` | pareto |
-| `valueSupport` | `{value} on {count} cohort{count\|\|s}` | cohort |
 | `valueUnavailable` | `Unavailable ({v1})` | a11y-valueText |
 | `valueWithheld` | `Value withheld` | a11y-statisticsRecords |
 | `valuesNotBesideMarks` | `Values not printed beside their marks` | shared |
 | `valuesNotOnColumns` | `Values not printed on the columns` | shared |
 | `valuesNotPrinted` | `Values not printed in tiles` | tilemap |
-| `valuesRange` | `Values range {v1} to {v2}. ` | heatmap |
-| `varianceDesc` | `{v1} {v2} chart vs {v3}, {v4} categories` | variance |
 | `varianceNmNote` | `n.m.: not meaningful, {v1} is zero or negative; the change beside it is absolute{v2}.` | variance |
 | `varianceTone` | `{v1} than {v2}{v3}` | variance |
 | `vertical` | `vertical` | scatter |
 | `videoPreview` | `Video poster · static preview` | creative |
 | `vsMedianColumn` | `vs median` | creative |
-| `waffleAllClause` | `, {v1} in all` | waffle |
-| `waffleCellsDesc` | `Waffle chart, {v1} {v2} and {v3} series, each panel a {v4} × {v5} grid of {v6} cells; one cell is {v7}. {v8}` | waffle |
 | `waffleCellsReading` | `{v1} = {v2} of {v3} cells` | waffle |
-| `waffleReferenceDesc` | ` A dashed outline in {v1} marks the reference, {v2}.` | waffle |
-| `waffleSquareDesc` | `Waffle chart of share squares, {v1} {v2} and {v3} series: each panel is a square for 100%, and the area of its solid square is the share. {v4}{v5}` | waffle |
-| `waffleTitle` | `Waffle chart: {v1}` | waffle |
 | `waffleWholeReading` | `{v1} of the whole` | waffle |
-| `waterfallCasesDesc` | `{v1} cases side by side in each step. {v2}` | waterfall |
 | `waterfallChart` | `Waterfall chart` | waterfall |
-| `waterfallDesc` | `Waterfall chart{v1}. {v2}.` | waterfall |
-| `waterfallTitle` | `Waterfall: {v1} to {v2}` | waterfall |
 | `weekOf` | `Week of {v1}` | hover |
 | `weekend` | `Weekend` | gantt |
 | `weightedAverage` | `Weighted average` | cohort |
@@ -1187,6 +893,5 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `worse` | `worse` | shared |
 | `worseCapital` | `Worse` | bullet |
 | `worsePole` | `, worse` | geoScale |
-| `youngestBottom` | `youngest at the bottom. ` | pyramid |
 | `zoneDesc` | `{v1}: X {v2} to {v3}, Y {v4} to {v5}` | scatter |
 | `zoneName` | `Zone {v1}, {v2}` | scatter |

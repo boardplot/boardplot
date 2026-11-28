@@ -1,6 +1,5 @@
 import { keylessFitBounds } from '../../legendPolicy';
 import { bandKeyFirst, keylessAreaFits, speculate } from '../band/keylessFit';
-import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { CARD_CLASS_WIDTH, CARD_HEIGHT_MEMO, PLOT_SHARE, chartSizing, sameContent } from '../../sizing';
@@ -55,7 +54,7 @@ export const columnCore: ChartCore<
   layout: (data, options) => {
     const prepared = prepareFractionData(data);
     const column = layoutColumn(prepared, options);
-    return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column), options);
+    return stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column);
   },
   openingPlot: stackedOpening,
   notesAtTallerHeight: stackedNoteCount,

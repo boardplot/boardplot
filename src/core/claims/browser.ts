@@ -898,7 +898,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       });
     }
     case 'status': {
-      // The cells per state the accessible description prints. Each
+      // The reading reports the cell count for each state. Each
       // operand is one drawn cell in that state, so the count is a sum of ones
       // a reader can check cell by cell. No text on the chart prints the count.
       const derived = geo.derived as StatusDerived;
