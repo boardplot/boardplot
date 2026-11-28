@@ -108,6 +108,42 @@ describe('refusal contract', () => {
     expect(mark?.t === 'circle' ? mark.cx : mark?.t === 'line' ? mark.x1 : undefined).toBeCloseTo(at(100), 5);
   });
 
+  // Dropping a decade endpoint leaves values near that end of a narrow log axis without their nearest tick.
+  it('keeps decade endpoints when the inner ticks of a log value axis are crowded', () => {
+    const cases = [
+      { type: 'dot', title: 'Cost by tier', width: 320,
+        data: (max: number) => ({ categories: ['Alpha', 'Beta'], series: [{ id: 's', values: [1.5, max] }] }) },
+      { type: 'box', title: 'Cost spread', width: 300,
+        data: (max: number) => ({ groups: [{ id: 'a', label: 'Long Service Name', observations: [1.5, 10, 100, 1000, max] }] }) },
+    ];
+    for (const { type, title, width, data } of cases) {
+      const options = { title, size: { width }, format: '$1,234', valueAxis: { log: true } };
+      for (const max of [90000, 95000]) {
+        const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data: data(max), options })));
+        const ticks = geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.at);
+        expect(ticks, `${type} with a maximum of ${max}`).toContain(1);
+        expect(ticks, `${type} with a maximum of ${max}`).toContain(100000);
+        expect(ticks, `${type} with a maximum of ${max}`).not.toContain(10000);
+      }
+    }
+  });
+
+  // An ignored reference series must not cause a log dot chart to refuse or shift the position of a plotted error.
+  it('validates log values only in the plotted dot series', () => {
+    const options = { title: 'Dot with ignored reference', valueAxis: { log: true } };
+    const reference = { id: 'r', label: 'Ref', role: 'reference', values: [0, 50] };
+    const plot = (values: number[]) => render({ spec: {
+      type: 'dot', options,
+      data: { categories: ['a', 'b'], series: [reference, { id: 'd', label: 'Data', values }] },
+    } }).body;
+    expect(plot([10, 100])).toMatchObject({
+      ok: true, warnings: expect.arrayContaining([expect.objectContaining({ code: 'reference-ignored' })]),
+    });
+    expect(plot([10, 0])).toMatchObject({
+      ok: false, errors: [expect.objectContaining({ code: 'log-nonpositive', path: '/data/series/1/values/1' })],
+    });
+  });
+
   // A log chart must identify the zero or negative reading that it cannot place.
   it.each(['dot', 'box'])('refuses non-positive %s data with the line chart repair', (type) => {
     for (const value of [0, -5]) {

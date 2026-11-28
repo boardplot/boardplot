@@ -45,9 +45,9 @@ export function horizontalLogAxis(type: 'dot' | 'box', axis: ValueAxisOptions): 
 }
 
 /** Check the source indices before keyed cells or categories are reordered. */
-export function validateLogSeriesValues(series: readonly { values: (RangeCell | { categoryId: string; value: RangeCell })[] }[], withRanges = false): void {
+export function validateLogSeriesValues(series: readonly ({ values: (RangeCell | { categoryId: string; value: RangeCell })[] } | undefined)[], withRanges = false): void {
   series.forEach((s, si) => {
-    if (!Array.isArray(s.values)) return;
+    if (!Array.isArray(s?.values)) return;
     s.values.forEach((raw, ci) => {
       const keyed = raw !== null && typeof raw === 'object' && 'categoryId' in raw && 'value' in raw;
       const cell = keyed ? raw.value : raw;
@@ -282,15 +282,25 @@ export function horizontalLogTicks(scale: LinearScale, spec: NumberFormatSpec, f
   const format = logSpecFormat(spec, scale.domain);
   if (ticks) return { format, ticks };
   const fitted = fitLogTicks(scale, 'x', format, font, measure);
-  // An automatic end such as 0.9 must not displace 1 when only one label fits.
-  const crowdsDecade = (end: number, next: number) => {
-    const power = Math.log10(next);
-    if (Math.abs(power - Math.round(power)) > 1e-9) return false;
+  const isDecadePower = (power: number) => Math.abs(power - Math.round(power)) <= 1e-9;
+  // A sparse tick set can skip the decade just inside an automatic domain end.
+  const preferDecade = (end: number, next: number) => {
+    const power = Math.log10(end);
+    if (isDecadePower(power) || !isDecadePower(Math.log10(next))) return end;
     const widths = measure(format(end), font).width + measure(format(next), font).width;
-    return Math.abs(scale(end) - scale(next)) < widths / 2 + 4;
+    if (Math.abs(scale(end) - scale(next)) >= widths / 2 + 4) return end;
+    return decimal(1, end < next ? Math.ceil(power) : Math.floor(power));
   };
-  if (axis.min === undefined && fitted.length > 2 && crowdsDecade(fitted[0]!, fitted[1]!)) fitted.shift();
-  if (axis.max === undefined && fitted.length > 2 && crowdsDecade(fitted.at(-1)!, fitted.at(-2)!)) fitted.pop();
+  if (axis.min === undefined && fitted.length > 2) {
+    const tick = preferDecade(fitted[0]!, fitted[1]!);
+    if (tick === fitted[1]) fitted.shift();
+    else fitted[0] = tick;
+  }
+  if (axis.max === undefined && fitted.length > 2) {
+    const tick = preferDecade(fitted.at(-1)!, fitted.at(-2)!);
+    if (tick === fitted.at(-2)) fitted.pop();
+    else fitted[fitted.length - 1] = tick;
+  }
   return { format, ticks: fitted };
 }
 

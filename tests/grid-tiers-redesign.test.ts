@@ -670,6 +670,24 @@ it('shares one value-axis break across bar panels', () => {
   expect((result as Geometry).derived).toHaveProperty('sharedYDomains.grid:y');
 });
 
+// Log dot panels can be refused when a grid assigns them bounds inferred from a linear scale.
+it('keeps horizontal log dot panels out of shared value scales', () => {
+  const draw = (scaleGroup?: { y: string }) => layoutResolvedRequest(resolveChartRequest({
+    type: 'grid',
+    data: { panels: [
+      { id: 'a', type: 'dot', title: 'Service A', data: { categories: ['Fast', 'Slow'], series: [{ id: 's', values: [0.85, 1000000] }] },
+        options: { scaleGroup, valueAxis: { log: 'x' } } },
+      { id: 'b', type: 'dot', title: 'Service B', data: { categories: ['Fast', 'Slow'], series: [{ id: 's', values: [10, 500] }] },
+        options: { scaleGroup, valueAxis: { log: 'x' } } },
+    ] },
+    options: { title: 'Latency across services', unit: 'ms' },
+  }));
+  expect(draw().refused).toBeFalsy();
+  const grouped = draw({ y: 'latency' });
+  expect(grouped.refused).toBeFalsy();
+  expect(grouped.warnings.map((warning) => warning.code)).toContain('scale-log');
+});
+
 // A shared value domain must map equal value steps to equal pixel heights in mixed panels.
 it('maps a shared value scale to each panel data rectangle', () => {
   const grid = getChart('grid')!.layout({ panels: [

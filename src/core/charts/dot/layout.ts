@@ -232,7 +232,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   if (!Array.isArray(data.series) || data.series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'dot requires at least one series', undefined, undefined, ['data', 'series']);
   }
-  if (log) validateLogSeriesValues(data.series, true);
+  if (log) {
+    // Keep authored series indices in log value errors.
+    validateLogSeriesValues(data.series.map((s) => (s.role ?? 'data') === 'data' ? s : undefined), true);
+  }
   const rawCats = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const normSeries: NormSeries[] = data.series.map((s, i) => {
     if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id', undefined, undefined, ['data', 'series', i]);

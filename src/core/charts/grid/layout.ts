@@ -3031,7 +3031,8 @@ function resolveSharedYDomains(
 function ownYScale(panel: GridPanelSpec): 'clamp' | 'log' | undefined {
   const valueAxis = panel.options?.valueAxis;
   if (!isRecord(valueAxis)) return undefined;
-  if (valueAxis.log === true || valueAxis.log === 'y' || valueAxis.log === 'both') return 'log';
+  if (valueAxis.log === true || valueAxis.log === 'y' || valueAxis.log === 'both' ||
+      (valueAxis.log === 'x' && panelValueAxis(panel) === 'x')) return 'log';
   const clamp = valueAxis.clamp;
   if (!isRecord(clamp)) return undefined;
   const y = isRecord(clamp.y) ? clamp.y : {};
