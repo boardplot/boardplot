@@ -48,13 +48,10 @@ export function narrowDashboard(target: RenderTarget | undefined, width: number,
   return target === 'dashboard' && !NARROW_EXCLUDED.has(type) && (narrowMode ? narrowMode === 'on' : width < 400);
 }
 
-/** A refused card from 400 px draws in the narrow sizes up to this width, where the canvas margins and the type class step up. */
-const NARROW_FLIP_LIMIT = 600;
-
-/** The other class for a refused card of a type that has a narrow class: the usual sizes under 400 px, the narrow sizes from 400 to 599 px. */
+/** The other class for a refused card of a type that has a narrow class: the usual sizes under 400 px, the narrow sizes from 400 px. */
 export function narrowFlip(target: RenderTarget | undefined, width: number, type: string): NarrowMode | undefined {
   if (target !== 'dashboard' || NARROW_EXCLUDED.has(type)) return undefined;
-  return width < 400 ? 'off' : width < NARROW_FLIP_LIMIT ? 'on' : undefined;
+  return width < 400 ? 'off' : 'on';
 }
 
 let classCap: TargetTypeClass | undefined;

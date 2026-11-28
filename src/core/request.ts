@@ -360,7 +360,7 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   const drawnLast = typeStepped(result, narrowerForm(final, stepped, plainLayout) ?? stepped);
   const below = marginBelowRequest(request, drawnLast);
   const marginStepped = below && afterFirstLayout(below, layout(below), layout, probe, plainLayout);
-  const settled = marginStepped && !isRefused(marginStepped) ? drawnBy(marginStepped, 'marginStep') : drawnLast;
+  const settled = marginStepped && !isRefused(marginStepped) ? (drawnStep(marginStepped) ? marginStepped : drawnBy(marginStepped, 'marginStep')) : drawnLast;
   const flip = classFlipRequest(request, settled);
   const flipped = flip && afterFirstLayout(flip, layout(flip), layout, probe, plainLayout);
   return flipped && !isRefused(flipped) ? drawnBy(flipped, 'classFlip') : settled;

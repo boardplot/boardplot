@@ -1739,6 +1739,28 @@ it('draws a refused card from 400 px in the narrow sizes and measures it as draw
   expect(measureResolvedRequest(request).refused).toBeFalsy();
 });
 
+// A card of 600 px or wider that the usual sizes refuse drew a size message for a few pixels; it draws in the narrow sizes at every width and keeps the margins and the class of a narrow card.
+it('draws a refused card of 600 px and wider in the narrow sizes with one set of margins', () => {
+  const fixture = getFixtures('column').find(f => f.id === 'staircase-labels-stacked')!;
+  for (const width of [600, 720, 1080]) {
+    const request = resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options, target: 'dashboard', size: { width, height: 270 } } } as never);
+    const geometry = layoutResolvedRequest(request) as Geometry;
+    expect(geometry.refused, `${width}`).toBeFalsy();
+    expect(geometry.warnings.map(w => w.code)).toContain('narrow-sizes-used');
+    expect(geometry.presentation?.typeClass, `${width}`).toBe('XS');
+    expect(geometry.plot.x, `${width}`).toBeLessThan(40);
+    expect(measureResolvedRequest(request).refused, `${width}`).toBeFalsy();
+  }
+});
+
+// A flipped card at 600 to 615 px also takes the margin step; its drawn-by mark was overwritten, so the CLI measure refused a card that render draws.
+it('measures a flipped card in a margin step band as drawn', () => {
+  const fixture = getFixtures('diagram').find(f => f.id === 'org-structure')!;
+  const spec = { type: 'diagram', data: fixture.data, options: { ...fixture.options, target: 'dashboard', size: { width: 605, height: 270 } } };
+  expect((render({ spec } as never).body as { ok: boolean }).ok).toBe(true);
+  expect((cliMeasure({ spec } as never).body as { refused?: unknown }).refused).toBeFalsy();
+});
+
 // A card that main draws must not be refused by the narrow sizes: this stacked area drew at 320 by 270 px and needed 272 px with the first version.
 it('draws a stacked area from the origin at 320 by 270 px in a dashboard card', () => {
   const fixture = getFixtures('line').find(f => f.id === 'stacked-area-from-origin')!;
