@@ -10,7 +10,7 @@ import { runDesignLints, type DesignWarning } from './design';
 import { asRecord, isRecord, type ScopedLintChart } from './shared';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
 
-export const lintCodes = [
+export const docLintCodes = [
   'partial-period-pairing',
   'basis-change',
   'non-additive-stack',
@@ -25,6 +25,8 @@ export const lintCodes = [
   'scenario-unexplained',
   'series-unexplained',
 ] as const;
+
+export const lintCodes = [...docLintCodes, 'dash-on-actual-data'] as const;
 
 export type LintCode = (typeof lintCodes)[number];
 export interface DocLintWarning extends Omit<LintWarning, 'code'> {
