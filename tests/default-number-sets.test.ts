@@ -45,4 +45,25 @@ describe('default number sets', () => {
     const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter((label) => label.kind === 'outsidePie').map((label) => label.text);
     expect(texts).toEqual(['N 41,200 · 48.6%', 'S 33,800 · 39.9%', 'E 9,800 · 11.5%', 'W 0.0000031 · <0.1%']);
   });
+
+  // A pie that measures 10% as 9% can move labels that fit into a note.
+  it('fits all five pie labels when rounded shares need a wider column', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['North', 'South', 'East', 'West', 'Central'].map(label => ({ id: label.toLowerCase(), label })),
+      series: [{ id: 'amount', values: [62_400_000, 9_400_000, 9_400_000, 9_400_000, 9_400_000] }],
+    }, options: { format: 'EUR 1,234,567', size: { width: 352, height: 320 } } });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels).toHaveLength(5);
+    expect(labels.filter(label => label.text.endsWith(' · 10%'))).toHaveLength(2);
+  });
+
+  // A pie can print two different percentages on one label when its values are already shares of the whole.
+  it('uses the same rounded percentage for the pie value and share', () => {
+    const request = resolveChartRequest({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 'amount', values: [33.3, 33.3, 33.4] }],
+    }, options: { format: '0%' } });
+    const labels = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+    expect(labels.map(label => label.text)).toContain('c 34% · 34%');
+  });
 });
