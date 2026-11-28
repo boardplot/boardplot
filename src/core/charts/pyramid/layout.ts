@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString, localeStrings } from '../../strings/pyramid';
 import { resolveTheme, panelTypeClass, themeForWidth, strokeToken } from '../../theme';
 import { structureCount } from '../../structureCounts';
@@ -34,12 +35,11 @@ import { structureCount } from '../../structureCounts';
  *   - comparison-year outline: butterfly has no overlay primitive.
  */
 
-import { formatAutomaticPercent } from '../../format';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { formatterFromExample } from '../../formatSpec';
 import { numberMinus } from '../../numberMarks';
 import { ruleFormatter } from '../../numberSets';
-import { accessibleTitle, NormalizeError } from '../../normalize/shared';
+import { NormalizeError } from '../../normalize/shared';
 import { isPctCell, type Cell, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { ButterflyOptions } from '../../types/options';
@@ -286,7 +286,6 @@ export function layoutPyramid(
   const boundary = (value: number) => trim(value).replace(/^-/, minus);
   const labelOf = (band: PyramidBand) => band.label ?? (band.to === undefined
     ? `${boundary(band.from)}+` : `${boundary(band.from)}–${boundary(band.to)}`);
-  const comparableWidth = bandWidth === null ? '' : chartString(options, 'bandWidthClause', { v1: trim(bandWidth) });
   const footnotes = [
     ...authoredNotes(options),
     ...pyramidNotes({ options,
@@ -444,35 +443,9 @@ export function layoutPyramid(
     });
   }
 
-  const labelA = groups[0].label ?? groupIds[0];
-  const labelB = groups[1].label ?? groupIds[1];
-  const fmtPlotted = isShare ? (v: number) => formatAutomaticPercent(v, 1, false, options.locale?.language) : fmtCount;
   // Counts are only interpretable with the unit the frame prints beside them.
   // Under shareOfTotal the plotted numbers already carry '%', and the totals
   // below are counts in the authored unit either way.
-  const countUnit = options.unit === undefined ? '' : ` ${options.unit}`;
-  const desc =
-    chartString(options, 'pyramidDesc', { v1: labelA, v2: labelB, v3: bands.length }) +
-    chartString(options, 'youngestBottom') +
-    (openTopBand === null
-      ? chartString(options, 'bandsWidth', { v1: trim(bandWidth ?? 0) })
-      : chartString(options, 'openBandDesc', { v1: bands.length - 1, v2: comparableWidth, v3: labelOf(bands[bands.length - 1]!) })) +
-    // The totals carry their unit. The visible frame prints 'in thousands' next
-    // to the same numbers; a description that says 'grand total 83,420' with no
-    // unit is off by a factor of 1000 for the one reader who cannot see the
-    // frame, which is worse than omitting the totals entirely.
-    chartString(options, 'pyramidTotals', { v1: labelA, v2: fmtCount(totals[groupIds[0]]!), v3: countUnit, v4: labelB, v5: fmtCount(totals[groupIds[1]]!), v6: countUnit, v7: fmtCount(grandTotal), v8: countUnit }) +
-    (isShare
-      ? chartString(options, basis === 'shareOfGroup' ? 'pyramidSharesOfGroup' : 'pyramidShares')
-      : chartString(options, 'pyramidCounts', { v1: countUnit === '' ? '' : chartString(options, 'inUnitClause', { v1: options.unit }) })) +
-    [...bands]
-      .reverse()
-      .map(
-        (band) =>
-          `${labelOf(band)}: ${labelA} ${fmtPlotted(plotted(band.id, 0))}, ${labelB} ${fmtPlotted(plotted(band.id, 1))}`,
-      )
-      .join('; ') +
-    '.';
 
   // The ratio of the two groups per band is a receipt; the chart prints no ratio.
   return withUnprintedClaims({
@@ -490,12 +463,10 @@ export function layoutPyramid(
       ...(shares ? { shares } : {}),
       ratio,
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'pyramidTitle', { v1: labelA, v2: labelB })),
+    a11y: a11yDescription(options, ['Population pyramid', 'Bevölkerungspyramide'], [structureCount('bands', bands.length, undefined, options)], {
       counts: [structureCount('bands', bands.length, chartString(options, 'orderedBands', { v1: bands.length })),
         ...(openTopBand === null ? [] : [structureCount('bands', bands.length - 1, chartString(options, 'closedBands', { v1: bands.length - 1 }))])],
-      desc,
-    },
+    }),
     warnings: [...geo.warnings, ...warnings],
   }, order.map((bandId) => `pyramid:ratio:${bandId}`));
 }

@@ -216,7 +216,7 @@ function valuesSummary(records: readonly InteractionRecord[] | null, unavailable
 export interface ChartReading {
   name: string;
   type: string;
-  /** Structural counts with the exact phrases in the accessible description. */
+  /** Structural counts and their wording from the layout. */
   counts: StructureCount[];
   /** The authored title text; null when the chart has none or suppresses it. */
   title: string | null;

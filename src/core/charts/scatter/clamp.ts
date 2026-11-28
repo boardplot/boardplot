@@ -439,38 +439,3 @@ export function refuseClampedQuadrants(
     );
   }
 }
-
-/**
- * The clipped sentence of the accessible description. Every clipped point is
- * named with the value it really has, because the position it is drawn at is
- * the one thing a reader of this description cannot check. Long lists stop at
- * five names and point at the data table, which carries every point in full.
- */
-export function clampDescription(
-  records: readonly ScatterClipRecord[],
-  format: Record<ScatterAxis, (value: number) => string>,
-  reversedY: boolean,
-  options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>,
-): string {
-  const NAMED = 5;
-  return records
-    .map((record) => {
-      // A reversed vertical scale puts the larger values at the bottom, so the
-      // edge a point is drawn at is the other one. The bound it is beyond does
-      // not change with the scale direction; the side of the page does.
-      const flip = reversedY && record.axis === 'y';
-      const side = chartString(options, ({ 'x.min': 'clipLeftOf', 'x.max': 'clipRightOf', 'y.min': 'clipBelow', 'y.max': 'clipAbove' } as const)[`${record.axis}.${record.bound}`]);
-      const drawnBound = flip ? (record.bound === 'min' ? 'max' : 'min') : record.bound;
-      const edge = chartString(options, ({ 'x.min': 'clipLeft', 'x.max': 'clipRight', 'y.min': 'clipBottom', 'y.max': 'clipTop' } as const)[`${record.axis}.${drawnBound}`]);
-      const named = record.points
-        .slice(0, NAMED)
-        .map((point) => `${point.label} (${format[record.axis](point.value)})`)
-        .join(', ');
-      const rest = record.points.length - NAMED;
-      return (
-        chartString(options, 'clippedPointsDesc', { v1: chartString(options, 'pointsCount', { v1: record.count, v2: record.count === 1 ? '' : 's' }), v2: side, v3: record.limitText }) +
-        chartString(options, 'clippedPointsEdge', { v1: edge, v2: named, v3: rest > 0 ? chartString(options, 'moreInTable', { v1: rest }) : '' })
-      );
-    })
-    .join('');
-}

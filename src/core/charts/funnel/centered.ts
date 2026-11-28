@@ -1,3 +1,5 @@
+import { a11yDescription } from '../../a11yDescription';
+import { structureCount } from '../../structureCounts';
 import { alignedLeft, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { chartString } from '../../strings/funnel';
 import { chartPalette, chartTheme } from '../chartEnv';
@@ -21,14 +23,7 @@ import { labelsToNodes } from '../../label/emit';
 import { isOthersFill, othersSeparation } from '../../markVisibility';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeSeriesValues,
-  normalizeScenario,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, normalizeScenario, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { rowSizing, sideKeyOff } from '../../sizing';
 import {
@@ -833,13 +828,6 @@ export function layoutCenteredFunnel(
     if (ruleY < rowsTop) nodes.push({ t: 'line', id: 'cvr:header-rule', x1: left, y1: ruleY, x2: right, y2: ruleY, stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'gridline' });
   }
 
-  const a11yParts = stages.map((stage, categoryIndex) => {
-    const stageCvr = stageCvrText(categoryIndex);
-    const totalCvr = cumulativeCvrText(cumulativeCvrs[categoryIndex]!.rate);
-    return chartString(options, 'stageCvrDesc', { v1: stage.label, v2: numbers.shownTotals[stage.id] == null ? chartString(options, 'missing') : totalFmt(numbers.shownTotals[stage.id]!), v3: stageCvr, v4: totalCvr });
-  });
-  const first = stages[0]!;
-  const last = stages[stages.length - 1]!;
 
   const tallestStageLabelH = twoLineH;
   const paintWarningRules: PaintWarningRule[] = [];
@@ -888,10 +876,7 @@ export function layoutCenteredFunnel(
       cumulativeCvrs,
       boundaryWidths,
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'funnelTitle', { v1: first.label, v2: last.label })),
-      desc: chartString(options, 'centeredFunnelDesc', { v1: stages.length, v2: a11yParts.join('; ') }),
-    },
+    a11y: a11yDescription(options, ['Funnel', 'Trichter'], [structureCount('stages', stages.length, undefined, options)]),
     warnings,
     paintWarningRules,
     debug: {

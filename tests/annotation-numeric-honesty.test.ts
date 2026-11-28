@@ -989,7 +989,7 @@ describe('fixed line references remain visible at their authored value', () => {
   });
 });
 
-// Prevents one value from printing two scales: the bar, the React text, the description and the hover card read alike,
+// Prevents one value from printing two scales: the bar, the React text and the hover card read alike,
 // also where the engine scale prints "Mrd." on a German chart. Only the card of a value that its label prints as zero
 // differs: it keeps the digits ("$1.0 billion" for 1e9 under "$1.0 trillion").
 it('prints a magnitude the same on every surface', async () => {
@@ -1004,7 +1004,6 @@ it('prints a magnitude the same on every surface', async () => {
     const svg = renderSvg(geometry as never, request.theme);
     const react = renderToStaticMarkup(createElement(ColumnChart, { data, ...options, prepared: await prepareChart({ type: 'column', data, options } as never) } as never));
     for (const output of [svg, react]) expect(output, `${format} ${language}`).toContain(`>${text}<`);
-    expect(geometry.a11y.desc).toContain(text);
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'a')!;
     // The card prints the drawn label, also without a format. Where the label prints zero, the card keeps the digits.
     expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(`Sales: ${card ?? text}`);

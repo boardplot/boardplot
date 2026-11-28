@@ -315,7 +315,7 @@ it('prepares a chart with the default minus when given an unknown glyph', async 
 });
 
 // Prevents the shared accounting format from giving a false sign on any SVG or React number surface.
-it('keeps accounting signs in labels, axes, tables, keys, annotations and accessible descriptions', async () => {
+it('keeps accounting signs in labels, axes, tables, keys and annotations', async () => {
   const data = { categories: ['a', 'b', 'c'].map(id => ({ id })), series: [{ id: 's', label: 'Series', values: [500, 0, -500] }] };
   const options = { format: '$(1,234)', trend: true, valueLabels: 'all', seriesLabels: 'none', valueAxis: { show: true, tickStep: 500 },
     legend: 'bottom', size: { width: 1000, height: 600 }, annotations: [{ kind: 'valueLine', value: 500, label: 'Plan', format: '$(1,234)' }] };
@@ -333,9 +333,6 @@ it('keeps accounting signs in labels, axes, tables, keys, annotations and access
     expect(texts(output, 'tick')).toContain('($500)');
     expect(texts(output, 'legendLabel').join(' ')).toContain('($500) per period');
     expect(output).toContain('Plan $500');
-    const desc = /<desc\b[^>]*>([\s\S]*?)<\/desc>/.exec(output)?.[1];
-    expect(desc).toContain('$500');
-    expect(desc).toContain('($500)');
     expect(output).not.toContain('$(500)');
   }
   expect(renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme)).toBe(svg);
@@ -355,7 +352,7 @@ it('keeps accounting signs in labels, axes, tables, keys, annotations and access
   expect(renderSvg(requireGeometry(layoutResolvedRequest(tableRequest)), tableRequest.theme)).toBe(tableSvg);
 });
 
-// Prevents diverging slope net scores and changes from ignoring the chart format in labels and accessible descriptions.
+// Prevents diverging slope net scores and changes from ignoring the chart format in labels.
 it('formats diverging slope net scores and changes with options.format', () => {
   const data = { categories: ['Before', 'After'], series: [
     { id: 'rise', label: 'Rise', values: [42, 55], negative: [22, 15] },
@@ -368,7 +365,6 @@ it('formats diverging slope net scores and changes with options.format', () => {
     } as never)));
     const net = geometry.labels.filter(label => !label.hidden && label.id.endsWith(':net')).map(label => label.text).sort();
     expect(net).toEqual([`+40${decimal}0 (+20${decimal}0)`, `−10${decimal}0 (−32${decimal}0)`, `0${decimal}0 (0${decimal}0)`].sort());
-    expect(geometry.a11y.desc).toContain(`Rise +40${decimal}0`);
   }
 });
 
@@ -380,7 +376,6 @@ it('prints diverging slope net scores in percentage points under a percent forma
   } as never)));
   const net = geometry.labels.filter(label => !label.hidden && label.id.endsWith(':net')).map(label => label.text);
   expect(net).toEqual(['+40.0pp (+20.0pp)']);
-  expect(geometry.a11y.desc).toContain('Rise +40.0pp');
 });
 
 describe('number formatting', () => {
@@ -1079,20 +1074,13 @@ describe('a unit that names a scale takes no second one', () => {
     expect(scaled(texts)).toEqual([]);
   });
 
-  // A combo series with its own format formatted each label without the series' values and described single-column totals with the chart formatter, turning 78 into "$0.1k" and leaving the series format's texts out of the description.
-  it('holds a combo series format to one scale across labels and single-column totals', () => {
+  // A combo series with its own format used a different scale for each label.
+  it('holds a combo series format to one scale across labels', () => {
     const categories = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }, { id: 'd', label: 'D' }];
     const options = { title: 'T', unit: 'USD' };
-    const descOf = (data: unknown) => {
-      const request = resolveChartRequest({ type: 'combo', data, options } as never);
-      return /<desc[^>]*>(.*?)<\/desc>/s.exec(renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme))?.[1] ?? '';
-    };
     const small = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2k', unit: 'USD', values: [4, 12, 43, 78] }] };
     const smallTexts = drawnTexts('combo', small, options);
     expect(smallTexts).toEqual(expect.arrayContaining(['$0.0k', '$0.0k', '$0.0k', '$0.1k']));
-
-    const thousands = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2k', unit: 'USD', values: [400, 1200, 4300, 7800] }] };
-    expect(descOf(thousands)).toContain('A $0.4k, B $1.2k, C $4.3k, D $7.8k');
 
     const lineTexts = drawnTexts('combo', { categories, series: [
       { id: 's', label: 'Sales', kind: 'column', values: [400, 1200, 4300, 7800] },
@@ -1187,11 +1175,9 @@ describe('an authored format prints as its example reads', () => {
     expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/data/columns/3/format', '+1.12%']]);
   });
 
-  // An axis format '$1.2M' printed the description's x range as $4.0 to $0.1k, scale words the author never wrote, and no warning said the values hide.
-  it('prints the range an axis format states in the description as its example reads and warns', () => {
+  // A scatter axis format can round every value to zero, so the chart must warn.
+  it('warns when the scatter axis format rounds values to zero', () => {
     const spec = { type: 'scatter', data: { points: [4, 12, 43, 78].map((x, i) => ({ id: `p${i}`, label: `P${i}`, x, y: i + 1 })) }, options: { axisFormat: { x: '$1.2M' } } };
-    const description = requireGeometry(layoutResolvedRequest(resolveChartRequest(spec as never))).a11y?.desc;
-    expect(description).toContain('X from $0.0M to $0.0M');
     expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/options/axisFormat/x', '$1.2']]);
   });
 });

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { PLOT_FLOOR_RECT } from '../../sizing';
 import { sk, stackParts, withoutShareMean } from '../band/stacks';
@@ -48,14 +49,13 @@ import { labelsToNodes } from '../../label/emit';
 import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { solveLabels, type SolveCtx, type SolveResult } from '../../label/solver';
 import type { TickBandDerived } from '../../label/tickRow';
-import { accessibleTitle } from '../../normalize/shared';
 import type { AnchorRef } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { MekkoOptions } from '../../types/options';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel } from '../../types/scene';
 import { resolveMekkoDomain, resolveMekkoEnv } from './domain';
-import { columnShownText, columnTotalText, planMekkoLabels } from './labels';
+import { columnTotalText, planMekkoLabels } from './labels';
 import { layoutMekkoMarks } from './marks';
 import { colCx, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints } from './model';
 import { kindSetting, MEKKO_NOT_DRAWN, mekkoPaints, mekkoPlotArea, solveMekkoFrame } from './plot';
@@ -169,26 +169,6 @@ function annotateMekko(
   });
 }
 
-function mekkoDescription(env: MekkoEnv, domain: MekkoDomain): string {
-  const { mode, cats, series, widthSer, nm, na } = domain;
-  const modeName = mode === 'percent' ? chartString(env.options, 'mekkoPercentAxis') : mode === 'unit' ? chartString(env.options, 'mekkoUnitAxis') : chartString(env.options, 'barMekko');
-  const widthText = widthSer ? `'${widthSer.label}'` : chartString(env.options, 'categoryTotals');
-  if (mode === 'percent' && (nm.size > 0 || na.size > 0)) {
-    return chartString(env.options, 'mekkoValidDesc', { v1: modeName, v2: domain.validCount, v3: series.length }) +
-      widthText +
-      chartString(env.options, 'mekkoInvalidDesc', { v1: cats
-        .flatMap((c, ci) => (domain.invalidAt(ci) || totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnShownText(env, domain, ci)}`]))
-        .join(', ') || 'none', v2: cats
-        .filter((_, ci) => domain.invalidAt(ci))
-        .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : 'n/a'})`)
-        .join(', ') });
-  }
-  // Each total as its label states it (a bar mekko's total is the bar's value).
-  const totals = cats.flatMap((c, ci) => (totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnShownText(env, domain, ci)}`]));
-  return chartString(env.options, 'mekkoDesc', { v1: modeName, v2: cats.length, v3: series.length }) +
-    widthText +
-    (totals.length > 0 ? chartString(env.options, 'totalsSentence', { v1: totals.join(', ') }) : '.');
-}
 
 /** Phase 5: the scene in paint order, the x axis, the derived record, the description and the paint lint. */
 function assembleMekkoGeometry(input: {
@@ -225,7 +205,6 @@ function assembleMekkoGeometry(input: {
     },
     ...geometry.axes,
   ];
-  const a11yDesc = mekkoDescription(env, domain);
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   const catTickMaxLines = catPlan.maxLines;
@@ -263,15 +242,12 @@ function assembleMekkoGeometry(input: {
           }
         : {}),
     },
-    a11y: {
-      titleCounts: [structureCount('categories', cats.length, undefined, env.options)],
-      title:
-        accessibleTitle(env.options.title, chartString(env.options, 'mekkoTitle', { v1: domain.series.map((s) => s.label).join(', '), v2: cats.length })),
+    a11y: a11yDescription(env.options, ['Mekko chart', 'Mekko-Diagramm'], [structureCount('series', domain.series.length, undefined, env.options), structureCount('columns', domain.mode === 'percent' ? domain.validCount : cats.length, undefined, env.options)], {
       counts: [domain.mode === 'percent' && (domain.nm.size > 0 || domain.na.size > 0)
           ? structureCount('columns', domain.validCount, chartString(env.options, 'validColumns', { v1: domain.validCount }))
           : structureCount('columns', cats.length, undefined, env.options), structureCount('series', domain.series.length, undefined, env.options)],
-      desc: a11yDesc,
-    },
+      titleCounts: [structureCount('categories', cats.length, undefined, env.options)],
+    }),
     warnings,
     paintWarningRules,
     debug: {

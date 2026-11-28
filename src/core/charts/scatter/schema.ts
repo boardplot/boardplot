@@ -236,7 +236,7 @@ const zonesSchema = z.union([
  * Outlier clamp. A clamp caps what the plot SHOWS; it never changes a
  * value. Points beyond a bound are drawn at that edge with an open marker and
  * counted in a derived footnote, and they keep their real coordinate in the
- * accessible description, the mark records and the claim receipt.
+ * mark records and the claim receipt.
  *
  * `min` and `max` are the vertical axis, the one `valueAxis.min` and
  * `valueAxis.max` already address on this type; `x` and `y` name an axis, so a
@@ -289,7 +289,7 @@ export const scatterOptionsSchema = baseOptionsSchema
         y: formatExample.min(1).optional().describe("Format-by-example for y values, such as '0%'."),
       })
       .optional()
-      .describe("Per-axis format-by-example, each falling back to format: { x: '$0', y: '0%' } prints the cost ticks as $2 and the score ticks as 60%. Tick labels, point values, hover values, zone, clamp and quadrant text and the accessible description use the format of the coordinate's axis; bubble sizes keep format."),
+      .describe("Per-axis format-by-example, each falling back to format: { x: '$0', y: '0%' } prints the cost ticks as $2 and the score ticks as 60%. Tick labels, point values, hover values, and zone, clamp and quadrant text use the format of the coordinate's axis; bubble sizes keep format."),
     valueAxis: narrowValueAxis('scatter', valueAxisSchema
       .safeExtend({
         clamp: scatterClampSchema.optional().describe('Cap one or both axes and draw the points beyond the cap at the edge as open markers, with a derived footnote counting them.'),

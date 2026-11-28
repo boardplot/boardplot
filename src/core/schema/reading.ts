@@ -3,7 +3,7 @@ import { STRUCTURE_COUNT_KINDS } from '../structureCounts';
 /** Shared by full describe and the render response schema. */
 export const readingCountsSchema = {
   type: 'array',
-  description: 'Structural counts from the layout. text is the exact phrase in the accessible description. Empty when the description has no count phrase.',
+  description: 'Structural counts from the layout. Each entry has its count and wording. The chart description can use a shorter set of counts.',
   items: {
     type: 'object',
     required: ['what', 'n', 'text'],

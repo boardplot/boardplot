@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { withLeaderPathNumbers } from '../../svgPath';
 import { chartString } from '../../strings/scatter';
 import type { Theme } from '../../types/theme';
@@ -38,102 +39,27 @@ import { layoutStepKey, spaceTokens, emphasisWeight, strokeToken, dashToken } fr
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { leaderPieces, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { accessibleTitle, resolveSize } from '../../normalize/shared';
+import { resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { defaultAnnotationId, type AnchorRef, type Annotation } from '../../types/annotations';
 import { rectsOverlap, sameRect, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { ScatterData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from '../../types/scene';
-import { clampDescription, type ScatterClipRecord, type ScatterDropRecord } from './clamp';
 import { inView, resolveScatterDomain, resolveScatterEnv } from './domain';
 import { planScatterLabels, pointValueText, scatterSolveCtx } from './labels';
-import type { LogAxes } from './logAxis';
 import { DENSE_POINTS, layoutScatterMarks, quadrantBoxRect, sizeMarkerOf, type ScatterMarkGeometry } from './marks';
 import { plotSizeKey, sizeKeyTitleExceedsPlot, sizeKeyItems, type PlotSizeKey } from './sizeKey';
-import {
-  QUADRANT_BOXES,
-  QUADRANT_BOX_NAME,
-  quadrantBoxName,
-  type QuadrantDerived,
-  type ScatterDerived,
-  type ScatterDomain,
-  type ScatterEnv,
-  type ScatterPaints,
-  type ScatterMarks,
-  type ScatterPlotArea,
-} from './model';
+import { QUADRANT_BOXES, QUADRANT_BOX_NAME, quadrantBoxName, type ScatterDerived, type ScatterDomain, type ScatterEnv, type ScatterPaints, type ScatterMarks, type ScatterPlotArea } from './model';
 import { type ScatterFrameMeasurements, scatterDotRadius, scatterPaints, scatterPlotArea, solveScatterFrame } from './plot';
-import { type FrontierPlan } from './frontier';
 import { gridZones, zoneKeyItems } from './zones';
-import type { TrendFit } from './trend';
-import type { ScatterStrategyOptions, StrategyZonesDerived } from './types';
+import type { ScatterStrategyOptions } from './types';
 import { disclosureNote, disclosuresShown, withEngineNotes } from '../../notes';
 import { withUnprintedClaims } from '../../claims/ids';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, pushAll } from '../../arrays';
 
 export { type ScatterDerived, type ScatterMarks } from './model';
-
-/**
- * The accessible description. Everything the exhibit argues visually is said
- * here too: the groups, the extents, the bubble channel, the 2x2 (the cut
- * points ARE the argument, so leaving them out would hide the finding from a
- * reader who cannot see the dividers), the strategy zones, and what the outlier
- * options did. A clipped point is named with the value it really has, not with
- * the edge it is drawn at.
- */
-function scatterDescription(input: {
-  options: ScatterEnv['options'];
-  bubbleMode: boolean;
-  pointCount: number;
-  groupNames: string[];
-  extent: { xMin: number; xMax: number; yMin: number; yMax: number };
-  log: LogAxes;
-  fmt: (value: number) => string;
-  axisFmt: ScatterEnv['axisFmt'];
-  sizeBy: 'area' | 'diameter';
-  biggest?: { label: string; size: number };
-  quadrants?: QuadrantDerived;
-  zones?: StrategyZonesDerived;
-  zoneDescriptions: string[];
-  clipped: readonly ScatterClipRecord[];
-  /** A reversed vertical scale swaps which edge a clipped point is drawn at. */
-  reversedY: boolean;
-  dropped?: ScatterDropRecord;
-  trends: readonly TrendFit[];
-  frontier?: FrontierPlan;
-  pointLabel: (id: Id) => string;
-  groupLabel: (id: Id) => string;
-}): string {
-  const { fmt, axisFmt, extent, quadrants, zones, options } = input;
-  return (
-    chartString(options, 'scatterDescStart', { v1: chartString(options, input.bubbleMode ? 'bubbleName' : 'scatterName'), v2: input.pointCount }) +
-    (input.groupNames.length
-      ? chartString(options, 'scatterGroupDesc', { v1: input.groupNames.length, v2: input.groupNames.length === 1 ? '' : 's', v3: input.groupNames.join(', ') })
-      : '') +
-    chartString(options, 'scatterAxesDesc', { v1: axisFmt.x(extent.xMin), v2: axisFmt.x(extent.xMax), v3: input.log.x ? chartString(options, 'logScaleClause') : '', v4: axisFmt.y(extent.yMin), v5: axisFmt.y(extent.yMax), v6: input.log.y ? chartString(options, 'logScaleClause') : '' }) +
-    (input.biggest
-      ? chartString(options, 'bubbleSizeDesc', { v1: input.sizeBy === 'area' ? chartString(options, 'areaName') : chartString(options, 'diameterName'), v2: input.biggest.label, v3: fmt(input.biggest.size) })
-      : '') +
-    (quadrants
-      ? chartString(options, 'quadrantDesc', { v1: quadrants.xText, v2: chartString(options, quadrants.xSource === 'declared' ? 'declaredLower' : quadrants.xSource === 'median' ? 'cutMedian' : 'cutMean'), v3: quadrants.yText, v4: chartString(options, quadrants.ySource === 'declared' ? 'declaredLower' : quadrants.ySource === 'median' ? 'cutMedian' : 'cutMean') }) +
-        QUADRANT_BOXES.map((box) => `${quadrantBoxName(box, options)} ${quadrants.counts[box]}`).join(', ') +
-        '.'
-      : '') +
-    (zones
-      ? chartString(options, 'strategyZonesDesc', { v1: zones.kind === 'grid' ? chartString(options, 'gridCellsCount', { v1: zones.cellCount }) : chartString(options, 'authoredRegionsCount', { v1: zones.regionCount }), v2: input.zoneDescriptions.join(' ') })
-      : '') +
-    clampDescription(input.clipped, axisFmt, input.reversedY, options) +
-    (input.dropped ? ` ${input.dropped.note}` : '') +
-    input.trends
-      .map((fit) => chartString(options, 'trendLineDesc', { v1: fit.slope < 0 ? chartString(options, 'fallsLower') : fit.slope > 0 ? chartString(options, 'risesLower') : chartString(options, 'runsFlat'), v2: fit.n, v3: fit.group === undefined ? '' : chartString(options, 'ofGroupClause', { v1: input.groupLabel(fit.group) }) }))
-      .join('') +
-    (input.frontier
-      ? chartString(options, 'frontierDesc', { v1: input.frontier.ids.length, v2: chartString(options, input.frontier.x === 'min' ? 'lower' : 'higher'), v3: chartString(options, input.frontier.y === 'min' ? 'lower' : 'higher'), v4: input.frontier.ids.map(input.pointLabel).join(', ') })
-      : '')
-  );
-}
 
 /**
  * Callouts that print as a bold second line under their point's name
@@ -260,30 +186,7 @@ function assembleScatterGeometry(input: {
   // A highlighted bubble's name is bold on a strategy grid; elsewhere a bubble keeps its ring alone.
   const boldIds = new Set<Id>(bubbleMode && !gridZones(env.options) ? [] : pts.filter((p) => env.highlights.has(p.id) || (p.group !== undefined && env.highlights.has(p.group))).map((p) => `point:${p.id}`));
   const emitted = scatterLabels(input.env.theme, input.area, solved, annotated, boldIds);
-  const biggest = bubbleMode
-    ? [...geometry.placed].sort((a, b) => (b.p.size ?? 0) - (a.p.size ?? 0) || a.p.idx - b.p.idx)[0]
-    : undefined;
-  const a11yDesc = scatterDescription({ options: env.options,
-    bubbleMode,
-    pointCount: pts.length,
-    groupNames: domain.shownGroups.map((g) => g.label),
-    extent: { xMin, xMax, yMin, yMax },
-    log: env.log,
-    fmt: env.fmt,
-    axisFmt: env.axisFmt,
-    sizeBy: env.options.sizeBy ?? 'area',
-    ...(bubbleMode && biggest ? { biggest: { label: biggest.p.label, size: biggest.p.size ?? 0 } } : {}),
-    quadrants,
-    zones: zonesDerived,
-    zoneDescriptions: geometry.zones.descriptions,
-    clipped: clamp?.records ?? [],
-    reversedY: env.va.reverse === true,
-    dropped,
-    trends: domain.trends,
-    frontier: domain.frontier,
-    pointLabel: (id) => pts.find((p) => p.id === id)?.label ?? id,
-    groupLabel: (id) => domain.groups.get(id)?.label ?? id,
-  });
+  const typeName = chartString(env.options, bubbleMode ? 'bubbleName' : 'scatterName');
 
   return {
     type: 'scatter',
@@ -308,8 +211,7 @@ function assembleScatterGeometry(input: {
       ...(domain.trends.length > 0 ? { trends: domain.trends } : {}),
       ...(domain.frontier ? { frontier: domain.frontier } : {}),
     },
-    a11y: {
-      title: accessibleTitle(env.options.title, chartString(env.options, 'scatterTitle', { v1: bubbleMode ? chartString(env.options, 'bubbleName') : chartString(env.options, 'scatterName'), v2: pts.length })),
+    a11y: a11yDescription(env.options, [`${typeName} chart`, `${typeName}diagramm`], [structureCount('points', pts.length, undefined, env.options)], {
       counts: [structureCount('points', pts.length, undefined, env.options),
         ...(domain.shownGroups.length ? [structureCount('groups', domain.shownGroups.length, chartString(env.options, 'groupsCount', { v1: domain.shownGroups.length, v2: domain.shownGroups.length === 1 ? '' : 's' }))] : []),
         ...(quadrants ? QUADRANT_BOXES.map(box => structureCount('points', quadrants.counts[box], `${quadrantBoxName(box, env.options)} ${quadrants.counts[box]}`)) : []),
@@ -318,8 +220,7 @@ function assembleScatterGeometry(input: {
         ...(dropped ? [structureCount('points', dropped.count, chartString(env.options, 'pointsCount', { v1: dropped.count, v2: dropped.count === 1 ? '' : 's' }))] : []),
         ...domain.trends.map(fit => structureCount('points', fit.n, undefined, env.options)),
         ...(domain.frontier ? [structureCount('points', domain.frontier.ids.length, undefined, env.options)] : [])],
-      desc: a11yDesc,
-    },
+    }),
     warnings: input.warnings,
     debug: {
       occupied: input.occupied.snapshot(),

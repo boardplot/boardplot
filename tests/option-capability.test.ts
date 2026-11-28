@@ -360,6 +360,7 @@ describe('published option behaviour census', () => {
     'pyramid.annotations': { fixture: 'dated-population-comparison', value: [{ id: 'growth', kind: 'diff', from: { categoryId: 'young', seriesId: 'before' }, to: { categoryId: 'young', seriesId: 'after' } }] },
     'scatter.annotations': { fixture: 'log-y-under-a-decade', value: [{ kind: 'valueLine', value: 50, label: 'Census annotation' }] },
     'cohort.averages': { fixture: 'saas-logo-retention', value: 'weighted' },
+    'scatter.axisFormat': { options: { labels: { value: true } } },
     'bar.axisTitles': { fixture: 'valuation-football-field', value: { primary: 'census' } },
     'bullet.axisTitles': { fixture: 'sparse-targets-overshoot', value: { primary: 'Revenue, $m census' } },
     'histogram.axisTitles': { fixture: 'bimodal-with-far-outlier', value: { y: 'census' } },
@@ -445,7 +446,9 @@ describe('published option behaviour census', () => {
     'treemap.focus': { value: { owner: { seriesId: 'platforms', categoryId: 'cloud-hosting' } } },
     'waffle.focus': { fixture: 'two-panels', value: { owner: { categoryId: 'rural' } } },
     'bullet.format': { fixture: 'exec-kpi-panel' },
+    'heatmap.format': { fixture: 'regional-monthly-performance' },
     'kpi.format': { fixture: 'value-only' },
+    'scatter.format': { fixture: 'portfolio-bubbles' },
     'status.format': { fixture: 'status-with-values', value: '0.000', data: d => ({ ...d, cells: d.cells.map((c: object) => ({ ...c, value: 97.5 })) }) },
     'table.format': { fixture: 'management-report' },
     'table.frameFill': { value: 'none', options: { size: { width: 1400 } } },
@@ -720,6 +723,7 @@ describe('published option behaviour census', () => {
    * Types | option | evidence.
    */
   const ACCEPTED_WITHOUT_EFFECT: readonly (readonly [string, string, string])[] = [
+    ["waterfall", "build", "The legacy option only set wording in the former accessible description. Item types and signed values determine the drawing."],
     ["tilemap", "focus", "Each tile label solves alone (tilemap/layout.ts solveTileLabels), so no label competes and the focus has no order to change."],
     ["waffle", "labelDensity", "Every waffle label is a total or a headline, above the band 'minimal' drops, and no cell priority is read; 'smart' and 'full' differ only where a chart reads them."],
     ["sankey", "belowMinimum", "Not sure: the fixed fallback reads it (sizing.ts:909), but no size changes the output."],
@@ -742,7 +746,7 @@ describe('published option behaviour census', () => {
     ["cohort", "hatchStrength", "Not sure: the not-reached hatch (cohort/layout.ts:446) draws the same at 0 and 100."],
     ["creative", "notes", "The card draws its own method lines (creative/layout.ts:603) and refuses footnotes."],
     // Default number rule: before, the zero tick of these probes printed ".000" under p-value; smallValues now acts only on a value that needs more than four decimals.
-    ["bar box bullet column combo grid heatmap histogram line pareto pie pvm sankey slope sparkline status dimswitch table variance", "smallValues", "The probe has no value that needs more than four decimals under the default number rule, and zero prints 0."],
+    ["bar box bullet column combo grid heatmap histogram line pareto pie pvm pyramid sankey slope sparkline status dimswitch table variance waffle", "smallValues", "The probe has no value that needs more than four decimals under the default number rule, and zero prints 0."],
     // Default number rule: before, 'nearest' turned off the forced share sum; it is the default now.
     ["bar column combo", "rounding", "'nearest' is the default: no stack forces its shares to add to 100 unless rounding is 'sum-consistent'."],
   ];

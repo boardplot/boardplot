@@ -77,7 +77,7 @@ const themeRoleSchema = z
 
 const stateSchema = z.strictObject({
   id: idSchema.describe("Unique state identity referenced by matrix cells."),
-  label: z.string().min(1).describe("Visible state name used by the legend and the accessible description. The description lists each state with its cell count, as 'On track 12', then 'No status 3' for empty cells; the reading carries each count as a derived claim with that text."),
+  label: z.string().min(1).describe("State name shown in the legend. The reading carries each state count as a derived claim, such as 'On track 12' or 'No status 3'."),
   tone: z.union([
     z.enum(['good', 'bad', 'neutral', 'warn', 'info']),
     z.strictObject({ role: themeRoleSchema.describe("Named semantic theme color role for this state.") }),

@@ -888,7 +888,7 @@ export interface Geometry<
   a11y: {
     title: string;
     desc: string;
-    /** Count phrases printed in desc. */
+    /** Structural counts from the layout. */
     counts?: StructureCount[];
     /** Extra default-title count phrases, for grids that print child titles in desc. */
     titleCounts?: StructureCount[];

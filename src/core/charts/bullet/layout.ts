@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/bullet';
 import { breakUnsupported } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -41,7 +42,7 @@ import {
   type LabelRequest,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle, MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cardSize } from '../sparkline/card';
@@ -1814,30 +1815,6 @@ export function layoutBullet(
   asColumnHeads(labelNodes);
   pushAll(nodes, labelNodes);
 
-  const a11yRows = rows
-    .map((row) => {
-      const f = rowFmt(row);
-      const v = !shown('actual') ? '' : row.value !== null ? ` ${f(row.value)}` : ` ${chartString(options, 'notApplicable')}`;
-      const t =
-        row.target !== null
-          ? (shown('target') ? ` vs ${targetWord(options)} ${f(row.target)}` : '') +
-            (deltaVsTarget[row.id] !== undefined && shown('gap')
-              ? ` (${deltaText(row, deltaVsTarget[row.id]!)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[deltaTone(row, deltaVsTarget[row.id]!)])})`
-              : '')
-          : '';
-      return `${row.label}${v}${t}`;
-    })
-    .join('; ');
-  const a11yDesc =
-    chartString(options, 'bulletDescStart', { v1: rows.length }) +
-    chartString(options, 'bulletTargetTick', { v1: targetWord(options) }) +
-    (anyBands
-      ? chartString(options, 'bulletShadingDesc')
-      : '') +
-    (sharedScale || rows.length < 2
-      ? ''
-      : chartString(options, 'bulletSeparateScale')) +
-    ` ${a11yRows}.`;
 
   return {
     type: 'bullet',
@@ -1881,12 +1858,10 @@ export function layoutBullet(
     frame: frameResult.frame,
     marks,
     derived: { deltaVsTarget },
-    a11y: {
-      titleCounts: [structureCount('rows', rows.length, chartString(options, 'kpisCount', { v1: rows.length }))],
-      title: accessibleTitle(options.title, chartString(options, 'bulletTitle', { v1: rows.length, v2: targetWord(options) })),
+    a11y: a11yDescription(options, ['Bullet chart', 'Bullet-Diagramm'], [structureCount('rows', rows.length, undefined, options)], {
       counts: [structureCount('rows', rows.length, chartString(options, 'kpiRowsCount', { v1: rows.length }))],
-      desc: a11yDesc,
-    },
+      titleCounts: [structureCount('rows', rows.length, chartString(options, 'kpisCount', { v1: rows.length }))],
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

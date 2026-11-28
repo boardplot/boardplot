@@ -599,10 +599,6 @@ export function finalizeRatioTier(
   };
 }
 
-export function ratioTierA11y(tier: PreparedRatioTier | undefined): string {
-  if (!tier) return '';
-  return ` ${tier.spec.label}: ${tier.badges.map((badge) => `${badge.categoryLabel} ${badge.text}`).join(', ')}.`;
-}
 
 function toneFor(value: number, direction: Direction): 'good' | 'bad' {
   const meets = direction === 'higherIsBetter' ? value >= 100 : value <= 100;

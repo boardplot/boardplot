@@ -95,15 +95,6 @@ it('chooses the rate magnitude and notation after rounding', () => {
   }
 });
 
-// Prevents German accessible text from ending a value with two periods ("1,3 Mio..").
-it('ends a sentence once after a magnitude abbreviation', () => {
-  const output = draw('line', [100_000, 300_000], '1,0 Mio.', 1_000_000, { locale: { language: 'de', decimal: ',', thousands: '.' } });
-  for (const rendered of [output.svg, output.react]) {
-    expect(rendered).toMatch(/<desc[^>]*>[^<]*Mio\./);
-    expect(rendered).not.toContain('Mio..');
-  }
-});
-
 // A rate keeps the digits of its own size before rounding: 99.96 prints "100.0" and 0.996 prints "0.996".
 it('chooses each rate precision band before rounding', () => {
   // Default number rule: before "100 · 1.0 · 0.10 · −100 · −1.0".

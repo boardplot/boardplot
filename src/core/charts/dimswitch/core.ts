@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { ownCardRecords, PLAN_ONLY } from '../../layoutPlan';
 import { engineNote, engineNoteMeta } from '../../notes';
 import { ENGINE_NOTES } from '../table/tracks';
@@ -427,6 +428,7 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
     const selected = classFloor(layout,data,options,layout(data,options));
     // Only the selected form needs its cell records. Store ordinary data in the completed layout.
     selected.derived = { ...selected.derived };
+    if (!selected.refused) selected.a11y = a11yDescription(options, ['Dimension switch table', 'Dimensionstabelle'], selected.a11y.counts);
     return selected;
   });
 }

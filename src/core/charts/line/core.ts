@@ -1,4 +1,3 @@
-import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
@@ -23,7 +22,7 @@ export const lineCore: ChartCore<LineChartData, LineOptions, LineMarks, LineDeri
   aliases: ['profile'],
   layout: (data, options) => {
     if (options) validateLineLogSource(options, data);
-    return withEventsDescribed(layoutLine(prepareFractionData(lowerLineX(data, options)), options), options);
+    return layoutLine(prepareFractionData(lowerLineX(data, options)), options);
   },
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   // Without options (schema normalisation) data.x stays as authored; the request and the layout lower it.

@@ -166,7 +166,7 @@ A slope with more than two categories draws the first versus the last, warns `sl
 
 A football field leaves out methods whose cells are null or have no `range`, warns `football-field-method-without-range` and names the methods in a note. At least one method must have a range; only those methods enter sorting, the scale and computed numbers.
 
-`reading.counts` lists structural counts and their exact phrases in the accessible description. A host can match these phrases without parsing prose. See [Chart reading counts](reference/reading.md).
+`reading.counts` lists structural counts and their wording. The default accessible description uses a short selection of counts. See [Chart reading counts](reference/reading.md).
 
 ### Output settings
 

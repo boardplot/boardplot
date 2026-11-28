@@ -1,6 +1,5 @@
 import { AUTO_LEGEND, keylessFitBounds } from '../../legendPolicy';
 import { bandKeyFirst, keylessAreaFits, speculate } from '../band/keylessFit';
-import { withEventsDescribed } from '../../eventReading';
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing, MIN_COMPACT_PLOT, PLOT_SHARE, sameContent } from '../../sizing';
@@ -35,7 +34,7 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   sizing: chartSizing('combo'),
   title: 'Combo',
   summary: 'Stacked columns with line and area overlays and an optional second value scale',
-  layout: (data, options) => withEventsDescribed(layoutCombo(prepareFractionData(data), options as ComboOptions | undefined), options),
+  layout: (data, options) => layoutCombo(prepareFractionData(data), options as ComboOptions | undefined),
   notesBoundByWidth(data, options, geometry, noted) {
     const measure = options.measure ?? defaultMeasurer;
     if (!hasCompleteTextWidths(measure) || (options as InternalFootnoteOptions).footnotesOff

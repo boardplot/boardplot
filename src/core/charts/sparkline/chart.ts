@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 /** The standalone `sparkline` chart, drawn with the geometry in `layout.ts`. */
 import { boldMeasurer, markBold } from '../../inlineBold';
 import { SPARK_LABEL_SHARE } from './share';
@@ -9,7 +10,7 @@ import type { Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { chartSizing, resolveSizing } from '../../sizing';
 import { linePath } from '../../svgPath';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
@@ -502,11 +503,7 @@ export function layoutSparkline(
     frame: frame.frame,
     marks,
     derived,
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'sparklineName')),
-      counts: [structureCount('points', points.length, undefined, options)],
-      desc: chartString(options, 'sparklineDesc', { v1: points.length, v2: derived.last === null ? '' : chartString(options, 'endingAt', { v1: formatValue(derived.last) }), v3: reference === undefined ? '' : chartString(options, 'referenceClause', { v1: formatValue(reference) }) }),
-    },
+    a11y: a11yDescription(options, chartString(options, 'sparklineName'), [structureCount('points', points.length, undefined, options)]),
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings],
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };

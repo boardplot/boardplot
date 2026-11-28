@@ -529,14 +529,13 @@ it('shows only to-date values when a running period gets focus', () => {
     const chart = new DOMParser().parseFromString(renderSvg(geometry, request.theme, { claims }), 'image/svg+xml');
     const label = (id: string) => chart.querySelector(`[data-id="label:${id}"]`)?.textContent;
     const words = toDate ?? 'to date';
-    for (const [id, title, value] of [['volume', 'Started', '1,180'], ['rate', 'Completion', '15.7%'], ['per', 'Starts per completion', '6.38']]) {
+    for (const [id, , value] of [['volume', 'Started', '1,180'], ['rate', 'Completion', '15.7%'], ['per', 'Starts per completion', '6.38']]) {
       expect(label(`${id}:after`)).toBe(value);
       expect.soft(label(`${id}:headline`)).toBeUndefined();
       expect.soft(label(`${id}:from`)).toBeUndefined();
       expect.soft(label(`${id}:before`)).toBeUndefined();
       expect.soft(label(`${id}:base-value`)).toBeUndefined();
       expect.soft(label(`${id}:to-date`)).toBe(words || undefined);
-      expect.soft(chart.querySelector('desc')?.textContent).toContain(`${title}: ${[value, words].filter(Boolean).join(' ')}.`);
       const record = records.records?.find(record => record.target.panel === id && record.target.owner.categoryId === 'jun');
       expect.soft(record).toMatchObject({ value: { displayed: id === 'rate' ? '15.7' : value }, comparisons: [],
         fields: words ? [{ key: 'state', value: { raw: words } }] : [] });

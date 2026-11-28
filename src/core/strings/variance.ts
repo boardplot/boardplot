@@ -12,12 +12,9 @@ export const EN = {
   "higher": "higher",
   "varianceNmNote": "n.m.: not meaningful, {v1} is zero or negative; the change beside it is absolute{v2}.",
   "inUnitClause2": ", in {v1}",
-  "varianceDesc": "{v1} {v2} chart vs {v3}, {v4} categories",
-  "lowerBetterClause": " (lower is better)",
   "beyond": "beyond",
   "absoluteVariance": "absolute variance",
   "relativeVariance": "relative variance",
-  "integratedVariance": "integrated variance",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -31,12 +28,9 @@ const DE: { [K in keyof typeof EN]: string } = {
   "higher": "höher",
   "varianceNmNote": "n.m.: nicht aussagekräftig, {v1} ist null oder negativ; die Änderung daneben ist absolut{v2}.",
   "inUnitClause2": ", in {v1}",
-  "varianceDesc": "{v2}diagramm ({v1}) vs {v3}, {v4} {v4|Kategorie|Kategorien}",
-  "lowerBetterClause": " (niedriger ist besser)",
   "beyond": "über",
   "absoluteVariance": "absolute Varianz",
   "relativeVariance": "relative Varianz",
-  "integratedVariance": "integrierte Varianz",
 };
 
 export const { chartString } = chartStrings(EN, DE);

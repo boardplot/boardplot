@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { staticFrame } from '../../footer';
 import { alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks, trackPlotFloor } from '../columnOverrides';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
@@ -40,9 +41,9 @@ import { normalizeLegendOption } from '../../frame';
 import { refreshPaintWarnings, resolvePaintWarnings } from '../../paintWarnings';
 import { PALETTE_NORMAL_FLOOR } from '../../themeRules';
 import { ruleFormatter } from '../../numberSets';
-import { formatExampleText, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, withChartMarks } from '../../formatSpec';
+import { formatExampleText, formatWithSpec, parseFormatExample, roundedNumber, withChartMarks } from '../../formatSpec';
 import { shareDrift } from '../../dataGaps';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import {
   canvasMargin,
   colorblindPaint,
@@ -1160,11 +1161,9 @@ export function layoutLikert(
       neutralMode,
       order,
     },
-    a11y: {
-      title: accessibleTitle(opts.title, chartString(opts, 'likertTitle', { v1: items.length, v2: scale.length })),
+    a11y: a11yDescription(opts, ['Likert chart', 'Likert-Diagramm'], [structureCount('statements', items.length, undefined, opts), structureCount('scale-points', scale.length, undefined, opts)], {
       counts: [structureCount('statements', items.length, chartString(opts, 'statementsCount', { v1: items.length, v2: items.length === 1 ? '' : 's' })), structureCount('scale-points', scale.length, chartString(opts, 'scalePointsCount', { v1: scale.length }))],
-      desc: describe(),
-    },
+    }),
     // Resolved from the rebound rules, so a fresh render warns as a repaint in its theme does.
     warnings: refreshPaintWarnings([...geo.warnings, ...warnings], reboundPaintWarningRules, theme),
     paintWarningRules: reboundPaintWarningRules,
@@ -1231,35 +1230,7 @@ export function layoutLikert(
     return notes;
   }
 
-  function describe(): string {
-    const lead = chartString(opts, 'likertDescStart', { v1: items.length, v2: items.length === 1 ? '' : 's', v3: scale.length, v4: labelOf(0), v5: labelOf(scale.length - 1) });
-    const convention =
-      neutralMode === 'split'
-        ? chartString(opts, 'likertSplitDesc', { v1: labelOf(neutralIndex), v2: sideWords.boundary })
-        : neutralMode === 'exclude'
-          ? chartString(opts, 'likertExcludeDesc', { v1: labelOf(neutralIndex) })
-          : neutralMode === 'none'
-            ? chartString(opts, 'likertForcedDesc')
-            : chartString(opts, 'likertSideDesc', { v1: labelOf(neutralIndex), v2: neutralMode === 'positive' ? sideWords.positiveSide : sideWords.negativeSide });
-    const rows = ordered
-      .map((item) => {
-        const baseText = item.base === undefined ? chartString(opts, 'baseNotStated') : `n ${baseFmt(item.base)}`;
-        return chartString(opts, 'likertResponseDesc', { v1: item.label, v2: shareFmt(pctNegative[item.id]!), v3: sideWords.negative, v4: shareFmt(pctNeutral[item.id]!), v5: shareFmt(pctPositive[item.id]!), v6: sideWords.positive, v7: signedText(net[item.id]!), v8: baseText });
-      })
-      .join('. ');
-    // The page keeps the short note, so the reading names
-    // every share the bars do not print, by scale point and statement.
-    const hidden = new Set(geo.labels.filter((label) => label.kind === 'segment' && label.hidden === 'density')
-      .map((label) => `${label.owner.categoryId}\u0000${String(label.owner.seriesId).replace(/^likert:/, '').replace(/:(neg|pos)$/, '')}`));
-    const unprinted = ordered.flatMap((item) => scale.flatMap((option, i) => hidden.has(`${item.id}\u0000${option.id}`)
-      ? [`${labelOf(i)}, ${item.label} ${shareFmt(shares[item.id]![option.id]!)}`] : []));
-    const tail = unprinted.length > 0 ? ` ${chartString(opts, 'sharesNotPrinted')}: ${unprinted.join('; ')}.` : '';
-    return `${lead}${convention} ${rows}.${tail}`;
-  }
 
-  function signedText(value: number): string {
-    return formatterFromExample(netExample, options?.locale?.language, undefined, Object.values(net))(value);
-  }
 }
 
 /**

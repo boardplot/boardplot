@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/kpi';
 import { chipPaints } from '../table/chips';
 import { eyebrowFont, figureRole } from '../cardRoles';
@@ -22,12 +23,7 @@ import { withUnit } from '../../unitJoin';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeScenario,
-  resolveSize,
-  resolveSubtitle,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeScenario, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { arrowHeadPath } from '../../svgPath';
 import { chartSizing, resolveSizing } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
@@ -254,9 +250,6 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const changeSpec = levelSpec && (pointChanges
     ? { ...percentChangeSpec(changes, options.locale?.language, levelSpec.suffix), prefix: levelSpec.prefix }
     : joinedChangeSpec(levelSpec, changes));
-  const fmtDiff = diffSpec
-    ? (v: number) => formatNonzeroWithSpec(v, diffSpec)
-    : (v: number) => formatWithSpec(v, { ...changeSpec!, signed: false });
   const fmtSigned = diffSpec
     ? (v: number) => formatNonzeroWithSpec(v, { ...diffSpec, signed: true })
     : (v: number) => formatWithSpec(v, changeSpec!);
@@ -283,7 +276,6 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   let deltaBody: string | undefined;
   /** Direction of the SVG caret left of the delta text — no glyph in text. */
   let caretDir: 'up' | 'down' | undefined;
-  let a11yDelta = '';
   if (data.delta) {
     const vs = data.delta.vs;
     if (typeof vs !== 'number' || !Number.isFinite(vs)) {
@@ -327,15 +319,6 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     deltaText = `${body}${suffix}`;
     deltaBody = body;
     comparisonShows.push(changeShows(0, mode, pct, deltaAbs));
-
-    const word = chartString(options, deltaAbs > 0 ? 'up' : deltaAbs < 0 ? 'down' : 'unchanged');
-    const magnitude =
-      mode === 'relative'
-        ? fmtPct(Math.abs(pct!), false)
-        : mode === 'both'
-          ? `${fmtPct(Math.abs(pct!), false)} (${fmtDiff(Math.abs(deltaAbs))})`
-          : fmtDiff(Math.abs(deltaAbs));
-    a11yDelta = deltaAbs === 0 ? `, ${word}${suffix}` : `, ${word} ${magnitude}${suffix}`;
 
     derived.comparisons = [{
       source: 'delta',
@@ -419,7 +402,6 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     derived.deltaAbs = first.deltaAbs;
     if (first.deltaPct !== null) derived.deltaPct = first.deltaPct;
     derived.tone = first.tone;
-    a11yDelta = derived.comparisons.map((comparison) => `, ${comparison.displayed}`).join('');
   }
 
   /** The attainment's figure as it prints ("89%", ">999%", "n.m."). */
@@ -1146,15 +1128,6 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // The endpoint is only "visible" when the solver actually placed it: a
   // hidden (density) or suppressed (labels off) label describes a trend over
   // N periods without claiming an endpoint the reader cannot see.
-  const sparkEndpoint = allLabels.find((label) => label.id === 'spark:last');
-  const sparkPhrase = sparkDrawable
-    ? chartString(options, 'kpiSparkDesc', { v1: sparkVals.length, v2: sparkEndpoint && !sparkEndpoint.hidden ? chartString(options, 'endingAt', { v1: sparkEndpoint.text }) : '' })
-    : '';
-  const attainmentPhrase = derived.attainment
-    ? derived.attainment.state === 'ref-nonpositive'
-      ? chartString(options, 'attainmentNonpositive', { v1: derived.attainment.label })
-      : `, ${derived.attainment.displayed}`
-    : '';
 
   return {
     type: 'kpi',
@@ -1176,11 +1149,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     frame: frameResult.frame,
     marks,
     derived,
-    a11y: {
-      title: accessibleTitle(options.title, data.label ? chartString(options, 'kpiTitle', { v1: data.label }) : 'KPI'),
-      counts: [...(sparkDrawable ? [structureCount('periods', sparkVals.length, undefined, options)] : [])],
-      desc: `${data.label ? `${data.label} ` : ''}${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
-    },
+    a11y: a11yDescription(options, 'KPI', sparkDrawable ? [structureCount('periods', sparkVals.length, undefined, options)] : []),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };

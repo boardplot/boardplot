@@ -1,4 +1,3 @@
-import { chartString } from '../../strings/line';
 import type { Theme } from '../../types/theme';
 import { strokeToken } from '../../theme';
 /**
@@ -215,11 +214,4 @@ export function layoutReferenceBands(theme: Theme, input: {
     claims.claim({ x: nameX, y: top, w: entry.width, h: heights[i]! }, 'annotation', owner, 'referenceBandLabel');
   });
   return { bands, column: nodes };
-}
-
-/** The accessible sentence: each band's span, in the value axis's format, and its name, after the description. */
-export function referenceBandsA11y(column: ReferenceBandColumn | undefined, fmt: (value: number) => string, options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>): string {
-  if (!column) return '';
-  const span = (entry: ColumnEntry) => (entry.low === entry.high ? fmt(entry.low) : chartString(options, 'spanText', { v1: fmt(entry.low), v2: fmt(entry.high) }));
-  return chartString(options, 'referenceBandsSentence', { v1: column.entries.map((entry) => `${span(entry)} (${[entry.label, entry.description].filter(Boolean).join(' ')})`).join(', ') });
 }

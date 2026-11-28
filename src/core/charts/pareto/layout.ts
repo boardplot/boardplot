@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/pareto';
 import { chartWording } from '../../strings';
 import { structureCount } from '../../structureCounts';
@@ -25,7 +26,7 @@ import { formatAutomaticPercent } from '../../format';
 import { engineFormatterFromExample, formatterFromExample } from '../../formatSpec';
 import { ruleFormatter } from '../../numberSets';
 import { authoredDecimals } from '../../formatPrecision';
-import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { CARD_CLASS_WIDTH } from '../../sizing';
 import { paintTokenColor, resolveTheme } from '../../theme';
 import { valueAxisTitleText } from '../../axis';
@@ -784,26 +785,6 @@ export function layoutPareto(
     return node.t === 'text' ? { ...node, ink: cumulativePaint(node.ink, seriesId)! } : node;
   });
 
-  const labelOf = (id: Id) => ranked.find((r) => r.id === id)?.label ?? id;
-  const vitalFewLabels = vitalFew.map(labelOf).join(', ');
-  const desc =
-    chartString(options, 'paretoDescStart', { v1: populationCount }) +
-    (restBucket ? chartString(options, 'paretoColumnsClause', { v1: plotted.length - (hideRestColumn ? 1 : 0) }) : '') +
-    chartString(options, 'totalClause', { v1: fmt(total) }) +
-    (hasAuthoredRest ? chartString(options, 'paretoAuthoredRestDesc') : '') +
-    (threshold === false
-      ? chartString(options, 'paretoNoThresholdDesc')
-      : crossingId === undefined
-      ? chartString(options, 'paretoNoReachDesc')
-      : concentrated
-        ? chartString(options, 'paretoReachDesc', { v1: vitalFew.length, v2: populationCount, v3: vitalFewLabels, v4: curveShareText(populationShare[crossingId]!), v5: thresholdText(threshold, options.locale?.language), v6: labelOf(crossingId) })
-        : chartString(options, 'paretoNotConcentratedDesc', { v1: vitalFew.length, v2: populationCount, v3: thresholdText(threshold, options.locale?.language) })) +
-    (restBucket
-      ? chartString(options, 'paretoRestDesc', { v1: hasAuthoredRest ? chartString(options, 'authoredRestHolds') : chartString(options, 'lastElement', { v1: hideRestColumn ? (drawCumulative ? chartString(options, 'curvePoint') : chartString(options, 'category2')) : chartString(options, 'columnName') }), v2: restBucket.memberIds.length, v3: fmt(restBucket.value) })
-      : '') +
-    (drawCumulative
-      ? chartString(options, 'paretoCurveDesc')
-      : chartString(options, 'paretoCurveOffDesc'));
 
   // Where the curve does not print the share the vital few reach, the key does. Its share is the
   // last highlighted cause's, so the key carries the crossing cause's share only when that is the crossing cause.
@@ -849,15 +830,13 @@ export function layoutPareto(
         ? { shareAxisDomain: (geo.derived as { secondaryDomain?: [number, number] }).secondaryDomain }
         : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'paretoTitle', { v1: populationCount, v2: fmt(total) })),
+    a11y: a11yDescription(options, ['Pareto chart', 'Pareto-Diagramm'], [structureCount('causes', populationCount, undefined, options)], {
       counts: [structureCount('causes', populationCount, chartString(options, 'sortedCauses', { v1: populationCount })),
         ...(threshold !== false && crossingId !== undefined ? [
           structureCount('causes', vitalFew.length, concentrated ? chartString(options, 'firstCount', { v1: vitalFew.length }) : chartString(options, 'causesOfCount', { v1: vitalFew.length, v2: populationCount })),
         ] : []),
         ...(restBucket ? [structureCount('columns', plotted.length - (hideRestColumn ? 1 : 0), undefined, options), structureCount('causes', restBucket.memberIds.length, chartString(options, 'smallerCauses', { v1: restBucket.memberIds.length }))] : [])],
-      desc,
-    },
+    }),
     // combo's `dual-axis` caution is filtered: the bar + cumulative-share
     // pairing IS the Pareto form — one measure in two vocabularies (count
     // and share of total), not two unrelated units — and pareto, not the

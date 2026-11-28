@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { copyFrame, footerPlans, retainFrameState, staticFrame } from '../../footer';
 import { hasBold } from '../../inlineBold';
@@ -41,7 +42,6 @@ import { structureCount } from '../../structureCounts';
 import { nextStaircase, runStaircase, seatStaircase, STAIRCASE, STAIRCASE_MAX_PAD } from '../../label/staircase';
 import { withBandValueNotes } from '../band/valueNotes';
 import { partialIds } from '../../partialPeriod';
-import { NOT_AVAILABLE } from '../../format';
 import { NO_STACK_MEAN, noTotal } from '../../stackAdds';
 import { emitForecastDividers, placeForecastHeaders } from '../line/forecast';
 import { haloOverRules, raiseOverRules } from '../band/labels';
@@ -59,7 +59,6 @@ import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { engineNoteMeta, rankKeyShown } from '../../notes';
 import type { TickBandDerived } from '../../label/tickRow';
-import { accessibleTitle } from '../../normalize/shared';
 import { bandSizing, copyFitDrawing, sameContent } from '../../sizing';
 import { requestMemo } from '../../layoutPlan';
 import { defaultMeasurer } from '../../text';
@@ -79,7 +78,7 @@ import type { ComboOptions } from '../../types/options';
 import { collectFrameClaims, solveFrame, comparableOptions, hiddenNoteBodyOptions, NOTED_LABELS, DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type FrameWidthMeasurements, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
-import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
+import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
 import type { AnomalyDerived } from '../column/types';
 import type { LineAnomaly } from '../line/model';
 import { fillShadingKinds, fillShadings, regroundOnShadings, withoutEvents } from '../line/shared';
@@ -249,7 +248,7 @@ function assembleComboGeometry(input: {
   lane: EmittedLane | undefined;
 }): Geometry<ComboMarks, ComboDerived> {
   const { env, domain, area, geometry, solved, annotated, warnings, lane } = input;
-  const { cats, columns, lines, refs, fmt, stackTotals, secondaryDomain } = domain;
+  const { cats, columns, lines, refs, stackTotals, secondaryDomain } = domain;
   const { frame, catPlan, band, plot, showCatTickRow, strongFont, labelFont, tickFont } = area;
   const catFont = catPlan.font;
   const allLabels: PlacedLabel[] = [...solved.placed, ...annotated.labels];
@@ -305,21 +304,8 @@ function assembleComboGeometry(input: {
     },
     ...geometry.axes,
   ];
-  const partsDesc = [
-    columns.length > 0 ? chartString(domain.options, 'stackedColumnSeriesDesc', { v1: columns.length, v2: columns.map((s) => s.label).join(', ') }) : '',
-    lines.length > 0 ? chartString(domain.options, 'lineAreaSeriesDesc', { v1: lines.length, v2: lines.map((s) => s.label).join(', ') }) : '',
-    refs.length > 0 ? chartString(domain.options, 'referenceSeriesCount', { v1: refs.length }) : '',
-  ]
-    .filter(Boolean)
-    .join(chartString(domain.options, 'plusClause'));
   // the column stack states totals only when its parts add; one column series is its own total.
   const totalsAdd = columns.length > 0 && domain.columnsAdd;
-  const a11yDesc =
-    chartString(domain.options, 'comboDescStart', { v1: cats.length, v2: partsDesc }) +
-    (domain.secondaryActive ? chartString(domain.options, 'secondaryAxisDesc') : '') +
-    // Each total as the chart shows it: its drawn label's text, else as that label formats it.
-    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? totalShows.get(c.id)?.value ?? domain.totalFmtOf(ci)(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
-    anomalyA11y({ options: domain.options, anomaly: domain.anomaly, fmt: domain.anomaly ? domain.valueFmtOf(domain.lines.find((s) => s.id === domain.anomaly!.seriesId)!) : fmt, cats });
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   const catTickMaxLines = catPlan.maxLines;
@@ -360,15 +346,12 @@ function assembleComboGeometry(input: {
           }
         : {}),
     },
-    a11y: {
-      title:
-        accessibleTitle(domain.options.title, chartString(domain.options, 'comboTitle', { v1: domain.data.map((s) => s.label).join(', '), v2: cats.length })),
+    a11y: a11yDescription(domain.options, ['Combo chart', 'Kombinationsdiagramm'], [structureCount('series', columns.length + lines.length, undefined, domain.options), structureCount('categories', cats.length, undefined, domain.options)], {
       counts: [...(domain.anomaly?.model?.counts ?? []), structureCount('categories', cats.length, undefined, domain.options),
         ...(columns.length ? [structureCount('series', columns.length, chartString(domain.options, 'stackedColumnSeriesCount', { v1: columns.length }))] : []),
         ...(lines.length ? [structureCount('series', lines.length, chartString(domain.options, 'lineAreaSeriesCount', { v1: lines.length }))] : []),
         ...(refs.length ? [structureCount('reference-series', refs.length, chartString(domain.options, 'referenceSeriesCount', { v1: refs.length }))] : [])],
-      desc: a11yDesc,
-    },
+    }),
     warnings,
     paintWarningRules,
     debug: {

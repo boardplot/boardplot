@@ -70,7 +70,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | legend.position | string | `'top'`, `'bottom'`, `'right'`, `'left'` |  | Place the categorical state legend at the top or bottom, or in a column beside the matrix. |
 | states | array |  |  | One to six declared categorical states defining cell meaning, legend labels and paint. |
 | states[].id | string |  |  | Unique state identity referenced by matrix cells. |
-| states[].label | string |  |  | Visible state name used by the legend and the accessible description. The description lists each state with its cell count, as 'On track 12', then 'No status 3' for empty cells; the reading carries each count as a derived claim with that text. |
+| states[].label | string |  |  | State name shown in the legend. The reading carries each state count as a derived claim, such as 'On track 12' or 'No status 3'. |
 | states[].tone | string \| object | `'good'`, `'bad'`, `'neutral'`, `'warn'`, `'info'` (or another value of its type) |  | Semantic verdict tone, or an explicit theme role for the state fill. |
 | states[].tone.role | string |  |  | Named semantic theme color role for this state. |
 | states[].pattern | string | `'hatch45'` |  | Optional 45-degree hatching to distinguish this state beyond color. |

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 /**
  * Bar — the horizontal twin of column.
  * Categories run top→down as rows, values run left→right from a vertical
@@ -22,14 +23,13 @@ import { emptyAnnotatePass, percentLevels, runAnnotatePass } from '../../annotat
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, valueAxisTitleRequest } from '../../axis';
-import { NOT_AVAILABLE } from '../../format';
 import type { Rect, rowLabelX, Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
 import { stackParts, withoutShareAnnotations } from '../band/stacks';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, solveLabels, type SolveCtx, type SolveResult } from '../../label/solver';
-import { accessibleTitle, NormalizeError } from '../../normalize/shared';
+import { NormalizeError } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { HARD_MINIMUM, rowSizing, sameContent, SIZE_TOLERANCE } from '../../sizing';
 import { requestMemo } from '../../layoutPlan';
@@ -43,7 +43,7 @@ import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import type { Geometry, LintWarning, PlacedAnnotation, PlacedLabel, ShownMark } from '../../types/scene';
 import { layoutBarLocalAnnotations } from './annotations';
-import { displayFor, prepareBar, textFor, toDateOnValues } from './domain';
+import { displayFor, prepareBar, toDateOnValues } from './domain';
 import { valueLineLabelsOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
@@ -415,7 +415,7 @@ function assembleBarGeometry(
   /** Record texts a label prints for another owner, by label id (planBarLabels). */
   stated: ReadonlyMap<Id, Omit<ShownMark, 'drawn'>>,
 ): Geometry<BarMarks, BarDerived> {
-  const { options, theme, size, measure, variant, cats, dataSeries, fmt, totalFmt, totals, shares, meanValue } = domain;
+  const { options, theme, size, measure, variant, cats, dataSeries, totals, shares, meanValue } = domain;
   const { tickFont, labelFont, strongFont, band } = area;
   const { nodes } = scene;
   const allLabels: PlacedLabel[] = [...solved.placed, ...annotated.labels];
@@ -457,43 +457,13 @@ function assembleBarGeometry(
           ]),
         )
       : undefined;
-  const variantWord =
-    variant === 'grouped' ? chartString(options, 'groupedCapital') : variant === 'stacked' ? chartString(options, 'stackedCapital') : chartString(options, 'stacked100');
   // A label that prints the value of another owner (a one-part stack's total): where it is drawn, the record takes its text.
   const shown: ShownMark[] = [];
-  const drawnForPart = new Map<Id, string>();
   for (const label of allLabels) {
     const text = label.hidden === undefined ? stated.get(label.id) : undefined;
     if (!text) continue;
     shown.push({ ...text, drawn: true });
-    drawnForPart.set(text.owner.categoryId!, label.text);
   }
-  // One series reads out each value as its label prints it: the cell or
-  // series format and an authored label, not the chart format alone; a value
-  // its stack's total prints reads as the total prints it.
-  const oneValueText = (ci: number): string | null => {
-    const s = dataSeries.length === 1 ? dataSeries[0]! : undefined;
-    const cell = s?.cells[ci];
-    if (!s || !cell || cell.v === null) return null;
-    return drawnForPart.get(cats[ci]!.id) ?? textFor(domain, cell.v, cell, undefined, s) ?? displayFor(domain, cell.v, cell, undefined, s);
-  };
-  // A share reads as its drawn label prints it (the label's ShownTexts); a share drawn nowhere keeps the share format.
-  const drawnShares = new Map<string, string>();
-  for (const label of allLabels) {
-    const text = label.hidden === undefined ? label.shows?.['share.percent'] : undefined;
-    if (text !== undefined) drawnShares.set(`${label.owner.categoryId}\0${label.owner.seriesId}`, text);
-  }
-  // A category with no value at all has no total; the description says so
-  // rather than read out a zero.
-  const a11yDesc = cats
-    .map((c, ci) =>
-      !domain.stacks[ci]!.hasValue
-        ? `${c.label} ${NOT_AVAILABLE}`
-        : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${drawnShares.get(`${c.id}\0${s.id}`) ?? domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
-          : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
-    )
-    .join(', ');
   return {
     type: 'bar',
     size,
@@ -524,18 +494,10 @@ function assembleBarGeometry(
       // the data never produced.
       ...(meanValue === undefined ? {} : { mean: meanValue }),
     },
-    a11y: {
-      titleCounts: [structureCount('categories', cats.length, undefined, options)],
-      title: accessibleTitle(options.title, chartString(options, 'barTitle', { v1: cats.length })),
+    a11y: a11yDescription(options, ['Bar chart', 'Balkendiagramm'], [structureCount('series', dataSeries.length, undefined, options), structureCount('categories', cats.length, undefined, options)], {
       counts: [structureCount('series', dataSeries.length, undefined, options)],
-      desc:
-        chartString(options, 'barDesc', { v1: variantWord, v2: dataSeries.length, v3: totalsAdd ? ` ${a11yDesc}.` : '' }) +
-        (scene.rangeMarks.length
-          ? chartString(options, 'rangesClause', { v1: scene.rangeMarks
-              .map((range) => chartString(options, 'namedRange', { v1: range.categoryId, v2: fmt(range.low), v3: fmt(range.high) }))
-              .join(', ') })
-          : ''),
-    },
+      titleCounts: [structureCount('categories', cats.length, undefined, options)],
+    }),
     warnings,
     paintWarningRules,
     debug: {

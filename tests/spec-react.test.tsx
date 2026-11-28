@@ -39,7 +39,7 @@ it('shows the weekly sums of a prepared zoom in the first HTML and the busy box 
   const request = (await parseChartSpec(spec)).request;
   const reading = (element: Parameters<typeof renderToString>[0]) => { host.innerHTML = renderToString(element); return host.querySelector('svg desc')?.textContent; };
   const zoomed = await prepareChart({ ...request, size, zoom });
-  expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={zoomed} />)).toMatch(/58 categories.*Latest values: Units 3\./);
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={zoomed} />)).toMatch(/58 periods/);
   const plain = await prepareChart({ ...request, size });
   expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={plain} />)).toBeUndefined();
   expect(reading(<BoardplotChart spec={spec} size={size} prepared={zoomed} />)).toBeUndefined();
@@ -48,7 +48,7 @@ it('shows the weekly sums of a prepared zoom in the first HTML and the busy box 
   // A width that stands in options.size gives the same grain on the server and in the browser.
   const narrow = { ...spec, options: { ...spec.options, size: { width: 320, height: 400 } } };
   const narrowRequest = (await parseChartSpec(narrow)).request;
-  expect(reading(<BoardplotChart spec={narrow} zoom={zoom} prepared={await prepareChart({ ...narrowRequest, zoom })} />)).toMatch(/1[34] categories/);
+  expect(reading(<BoardplotChart spec={narrow} zoom={zoom} prepared={await prepareChart({ ...narrowRequest, zoom })} />)).toMatch(/1[34] periods/);
   const container = await prepareChart({ ...request, size: 'container', zoom });
   expect(reading(<BoardplotChart spec={spec} size="container" zoom={zoom} prepared={container} />)).toBeUndefined();
 });

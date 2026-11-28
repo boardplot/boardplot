@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/creative';
 import { canvasMargin, emphasisWeight, panelTypeClass, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
 import type { Rect } from '../../geometry';
@@ -796,7 +797,8 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
       fatigueTexts: { ...(fatigue.changePct === null ? {} : { change: numbers.fatigue(fatigue.changePct, true) }),
         ...(fatigue.baseline.mean === null ? {} : { baseline: numbers.fatigueMean(fatigue.baseline.mean) }),
         ...(fatigue.current.mean === null ? {} : { current: numbers.fatigueMean(fatigue.current.mean) }) } },
-    a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
+    // A creative exhibit has no data table, so the author's alt text of the media is its description.
+    a11y: { ...a11yDescription(options, 'Creative exhibit'), title: accessibleTitle(options.title, data.facts.name), desc: data.media.alt },
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }
 

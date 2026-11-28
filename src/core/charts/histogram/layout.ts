@@ -1,3 +1,5 @@
+import { a11yDescription } from '../../a11yDescription';
+import { structureCount } from '../../structureCounts';
 /**
  * Histogram — the distribution of ONE measure, as a thin semantic adapter over
  * the column engine.
@@ -906,6 +908,7 @@ export function layoutHistogram(
   return withUnprintedClaims({
     ...column,
     type: 'histogram',
+    a11y: a11yDescription(options, ['Histogram', 'Histogramm'], [structureCount('observations', n, undefined, options)], { counts: column.a11y.counts }),
     size,
     marks: { bars: column.marks.bars, bins, ...(shown.length > 0 ? { shown } : {}) },
     derived,

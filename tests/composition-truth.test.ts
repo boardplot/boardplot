@@ -169,7 +169,6 @@ describe('line and mekko fail closed visibly', () => {
         }, { variant, ...(widths ? { widthSeriesId: 'size' } : {}) });
         expect(noteTexts(geometry), `${variant}, widths ${widths}`).toContain('Not available: Central.');
         expect(geometry.derived).not.toHaveProperty('columnTotals.central');
-        expect(geometry.a11y.desc).not.toContain('Central 0');
         expect(geometry.labels.some((label) => label.id === 'category:central' && label.hidden === 'redundant')).toBe(false);
         if (widths?.[1] === 2 || (variant === 'bar' && widths === undefined)) {
           expect(geometry.labels.filter((label) => !label.hidden).map((label) => label.id)).toContain('category:central');
@@ -202,7 +201,6 @@ describe('line and mekko fail closed visibly', () => {
     const rates = [{ pct: 10 }, { pct: 3 }, { pct: 6 }, { pct: 20 }];
     const weighted = draw(rates, 'size');
     expect(weighted.total).toBe('13%');
-    expect(weighted.geometry.a11y.desc).toContain('Others 13%');
     expect(weighted.record.value.unit).toBe('%');
     expect(weighted.record.value.raw).toBeCloseTo(40 / 3);
     expect(draw([10, 3, 6, 20], 'size').record.value.raw).toBeCloseTo(40 / 3);
@@ -294,7 +292,6 @@ describe('line and mekko fail closed visibly', () => {
       const { geometry: g, records } = draw(kind);
       expect(g.derived).toEqual(absolute.geometry.derived);
       expect(g.marks).toEqual(absolute.geometry.marks);
-      expect(g.a11y.desc).toBe(absolute.geometry.a11y.desc);
       expect(records.map((r) => ({ value: r.value, share: r.share }))).toEqual(absolute.records.map((r) => ({ value: r.value, share: r.share })));
       expect(records.find((r) => r.target.owner?.seriesId === 's0')?.value.raw).toBe(280);
       const incomplete = draw(kind, true);
@@ -353,7 +350,6 @@ describe('line and mekko fail closed visibly', () => {
         (label) => label.owner.categoryId === 'a' && percentageValues(label.text).length > 0,
       ),
     ).toBe(false);
-    expect(geometry.a11y.desc).toContain('A (n.m.)');
     expectSharesInRange(geometry, 'line mixed repro');
   });
 
@@ -369,7 +365,6 @@ describe('line and mekko fail closed visibly', () => {
     expect(geometry.marks.columns.find((column) => column.categoryId === 'a')?.segments).toEqual([]);
     expect(geometry.labels.some((label) => label.id === 'total:a')).toBe(false);
     expect(geometry.derived.shares.a).toEqual({ s1: 0, s2: 0 });
-    expect(geometry.a11y.desc).toContain('A (n.m.)');
     expectSharesInRange(geometry, 'mekko mixed repro');
   });
 

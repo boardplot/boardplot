@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/dot';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -51,15 +52,7 @@ import {
   type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeScenario,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-  resolveSubtitle,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeScenario, normalizeSeriesValues, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { resolveCellRange, type DataRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { horizontalLogAxis, horizontalLogTicks, logScale, logValueDomain, nonpositiveAnnotation, validateLogSeriesValues, validateLogValueLine } from '../logAxis';
@@ -1450,26 +1443,6 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
 
   const variantWord =
     variant === 'dumbbell' ? chartString(options, 'dumbbellName') : variant === 'lollipop' ? chartString(options, 'lollipopName') : chartString(options, 'clevelandName');
-  const a11yDesc = cats
-    .map((c, ci) => {
-      const vals = dataSeries
-        .map((s) => {
-          const v = s.cells[ci]!.v;
-          if (v === null) return null;
-          const range = s.cells[ci]!.range;
-          // Each value reads as its label prints it: cell or series format and an authored label.
-          const cell = s.cells[ci]!;
-          const text = textFor(v, cell, s) ?? displayFor(v, cell, s);
-          const value = dataSeries.length > 1 ? `${s.label} ${text}` : text;
-          return range
-            ? chartString(options, 'dotRangeDesc', { v1: value, v2: fmt(range.low), v3: fmt(range.high), v4: range.mid === undefined ? '' : chartString(options, 'midpointClause', { v1: fmt(range.mid) }) })
-            : value;
-        })
-        .filter((t): t is string => t !== null)
-        .join(', ');
-      return `${c.label} ${vals}`;
-    })
-    .join('; ');
 
   const geometry: Geometry<DotMarks, DotDerived> & { [CONTENT_PLOT_HEIGHT]?: ContentPlotHeight } = {
     type: 'dot',
@@ -1490,12 +1463,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     frame: frameResult.frame,
     marks,
     derived: gaps ? { gaps } : {},
-    a11y: {
-      titleCounts: [structureCount('categories', cats.length, undefined, options)],
-      title: accessibleTitle(options.title, chartString(options, 'dotTitle', { v1: variantWord, v2: cats.length })),
+    a11y: a11yDescription(options, variantWord, [structureCount('series', dataSeries.length, undefined, options), structureCount('categories', cats.length, undefined, options)], {
       counts: [structureCount('series', dataSeries.length, undefined, options)],
-      desc: chartString(options, 'dotDesc', { v1: variantWord, v2: dataSeries.length, v3: a11yDesc }),
-    },
+      titleCounts: [structureCount('categories', cats.length, undefined, options)],
+    }),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

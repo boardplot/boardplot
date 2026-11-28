@@ -540,10 +540,6 @@ describe('box labels and method notes', () => {
     const geometry = layFixture(SALARY, { notes: { show: ['note', 'disclosure', 'method'] } });
     expect(geometry.derived.beyondAreOutliers).toBe(false);
     expect(geometry.derived.beyondMeaning).toContain('not outliers');
-    // no row is narrated as HAVING outliers; the only mention is the negation
-    expect(geometry.a11y.desc).not.toMatch(/\d+ outliers/i);
-    expect(geometry.a11y.desc).toContain('not outliers');
-    expect(geometry.a11y.desc).toContain('outside the 10th–90th percentile range');
     expect(renderSvg(geometry as never, resolveTheme())).toContain('which are not outliers');
     // the group field is not named `outliers` either
     expect(Object.keys(geometry.derived.groups[0]!)).not.toContain('outliers');

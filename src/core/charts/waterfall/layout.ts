@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/waterfall';
@@ -36,7 +37,7 @@ import {
   type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle, NormalizeError, normalizeCell, normalizeScenario, resolveHighlight, resolveSize } from '../../normalize/shared';
+import { NormalizeError, normalizeCell, normalizeScenario, resolveHighlight, resolveSize } from '../../normalize/shared';
 import {
   bandScale,
   brokenLinearScale,
@@ -857,10 +858,7 @@ function layoutHorizontalWaterfall(
     axes,
     annotations: [],
     marks,
-    a11y: {
-      ...source.a11y,
-      desc: source.a11y.desc.replace(chartString(options, 'waterfallChart'), chartString(options, 'horizontalWaterfall')),
-    },
+    a11y: a11yDescription(options, chartString(options, 'horizontalWaterfall'), source.a11y.counts),
     warnings: [
       ...source.warnings.filter((warning) => warning.code !== 'label-hidden'),
       ...solved.warnings,
@@ -993,7 +991,6 @@ function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, ca
   // the sign of the step.
   const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'waterfall', before: warnings.length }] : [];
   if (paintWarningRules.length) warnings.push(...highlightPaintWarnings(theme, 'waterfall'));
-  const build = options.build ?? 'up';
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
@@ -1797,7 +1794,6 @@ function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, ca
   const withheld: ClaimedRequest[] = [];
   // The texts of values without a label request of their own owner (WaterfallMarks.shown).
   const undrawnShown: ShownMark[] = [];
-  // A withheld step value's label text under an authored format: the description prints it.
   const wouldBeTexts = new Map<Id, string>();
 
   // baseline (thin solid, always)
@@ -2503,18 +2499,6 @@ function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, ca
       ),
     );
 
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    const stepsDesc = (bridge: NormItem[]) => bridge
-      .map((it) =>
-        it.type === 'delta'
-          ? `${it.label} ${labelRequests.find(label => label.id === `sum:${it.id}`)?.text ?? wouldBeTexts.get(`sum:${it.id}`) ?? fmtSigned(levels[it.id]!.end - levels[it.id]!.start)}`
-          : `${it.label} ${labelRequests.find(label => label.id === `total:${it.id}`)?.text ?? wouldBeTexts.get(`total:${it.id}`) ?? fmt(totals[it.id]!)}`,
-      )
-      .join(', ');
-    const a11yDesc = cases.length > 0
-      ? chartString(options, 'waterfallCasesDesc', { v1: cases.length, v2: cases.map((c, k) => `${c.label ?? c.id}: ${stepsDesc(caseItems[k]!)}`).join('. ') })
-      : stepsDesc(items);
 
     return withUnprintedClaims({
       type: 'waterfall',
@@ -2554,11 +2538,7 @@ function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, ca
           position: 'below' as const,
         },
       },
-      a11y: {
-        title: accessibleTitle(options.title, chartString(options, 'waterfallTitle', { v1: first.label, v2: last.label })),
-        counts: [...(cases.length ? [structureCount('cases', cases.length, undefined, options)] : [])],
-        desc: chartString(options, 'waterfallDesc', { v1: build === 'down' ? chartString(options, 'buildDownClause') : '', v2: a11yDesc }),
-      },
+      a11y: a11yDescription(options, chartString(options, 'waterfallChart'), cases.length ? [structureCount('cases', cases.length, undefined, options)] : []),
       ...(paintWarningRules.length ? { paintWarningRules } : {}),
       warnings,
       debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/heatmap';
 import { chartTheme } from '../chartEnv';
 import { hasCompleteTableWidths } from '../../fontMetrics/injected';
@@ -18,7 +19,7 @@ import { structureCount } from '../../structureCounts';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
-import { lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
+import { lowBaseKeyLabel, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultSetSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { tickFormatter } from '../../axis';
 import { ruleFormatter } from '../../numberSets';
@@ -30,13 +31,7 @@ import { MONTH_START } from '../../label/tickRow';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../claims/ids';
 import type { TickBandDerived } from '../../label/tickRow';
-import { accessibleTitle,
-  NormalizeError,
-  normalizeCategory,
-  normalizeSeriesValues,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, plotHeightAfter, authoredFootnoteCount, valueNoteLine, DEFAULT_NOTE_LIMIT, HIDDEN_LABEL_LEAD, type KeyRequiredType, type LegendItemInput } from '../../frame';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { sequentialShare } from '../../colorRecipes';
@@ -375,7 +370,7 @@ export function layoutHeatmap(
   for (const r of rows) rowMeans[r.id] = rowMeanOf(r);
   const colMeans: Record<Id, number | null> = emptyIdRecord();
   cols.forEach((c, ci) => (colMeans[c.id] = colMeanAt(ci)));
-  // The data's own rows and columns, for the description: a turned matrix
+  // The data's own rows and columns. A turned matrix
   // draws the categories as rows but reads as the same table.
   const dataRows = rows, dataCols = cols;
   if (turned) {
@@ -1652,28 +1647,6 @@ export function layoutHeatmap(
         ? { ...node, ink: { token: 'inkMuted' } } : node));
   const placedAnnotations: PlacedAnnotation[] = annResult.placed;
 
-  const scaleWord = glyph === 'harvey' ? chartString(options, 'harveyBallName') : bubble ? chartString(options, 'bubbleScaleWord', { v1: hasSizes ? chartString(options, 'circleAreaSize') : '' }) : scale === 'discrete' ? chartString(options, 'discrete') : chartString(options, 'continuous');
-  // The per-row pole inversion is an ENCODING, so it is stated in words —
-  // hue must not carry it alone (same discipline as variance's
-  // "(lower is better)" suffix and column sign-color legends).
-  const invertedRows = valence || (bins && declaredDirections) ? dataRows.filter((r) => r.direction === 'lowerIsBetter') : [];
-  // A cell or series format prints in the reading too: the lowest and highest value in the format of their cell, a row mean in its row's.
-  const readingText = (v: number, r?: NormRow, cell?: NormRow['cells'][number]): string =>
-    cell?.meta?.format || r?.format || r?.unit ? displayFor(v, cell?.pct ?? r!.cells.every((c) => c.v === null || c.pct), cell?.meta ?? null, r) : fmt(v);
-  const extremeText = (v: number): string => {
-    for (const r of dataRows) for (const cell of r.cells) if (cell.v === v) return readingText(v, r, cell);
-    return fmt(v);
-  };
-  const a11yDesc =
-    chartString(options, 'heatmapDescStart', { v1: scaleWord, v2: dataRows.length, v3: dataCols.length }) +
-    (allValues.length > 0 ? chartString(options, 'valuesRange', { v1: extremeText(vMin), v2: extremeText(vMax) }) : '') +
-    (invertedRows.length > 0
-      ? chartString(options, 'invertedRowsDesc', { v1: invertedRows.map((r) => r.label).join(', ') })
-      : '') +
-    chartString(options, 'rowMeansSentence', { v1: dataRows.map((r) => { const mean = rowMeans[r.id]; return `${r.label} ${mean === null || mean === undefined ? NOT_AVAILABLE : asEngineNumbers(() => readingText(mean, r))}`; }).join(', ') })
-    // The reading lists every value the cells could not print.
-    + (hiddenCells.length > 0 && options.heatKey === undefined
-      ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');
   if (wouldShowCells.length > 0) marks.wouldShow = new DeferredShownMarks(() => wouldShowCells.flatMap((cell) => cell() ?? []));
 
   return withUnprintedClaims({
@@ -1736,11 +1709,7 @@ export function layoutHeatmap(
           }
         : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'heatmapTitle', { v1: dataRows.length, v2: dataCols.length })),
-      counts: [structureCount('rows', dataRows.length, undefined, options), structureCount('columns', dataCols.length, undefined, options)],
-      desc: a11yDesc,
-    },
+    a11y: a11yDescription(options, ['Heatmap', 'Wärmekarte'], [structureCount('rows', dataRows.length, undefined, options), structureCount('columns', dataCols.length, undefined, options)]),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

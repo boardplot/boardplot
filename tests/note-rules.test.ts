@@ -316,7 +316,6 @@ describe('note rules', () => {
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories: [{ id: 'a', label: 'Gain' }, { id: 'b', label: 'Loss' }, { id: 'c', label: 'Rest' }],
       series: [{ id: 's', values: [84.9, -12.3, 43.8] }] }, options: { title: 'Split', doughnut: 0.55 } } as never)));
     expect(geo.labels.some((label) => label.kind === 'total')).toBe(false);
-    expect(geo.a11y.desc).not.toContain('total');
     expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
   });
 

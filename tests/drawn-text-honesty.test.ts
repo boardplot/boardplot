@@ -13,7 +13,6 @@ import { exampleSpec, formatWithSpec } from '../src/core/formatSpec';
 import { censusCase, garbled, tokens } from '../scripts/number-census.mjs';
 
 const svgOf = (spec: unknown): string => (render({ spec, format: 'svg', return: ['svg'] }).body as { svg: string }).svg;
-const descOf = (svg: string) => /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)?.[1] ?? '';
 
 // Accounting and share labels must keep numeric typography without treating prose or nested brackets as numbers.
 it('keeps numeric roles for Unicode numbers, accounting and shares', () => {
@@ -23,19 +22,6 @@ it('keeps numeric roles for Unicode numbers, accounting and shares', () => {
   for (const text of ['USD12', '12 May 2026', '12 vs target', '(12)(34)', '12 ((34))', '(12) (34)',
     '12 (34) (56)', '12 (34) trailing', '12 (n/a)', 'n/a (34)', '()', '12 )', '12 (34', '($12))']) {
     expect(isNumberAlone(text), text).toBe(false);
-  }
-});
-
-describe('the description states the drawn numbers', () => {
-  // The description reformatted the raw value and said "0%, 1%" where the labels read "6%, 54%".
-  for (const type of ['bar', 'column', 'dot']) {
-    it(`${type}: one series reads its labels, not the raw values`, () => {
-      const svg = svgOf({ type, data: {
-        categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
-        series: [{ id: 's', label: 'Churn rate', values: [{ number: 0.06, label: '6%' }, { number: 0.54, label: '54%' }] }],
-      }, options: { title: 'Churn by region' } });
-      expect(descOf(svg)).toMatch(/North 6%[,;] South 54%/);
-    });
   }
 });
 

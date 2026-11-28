@@ -1,3 +1,5 @@
+import { a11yDescription } from '../../a11yDescription';
+import { chartString as gridString } from '../../strings/layoutGrid';
 import { alignCategoryPanels, alignValuePanels, movedMargin, type PanelAnchoring } from '../../grid/panelAlignment';
 import { CATEGORY_INSET, panelAnchoring } from '../../grid/categoryInset';
 import { chartString } from '../../strings/grid';
@@ -41,7 +43,7 @@ import {
   type LabelRequest,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValues, resolveCanvasOptions, resolveHighlight, resolveSize } from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveCanvasOptions, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { mergeLocale } from '../../normalize/optionShapes';
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
@@ -1742,9 +1744,7 @@ function layoutAuthoredGrid(
       ...(Object.keys(sharedAnchors).length > 0 ? { sharedAnchors } : {}),
       ...(Object.keys(scaledPanels.domains).length > 0 ? { sharedYDomains: scaledPanels.domains } : {}),
     },
-    a11y: {
-      titleCounts: [structureCount('panels', panels.length, undefined, options)],
-      title: accessibleTitle(options.title, chartString(options, 'gridPanelsTitle', { v1: panels.length })),
+    a11y: a11yDescription(options, gridString(options, 'chartGrid'), [structureCount('panels', panels.length, undefined, options), structureCount('rows', rowCount, undefined, options), structureCount('columns', columnCount, undefined, options)], {
       counts: [
         structureCount('rows', rowCount, chartString(options, 'authoredRows', { v1: rowCount })),
         structureCount('columns', columnCount, chartString(options, 'compositionColumns', { v1: columnCount })),
@@ -1754,9 +1754,9 @@ function layoutAuthoredGrid(
             .filter(count => title.includes(count.text));
         }),
       ],
-      desc: chartString(options, 'gridComposition', { v1: rowCount, v2: columnCount, v3: marks.panels.map((panel) => panel.title).join('; '), v4: compactNotes.length > 0 ? chartString(options, 'notesClause', { v1: compactNotes.join('; ') }) : '' }),
+      titleCounts: [structureCount('panels', panels.length, undefined, options)],
       ...(compactNotes.length > 0 ? { compactNotes } : {}),
-    },
+    }),
     warnings,
     debug: { occupied: occupiedAll, decisions },
   };
@@ -2180,7 +2180,7 @@ function layoutLegendPanel(
     frame: frame.frame,
     marks: {},
     derived: {},
-    a11y: { title: panel.title ?? chartString(parentOptions, 'legendName'), desc: chartString(parentOptions, 'legendItemsCount', { v1: items.length }) },
+    a11y: a11yDescription({ ...parentOptions, title: panel.title }, chartString(parentOptions, 'legendName')),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: [] },
   };

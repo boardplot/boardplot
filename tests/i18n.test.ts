@@ -308,7 +308,6 @@ it('words table notes, summary and the React source line in the table language',
   const options = { locale: { language: 'de' }, source: 'Internal data', notes: { show: ['note', 'disclosure'] } };
   const geo = layout('table', { data }, options);
   expect(geo.frame.noteList!.map((note) => note.text)).toContain('Summen können wegen Rundung abweichen.');
-  expect(geo.a11y.desc).toBe('Tabelle mit 3 Zeilen und 2 Spalten');
   const frame = tableFrame(resolveTable(data as TableData, options as TableOptions).table, options as never);
   expect(frame.source).toBe('Quelle: Internal data');
   expect(frame.summary).toBe('Tabelle mit 3 Zeilen und 2 Spalten');

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/slope';
 /**
  * Slope `variant: 'diverging'`: one panel
@@ -17,7 +18,7 @@ import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValues, resolveSize } from '../../normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, resolveSize } from '../../normalize/shared';
 import { authoredFootnoteCount, authoredNotes, frameTextOptions, plotHeightAfter, solveFrame } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, emphasisWeight, strokeToken, canvasMargin, resolveSemanticPaletteTheme } from '../../theme';
@@ -533,11 +534,6 @@ export function layoutDivergingSlope(
     const abs = cleanDiff(p.g.positive[1], p.g.positive[0]);
     changes[p.s.id] = { abs, pct: p.g.positive[0] !== 0 ? cleanFloat((abs / p.g.positive[0]) * 100) : null };
   }
-  const rising = panels.filter((p) => p.g.netChange > 0).length;
-  const best = [...panels].sort((a, b) => b.g.net[1] - a.g.net[1])[0]!;
-  const desc = chartString(options, 'divergingSlopeDesc', { v1: panels.length, v2: posName, v3: negName, v4: p1, v5: p2 })
-    + chartString(options, 'slopeNetRiseDesc', { v1: rising, v2: p2, v3: best.label, v4: signed(best.g.net[1]) })
-    + (low.length > 0 ? chartString(options, 'slopeLowBaseDesc', { v1: low.map((p) => p.label).join(', ') }) : '');
 
   return {
     type: 'slope',
@@ -557,11 +553,7 @@ export function layoutDivergingSlope(
         groups: Object.fromEntries(panels.map((p) => [p.s.id, p.g])),
       },
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'divergingSlopeTitle', { v1: panels.length, v2: p1, v3: p2 })),
-      counts: [structureCount('series', panels.length, undefined, options)],
-      desc,
-    },
+    a11y: a11yDescription(options, ['Diverging slope chart', 'Divergierendes Steigungsdiagramm'], [structureCount('series', panels.length, undefined, options)]),
     warnings,
     sizing: resolveSizing(SLOPE_SIZING, size, { minHeight, naturalHeight }),
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },

@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/status';
 import { withUnprintedClaims } from '../../claims/ids';
 import { chartTheme } from '../chartEnv';
@@ -22,11 +23,7 @@ import { linePath } from '../../svgPath';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
-import { accessibleTitle,
-  NormalizeError,
-  resolveHighlight,
-  resolveSize,
-} from '../../normalize/shared';
+import { NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, colorblindPaint, hatchGroundPaint, markRolePaint, paintColor, panelTypeClass, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
 import type { ColorRole, Id, OwnerRef } from '../../types/cell';
@@ -780,9 +777,8 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     ...usedStates.map((state) => ({ state: state.id, count: stateCounts.get(state.id) ?? 0, displayed: `${state.label} ${stateCounts.get(state.id) ?? 0}` })),
     ...(noneCount > 0 ? [{ state: missingState, count: noneCount, displayed: chartString(options, 'noStatusCount', { v1: noneCount }) }] : []),
   ];
-  const stateSummary = describedCounts.map((entry) => entry.displayed).join(', ');
 
-  // Only the accessible description states the counts: no text on the chart prints one.
+  // The reading carries the counts as claims.
   return withUnprintedClaims({
     type: 'status' as const,
     size,
@@ -813,11 +809,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     frame: frameResult.frame,
     marks,
     derived: { stateCounts: describedCounts },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'statusTitle', { v1: rows.length, v2: columns.length })),
-      counts: [structureCount('rows', rows.length, undefined, options), structureCount('columns', columns.length, undefined, options)],
-      desc: chartString(options, 'statusDesc', { v1: rows.length, v2: columns.length, v3: stateSummary }),
-    },
+    a11y: a11yDescription(options, ['Status matrix', 'Statusmatrix'], [structureCount('rows', rows.length, undefined, options), structureCount('columns', columns.length, undefined, options)]),
     warnings,
     debug: {
       occupied: occupied.snapshot(),

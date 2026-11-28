@@ -84,7 +84,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | axisTitles | object |  |  | Axis titles, e.g. { x: 'Price index', y: 'Perceived quality' }. |
 | axisTitles.x | string |  |  | Title identifying the horizontal measure and its units. |
 | axisTitles.y | string |  |  | Title identifying the vertical measure and its units. |
-| axisFormat | object |  |  | Per-axis format-by-example, each falling back to format: { x: '$0', y: '0%' } prints the cost ticks as $2 and the score ticks as 60%. Tick labels, point values, hover values, zone, clamp and quadrant text and the accessible description use the format of the coordinate's axis; bubble sizes keep format. |
+| axisFormat | object |  |  | Per-axis format-by-example, each falling back to format: { x: '$0', y: '0%' } prints the cost ticks as $2 and the score ticks as 60%. Tick labels, point values, hover values, and zone, clamp and quadrant text use the format of the coordinate's axis; bubble sizes keep format. |
 | axisFormat.x | string |  |  | Format-by-example for x values, such as '$0.0'. |
 | axisFormat.y | string |  |  | Format-by-example for y values, such as '0%'. |
 | minCount | number |  |  | Drop points whose points[].count is below this threshold, with a derived footnote counting them. Refused when the points carry no count. |

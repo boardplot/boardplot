@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/choropleth';
 import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
@@ -28,7 +29,7 @@ import {
   type LabelRequest,
   type SolveCtx,
 } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { emphasisWeight, strokeToken, dashToken, canvasMargin, effectiveFill, paintColor, resolveSemanticPaletteTheme } from '../../theme';
@@ -48,7 +49,7 @@ import type {
   ChoroplethMarks,
   ChoroplethOptions,
 } from './types';
-import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
+import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateCounts, geoPolarityCaption, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
@@ -1090,7 +1091,7 @@ function layoutMapPass(
   pushAll(warnings, overlayResult.warnings);
   if (overlayResult.marks.length) marks.overlays = overlayResult.marks;
 
-  // `derived` counts every pack member; the description counts what the map shows.
+  // The count metadata tracks the regions shown. The derived record covers the whole map pack.
   const noDataCount = marks.regions.filter((mark) => mark.value === null).length + undrawnUnlisted;
   const missingCount = marks.regions.filter((mark) => mark.state === 'no-data').length;
   const drawnUnlistedCount = marks.regions.filter((mark) => mark.state === 'not-in-data').length;
@@ -1129,34 +1130,13 @@ function layoutMapPass(
         attribution: pack.meta.attribution,
       },
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'choroplethTitle', { v1: pack.id })),
+    a11y: a11yDescription(options, ['Choropleth map', 'Flächenkarte'], [structureCount('regions', pack.regions.length, undefined, options)], {
       counts: [...geoStateCounts(visibleStates, options), structureCount('regions', pack.regions.length, chartString(options, 'regionCountPrefix', { v1: pack.regions.length })),
         structureCount('regions', missingCount, chartString(options, 'listedRegions', { v1: missingCount })),
         ...(drawnUnlistedCount ? [structureCount('regions', drawnUnlistedCount, undefined, options)] : []),
         ...(smallIds.size ? [structureCount('regions', smallIds.size, chartString(options, 'regionsCount', { v1: smallIds.size }))] : []),
         ...(missingCount && chipOnlyNoData.length ? [structureCount('regions', chipOnlyNoData.length, chartString(options, 'regionsPlural', { v1: chipOnlyNoData.length, v2: chipOnlyNoData.length === 1 ? '' : 's' }))] : [])],
-      desc:
-        chartString(options, 'mapEqualArea', { v1: pack.regions.length }) +
-        (scale.min === null
-          ? chartString(options, 'noNumericValues')
-          : chartString(options, 'mappedRange', { v1: fmt(scale.min), v2: fmt(scale.max!) })) +
-        // The inverted judgment is an encoding — hue must not carry it alone
-        // (variance appends the same phrase for its direction).
-        (scale.polarity === 'lowerIsBetter' ? chartString(options, 'lowerFavorable') : '') +
-        (tableDrawn ? chartString(options, 'mapTable', { v1: !sideForm && tablePlace!.y > mapArea.y ? chartString(options, 'under') : chartString(options, 'beside') })
-          : smallIds.size ? chartString(options, 'mapHiddenRegions', { v1: smallIds.size }) : '') +
-        chartString(options, 'mapMissingRegions', { v1: missingCount }) +
-        (drawnUnlistedCount ? chartString(options, 'mapUnlistedRegions', { v1: drawnUnlistedCount }) : '') +
-        geoStateSummary(visibleStates, options) +
-        (missingCount === 0 ? '' : chipOnlyNoData.length === 0
-          ? chartString(options, 'mapMissingHatch')
-          : chartString(options, 'mapSmallMissing', { v1: chipOnlyNoData.length, v2: chipOnlyNoData.length === 1 ? ' is' : 's are', v3: chipOnlyNoData.length === 1 ? 'ies' : 'y' })) +
-        (overlayResult.descriptions.length
-          ? chartString(options, 'overlaysSentence', { v1: overlayResult.descriptions.join(' ') })
-          : '') +
-        chartString(options, 'sourceSentence', { v1: pack.meta.attribution, v2: userSource }),
-    },
+    }),
     warnings,
     debug: {
       occupied: [],

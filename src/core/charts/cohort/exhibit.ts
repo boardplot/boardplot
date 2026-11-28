@@ -1,3 +1,5 @@
+import { a11yDescription } from '../../a11yDescription';
+import { structureCount } from '../../structureCounts';
 /** Cohort-specific consulting exhibit tables. The legacy heatmap adapter stays
  * untouched; this surface owns its explicit label/size/month tracks. */
 
@@ -12,7 +14,7 @@ import type { Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import {
   paintColor,
   resolveSemanticPaletteTheme,
@@ -1194,10 +1196,7 @@ function buildExhibit(
     frame: frame.frame,
     marks,
     derived,
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'exhibitTitle', { measure: measureName.toLocaleLowerCase(options.locale?.language ?? 'en'), count: String(derived.cohorts.length) })),
-      desc: chartString(options, showSize ? 'exhibitDesc' : 'exhibitDescNoSize', { measure: measureName, periods: visible.map(period => periodName(data.periodLabel, period, options.locale?.language)).join(', '), formula: cohortFormula(options, derived.basis), anchor: visible.includes(0) ? chartString(options, 'exhibitDescAnchor') : '', missing: derived.cohorts.some(row => visible.some(period => missingCohortRate(row, period, derived.basis))) ? chartString(options, 'exhibitDescMissing') : '', total: derived.total ? chartString(options, 'exhibitDescTotal', { basis: chartString(options, derived.basis === 'previous' ? 'previousBasis' : 'cohortBasis') }) : '' }),
-    },
+    a11y: a11yDescription(options, ['Cohort table', 'Kohortentabelle'], [structureCount('cohorts', derived.cohorts.length, undefined, options), structureCount('periods', visible.length, undefined, options)]),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   }, unprinted);

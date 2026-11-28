@@ -1,3 +1,4 @@
+import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/waffle';
 /**
  * Waffle chart. Each category is one panel: a wrapped label, a big headline
@@ -18,13 +19,13 @@ import { structureCount } from '../../structureCounts';
 import { COMPACT_SOURCE_LINES, authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type CompactSourceOptions, type FrameInput, type LegendItemInput } from '../../frame';
 import { formatAutomaticPercent, shareText } from '../../format';
 import { defaultSetSpec, engineNumberSpec, exampleSpec, formatWithSpec, roundedNumber, zeroText, type NumberFormatSpec } from '../../formatSpec';
-import { authoredDecimals, autoDecimals } from '../../formatPrecision';
+import { authoredDecimals } from '../../formatPrecision';
 import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { claimId, withUnprintedClaims } from '../../claims/ids';
-import { accessibleTitle, normalizeCategory, normalizeSeriesValues, NormalizeError, resolveSize } from '../../normalize/shared';
+import { normalizeCategory, normalizeSeriesValues, NormalizeError, resolveSize } from '../../normalize/shared';
 import { type RoundingAdjustment } from '../../shareRounding';
 import { heightOmitted, NARROW_FORM, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
@@ -982,7 +983,6 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
   const minWidth = size.width - plot.w + Math.max(floorColumns * minPanelW + (floorColumns - 1) * floorGutter,
     readout ? Math.ceil(Math.max(entryW, subtotal ? subValueW + 6 + subLabelW : 0)) : 0);
 
-  const reading = panels.map((panel, pi) => describePanel(panel, series.map((s) => s.label), headlineFormat(pi), cellCount, options));
   // The chart prints each segment's value, never its count of cells.
   const geometry: Geometry<WaffleMarks, WaffleDerived> = withUnprintedClaims({
     type: 'waffle', size,
@@ -993,13 +993,13 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
       panels,
       ...(adjustments.length > 0 ? { roundingAdjustments: adjustments } : {}),
     },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'waffleTitle', { v1: panels.map((panel) => panel.label).join(', ') })),
+    a11y: a11yDescription(options, ['Waffle chart', 'Waffeldiagramm'], [
+      structureCount('panels', n, undefined, options),
+      structureCount('series', series.length, undefined, options),
+      ...(square ? [] : [structureCount('cells', cellCount, undefined, options)]),
+    ], {
       counts: [structureCount('panels', n, chartString(options, 'panelsCount', { v1: n, v2: n === 1 ? 'panel' : 'panels' })), structureCount('series', series.length, chartString(options, 'seriesCount', { v1: series.length })), ...(square ? [] : [structureCount('cells', cellCount, undefined, options)])],
-      desc: square
-        ? chartString(options, 'waffleSquareDesc', { v1: n, v2: n === 1 ? 'panel' : 'panels', v3: series.length, v4: reading.join(' '), v5: reference && !(reference.categoryId !== undefined && n === 1) ? chartString(options, 'waffleReferenceDesc', { v1: reference.categoryId !== undefined ? chartString(options, 'otherPanels') : chartString(options, 'eachPanel'), v2: reference.label }) : '' })
-        : chartString(options, 'waffleCellsDesc', { v1: n, v2: n === 1 ? 'panel' : 'panels', v3: series.length, v4: grid.rows, v5: grid.columns, v6: cellCount, v7: formatAutomaticPercent(cellShare, autoDecimals(cellShare), false, options.locale?.language), v8: reading.join(' ') }),
-    },
+    }),
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   }, panels.flatMap((panel) => panel.segments.filter((segment) => segment.cells > 0).map((segment) => claimId('waffle:cells', panel.categoryId, segment.seriesId))));
   const fits = Math.max(minHeight, frame.frame.minHeight ?? 0) <= size.height + 1e-6 && minWidth <= size.width + 1e-6;
@@ -1007,9 +1007,3 @@ function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'he
 }
 
 /** "Label: 30% = 30 of 100 cells." One sentence per panel, and the rounding of every segment. */
-function describePanel(panel: WafflePanelDerived, names: string[], headline: (value: number) => string, cellCount: number, options: WaffleOptions): string {
-  const many = panel.segments.length > 1;
-  const parts = panel.segments.map((segment, si) => `${many ? `${names[si]} ` : ''}${segment.reading}`);
-  const rest = cellCount - panel.filledCells;
-  return `${panel.label}: ${parts.join(', ')}${many ? chartString(options, 'waffleAllClause', { v1: headline(panel.total) }) : ''}${rest > 0 && many ? chartString(options, 'emptyCellsClause', { v1: rest, v2: cellCount }) : ''}.`;
-}

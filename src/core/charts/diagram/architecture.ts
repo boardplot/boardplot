@@ -197,7 +197,7 @@ function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: nu
     return h;
   };
   const tracks = inset.columnOverrides;
-  // A title the author turns off leaves no height and no gap; it stays the accessible name.
+  // A title the author turns off leaves no height and no gap.
   let y = box.y + (inset.heading === false ? 0 : seat('title', inset.title, fonts.title, box.x, box.y, box.w) + 2 * u);
   const kpis = inset.kpis ?? [];
   const across = wide ? kpis.length : 1;
