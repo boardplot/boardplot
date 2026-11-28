@@ -15,6 +15,7 @@ import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -91,6 +92,44 @@ function cliErrors(type: string, options: Record<string, unknown>, data = getFix
 }
 
 describe('refusal contract', () => {
+  // A linear axis or a median computed after taking logarithms places the mark at the wrong value.
+  it.each(['dot', 'box'])('places %s marks on evenly spaced decade ticks', (type) => {
+    const data = type === 'dot'
+      ? { categories: ['a', 'b', 'c'], series: [{ id: 'time', values: [10, 100, 1000] }] }
+      : { groups: [{ id: 'sample', observations: [10, 25, 40, 60, 140, 240, 340, 9000] }] };
+    const options = { size: { width: 720 }, valueAxis: { log: true, max: 10000 } };
+    expect(getChartSchemas(type)!.optionsSchema.safeParse(options).success).toBe(true);
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options })));
+    const ticks = geometry.axes.find(axis => axis.axis === 'x')!.ticks;
+    const at = (value: number) => ticks.find(tick => tick.at === value)!.pos;
+    expect(at(100) - at(10)).toBeCloseTo(at(1000) - at(100), 5);
+    expect(at(10000) - at(1000)).toBeCloseTo(at(100) - at(10), 5);
+    const mark = geometry.scene.find(node => node.id === (type === 'dot' ? 'dot:time:b' : 'box:median:sample'));
+    expect(mark?.t === 'circle' ? mark.cx : mark?.t === 'line' ? mark.x1 : undefined).toBeCloseTo(at(100), 5);
+  });
+
+  // A log chart must identify the zero or negative reading that it cannot place.
+  it.each(['dot', 'box'])('refuses non-positive %s data with the line chart repair', (type) => {
+    for (const value of [0, -5]) {
+      const data = type === 'dot'
+        ? { categories: ['a', 'b'], series: [{ id: 'time', values: [10, value] }] }
+        : { groups: [{ id: 'sample', observations: [10, value] }] };
+      const { body } = render({ spec: { type, data, options: { valueAxis: { log: true } } } });
+      expect(body).toMatchObject({ ok: false, errors: [{
+        code: 'log-nonpositive', path: type === 'dot' ? '/data/series/0/values/1' : '/data/groups/0/observations/1',
+        fix: [{ op: 'remove', path: '/options/valueAxis/log' }],
+      }] });
+    }
+  });
+
+  // Logarithmic mark lengths distort bar and column comparisons, so the refusal names two usable alternatives.
+  it.each(['bar', 'column'])('refuses log on %s and suggests a dot chart or an axis break', (type) => {
+    const data = { categories: ['a'], series: [{ id: 'time', values: [10] }] };
+    expect(render({ spec: { type, data, options: { valueAxis: { log: true } } } }).body).toMatchObject({
+      ok: false, errors: [{ path: '/options/valueAxis/log', message: expect.stringMatching(/only line, scatter, dot and box draw a log scale.*[Bb]ars and columns would distort mark lengths.*dot chart.*valueAxis\.break/) }],
+    });
+  });
+
   it('names a way out for every key a published schema or capability table refuses', () => {
     const failures: string[] = [];
     for (const type of TYPES) {

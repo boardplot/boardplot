@@ -10,7 +10,7 @@ import { distinguishSeries } from '../../seriesIdentity';
  *   'dot'      Cleveland dot plot — one circle per category (multi-series:
  *              grouped dots per row with series colors + legend),
  *   'dumbbell' two dots + connector (exactly 2 data series; derived gap),
- *   'lollipop' thin stem from the zero baseline to the value + dot head.
+ *   'lollipop' thin stem from zero (the lower bound on a log axis) to the dot.
  * Position encoding needs a scale, so the value axis is SHOWN BY DEFAULT and
  * zero is NOT forced into the domain — a non-zero baseline is legitimate here
  * and only flagged with an info-level 'nonzero-baseline' lint.
@@ -62,6 +62,7 @@ import { accessibleTitle,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
+import { horizontalLogAxis, horizontalLogTicks, logScale, logValueDomain, nonpositiveAnnotation, validateLogSeriesValues, validateLogValueLine } from '../logAxis';
 import { unitPrinted, frameTextOptions, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
@@ -201,6 +202,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
   const variant = options.variant ?? 'dot';
+  const va = options.valueAxis ?? {};
+  const log = horizontalLogAxis('dot', va);
   if (options.arrow && variant !== 'dumbbell') {
     warnings.push({
       code: 'arrow-dumbbell-only',
@@ -229,6 +232,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   if (!Array.isArray(data.series) || data.series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'dot requires at least one series', undefined, undefined, ['data', 'series']);
   }
+  if (log) validateLogSeriesValues(data.series, true);
   const rawCats = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const normSeries: NormSeries[] = data.series.map((s, i) => {
     if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id', undefined, undefined, ['data', 'series', i]);
@@ -417,6 +421,16 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       : undefined;
   const valueLineValue = (a: Annotation & { kind: 'valueLine' }): number | undefined =>
     a.value === undefined || a.value === 'mean' ? meanValue : a.value;
+  if (log) {
+    options.annotations?.forEach((ann, i) => {
+      if (ann.kind !== 'valueLine') return;
+      validateLogValueLine(ann, i);
+      const value = valueLineValue(ann);
+      if (typeof ann.tolerance === 'number' && value !== undefined && value - ann.tolerance <= 0) {
+        nonpositiveAnnotation(ann, i, ['tolerance'], value - ann.tolerance);
+      }
+    });
+  }
   // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts). A dot domain
   // ends at its data, so it also takes each tolerance band the pass draws whole, the band of the mean too.
   const passLines = [valueLineExtent(passAnns), ...drawnToleranceBands(passAnns, meanValue, cats.map((c) => c.id))]
@@ -429,11 +443,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     lo = Math.min(lo, v);
     hi = Math.max(hi, v);
   }
-  if (!Number.isFinite(lo)) {
+  if (!log && !Number.isFinite(lo)) {
     lo = 0;
     hi = 1;
   }
-  if (variant === 'lollipop' || options.valueAxis?.includeZero) {
+  if (!log && (variant === 'lollipop' || va.includeZero)) {
     lo = Math.min(lo, 0);
     hi = Math.max(hi, 0);
   }
@@ -449,7 +463,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     hi = Math.max(hi, passLines.hi);
   }
   // user min/max may never clip data
-  [lo, hi] = applyAxisBounds([lo, hi], [lo, hi], options.valueAxis, warnings);
+  if (!log) [lo, hi] = applyAxisBounds([lo, hi], [lo, hi], va, warnings);
 
   // ---- fonts ----
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
@@ -582,7 +596,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // Position encoding needs a scale — the value axis is shown by default here.
   // A lollipop whose every dot prints its value needs no value axis: the
   // stems start at the zero baseline. A dropped value brings the axis back (below), and an authored show stands.
-  const autoAxis = variant === 'lollipop' && options.valueAxis?.show === undefined && labelOn('point')
+  const autoAxis = !log && variant === 'lollipop' && options.valueAxis?.show === undefined && labelOn('point')
     && dataSeries.every((s) => s.cells.every((cell) => cell.v === null || textFor(cell.v, cell, s) !== null));
   const axisShown = autoAxis ? false : options.valueAxis?.show !== false;
   const axisTitle = axisShown && labelOn('axisTitle')
@@ -681,34 +695,38 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     w: Math.max(10, valueBody.w - leftReserve - rightReserve),
     h: valueBody.h,
   };
-  // Position encoding: the intent IS the raw extent (labels live in the pixel
-  // reserves above), so the bound trims pure snap overshoot on both edges.
-  // The domain ends at the data, not at the next nice tick, and the ticks
-  // stay inside it.
-  let [dLo, dHi] = lo === hi ? niceDomain(lo, hi, 5, { dataExtent: [lo, hi], maxWasteFraction: 0.15 }) : [lo, hi];
-  const extentValues = [
-    ...allDotValues,
-    ...allRangeValues,
-    ...localAnns.flatMap((ann) => {
-      const v = valueLineValue(ann);
-      return v === undefined ? [] : [v];
-    }),
-    ...(passLines ? [passLines.lo, passLines.hi] : []),
-    ...(options.valueAxis?.min !== undefined ? [options.valueAxis.min] : []),
-    ...(options.valueAxis?.max !== undefined ? [options.valueAxis.max] : []),
-  ];
-  if (extentValues.length > 0 && extentValues.every((value) => value >= 0)) dLo = Math.max(0, dLo);
-  if (extentValues.length > 0 && extentValues.every((value) => value <= 0)) dHi = Math.min(0, dHi);
-  const stepped = applyTickStep([dLo, dHi], shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings, true);
-  [dLo, dHi] = stepped.domain;
-  if (dLo > 0) {
+  const tickStep = shownTickStep(va.tickStep, axisShown, warnings);
+  let stepped: { domain: [number, number]; ticks?: number[] };
+  if (log) {
+    // With no readings or reference lines, use the same positive fallback as line.
+    stepped = logValueDomain(Number.isFinite(lo) ? lo : 1, Number.isFinite(hi) ? hi : 10, va, warnings, tickStep);
+  } else {
+    // A linear dot axis ends at the data. Labels have their own pixel reserves.
+    let [dLo, dHi] = lo === hi ? niceDomain(lo, hi, 5, { dataExtent: [lo, hi], maxWasteFraction: 0.15 }) : [lo, hi];
+    const extentValues = [
+      ...allDotValues,
+      ...allRangeValues,
+      ...localAnns.flatMap((ann) => {
+        const v = valueLineValue(ann);
+        return v === undefined ? [] : [v];
+      }),
+      ...(passLines ? [passLines.lo, passLines.hi] : []),
+      ...(va.min !== undefined ? [va.min] : []),
+      ...(va.max !== undefined ? [va.max] : []),
+    ];
+    if (extentValues.length > 0 && extentValues.every((value) => value >= 0)) dLo = Math.max(0, dLo);
+    if (extentValues.length > 0 && extentValues.every((value) => value <= 0)) dHi = Math.min(0, dHi);
+    stepped = applyTickStep([dLo, dHi], tickStep, warnings, true);
+  }
+  const [dLo, dHi] = stepped.domain;
+  if (!log && dLo > 0) {
     warnings.push({
       code: 'nonzero-baseline',
       severity: 'info',
       message: `value scale starts at ${dLo}, not zero — legitimate for position encoding (dot chart)`,
     });
   }
-  const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
+  const x = (log ? logScale : linearScale)(stepped.domain, [plot.x, plot.x + plot.w]);
 
   // ---- assemble scene ----
   const nodes: SceneNode[] = [...frameResult.nodes];
@@ -754,14 +772,15 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // reads its stems from the baseline.
   const gridOn = options.valueAxis?.gridlines ?? variant !== 'lollipop';
   if (axisShown) {
+    const spec = percentAxis ? valueSpec.percentSpec : valueSpec.spec;
     const axisResult = layoutValueAxis(
       {
         scale: x,
-        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: gridOn,
-        ...(percentAxis ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: fmt, formatSpec: valueSpec.spec }),
+        ...(log ? horizontalLogTicks(x, spec, tickFont, measure, va, stepped.ticks)
+          : { ticks: stepped.ticks, format: percentAxis ? valueSpec.fmtPercent : fmt, formatSpec: spec }),
         theme,
         measure,
         canvasWidth: size.width,
@@ -1063,9 +1082,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         });
       }
 
-      // lollipop stem from the zero baseline to the value
+      // The stem starts at zero on a linear axis and at the lower bound on a log axis.
       if (variant === 'lollipop') {
-        const x0 = x(0);
+        const x0 = x(log ? dLo : 0);
         const stemId = `stem:${cat.id}`;
         nodes.push({
           t: 'line',

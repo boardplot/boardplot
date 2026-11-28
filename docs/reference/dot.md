@@ -61,6 +61,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
+| valueAxis.log | boolean \| string | `'x'` (or another value of its type) |  | Set true or 'x' for a horizontal log10 value axis. Values and bounds must be positive. Equal ratios occupy equal distances. |
 | topN | object \| integer |  |  | Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, gap. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
@@ -80,7 +81,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | range.values | boolean |  |  | Default false. true prints each range's low and high value beside its caps. |
 | range.midLabel | string |  |  | The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others. |
 
-Plus the [shared options](options.md). This type does not accept `labelPosition`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `labelPosition`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -127,3 +128,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | highlighted-dumbbell-key | torture | Actual and plan remain distinct |
 | fraction-reference-line | torture | A fraction target shares the percentage scale |
 | column-overrides | example | columnOverrides sets the widths, alignment and head word of the name and gap columns |
+| latency-by-operation-log | example | Response times and a target on a log axis |

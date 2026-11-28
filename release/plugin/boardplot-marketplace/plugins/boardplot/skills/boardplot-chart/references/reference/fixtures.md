@@ -1004,6 +1004,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | highlighted-dumbbell-key | dot.dumbbell | torture | Actual and plan remain distinct |
 | fraction-reference-line | dot.dot | torture | A fraction target shares the percentage scale |
 | column-overrides | dot.dumbbell | example | columnOverrides sets the widths, alignment and head word of the name and gap columns |
+| latency-by-operation-log | dot.dot | example | Response times and a target on a log axis |
 
 ## cohort
 
@@ -1146,6 +1147,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | twelve-teams-median-column | box | example | Twelve dense rows print their medians in one column beside n |
 | outliers-axis-break | box | example | A value-axis break across the empty range keeps two far outliers visible |
 | column-overrides | box | example | columnOverrides sets the name and n columns |
+| latency-distribution-log | box | example | Response time distributions and outliers on a log axis |
 
 ## waffle
 

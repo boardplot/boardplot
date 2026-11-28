@@ -207,14 +207,13 @@ export const VALUE_AXIS_CAPABILITY = {
   },
   // Bars and columns cannot use a log scale without distorting their lengths.
   log: {
-    implementedBy: ['line', 'scatter'],
+    implementedBy: ['line', 'scatter', 'dot', 'box'],
   },
 } as const;
 
 export const VALUE_AXIS_ONLY = {
-  // A plain linear read of the observations.
   box: {
-    keys: ['show', 'min', 'max', 'gridlines', 'break'],
+    keys: ['show', 'min', 'max', 'gridlines', 'break', 'log'],
   },
   waterfall: {
     keys: ['break'],

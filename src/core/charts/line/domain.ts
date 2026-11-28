@@ -47,8 +47,8 @@ import type { LineInterpolation, LineOptionTarget, LineOptions } from './types';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { checkPointBudget } from '../../itemBudget';
-import { logDomain } from '../logAxis';
-import { authoredDecimals, shareSetDecimals } from '../../formatPrecision';
+import { logValueDomain } from '../logAxis';
+import { shareSetDecimals } from '../../formatPrecision';
 import { validateLineLog, validateLogTolerances } from './log';
 
 /**
@@ -565,43 +565,7 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
   const dataLo = lo;
   const dataHi = hi;
   if (log) {
-    let base = logDomain(lo, hi);
-    if (!(base[0] > 0) || !Number.isFinite(base[1]) || !(base[1] > base[0])) {
-      base = lo < hi ? [lo, hi] : lo <= Number.MAX_VALUE / 10 ? [lo, lo * 10] : [lo / 10, lo];
-    }
-    let [dLo, dHi] = applyAxisBounds(base, [lo, hi], va, warnings);
-    if (!(dHi > dLo)) {
-      warnings.push({
-        code: 'value-axis-bounds-expanded', severity: 'warn',
-        message: 'the requested value-axis bounds leave no range, so the log axis uses a positive range around the data',
-        suggest: 'set valueAxis.min below valueAxis.max',
-      });
-      [dLo, dHi] = base;
-    }
-    let stepTicks: number[] | undefined;
-    if (va.tickStep !== undefined) {
-      const step = va.tickStep;
-      const from = Math.floor((va.min !== undefined ? dLo : dataLo) / step);
-      const to = Math.ceil((va.max !== undefined ? dHi : dataHi) / step);
-      const multiple = (index: number) => {
-        const value = index * step;
-        return step >= 1e-20 && value < 1e21 ? Number(value.toFixed(authoredDecimals(step))) : value;
-      };
-      if (Number.isSafeInteger(to) && to - Math.max(1, from) <= 20 && to > Math.max(1, from)) {
-        if (from > 0) dLo = Math.min(multiple(from), dataLo);
-        else warnings.push({
-          code: 'log-tick-step-zero', severity: 'warn',
-          message: `valueAxis.tickStep ${step} would snap the lower bound to zero, so the log axis keeps its positive lower bound`,
-          suggest: 'use a smaller tick step or remove valueAxis.tickStep',
-        });
-        dHi = Math.max(multiple(to), dataHi);
-        stepTicks = Array.from({ length: to - Math.max(1, from) + 1 }, (_, i) => multiple(Math.max(1, from) + i));
-      } else warnings.push({
-        code: 'tick-step-ignored', severity: 'warn',
-        message: `valueAxis.tickStep ${step} does not produce 2 to 21 positive ticks over the log domain; log ticks are drawn instead`,
-        suggest: 'pick a step that gives 2 to 21 positive ticks',
-      });
-    }
+    const { domain: [dLo, dHi], ticks: stepTicks } = logValueDomain(lo, hi, va, warnings, va.tickStep);
     return { dLo, dHi, domainExtendingValueLines, bumpLadderMax: 1, stepTicks, gridDataHi: dataHi };
   }
   let dLo: number;

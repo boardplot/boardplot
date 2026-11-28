@@ -1,15 +1,84 @@
 /**
- * Log axes for line and scatter: the log10 scale, which axes `valueAxis.log`
+ * Log axes for line, scatter, dot and box: the log10 scale, which axes `valueAxis.log`
  * puts on it, the domain such an axis gets, the values it refuses, the tick
  * set that fits and the tick text. This module stays outside the shared scale module, so other entries do not load it.
  */
 
 import { sweepHide } from '../collide';
+import { authoredDecimals } from '../formatPrecision';
 import { MAGNITUDE_DIVISOR, RULE_SET, formatWithSpec, neededDecimals, type NumberFormatSpec } from '../formatSpec';
+import { NormalizeError } from '../normalize/shared';
 import { fixedRuleSet, tickScale } from '../numberRule';
-import type { LinearScale } from '../scale';
+import { applyAxisBounds, type LinearScale } from '../scale';
 import type { FontSpec, TextMeasurer } from '../text';
+import { annotationRef, type Annotation } from '../types/annotations';
+import { cellValue, type RangeCell } from '../types/cell';
 import type { ValueAxisOptions } from '../types/options';
+import type { LintWarning } from '../types/scene';
+
+export const dropLog = [{ op: 'remove' as const, path: '/options/valueAxis/log' }];
+
+export function nonpositive(path: (string | number)[], value: number | string, pointer = path): never {
+  const name = path.map((part, index) => typeof part === 'number' ? `[${part}]` : `${index ? '.' : ''}${part}`).join('');
+  throw new NormalizeError('log-nonpositive', name,
+    `${name} is ${value}; a log scale has no place for zero or a negative value`,
+    'use a value above zero or remove valueAxis.log', dropLog, pointer);
+}
+
+export function validateLogBounds(axis: ValueAxisOptions): void {
+  for (const key of ['min', 'max'] as const) {
+    const value = axis[key];
+    if (value !== undefined && value <= 0) nonpositive(['options', 'valueAxis', key], value);
+  }
+  if (axis.includeZero) nonpositive(['options', 'valueAxis', 'includeZero'], 'true');
+}
+
+/** Dot and box each have one numeric axis. Check direct React requests as well as parsed specs. */
+export function horizontalLogAxis(type: 'dot' | 'box', axis: ValueAxisOptions): boolean {
+  if (!axis.log) return false;
+  if (axis.log !== true && axis.log !== 'x') {
+    throw new NormalizeError('invalid-options', 'options.valueAxis.log', `${type} has a horizontal value axis`,
+      "set valueAxis.log to true or 'x'", [{ op: 'replace', path: '/options/valueAxis/log', value: true }], ['options', 'valueAxis', 'log']);
+  }
+  validateLogBounds(axis);
+  return true;
+}
+
+/** Check the source indices before keyed cells or categories are reordered. */
+export function validateLogSeriesValues(series: readonly { values: (RangeCell | { categoryId: string; value: RangeCell })[] }[], withRanges = false): void {
+  series.forEach((s, si) => {
+    if (!Array.isArray(s.values)) return;
+    s.values.forEach((raw, ci) => {
+      const keyed = raw !== null && typeof raw === 'object' && 'categoryId' in raw && 'value' in raw;
+      const cell = keyed ? raw.value : raw;
+      const value = cellValue(cell);
+      if (typeof value === 'number' && value <= 0) {
+        nonpositive(['data', 'series', si, 'values', ci, ...(keyed ? ['value'] : [])], value);
+      }
+      if (withRanges && cell && typeof cell === 'object' && 'range' in cell && cell.range) {
+        for (const key of ['low', 'high', 'mid'] as const) {
+          const bound = cell.range[key];
+          if (bound !== undefined && bound <= 0) nonpositive(['data', 'series', si, 'values', ci, ...(keyed ? ['value'] : []), 'range', key], bound);
+        }
+      }
+    });
+  });
+}
+
+/** Point at the annotation the author wrote, even after the request has filtered the list. */
+export function nonpositiveAnnotation(ann: unknown, index: number, field: string[], value: number): never {
+  const { segments } = annotationRef(ann, index);
+  return segments.length ? nonpositive([...segments, ...field], value) : nonpositive(['options', 'annotations', index, ...field], value, []);
+}
+
+export function validateLogValueLine(ann: Extract<Annotation, { kind: 'valueLine' }>, index: number): void {
+  if (typeof ann.value === 'number' && ann.value <= 0) nonpositiveAnnotation(ann, index, ['value'], ann.value);
+  if (typeof ann.tolerance === 'object') {
+    for (const key of ['low', 'high'] as const) {
+      if (ann.tolerance[key] <= 0) nonpositiveAnnotation(ann, index, ['tolerance', key], ann.tolerance[key]);
+    }
+  }
+}
 
 /**
  * Log10 scale over a positive domain. It answers the LinearScale calls, so a
@@ -111,6 +180,47 @@ export function logDomain(min: number, max: number): [number, number] {
   return [lo, hi];
 }
 
+/** Apply authored bounds without clipping data. An explicit step can only place positive ticks. */
+export function logValueDomain(lo: number, hi: number, axis: ValueAxisOptions, warnings: LintWarning[], step?: number): { domain: [number, number]; ticks?: number[] } {
+  let base = logDomain(lo, hi);
+  if (!(base[0] > 0) || !Number.isFinite(base[1]) || !(base[1] > base[0])) {
+    base = lo < hi ? [lo, hi] : lo <= Number.MAX_VALUE / 10 ? [lo, lo * 10] : [lo / 10, lo];
+  }
+  let [dLo, dHi] = applyAxisBounds(base, [lo, hi], axis, warnings);
+  if (!(dHi > dLo)) {
+    warnings.push({
+      code: 'value-axis-bounds-expanded', severity: 'warn',
+      message: 'the requested value-axis bounds leave no range, so the log axis uses a positive range around the data',
+      suggest: 'set valueAxis.min below valueAxis.max',
+    });
+    [dLo, dHi] = base;
+  }
+  if (step === undefined) return { domain: [dLo, dHi] };
+  const from = Math.floor((axis.min !== undefined ? dLo : lo) / step);
+  const to = Math.ceil((axis.max !== undefined ? dHi : hi) / step);
+  const first = Math.max(1, from);
+  if (!Number.isSafeInteger(to) || to - first > 20 || !(to > first)) {
+    warnings.push({
+      code: 'tick-step-ignored', severity: 'warn',
+      message: `valueAxis.tickStep ${step} does not produce 2 to 21 positive ticks over the log domain; log ticks are drawn instead`,
+      suggest: 'pick a step that gives 2 to 21 positive ticks',
+    });
+    return { domain: [dLo, dHi] };
+  }
+  const multiple = (index: number) => {
+    const value = index * step;
+    return step >= 1e-20 && value < 1e21 ? Number(value.toFixed(authoredDecimals(step))) : value;
+  };
+  if (from > 0) dLo = Math.min(multiple(from), lo);
+  else warnings.push({
+    code: 'log-tick-step-zero', severity: 'warn',
+    message: `valueAxis.tickStep ${step} would snap the lower bound to zero, so the log axis keeps its positive lower bound`,
+    suggest: 'use a smaller tick step or remove valueAxis.tickStep',
+  });
+  dHi = Math.max(multiple(to), hi);
+  return { domain: [dLo, dHi], ticks: Array.from({ length: to - first + 1 }, (_, i) => multiple(first + i)) };
+}
+
 /**
  * A log tick in the axis's format spec: log ticks span decades, so each
  * prints the decimals it needs, $0.4 beside $1 and $100, where one decimal
@@ -165,5 +275,22 @@ export function fitLogTicks(
     if (sweepHide(inner, gap).every(Boolean)) return ticks;
   }
   return tiers[tiers.length - 1]!;
+}
+
+/** Format the horizontal tick labels at their own precision and choose the set that fits the plot. */
+export function horizontalLogTicks(scale: LinearScale, spec: NumberFormatSpec, font: FontSpec, measure: TextMeasurer, axis: ValueAxisOptions, ticks?: number[]) {
+  const format = logSpecFormat(spec, scale.domain);
+  if (ticks) return { format, ticks };
+  const fitted = fitLogTicks(scale, 'x', format, font, measure);
+  // An automatic end such as 0.9 must not displace 1 when only one label fits.
+  const crowdsDecade = (end: number, next: number) => {
+    const power = Math.log10(next);
+    if (Math.abs(power - Math.round(power)) > 1e-9) return false;
+    const widths = measure(format(end), font).width + measure(format(next), font).width;
+    return Math.abs(scale(end) - scale(next)) < widths / 2 + 4;
+  };
+  if (axis.min === undefined && fitted.length > 2 && crowdsDecade(fitted[0]!, fitted[1]!)) fitted.shift();
+  if (axis.max === undefined && fitted.length > 2 && crowdsDecade(fitted.at(-1)!, fitted.at(-2)!)) fitted.pop();
+  return { format, ticks: fitted };
 }
 

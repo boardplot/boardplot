@@ -2,7 +2,7 @@
 
 # Boardplot manual
 
-Contents: [What Boardplot is](#what-boardplot-is), [The spec](#the-spec), [Choosing a chart](#choosing-a-chart), [Bartable totals](#bartable-totals), [Getting a chart with MCP](#getting-a-chart-with-mcp), [Getting a chart with the CLI](#getting-a-chart-with-the-cli), [Getting a chart in React](#getting-a-chart-in-react), [Story steps](#story-steps), [Notes under the chart](#notes-under-the-chart), [Sizing](#sizing), [Reading errors and warnings](#reading-errors-and-warnings), [Position of bar value labels](#position-of-bar-value-labels), [Moving text and drawing on a chart](#moving-text-and-drawing-on-a-chart), [Log scales on a line](#log-scales-on-a-line), [Named reference bands on a line](#named-reference-bands-on-a-line), [Times and numbers on the x axis of a line](#times-and-numbers-on-the-x-axis-of-a-line), [Calendar ticks on dated categories](#calendar-ticks-on-dated-categories), [Themes](#themes), [Where the reference is](#where-the-reference-is).
+Contents: [What Boardplot is](#what-boardplot-is), [The spec](#the-spec), [Choosing a chart](#choosing-a-chart), [Bartable totals](#bartable-totals), [Getting a chart with MCP](#getting-a-chart-with-mcp), [Getting a chart with the CLI](#getting-a-chart-with-the-cli), [Getting a chart in React](#getting-a-chart-in-react), [Story steps](#story-steps), [Notes under the chart](#notes-under-the-chart), [Sizing](#sizing), [Reading errors and warnings](#reading-errors-and-warnings), [Position of bar value labels](#position-of-bar-value-labels), [Moving text and drawing on a chart](#moving-text-and-drawing-on-a-chart), [Log scales on a line](#log-scales-on-a-line), [Log scales on dot and box charts](#log-scales-on-dot-and-box-charts), [Named reference bands on a line](#named-reference-bands-on-a-line), [Times and numbers on the x axis of a line](#times-and-numbers-on-the-x-axis-of-a-line), [Calendar ticks on dated categories](#calendar-ticks-on-dated-categories), [Themes](#themes), [Where the reference is](#where-the-reference-is).
 
 To have an AI agent build a slide deck, an analysis page, a React dashboard or a report with Boardplot charts, start with [Use cases](use-cases.md).
 
@@ -1053,6 +1053,14 @@ A `line` or `arrow` end may also be `{ "annotationId": "launch-note" }`, the `id
 ## Log scales on a line
 
 Set `options.valueAxis.log` to `true` or `'y'` to draw a plain line with positive values and value-axis bounds on a log10 axis. Area and bump variants, percent mode, trends, phases, monotone fans, and gap fills with mismatched or monotone interpolation are refused.
+
+## Log scales on dot and box charts
+
+Set `options.valueAxis.log` to `true` or `"x"` to draw a horizontal log10 axis. The distance from 1 to 10 equals the distance from 10 to 100. Dot positions, ranges and reference lines use this scale. A lollipop stem starts at the lower axis bound. Box charts compute medians, quartiles, whiskers and outliers from the raw observations, then place each value on the log axis.
+
+Values and axis bounds must be positive. A zero or negative value is refused with `log-nonpositive`. Use `valueAxis.min` and `valueAxis.max` to set the bounds. A bound that would hide data expands to the data and produces a warning. A box chart with both `log` and `break` draws the log axis and warns that it omitted the break.
+
+Bar and column charts refuse log scales because they encode values by length. Use a dot chart for a log scale or `valueAxis.break` for a broken bar or column axis.
 
 ## Named reference bands on a line
 
