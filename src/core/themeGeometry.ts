@@ -1,7 +1,7 @@
 import type { Geometry } from './types/scene';
 import type { RenderTarget } from './types/options';
 import type { PresentationInfo } from './types/sizing';
-import { naturalOutputSize, targetFloorsPx } from './target';
+import { narrowDashboard, naturalOutputSize, targetFloorsPx, typeClassCap } from './target';
 import { typeWidthClass, type TypeWidthClass } from './theme';
 import type { Theme } from './types/theme';
 import { TABLE_HEAD_PARTS, tableHeadFloorPx } from './typeFloors';
@@ -53,7 +53,9 @@ export function tableFitThemeTokens(theme: Theme, target: RenderTarget) {
 
 /** Output metadata from the final layout. Text roles are supplied by the text lanes. */
 export function presentationInfo(geometry: Geometry<object, object>, target: RenderTarget, inheritedClass?: TypeWidthClass, textScale = 1): PresentationInfo {
-  const floors = targetFloorsPx(target);
+  const narrow = inheritedClass ? typeClassCap() === 'XS' && target === 'dashboard' : narrowDashboard(target, geometry.size.width);
+  const typeClass = narrow ? 'XS' : geometry.type === 'kpi' || geometry.type === 'bullet' ? 'M' : inheritedClass ?? typeWidthClass(geometry.size.width);
+  const floors = targetFloorsPx(target, 1, typeClass);
   let minimumScale = 0.9;
   for (const node of geometry.scene) {
     if (node.t !== 'text' || node.lines.every(line => line.length === 0) || node.opacity === 0) continue;
@@ -62,7 +64,7 @@ export function presentationInfo(geometry: Geometry<object, object>, target: Ren
     minimumScale = Math.max(minimumScale, (tableHead ? tableHeadFloorPx(target) : floors[node.typeRole ?? 'label']) / node.font.size);
   }
   return { target,
-    typeClass: geometry.type === 'kpi' || geometry.type === 'bullet' ? 'M' : inheritedClass ?? typeWidthClass(geometry.size.width),
+    typeClass,
     naturalSize: naturalOutputSize(target, geometry.size),
     minDisplayWidth: geometry.size.width * minimumScale,
     ...(textScale === 1 ? {} : { textScale }),

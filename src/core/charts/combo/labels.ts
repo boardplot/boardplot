@@ -212,12 +212,12 @@ function grandTotalRow(env: ComboEnv, domain: ComboDomain, area: ComboArea, gtCo
     const edgeY = above ? y(posTop[ci]!) : y(negBot[ci]!);
     return { x: band.center(ci) - size.width / 2, y: above ? edgeY - size.height - 4 : edgeY + 4, w: size.width, h: size.height };
   };
-  const rowFont = !insideFont && valueRowCrowded(texts.map(outerSeat(strongFont)))
+  const rowFont = !insideFont && valueRowCrowded(texts.map(outerSeat(strongFont)), env.size.width, strongFont.size)
     ? stepDownFont(env.theme, strongFont, 'label', domain.options.target, textScaleOf(domain.options)) : undefined;
   const outerFont = rowFont ?? strongFont;
   // A stack still crowded at the step: every second total prints, counted back from
   // the latest column; the notes list names the others.
-  const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)));
+  const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)), env.size.width, outerFont.size);
   const thinned = crowded && domain.columns.length > 1;
   const skips = (ci: number) => thinned && !nets.has(ci) && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(domain.cats[ci]!.id);
   return { texts, totalShows, skips, nets, authored, bare, wordsAt, insideFont, outerFont, rowFont, crowded, thinned, toDateIds };

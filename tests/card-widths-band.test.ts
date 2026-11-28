@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { canDraw } from '../src/index';
 import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { cardFloorProblems, type CardRequest } from './helpers/cardFloor';
@@ -30,6 +31,15 @@ const KNOWN = new Set([
 ]);
 
 describe('band card widths', () => {
+  // A horizontal dashboard bridge needs 80 px of plot after its step names and values take their space.
+  it('refuses a bridge that cannot keep 80 px of plot', () => {
+    const data = { items: [{ id: 's', label: 'Start', type: 'total', value: 100 }, { id: 'a', label: 'Price', value: 20 },
+      { id: 'b', label: 'Volume', value: -10 }, { id: 'e', label: 'End', type: 'total' }] };
+    const at = (width: number) => canDraw({ type: 'waterfall', data, options: { target: 'dashboard', variant: 'horizontal', size: { width, height: 240 } } });
+    expect(at(200)).toMatchObject({ ok: false, code: 'size-below-floor' });
+    expect(at(203).ok).toBe(true);
+  });
+
   // A sweep measures and draws every fixture at its floor, 400 and 320 px: about 19 s for waterfall on a loaded machine.
   it.each(BAND)('%s keeps the card-width contract on every fixture', (type) => {
     const broken = getFixtures(type).flatMap((fixture) =>

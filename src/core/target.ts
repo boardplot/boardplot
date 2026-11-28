@@ -29,8 +29,27 @@ export const SIZE_PRESETS: Record<SizePreset, Size> = {
 };
 
 type TypeColumn = Readonly<Record<TypeRoleName, number>>;
+export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
+
+export function narrowDashboard(target: RenderTarget | undefined, width: number): boolean {
+  return target === 'dashboard' && width < 400;
+}
+
+let classCap: TargetTypeClass | undefined;
+export function typeClassCap(): TargetTypeClass | undefined {
+  return classCap;
+}
+
+/** Limit the type class for one synchronous layout, including its font fitting. */
+export function withTypeClassCap<T>(cap: TargetTypeClass | undefined, run: () => T): T {
+  const outer = classCap;
+  classCap = cap;
+  try { return run(); } finally { classCap = outer; }
+}
+
 type TargetTable = {
   unit: 'px' | 'pt'; S: TypeColumn; M: TypeColumn; L: TypeColumn; floors: TypeColumn; heroMinimum: number;
+  XS?: TypeColumn; xsFloors?: TypeColumn;
   /** The headline of each panel in a multi-panel waffle, from 720 px canvas width and below it. */
   panelHero?: { wide: number; narrow: number };
 };
@@ -40,7 +59,7 @@ const column = (title: number, subtitle: number, label: number, axis: number, fo
 
 /** type tables. Only this module converts them to layout pixels. */
 export const TARGET_TYPE_TABLES: Readonly<Record<RenderTarget, Readonly<TargetTable>>> = Object.freeze({
-  dashboard: Object.freeze({ unit: 'px', S: column(16, 13, 13, 13, 12, 11), M: column(18, 13, 13, 13, 12, 11), L: column(20, 14, 14, 14, 12, 11), floors: column(14, 12, 12, 12, 11, 11), heroMinimum: 24 }),
+  dashboard: Object.freeze({ unit: 'px', XS: column(16, 12, 12, 12, 11, 11, 11), S: column(16, 13, 13, 13, 12, 11), M: column(18, 13, 13, 13, 12, 11), L: column(20, 14, 14, 14, 12, 11), floors: column(14, 12, 12, 12, 11, 11), xsFloors: column(14, 11, 11, 11, 11, 11), heroMinimum: 24 }),
   // Report type steps by width. S (< 720 px): title 17, subtitle 13, labels 12, key and secondary 11.
   // M (720-1079 px): title 20, subtitle 14, labels 13, key and secondary 12. Secondary text (ticks, axis titles,
   // AC | FC markers, background series labels) takes the secondary step. The footer draws 11 px (footer.ts
@@ -131,11 +150,13 @@ export function floorTextScale(target: RenderTarget): number | undefined {
 }
 
 /** The target's readability floors, raised with a `textScale` above 1; a smaller scale stops at them (scaleTextAtFloor). */
-export function targetFloorsPx(target: RenderTarget, textScale = 1): Readonly<Record<TypographyRole, number>> {
+export function targetFloorsPx(target: RenderTarget, textScale = 1, typeClass = classCap): Readonly<Record<TypographyRole, number>> {
   const table = TARGET_TYPE_TABLES[target];
+  const narrow = typeClass === 'XS' ? table.xsFloors : undefined;
   const floors = {
-    ...mapColumn(table.floors, table.unit), kpiValue: toLayoutPx(table.heroMinimum, table.unit),
-    panelValue: toLayoutPx(table.panelHero?.narrow ?? table.heroMinimum, table.unit),
+    ...mapColumn(narrow ?? table.floors, table.unit),
+    kpiValue: toLayoutPx(narrow?.label ?? table.heroMinimum, table.unit),
+    panelValue: toLayoutPx(narrow?.label ?? table.panelHero?.narrow ?? table.heroMinimum, table.unit),
   };
   return Object.freeze(textScale <= 1 ? floors : Object.fromEntries(Object.entries(floors).map(([role, size]) => [role, scaleTextPx(size, textScale)])) as typeof floors);
 }
@@ -145,15 +166,15 @@ function mapColumn(values: TypeColumn, unit: LengthUnit): Record<TypeRoleName, n
   return Object.fromEntries(Object.entries(values).map(([role, size]) => [role, toLayoutPx(size, unit)])) as Record<TypeRoleName, number>;
 }
 
-export function targetTypeSizesPx(target: RenderTarget, typeClass: 'S' | 'M' | 'L'): TypeColumn {
+export function targetTypeSizesPx(target: RenderTarget, typeClass: TargetTypeClass): TypeColumn {
   const table = TARGET_TYPE_TABLES[target];
-  return mapColumn(table[typeClass], table.unit);
+  return mapColumn(table[typeClass] ?? table.S, table.unit);
 }
 
 /** `resolvedMTitlePx` is the title as resolved, `textScale` included; the hero follows the same scale. */
 export function kpiHeroSizesPx(target: RenderTarget, resolvedMTitlePx: number, textScale = 1): { preferred: number; minimum: number } {
   const table = TARGET_TYPE_TABLES[target];
-  const minimum = toLayoutPx(table.heroMinimum, table.unit);
+  const minimum = toLayoutPx((classCap === 'XS' ? table.xsFloors?.label : undefined) ?? table.heroMinimum, table.unit);
   const title = resolvedMTitlePx / textScale / toLayoutPx(1, table.unit);
   const preferred = Math.max(table.heroMinimum, Math.round(1.5 * title));
   return { preferred: scaleTextAtFloor(toLayoutPx(preferred, table.unit), textScale, minimum), minimum: scaleTextAtFloor(minimum, textScale, minimum) };

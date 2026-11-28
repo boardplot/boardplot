@@ -34,9 +34,9 @@ import { zoneYearSpan } from '../../timeAxis';
 import { corridorEdgeRects, emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryBandFromCenters, categoryTargetFields, spliceAnnotationNodes, type CategoryBand } from '../../annotateFields';
 import { rectsOverlap, type Rect } from '../../geometry';
-import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
+import { chartSizing, heightOmitted, PLOT_FLOOR_RECT, resolveSizing } from '../../sizing';
 import { DeferredShownMarks } from '../../shownMarks';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { TARGET_SIZE, typeClassCap, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
 import { commitClaims, createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { TickBandDerived } from '../../label/tickRow';
@@ -73,7 +73,7 @@ import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import type { LineTrend } from './trend';
 
 import type { EmittedLane } from '../../eventLane';
-import { pushAll } from '../../arrays';
+import { minOf, pushAll } from '../../arrays';
 import { rebaseNotes } from './footnotes';
 
 export interface LineMarks {
@@ -778,9 +778,21 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   if (lineShown.wouldShow) marks.wouldShow = lineShown.wouldShow;
   // A trend's key prints its slope and r², never its intercept. Without its key entry no text prints either.
   const keyed = new Set(area.frame.legend?.items.map((item) => item.id));
+  // The narrow card needs a pair of period names. The plot's margins, axis and end labels keep their space.
+  let sizing: Geometry['sizing'];
+  if (typeClassCap() === 'XS' && plan.catLabelsShown && !domain.x && !options.categoryAxis?.dateTicks && cats.length > 1) {
+    const row = area.catPlan;
+    const latest = row.infos.at(-1)!;
+    const earlier = minOf(row.infos.slice(0, -1).map(info => info.w));
+    const pairWidth = env.size.width - plot.w + earlier + 4 + latest.w;
+    const shown = solved.placed.filter(label => label.kind === 'category' && label.owner.categoryId !== undefined && !label.hidden);
+    const minWidth = shown.length >= 2 ? Math.min(env.size.width, pairWidth) : Math.max(env.size.width + 1, pairWidth);
+    sizing = resolveSizing({ ...chartSizing('line'), minWidth: 0, minHeight: 0 }, env.size, { minWidth });
+  }
   return withUnprintedClaims({
     type: 'line',
     size: env.size,
+    ...(sizing ? { sizing } : {}),
     plot,
     // The floor counts data height only, for an area as for a line: a header
     // or an annotation band above the data does not shrink the plot.

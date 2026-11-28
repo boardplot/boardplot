@@ -17,7 +17,7 @@ import { readerFloorPx } from '../../typeFloors';
 
 import type { Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
-import { PRIORITY, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
+import { PRIORITY, valueLabelGap, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import type { LabelContent, LabelDensity } from '../../types/options';
 import type { LintWarning, PlacedLabel, ShownTexts } from '../../types/scene';
 import type { OccupiedIndex } from '../../label/occupied';
@@ -287,19 +287,15 @@ export function compactValueTextSize(
   return { ...measured, height: Math.ceil(fontSize * 0.9 * 2) / 2 };
 }
 
-/** The air neighbouring value labels keep where their rows overlap. */
-const VALUE_LABEL_NEIGHBOUR_GAP = 6;
-
 /**
- * Whether two neighbouring value labels, at their natural seats,
- * stand closer than VALUE_LABEL_NEIGHBOUR_GAP while their heights overlap.
- * A crowded row steps its font down one step as a whole before placing.
+ * A row steps down together when neighbouring values crowd their natural seats.
  */
-export function valueRowCrowded(seats: readonly (Rect | null | undefined)[]): boolean {
+export function valueRowCrowded(seats: readonly (Rect | null | undefined)[], width: number, fontSize: number): boolean {
+  const gap = valueLabelGap(width, fontSize);
   const row = seats.filter((seat): seat is Rect => !!seat).sort((a, b) => a.x - b.x);
   return row.some((a, i) => {
     const b = row[i + 1];
-    return b !== undefined && b.x - (a.x + a.w) < VALUE_LABEL_NEIGHBOUR_GAP && a.y < b.y + b.h && b.y < a.y + a.h;
+    return b !== undefined && b.x - (a.x + a.w) < gap && a.y < b.y + b.h && b.y < a.y + a.h;
   });
 }
 

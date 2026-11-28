@@ -1,8 +1,8 @@
 import { PLAN_ONLY, RETAIN_TABLE_RESULT, isPlanned, materializeLayout, requestMemo, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
-import { classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
-import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from './target';
+import { classStepWidth, dashboardCardTheme, DEFAULT_PRESET, layoutStepKey, panelTypeClass, resolveTargetTheme, WIDE_CANVAS_MIN_WIDTH } from './theme';
+import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, TARGET_SIZE, typeClassCap, withTypeClassCap, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { localeStrings, singleStops } from './strings';
 import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types/scene';
@@ -34,6 +34,11 @@ const BAND_FAMILY = ['waterfall', 'pareto', 'variance', 'pyramid', 'box', 'mekko
  * draws full where its content fits and compact below that.
  */
 export const CARD_MIN_WIDTH = 280;
+/** Dashboard cards whose layout measures its own width below the usual 280 px floor. */
+export const MEASURED_CARD_WIDTH = 200;
+export function measuredCardType(type: string): boolean {
+  return type === 'line' || type === 'bar' || type === 'waterfall';
+}
 /**
  * The narrowest canvas a KPI, pie or column draws on (a map: MAP_MIN_WIDTH). Between this and CARD_MIN_WIDTH the
  * chart's measured content decides: a KPI's figure, a pie's circle and labels, a map's key and small
@@ -2197,7 +2202,8 @@ export function sizeGate<D, O extends ChartOptions, M extends object, DV extends
   // compact floor, and a measured requirement (a bar's five rows) still gates.
   // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
   // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
-  const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
+  const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH)
+    : narrowDashboard(options?.target, requested.width) && measuredCardType(definition.type) ? Math.min(floor.width, MEASURED_CARD_WIDTH) : floor.width;
   const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   return { tight, gatePolicy };
 }
@@ -2223,8 +2229,23 @@ function measuredFrameRefusal(type: string, title: string, size: Size, sizing: R
 function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
 ): LayoutResult<M, DV> {
-  const declared = declaredSizing(definition, options);
   const requested = resolveSize(options?.size, options?.target);
+  const nested = panelTypeClass(options) !== undefined;
+  if (options?.target === 'dashboard' && (nested ? typeClassCap() === 'XS' : narrowDashboard(options.target, requested.width))) {
+    const ref = options.theme;
+    const theme = dashboardCardTheme(resolveTargetTheme(ref, 'dashboard'));
+    const card = { ...options, theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme } };
+    return withTypeClassCap('XS', () => fitCanvas(definition, data, card, compactFallback, requested));
+  }
+  return typeClassCap() === 'XS'
+    ? withTypeClassCap(panelTypeClass(options), () => fitCanvas(definition, data, options, compactFallback, requested))
+    : fitCanvas(definition, data, options, compactFallback, requested);
+}
+
+function fitCanvas<D, O extends ChartOptions, M extends object, DV extends object>(
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, requested: Size,
+): LayoutResult<M, DV> {
+  const declared = declaredSizing(definition, options);
   const nested = panelTypeClass(options) !== undefined;
   const floor = requestFloor(declared);
   const { tight, gatePolicy } = sizeGate(definition, data, options, compactFallback, declared, requested);

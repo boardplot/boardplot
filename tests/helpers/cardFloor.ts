@@ -1,5 +1,6 @@
 import { measure } from '../../src/index';
-import { CARD_MIN_WIDTH } from '../../src/core/sizing';
+import { CARD_MIN_WIDTH, MEASURED_CARD_WIDTH, measuredCardType } from '../../src/core/sizing';
+import { valueLabelGap } from '../../src/core/label/solver';
 import { rectLineDistance, type Rect } from '../../src/core/geometry';
 import { defaultMeasurer } from '../../src/core/text';
 import { REFERENCE_LABEL_CLEARANCE } from '../../src/core/markVisibility';
@@ -14,11 +15,11 @@ function at(request: CardRequest, width: number) {
   return measure({ ...request, options: { ...request.options, size: { width } } } as never) as any;
 }
 
-/** The scorecard's (reference clearance under 3 px) and (value labels of one series under 6 px apart). */
+/** Reference lines keep 3 px clear. Adjacent values keep the gap for their canvas and text size. */
 export function overlapProblems(geometry: any): string[] {
   const problems: string[] = [];
   const text = geometry.scene.filter((node: any) => node.t === 'text' && node.opacity !== 0 && node.lines.join('').trim() !== '');
-  const shown = new Set(text.map((node: any) => node.id));
+  const shown = new Map<string, number>(text.map((node: any) => [node.id, node.font.size]));
   const labels = geometry.labels.filter((label: any) => !label.hidden && shown.has(label.nodeId));
   const boxes: Rect[] = labels.map((label: any) => label.rect);
   const boxed = new Set(labels.map((label: any) => label.nodeId));
@@ -39,7 +40,8 @@ export function overlapProblems(geometry: any): string[] {
     const [r, s] = [values[a].rect, values[b].rect];
     if (values[a].owner.seriesId !== values[b].owner.seriesId || values[a].owner.categoryId === values[b].owner.categoryId) continue;
     if (Math.min(r.y + r.h, s.y + s.h) <= Math.max(r.y, s.y) + 1e-6) continue;
-    if (Math.max(r.x, s.x) - Math.min(r.x + r.w, s.x + s.w) + 1e-6 < 6) problems.push(`R2 ${values[a].id} / ${values[b].id}`);
+    const gap = valueLabelGap(geometry.size.width, Math.max(shown.get(values[a].nodeId)!, shown.get(values[b].nodeId)!), geometry.presentation?.typeClass === 'XS');
+    if (Math.max(r.x, s.x) - Math.min(r.x + r.w, s.x + s.w) + 1e-6 < gap) problems.push(`R2 ${values[a].id} / ${values[b].id}`);
   }
   return problems;
 }
@@ -51,9 +53,9 @@ const compact = (geometry: any): boolean =>
 /**
  * The card-width contract for every chart family, with only a width specified:
  * - at the reported minimum width the chart draws;
- * - outside the 8 px width bracket, it draws compact, or refuses with a size of at least 320 px that then draws;
+ * - outside the 8 px width bracket, it draws compact, or names a size at or above its floor that draws;
  * a cohort table's compact form is its tight spacing, which it names with `table-tight-spacing`;
- * - at 400 and 320 px a drawn chart has no or overlap.
+ * - at 400 and 320 px the labels and reference lines keep their clearance.
  * Returns the broken clauses; an empty list passes.
  */
 export function cardFloorProblems(request: CardRequest): string[] {
@@ -68,7 +70,8 @@ export function cardFloorProblems(request: CardRequest): string[] {
   if (under.geometry && !compact(under.geometry)) under = at(request, underWidth = minWidth - 9);
   if (!under.geometry) {
     const fix = under.refused?.warnings.find((warning: any) => warning.code === 'size-below-floor')?.expected?.minimum;
-    if (!fix || fix.width < CARD_MIN_WIDTH) problems.push(`refused at ${underWidth} without a fix of at least ${CARD_MIN_WIDTH} px`);
+    const floor = request.options?.target === 'dashboard' && measuredCardType(request.type) ? MEASURED_CARD_WIDTH : CARD_MIN_WIDTH;
+    if (!fix || fix.width < floor) problems.push(`refused at ${underWidth} without a fix of at least ${floor} px`);
     else if (!measure({ ...request, options: { ...request.options, size: fix } } as never).geometry) problems.push(`its fix ${fix.width} x ${fix.height} does not draw`);
   } else if (!compact(under.geometry)) problems.push(`drew full at ${underWidth}, under its minimum`);
   for (const width of [400, 320]) {

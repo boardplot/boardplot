@@ -49,6 +49,7 @@ import { cardSize } from '../sparkline/card';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
+  canvasMargin,
   contrastInkPaint,
   mixedPaint,
   paintColor,
@@ -90,7 +91,7 @@ import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { chartSizing, heightOmitted, NARROW_FORM, rowSizing } from '../../sizing';
-import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, typeClassCap, type TargetSizeOptions } from '../../target';
 import { compactBulletRefusals } from './refusals';
 import { asColumnHeads, columnHeadFont, fitHead, headRequest } from './columnHead';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
@@ -707,16 +708,13 @@ export function layoutBullet(
 
   // ---- frame (title/subtitle/source/legend measured FIRST) ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-  // Bullet is a CARD (aspect class 'card'), and cards are exempt from the
-  // width classes that key the canvasMargin token: the compact card margins
-  // stay authored.
-  // A bare compact mark sits in someone else's cell and draws edge to edge, as a bare sparkline does,
-  // with 1 px each side for the half strokes of the baseline and a target tick at the end of the scale.
+  // Outside a narrow dashboard, a bare compact mark leaves 1 px for the end strokes.
   const framed = (options.title !== undefined && options.title !== false) || options.subtitle !== undefined
     || options.source !== undefined || authoredNotes(options).length > 0;
-  const margin = compact && !framed
-    ? { top: 0, right: 1, bottom: 0, left: 1, ...options.margin }
-    : { top: 16, right: 20, bottom: 12, left: 20, ...options.margin };
+  const defaultMargin = typeClassCap() === 'XS' ? canvasMargin(theme, size.width) : compact && !framed
+    ? { top: 0, right: 1, bottom: 0, left: 1 }
+    : { top: 16, right: 20, bottom: 12, left: 20 };
+  const margin = { ...defaultMargin, ...options.margin };
   if (targetScale) {
     return layoutBulletOnTargetScale(data, options, {
       rows, theme, size, measure, margin, occupied, warnings, highlights, labelOn, rowFmt, deltaText, deltaBody, deltaTone, deltaVsTarget, columnShows,

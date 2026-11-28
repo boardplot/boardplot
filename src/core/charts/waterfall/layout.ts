@@ -100,7 +100,8 @@ import { composedTextRole } from '../../textRole';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
-import { bandSizing, sameContent, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
+import { bandSizing, sameContent, MIN_COMPACT_PLOT, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
+import { typeClassCap } from '../../target';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -329,6 +330,10 @@ function automaticWaterfall(
   if (options.variant === 'vertical' || dropsOnHorizontal) return staysVertical;
   if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return staysVertical;
   const horizontal = layoutHorizontalWaterfall(data, options);
+  // A crowded dashboard bridge needs room for its names and 80 px between the name and value columns.
+  if (typeClassCap() === 'XS' && horizontal.sizing && horizontal.sizing.minWidth > horizontal.size.width + SIZE_TOLERANCE) {
+    return { geometry: horizontal, horizontal: true };
+  }
   // A finding is the same one when code, severity and owner match; a code alone lets a new omission
   // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
   // hidden labels themselves are compared.
@@ -836,7 +841,7 @@ function layoutHorizontalWaterfall(
   const twoLines = oneLine + 20 > plot.w * GUTTER_MAX_SHARE;
   // The narrowest canvas sets its names on two lines; a wider one may keep them on one.
   const nameNeed = Math.max(0, maxOf(categoryLabels.map((label) => uncutWidth(label, 2))));
-  const minPlotW = Math.max(Math.max(48, nameNeed + 20) + 80 + Math.max(32, valueLabelWidth + 20), (nameNeed + 20) / GUTTER_MAX_SHARE);
+  const minPlotW = Math.max(Math.max(48, nameNeed + 20) + MIN_COMPACT_PLOT + Math.max(32, valueLabelWidth + 20), (nameNeed + 20) / GUTTER_MAX_SHARE);
   // The row pitch is the band step turned on its side (rowPitch above), so the plot height scales with it.
   const rowsNeed = Math.max(
     ((twoLines ? 2 : 1) * lineBox(nameFont) + 2) * (stepPitch !== undefined ? plot.w / stepPitch : 1),
@@ -2504,7 +2509,7 @@ function prepareWaterfallData(data: WaterfallData, options: WaterfallOptions, ca
       type: 'waterfall',
       size,
       sizing: {
-        ...bandSizing('waterfall', size, plot.w + catOverhang, band.step, minPlotW),
+        ...bandSizing('waterfall', size, plot.w + catOverhang, band.step, typeClassCap() === 'XS' ? Math.max(MIN_COMPACT_PLOT + catOverhang, minPlotW) : minPlotW),
         ...(nodes.some(node => node.part === 'barBreak') ? { [HEIGHT_STRUCTURE]: true } : {}),
       },
       plot,

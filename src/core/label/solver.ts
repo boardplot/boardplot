@@ -26,6 +26,7 @@
 import type { Rect } from '../geometry';
 import { boxGap, inflate, rectContains, rectsOverlap, sameRect, segmentHitsRect, type Point } from '../geometry';
 import { labelTypeRole } from '../textRole';
+import { typeClassCap } from '../target';
 import { pickInk } from '../color';
 import { leaderPath } from '../svgPath';
 import type { FontSpec, TextMeasurer } from '../text';
@@ -39,6 +40,10 @@ import { besideOtherPoint, leaderReadsAsOwn, pointOwnership, readsAsOwnPoint, ty
 /** Normative priority bands. */
 /** The air between two side-by-side values of one series. */
 export const SERIES_VALUE_GAP = 6;
+export function valueLabelGap(width: number, fontSize: number, narrow = typeClassCap() === 'XS'): number {
+  if (!narrow) return SERIES_VALUE_GAP;
+  return width < 316 ? 4 : fontSize <= 11 ? 5 : SERIES_VALUE_GAP;
+}
 /** Column and stack totals: one row of values that keeps SERIES_VALUE_GAP between neighbours (type steps). */
 const TOTAL_KINDS: ReadonlySet<string> = new Set(['total', 'grandTotal']);
 const TOTAL_PART = 'totalValue';
@@ -554,11 +559,11 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
 }
 
 /** Adjacent values keep a horizontal gap whenever their rows overlap. */
-function rowValuesCrowd(a: Rect, b: Rect, pad: number): boolean {
-  return rectsOverlap(a, b, pad) || (a.y < b.y + b.h && b.y < a.y + a.h && rectsOverlap(a, b, SERIES_VALUE_GAP));
+function rowValuesCrowd(a: Rect, b: Rect, pad: number, gap: number): boolean {
+  return rectsOverlap(a, b, pad) || (a.y < b.y + b.h && b.y < a.y + a.h && rectsOverlap(a, b, gap));
 }
 
-function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req: LabelRequest) => SlotId | undefined, pad: number) {
+function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req: LabelRequest) => SlotId | undefined, pad: number, width: number) {
   const ranked = order.filter(req => !req.rowPeak);
   const admitted = new Map<Id, readonly Id[]>();
   for (const peak of peaks) {
@@ -567,7 +572,7 @@ function rankRowPeaks(order: LabelRequest[], peaks: LabelRequest[], pinOf: (req:
     const eligible = first !== undefined && rectContains(row.plot, first.rect) && !pinOf(peak);
     const yields = (req: LabelRequest) => row.neighbours.includes(req.id) && !pinOf(req) && !req.redundant && !req.protect && !req.keepWhenDense;
     const brushes = (req: LabelRequest, seat: SlotCandidate) =>
-      rowValuesCrowd(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad));
+      rowValuesCrowd(first!.rect, seat.rect, Math.max(first!.pad ?? peak.pad ?? pad, seat.pad ?? req.pad ?? pad), valueLabelGap(width, req.font.size));
     const before = eligible ? ranked.findIndex(req => yields(req) && req.candidates[0] && brushes(req, req.candidates[0])) : -1;
     // A neighbour may yield its natural seat. Its fallbacks can carry a leader around a mark.
     const reserved = before >= 0 && ranked.slice(before).some(req => !req.redundant
@@ -632,7 +637,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const baseOrder = [...owned].sort(simpleOrder
     ? (a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     : labelOrder(pinOf, ctx.focus));
-  const rowPeaks = peaks.length ? rankRowPeaks(baseOrder, peaks, pinOf, pad) : undefined;
+  const width = ctx.canvas?.w ?? Infinity;
+  const rowPeaks = peaks.length ? rankRowPeaks(baseOrder, peaks, pinOf, pad, width) : undefined;
   const order = rowPeaks?.ranked ?? baseOrder;
   const yieldingTo = rowPeaks && new Map<Id, { rect: Rect; owner: OwnerRef; pad: number; omitYielded?: true }>();
 
@@ -661,6 +667,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const slots = first && req.candidates.length === 1 ? [first.slot] : req.candidates.map(c => c.slot);
     const markValue = isMarkValue(req);
     const peakAhead = yieldingTo?.get(req.id);
+    const valueGap = valueLabelGap(width, req.font.size);
     const claimIds = requestClaims(req, ctx);
     const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
       id: req.id,
@@ -841,14 +848,14 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // Type steps: with 12 px values at the S widths a row of totals fits one by one; two totals
     // side by side keep the same gap as two values of a series, or read as one number.
     const crowdsTotal = (rect: Rect): boolean => TOTAL_KINDS.has(req.kind)
-      && occupied.some(rect, SERIES_VALUE_GAP, (o) => o.kind === 'label' && o.part === TOTAL_PART && o.owner.seriesId === req.owner.seriesId
+      && occupied.some(rect, valueGap, (o) => o.kind === 'label' && o.part === TOTAL_PART && o.owner.seriesId === req.owner.seriesId
         && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId && o.owner !== peakAhead?.owner
         // Two totals on one row: their boxes share at least half of one line (0.1 px absorbs scale noise).
         // A total one stair step lower reads as its own number; the 6 px would hide it for nothing.
         // One line, not the box: a two-line total's second line beside the other's first reads as one number.
         && Math.min(o.rect.y + o.rect.h, rect.y + rect.h) - Math.max(o.rect.y, rect.y) >= rect.h / Math.max(1, req.lines.length) / 2 - 0.1);
     const crowdsSeries = (rect: Rect, touching = false): boolean => crowdsTotal(rect) || (req.kind === 'point' || req.kind === 'segment') && (req.owner.seriesId !== undefined || req.valueRow === true || outsideSegment(touching))
-      && occupied.hitsWhich(rect, SERIES_VALUE_GAP).some((o) => o.kind === 'label' && (outsideSegment(touching) || o.owner.seriesId === req.owner.seriesId)
+      && occupied.hitsWhich(rect, valueGap).some((o) => o.kind === 'label' && (outsideSegment(touching) || o.owner.seriesId === req.owner.seriesId)
         && o.owner.categoryId !== undefined && o.owner.categoryId !== req.owner.categoryId && o.owner !== peakAhead?.owner
         && Math.min(o.rect.y + o.rect.h, rect.y + rect.h) > Math.max(o.rect.y, rect.y) && (!touching || marksTouch(rect, o.rect)));
     // A bare value in the tick label column reads as a tick; a name or a named reference ('50.0 Plan') does not.
@@ -1099,7 +1106,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // so the rule never hides a label the cascade can place.
     const ambiguous: SlotCandidate[] = [];
     const yieldsToPeak = (cand: SlotCandidate): boolean => {
-      if (!peakAhead || !rowValuesCrowd(peakAhead.rect, cand.rect, Math.max(peakAhead.pad, cand.pad ?? req.pad ?? pad))) return false;
+      if (!peakAhead || !rowValuesCrowd(peakAhead.rect, cand.rect, Math.max(peakAhead.pad, cand.pad ?? req.pad ?? pad), valueGap)) return false;
       if (!peakAhead.omitYielded) {
         base.owed = true;
         hide('density', 'crowded by the highest column value');

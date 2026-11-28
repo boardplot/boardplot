@@ -28,7 +28,7 @@ import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
 import type { SparklineData } from '../../types/data';
 import type { SparklineOptions } from '../../types/options';
-import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, typeClassCap, type TargetSizeOptions } from '../../target';
 import type { Geometry, LintWarning, SceneNode, ShownMark } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { normalizeCell } from '../../normalize/shared';
@@ -197,7 +197,7 @@ export function layoutSparkline(
   const token = canvasMargin(theme, size.width);
   const side = FRAMED_SIDE_MARGIN;
   const margin = {
-    ...(framed
+    ...(typeClassCap() === 'XS' ? token : framed
       ? { ...token, left: Math.max(token.left, side), right: Math.max(token.right, side) }
       : { top: 0, right: 0, bottom: 0, left: 0 }),
     ...options.margin,

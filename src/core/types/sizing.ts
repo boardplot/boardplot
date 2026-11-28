@@ -7,7 +7,7 @@ export const VALUE_SELECTION = Symbol('valueSelection');
 
 export interface PresentationInfo {
   target: RenderTarget;
-  typeClass: 'S' | 'M' | 'L';
+  typeClass: 'XS' | 'S' | 'M' | 'L';
   naturalSize: { width: number; height: number; unit: 'px' | 'pt' };
   /** Minimum display width in CSS px, calculated from emitted text. */
   minDisplayWidth: number;

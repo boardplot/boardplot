@@ -1,5 +1,6 @@
 import { DEFAULT_PRESET, libraryPatch, resolveTheme } from './theme';
 import { themeForDensity } from './themeDensity';
+import { narrowDashboard } from './target';
 import type { BaseOptions } from './types/options';
 import type { ThemeRef } from './types/theme';
 import { authoredNotes, withAuthoredFootnotes } from './frame';
@@ -72,7 +73,7 @@ export function compactOptions<O extends Omit<BaseOptions, 'mode' | 'labels'>>(
     // one against the marks, in priority order; a forced 'minimal' would drop
     // every segment value as a block although they fit. An authored
     // 'minimal' keeps its gate.
-    theme: tightTheme(options.theme as ThemeRef | undefined, width),
+    theme: narrowDashboard(options.target, width ?? Infinity) ? options.theme : tightTheme(options.theme as ThemeRef | undefined, width),
     sizeFloor: floor,
     // Notes that stay on the canvas stay in the list: the registry puts the note that names a
     // hidden label there, and a cleared list left that label owed (the chart then refused for it).
