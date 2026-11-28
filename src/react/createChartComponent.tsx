@@ -25,6 +25,7 @@ import { SceneRenderer } from './SceneRenderer';
 import { ChartFooter, FOOTER_PRINT_CSS } from './ChartFooter';
 import { withoutSvgFooter } from './footerFrame';
 import { chartNotes, shownNoteKinds, type ChartNote } from '../core/notes';
+import { footerPlans, LIVE_NOTE_SHOW } from '../core/footer';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { useSharedScaleValueAxis, type ScaleGroupRef } from './scaleGroupContext';
@@ -453,7 +454,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
           ? <storyLink.Frame {...storyLink} onStep={exporter && setStoryStep} geometry={{ ...drawn, story: drawn.story }} theme={theme} strings={{ ...localeStrings(request.locale?.language), ...request.options.strings }} render={draw} styleNonce={styleNonce} />
           : draw(drawn)}
         {footer && <ChartFooter geometry={footer} notes={notes} theme={theme} strings={{ ...localeStrings(request.locale?.language), ...request.options.strings }} sourceWord={request.options.strings?.source} renderNotes={renderNotes} styleNonce={styleNonce}
-          show={shownNoteKinds(request.options as Parameters<typeof shownNoteKinds>[0])}
+          show={footerPlans.get(footer.frame!)?.[LIVE_NOTE_SHOW] ?? shownNoteKinds(request.options as Parameters<typeof shownNoteKinds>[0])}
           pinned={pinned} asDrawn={asDrawn}
           pointer={request.options.footnotes !== false && (request.options as { notes?: { pointer?: boolean } }).notes?.pointer !== false} ownStyle={!surface} />}
       </div>

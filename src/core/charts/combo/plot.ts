@@ -15,7 +15,7 @@ import { measureValueAxisWidth, planCategoryTitle } from '../../axis';
 import { bandedCrossesBetween } from '../../intervalTicks';
 import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import type { Rect } from '../../geometry';
-import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameWidthMeasurements, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { authoredNotes, caveatNoteLine, frameTextOptions, normalizeLegendOption, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameWidthMeasurements, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { plotFloorRows, sameContent } from '../../sizing';
 import { layoutStepKey } from '../../theme';
 import { staticFrame } from '../../footer';
@@ -65,7 +65,7 @@ import { comboBandFraction, primaryLineMean, secondaryPrimaryRange } from './dom
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
-import { engineNoteMeta, disclosureNote, disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
+import { engineNoteMeta, disclosureNote, disclosuresShown, rankKeyShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
@@ -537,11 +537,13 @@ export function prepareComboFrame(env: ComboEnv, domain: ComboDomain, paints: Co
       ? { subtitle: resolveSubtitle(options.subtitle), unit: undefined } : {}),
     footnotes: [
       ...partialFootnotes(domain.cats, options.strings, domain.running, legend?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamedOnTotals(env, domain)), ...authoredNotes(frameOptions),
-      ...noteLine(knownPartsLead(options), domain.columnsAdd ? domain.cats.flatMap((c, ci) => {
-        if (!domain.incompleteCats.has(c.id)) return [];
-        const missing = domain.columns.filter(s => s.vals[ci]!.v === null).map(s => s.label);
-        return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
-      }) : [], options.notes?.maxListed === undefined ? undefined : options),
+      ...caveatNoteLine(options.strings!.knownPartsTotals!,
+        domain.columnsAdd && domain.incompleteCats.size > 0 && contentOf(domain, 'grandTotal', ['absolute']) !== null
+          ? domain.cats.flatMap((c, ci) => {
+            if (!domain.incompleteCats.has(c.id)) return [];
+            const missing = domain.columns.filter(s => s.vals[ci]!.v === null).map(s => s.label);
+            return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
+          }) : [], options),
       // The anomaly rule, stated on the exhibit (column prints it over the plot).
       ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
       // The growth statements on a card, where the column beside the plot would cost it the width.

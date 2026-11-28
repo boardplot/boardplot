@@ -58,7 +58,8 @@ import {
   type DrawnValueLine,
 } from './valueLines';
 import { validateStrategyZones } from './zones';
-import { disclosureNote } from '../../notes';
+import { caveatNote, disclosureNote } from '../../notes';
+import { atHardMinimum } from '../../sizing';
 
 /** The printer of an authored example; without one the rule sets print (scatterDomain). */
 function scatterFormatter(options: ScatterStrategyOptions, format: string): (value: number) => string {
@@ -691,7 +692,11 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     : disclosureNote(chartString(options, 'noPositionNote', { v1: chartString(options, 'pointsCount', { v1: noPosition.length, v2: noPosition.length === 1 ? '' : 's' }), v2: noPosition.join(', ') }));
   // The points the chart does not draw: the minCount drop and the points with no x or y.
   const omitted = [...(dropped ? [dropped.note] : []), ...(noPositionNote ? [noPositionNote] : [])];
-  const derivedNotes = [...omitted, ...(clamp?.notes ?? [])];
+  const clippingNotes = clamp?.notes ?? [];
+  // Let the clipping sentences wrap together when the fixed chart is short of room.
+  const printedClippingNotes = clippingNotes.length > 1 && options.notes?.show === undefined && atHardMinimum(options)
+    ? [caveatNote(clippingNotes.join(' '))] : clippingNotes;
+  const derivedNotes = [...omitted, ...printedClippingNotes];
   // A group whose every point minCount dropped has nothing left to key, so it
   // leaves the legend and the description; the others keep their style slots.
   const keptGroups = new Set(pts.map((p) => p.group));

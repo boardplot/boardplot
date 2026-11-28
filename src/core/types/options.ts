@@ -214,7 +214,7 @@ export interface DocumentedStrings {
   forecastHeader?: string;
   /** Name before a net total. */
   net?: string;
-  /** Marker on an incomplete stack total; prints under notes.show 'disclosure'. */
+  /** Marker for partial table aggregates and incomplete 100% bar categories. */
   incomplete?: string;
   /** Key for a range whisker. */
   range?: string;
@@ -222,9 +222,7 @@ export interface DocumentedStrings {
   valuesNotOnColumns?: string;
   /** Note heading for omitted combo values. */
   valuesNotBesideMarks?: string;
-  /** Incomplete total note; {partial} is the marker. */
-  partialTotals?: string;
-  /** Incomplete total note where no marker prints (notes.show without 'disclosure'). */
+  /** Footer heading for incomplete stack totals in column and combo charts. */
   knownPartsTotals?: string;
   /** Word before missing stack parts. */
   without?: string;
@@ -528,8 +526,7 @@ export interface BaseOptions {
   /**
    * The notes under the chart, in authored order. False leaves the notes off
    * the canvas: these notes, the method notes the engine derives, the key to
-   * an event badge and the "+N notes" pointer. A disclosure that `notes.show`
-   * prints (a rounding note, a partial period, values not printed), the
+   * an event badge and the "+N notes" pointer. Printed disclosures, the
    * source line and a required map credit stay. For a
    * host that draws its own frame around the chart and carries the notes
    * there; `title: false` is the same switch for the title.
@@ -541,19 +538,19 @@ export interface BaseOptions {
    * chart:...") names before it counts the rest ("and 3 more"); default 8,
    * 'all' names every item, 0 names none and only counts them ("18 of 36
    * values"). Every item stays in the reading's omissions and the hover records. `placement`: 'frame' prints notes in the frame within
-   * `maxLines`, 'list' prints only the source, a required credit and the
-   * pointer, 'info' is a React "Notes and sources" button (the SVG draws it as
+   * `maxLines`. 'list' shows the source, a required credit and the pointer
+   * alongside disclosures outside `maxLines`. 'info' is a React "Notes and sources" button (the SVG draws it as
    * 'frame'); default dashboard 'info', slide 'list', else 'frame'.
    * `maxLines`: visible lines of notes and source, a required credit not
    * counted; default report and dashboard 3 (2 under 720 px), slide 2,
-   * print 3. `show`: the kinds the frame prints, default ['note'], the
-   * author's notes; 'method' adds the engine's short method lines, and
-   * 'disclosure' the engine's notes on how to read the chart (keys, data
-   * changes, "Not labelled on the chart:..."), outside the budget; 'ranks'
-   * only the rank key, the disclosure that names the rank numbers a column
-   * row draws when its names do not fit (also printed by 'disclosure').
+   * print 3. `show` selects the kinds the frame prints. By default it prints
+   * authored notes and three caveats: incomplete stack totals, missing values
+   * drawn as zero in stacked area charts, and clipped scatter points. Use
+   * 'disclosure' to keep the caveats and add the other reading notes outside
+   * the budget. 'method' adds short method notes. 'ranks' adds the rank key
+   * for columns whose names do not fit.
    * Without `show`, `methodNote: true` or an authored `placement` prints the
-   * method notes and disclosures within the budget, after the author notes.
+   * method notes and other disclosures within the budget, after the author notes.
    * Engine notes not shown stay in the notes list. `pointer`: default true, prints
    * "+N notes" when the notes list holds more of the kinds `show` prints.
    */

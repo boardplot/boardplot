@@ -36,7 +36,6 @@ import { canTryRowPeak, planCrowdedRow } from '../band/crowdedRow';
 import { DENSITY_VALUES } from '../../frame';
 import { noteName } from '../../calendarData';
 import { chartString } from '../../strings';
-import { disclosuresShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Every drawn line run as the path it takes, for the stroke test. */
@@ -202,15 +201,11 @@ function grandTotalRow(env: ComboEnv, domain: ComboDomain, area: ComboArea, gtCo
     ? anatomyFont : undefined;
   // Totals that would stand closer than the neighbour gap at their
   // seats over the columns take one font step down, as a row.
-  // A running category's total says so under the value, in the secondary step and the muted ink;
-  // a stack that misses a part says "(partial)" there.
+  // A running category's total says "to date" under the value.
   const toDateIds = insideFont ? new Set<string>() : toDateOnTotals(env, domain);
   const toDate = domain.options.strings?.toDate ?? chartString(domain.options, 'toDate');
-  const wordsAt = (ci: number, text: string, font: typeof strongFont) => {
-    const id = domain.cats[ci]!.id;
-    const words = toDateIds.has(id) ? toDate : !insideFont && domain.columnsAdd && domain.incompleteCats.has(id) && disclosuresShown(domain.options) ? domain.options.strings!.incomplete! : undefined;
-    return words ? toDateLabel(text, font, words, env.theme, env.measure) : undefined;
-  };
+  const wordsAt = (ci: number, text: string, font: typeof strongFont) => toDate && toDateIds.has(domain.cats[ci]!.id)
+    ? toDateLabel(text, font, toDate, env.theme, env.measure) : undefined;
   const outerSeat = (font: typeof strongFont) => (text: string | null, ci: number): Rect | null => {
     if (text === null || nets.has(ci)) return null;
     const size = wordsAt(ci, text, font)?.size ?? env.measure(text, font);
@@ -251,7 +246,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
   const valueAlone = gtContent.join() === 'absolute';
   const shares = (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true;
-  const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
+  const backLink = (id: string, words?: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
   // A reference rule does not move a total: it crosses the rule on a halo, as on column.
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const idAt = (ci: number) => `grandTotal:${domain.cats[ci]!.id}`;
@@ -361,7 +356,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         kind: 'grandTotal',
         ...(authored.has(c.id) ? { keepWhenDense: true as const } : {}),
         ...(bare.has(c.id) ? { printsFor: [] } : {}),
-        ...backLink(`grandTotal:${c.id}`, undefined),
+        ...backLink(`grandTotal:${c.id}`),
         owner: { categoryId: c.id },
         text,
         ...(totalShows[ci] ? { shows: totalShows[ci] } : {}),

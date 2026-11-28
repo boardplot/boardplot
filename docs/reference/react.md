@@ -389,12 +389,11 @@ export function Dashboard() {
 | strings.plan | string |  |  | Key for the plan outline. |
 | strings.forecastHeader | string |  |  | Header at the actual-to-forecast boundary. Keeps the scenario code by default. |
 | strings.net | string |  |  | Name before a net total. |
-| strings.incomplete | string |  |  | Marker on an incomplete stack total; prints under notes.show 'disclosure'. |
+| strings.incomplete | string |  |  | Marker for partial table aggregates and incomplete 100% bar categories. |
 | strings.range | string |  |  | Key for a range whisker. |
 | strings.valuesNotOnColumns | string |  |  | Note heading for omitted column values. |
 | strings.valuesNotBesideMarks | string |  |  | Note heading for omitted combo values. |
-| strings.partialTotals | string |  |  | Incomplete total note; {partial} is the marker. |
-| strings.knownPartsTotals | string |  |  | Incomplete total note where the marker does not print. Column and combo only; a bar stack uses incompleteStacks. |
+| strings.knownPartsTotals | string |  |  | Footer heading for incomplete stack totals in column and combo charts. |
 | strings.without | string |  |  | Word before missing stack parts. |
 | strings.and | string |  |  | Word joining missing stack parts. |
 | strings.aboveZero | string |  |  | Positive sign key; {series} and {meaning} are replaced. |

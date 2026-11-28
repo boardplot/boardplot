@@ -260,7 +260,7 @@ export function printsValue(label: unknown): label is string {
   return typeof label === 'string' && label.includes('${value}');
 }
 
-/** One incomplete-composition warning for the stacks whose total or shares the chart withholds; `marked`: disclosures print, so totals carry the partial marker. */
+/** One warning for the stacks with an incomplete total or share. */
 export function warnIncompleteStacks(
   variant: StackVariant,
   cats: readonly { id: Id; label?: string }[],
@@ -269,7 +269,6 @@ export function warnIncompleteStacks(
   sharesOn: boolean,
   marks: 'columns' | 'bars',
   warnings: LintWarning[],
-  marked: boolean,
 ): void {
   const names = cats.filter((c) => incomplete.has(c.id)).map((c) => c.label ?? c.id);
   const every = cats.length > 1 && names.length === cats.length;
@@ -277,12 +276,9 @@ export function warnIncompleteStacks(
     const withheld = [sharesOn ? 'share labels' : '', totalsOn ? 'totals' : ''].filter(Boolean).join(' and ');
     warnIncompleteComposition(warnings, names, `these ${marks} are drawn as shares of their known parts only${withheld ? `; their ${withheld} are not printed` : ''}`, every);
   } else if (variant === 'stacked') {
-    // The "(partial)" marker and its note print only where disclosures print, so the default total reads as whole.
-    warnIncompleteComposition(warnings, names, !totalsOn
-      ? `these ${marks} contain the known parts only; missing components are not drawn`
-      : marked
-        ? 'their totals count the drawn parts only, with a note naming the missing parts'
-        : "their totals count the drawn parts only and print as plain totals; notes.show ['disclosure'] marks them (partial) and prints the note naming the missing parts", every);
+    warnIncompleteComposition(warnings, names, totalsOn
+      ? 'their totals count the drawn parts only'
+      : `these ${marks} contain the known parts only; missing components are not drawn`, every);
   }
 }
 

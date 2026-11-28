@@ -1,5 +1,5 @@
 import { a11yDescription } from '../../a11yDescription';
-import { engineNoteMeta, knownPartsLead, withEngineNotes } from '../../notes';
+import { engineNoteMeta, withEngineNotes } from '../../notes';
 import { hasBold } from '../../inlineBold';
 import { valueLineLabelsOn } from '../labelOn';
 import { refuseLabelPosition } from '../band/labelPosition';
@@ -691,7 +691,7 @@ function refreshColumnBandNote(
         || input[COLLECT_IDENTITIES] || previous.some((note, i) => input.footnotes?.[i] !== note)) return;
       const extra = input.footnotes?.slice(previous.length) ?? [];
       if (extra.length > 2 || !extra.length || extra.some(note => engineNoteMeta(note)?.kind !== 'disclosure' || hasBold(note))
-        || !extra.at(-1)!.startsWith(knownPartsLead(before))
+        || !engineNoteMeta(extra.at(-1)!)?.caveat
         || extra.length === 2 && !extra[0]!.startsWith(before.strings!.valuesNotOnColumns!)) return;
       if (!context.prepared) return;
       const items = (context.options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE];

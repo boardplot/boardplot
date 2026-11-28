@@ -272,8 +272,8 @@ function widthOnly(size: unknown): size is { width: number } {
 }
 
 /** Layout and height warnings use the same definition of an automatic height. */
-export function heightOmitted(size: unknown): boolean {
-  return size === undefined || widthOnly(size);
+export function heightOmitted(size: unknown, target?: RenderTarget): boolean {
+  return size === undefined ? target === undefined || !resolveTargetSize(target).fixed.height : widthOnly(size);
 }
 
 /**
@@ -418,7 +418,7 @@ export function narrowShareApplies<D, O extends ChartOptions, M extends object, 
 
 /** Header rows inside a plot do not count toward its data-height floor. */
 export const PLOT_FLOOR_RECT = Symbol('boardplot.plotFloorRect');
-function plotForFloor(geometry: Pick<Geometry, 'plot'> & { [PLOT_FLOOR_RECT]?: Rect }): Rect {
+export function plotForFloor(geometry: Pick<Geometry, 'plot'> & { [PLOT_FLOOR_RECT]?: Rect }): Rect {
   return geometry[PLOT_FLOOR_RECT] ?? geometry.plot;
 }
 
@@ -2219,6 +2219,12 @@ export function sizeGate<D, O extends ChartOptions, M extends object, DV extends
 
 function frameHeightFloor(height: number | undefined, frame: FrameGeometry, plot = 0): number {
   return Math.max(height ?? 0, frame.minHeight ?? 0, frame.plotMinHeight ?? 0, plot);
+}
+
+/** Panel slots use measured floors and omit the standalone canvas floor. */
+export function panelMinHeight({ sizing, frame }: Pick<Geometry, 'sizing' | 'frame'>, options: unknown): number {
+  return Math.ceil(Math.max(sizing?.measuredMinHeight ?? 0, frame.minHeight ?? 0,
+    isVarianceTier(options) ? 0 : frame.plotMinHeight ?? 0));
 }
 
 function measuredFrameRefusal(type: string, title: string, size: Size, sizing: ResolvedSizing, frame: FrameGeometry): RefusedLayout {

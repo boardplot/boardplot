@@ -28,7 +28,7 @@ import {
   type FrameInput,
   type FrameResult,
   type LegendItemInput,
-  authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
+  authoredFootnoteCount, authoredNotes, caveatNoteLine, noteLine, shareUnitOptions } from '../../frame';
 import { copyFrame, staticFrame } from '../../footer';
 import { zeroLifts } from '../../formatPrecision';
 import { hasCompleteTextWidths } from '../../fontMetrics/injected';
@@ -38,7 +38,7 @@ import { categoryRowTop, hangingLabelReserve, measuredRotatedNames, openingRotat
 import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
-import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, RUNNING_PERIOD_LEGEND_ID, toDateFont } from '../../partialPeriod';
+import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, RUNNING_PERIOD_LEGEND_ID } from '../../partialPeriod';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -58,14 +58,14 @@ import { segmentHatchGround } from './marks';
 import { referenceMarkerKey } from '../band/ticks';
 import { netLineName } from '../band/stacks';
 import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from '../combo/categoryRanks';
-import { disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
+import { disclosuresShown, rankKeyShown } from '../../notes';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { textScaleOf } from '../../typeFloors';
 import { compactValueLabelFont } from '../band/labels';
 import { groupedOffsets } from '../band/groups';
 import { NARROW_SHARE_WIDTH, PLOT_FLOOR_PX, PLOT_FLOOR_SHARE, plotFloorRows, plotFloorShare } from '../../sizing';
-import { partialWords, stackTotalText } from './labels';
+import { stackTotalText } from './labels';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
@@ -439,18 +439,19 @@ export function columnValueNotes(domain: ColumnDomain): string[] {
     ...noteLine(options.strings!.valuesNotOnColumns!, (options as { [SEGMENT_NOTE]?: string[] })[SEGMENT_NOTE] ?? [], options,
       domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
     ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
-    ...partialTotalsNote(domain, options),
+    ...knownPartsNote(domain),
     ...domain.shareNotes,
   ];
 }
 
 /** A total that misses a part adds the known parts; the note names the parts it lacks. */
-function partialTotalsNote(domain: ColumnDomain, options: NoteCapOptions): string[] {
-  if (domain.variant !== 'stacked' || domain.gtContent === null) return [];
-  return noteLine(knownPartsLead(domain.options), domain.cats.flatMap((c, ci) => {
+function knownPartsNote(domain: ColumnDomain): string[] {
+  if (domain.variant !== 'stacked' || domain.gtContent === null || domain.incompleteCats.size === 0) return [];
+  const { options } = domain;
+  return caveatNoteLine(options.strings!.knownPartsTotals!, domain.cats.flatMap((c, ci) => {
     if (!domain.incompleteCats.has(c.id)) return [];
     const missing = domain.dataSeries.filter((s) => s.vals[ci]!.v === null).map((s) => s.label);
-    return [`${c.label ?? c.id} ${domain.options.strings!.without} ${missing.join(` ${domain.options.strings!.and} `)}`];
+    return [`${c.label ?? c.id} ${options.strings!.without} ${missing.join(` ${options.strings!.and} `)}`];
   }), options);
 }
 
@@ -486,8 +487,7 @@ function requiredColumnValueWidth(domain: ColumnDomain): number {
   // A 100% or mixed-sign total can differ from the sum of the positive parts.
   const widestTotal = Math.max(0, maxOf(cats.map((_, ci) => {
     const total = stackTotalText(domain, ci);
-    const words = partialWords(domain, ci);
-    return total && !total.net ? Math.max(measure(total.text, strong).width, words ? measure(words, toDateFont(theme)).width : 0) : 0;
+    return total && !total.net ? measure(total.text, strong).width : 0;
   })));
   return Math.max(widestSegmentValue(domain) + 10, widestTotal + 8);
 }
@@ -890,8 +890,6 @@ export function columnPlotArea(
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   const gtH = measure('0', strongFont).height;
-  // A total that misses a part carries "(partial)" on a second line.
-  const partialH = (ci: number) => { const words = partialWords(domain, ci); return words ? measure(words, toDateFont(theme)).height : 0; };
   const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr' || bracketsOverColumns(a, domain));
   const integratedGrowthH = domain.pyRef && kindSetting(options, 'growth') !== false ? measure('+88.8%', strongFont).height + 4 : 0;
   // The rule sentence is engine-added furniture, so it computes its reserve
@@ -971,7 +969,7 @@ export function columnPlotArea(
     const unrowedH = frameHeight - categoryBand - ratioTierHeight - 8 - axisTitleH - growthAndCagr - ruleH;
     const unrowedPlotH = unrowedH - hangingLabelReserve(unrowedH, [dLo, dHi], hangingEnd, underLabels);
     const totalsRow = !domain.gtContent ? 0 : domain.activeBreak ? gtH + 6
-      : Math.max(0, maxOf(domain.posTopP.map((top, ci) => (top > 0 ? seatRoom(top, [dLo, dHi], gtH + partialH(ci) + 4, unrowedPlotH) : 0))));
+      : Math.max(0, maxOf(domain.posTopP.map(top => (top > 0 ? seatRoom(top, [dLo, dHi], gtH + 4, unrowedPlotH) : 0))));
     return totalsRow + growthAndCagr;
   };
   const headerRows = headerAt(frame.plot.h, catBandH);

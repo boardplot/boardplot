@@ -47,7 +47,6 @@ import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type Roun
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { scenarioFillPattern, scenarioPartners } from '../../scenarioPairs';
 import { OTHERS_ID, SHOWN_SLOT, type BarDomain, type NormCat, type NormSeries } from './model';
-import { disclosuresShown } from '../../notes';
 import { isRecord } from '../../lint/shared';
 import { cappedItems } from '../../frame';
 import { dataSeriesUnitRefusal } from '../../schema/units';
@@ -602,7 +601,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     });
   }
   const sharesOn = variant === 'stacked100' && labelOn(options, 'segment');
-  warnIncompleteStacks(variant, cats, basis.incompleteRows, grandTotalsOn, sharesOn, 'bars', warnings, disclosuresShown(options));
+  warnIncompleteStacks(variant, cats, basis.incompleteRows, grandTotalsOn, sharesOn, 'bars', warnings);
   warnShareFormatIgnored(variant, options.format, shareFormatExample(options), grandTotalsOn, warnings);
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];

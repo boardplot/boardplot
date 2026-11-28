@@ -19,8 +19,8 @@ import type { StringsSpec } from './types/options';
  *   explains an encoding on the chart ("One cell = 5%", "W38 partial",
  *   "Columns by rank"), a change to the data ("1 value below zero shown as
  *   0."), or names the marks the drawing leaves unlabelled ("Not labelled on
- *   the chart: ..."). Where the author lists 'disclosure' in `notes.show`, it
- *   prints outside the line budget, like a required credit. So does an author
+ *   the chart: ..."). A caveat or a disclosure enabled by an authored
+ *   `notes.show` prints outside the line budget, like a required credit. So does an author
  *   note a mark on the chart points at ("1)"). Where the author asks for the
  *   engine's notes another way (`methodNote: true`, a `notes.placement`), a
  *   disclosure prints within the budget, after the author notes.
@@ -105,9 +105,12 @@ export function printsNoteKind(kind: NoteKind, show: readonly string[] = ['note'
   return kind === 'source' || kind === 'credit' || show.includes(kind);
 }
 
-/** Whether this note prints under the chart: its kind, or the rank key under `notes.show` 'ranks'. */
-export function printsNote(note: { kind: NoteKind; text: string }, show: readonly string[] = ['note']): boolean {
-  return printsNoteKind(note.kind, show) || (note.kind === 'disclosure' && show.includes('ranks') && engineNoteMeta(note)?.ranks === true);
+/** Whether this note prints by kind, by default as a caveat, or as the rank key. */
+export function printsNote(note: { kind: NoteKind; text: string }, show?: readonly string[]): boolean {
+  if (printsNoteKind(note.kind, show)) return true;
+  if (note.kind !== 'disclosure') return false;
+  const meta = engineNoteMeta(note);
+  return (meta?.caveat === true && caveatsShown(show)) || (meta?.ranks === true && show?.includes('ranks') === true);
 }
 
 /**
@@ -150,12 +153,29 @@ type NoteAsk = { methodNote?: unknown; notes?: { show?: readonly string[]; place
 /**
  * The note kinds the chart prints: `notes.show`, else every engine note where
  * the author asked for notes another way (`methodNote: true`, an authored
- * `notes.placement`), else undefined (author notes only).
+ * `notes.placement`), else undefined (author notes and caveats).
  */
 export function shownNoteKinds(options: NoteAsk): readonly string[] | undefined {
   if (options?.notes?.show !== undefined) return options.notes.show;
   return options?.methodNote === true || options?.notes?.placement !== undefined ? ['note', 'method', 'disclosure'] : undefined;
 }
+
+/** An optional footer that does not fit leaves the author's notes in the frame. */
+export function withAuthorNotesOnly<O extends NonNullable<NoteAsk>>(options: O): O {
+  return { ...options, notes: { ...options.notes, show: ['note'] } };
+}
+
+/** The notes an author requested through placement or methodNote move to the list. */
+export function askedNotesOffWarning(height?: number) {
+  return {
+    code: 'footnotes-off', severity: 'info' as const,
+    message: 'the pinned height has no room for the notes methodNote or notes.placement asks for; they are in the notes list',
+    suggest: `Leave the height out${height === undefined ? '' : `, or give the chart ${height} px of height`}.`,
+  };
+}
+
+/** Panels of a grid with an open height can use their notes when the grid grows. */
+export const AUTO_PANEL_HEIGHT = Symbol('boardplot.autoPanelHeight');
 
 /**
  * The options a composing chart hands its host chart, with the note kinds its
@@ -178,12 +198,9 @@ export function disclosuresShown(options: { notes?: { show?: readonly string[] }
   return options?.notes?.show?.includes('disclosure') === true;
 }
 
-/** The lead of the note on stack totals that miss a part: it names the "(partial)" marker only where the marker prints. */
-export function knownPartsLead(options: { notes?: { show?: readonly string[] }; strings?: StringsSpec }): string {
-  const strings = options.strings ?? {};
-  return disclosuresShown(options)
-    ? stringFields(strings.partialTotals ?? localeStrings().partialTotals, { partial: strings.incomplete ?? localeStrings().incomplete })
-    : strings.knownPartsTotals ?? localeStrings().knownPartsTotals;
+/** Caveats print by default. An authored list must include 'disclosure' to keep them. */
+export function caveatsShown(show: readonly string[] | undefined): boolean {
+  return show === undefined || show.includes('disclosure');
 }
 
 /**
@@ -207,19 +224,19 @@ export function notesPointer(count: number, strings?: StringsSpec): string {
 
 /** A capped list note: the frame names as many of its items as fit two footer lines. */
 export interface NoteList { lead: string; items: readonly string[]; total?: number; options: object }
-export interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; quiet?: true }
+export interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; caveat?: true; quiet?: true }
 
 const NOTE_META = Symbol('noteMetadata');
 type Noted = { [NOTE_META]?: EngineNoteMeta };
 // Text lists exist only while a chart is laid out. Each finished note carries
 // its own metadata, including consumers that run after the layout has ended.
-let current: { notes: Map<string, EngineNoteMeta> } | undefined;
+let current: { notes: Map<string, EngineNoteMeta>; caveat?: EngineNoteMeta } | undefined;
 
-export function withEngineNotes<T>(run: () => T, isolated = false): T {
-  if (current && !isolated) return run();
+export function withEngineNotes<T>(run: (notes: NonNullable<typeof current>) => T, isolated = false): T {
+  if (current && !isolated) return run(current);
   const previous = current;
   current = { notes: new Map(isolated && previous ? [...previous.notes].map(([text, meta]) => [text, { ...meta }]) : []) };
-  try { return run(); } finally { current = previous; }
+  try { return run(current); } finally { current = previous; }
 }
 
 /** Each note owns metadata outside its public, enumerable fields. */
@@ -229,6 +246,11 @@ export function keepNoteMeta<T extends object>(note: T, meta: EngineNoteMeta | u
 
 export function copyNote<T extends object>(note: T, patch: Partial<T> = {}): T {
   return keepNoteMeta({ ...note, ...patch }, engineNoteMeta(note));
+}
+
+/** Carry the note's metadata to the text that fits the frame. */
+export function keepEngineNoteMeta(text: string, meta: EngineNoteMeta): void {
+  current?.notes.set(text, { ...meta });
 }
 
 /**
@@ -246,6 +268,17 @@ export function engineNote(text: string, kind: EngineNoteMeta['kind'], short?: s
 /** A note on how to read the chart; the frame prints it where `notes.show` lists 'disclosure'. */
 export function disclosureNote(text: string): string {
   return engineNote(text, 'disclosure');
+}
+
+/** A disclosure that prints by default. */
+export function caveatNote(text: string): string {
+  disclosureNote(text);
+  if (current) {
+    const meta = current.notes.get(text)!;
+    meta.caveat = true;
+    current.caveat = meta;
+  }
+  return text;
 }
 
 /** The rank key: a disclosure that also prints where `notes.show` lists 'ranks'. */

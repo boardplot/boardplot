@@ -38,7 +38,6 @@ import type { Theme } from '../../types/theme';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import type { ComboDomain, ComboEnv, NormSer, NormVal } from './model';
-import { disclosuresShown } from '../../notes';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { checkPointBudget, COMBO_LIMIT } from '../../itemBudget';
@@ -869,7 +868,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : comboStacks(cats, columns);
   const incompleteCats = new Set(cats.filter((_, ci) => anyByCat[ci] && columns.some(s => s.vals[ci]!.v === null)).map(c => c.id));
   if (columnsAdd) warnIncompleteStacks('stacked', cats, incompleteCats,
-    options.labels !== false && options.labels?.grandTotal !== false, false, 'columns', warnings, disclosuresShown(options));
+    options.labels !== false && options.labels?.grandTotal !== false, false, 'columns', warnings);
   // rounding 'sum-consistent': the segment shares of each whole stack (no negative
   // or missing part, an authored percent nowhere) print so they add up to 100%.
   const shareTexts = new Map<string, string>();

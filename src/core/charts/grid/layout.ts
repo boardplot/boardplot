@@ -52,6 +52,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedSc
 import { rebaseRefusal, rebaseWarning, sameField, type Rebase } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
+import { AUTO_PANEL_HEIGHT } from '../../notes';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_HEIGHT_MEMO, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, LAYOUT_CALL, NARROW_FORM, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
@@ -217,7 +218,8 @@ function authoredPanelRebase(child: PanelInput, data: GridInput, options: GridLa
     // The grid gives a panel its size: a panel's size is no field of the authored spec.
     if (!path || path[0] === 'size') return undefined;
     if (sameField(childOptions, panel.options, path)) return [...at, 'options', ...path];
-    return GRID_HANDED_DOWN.has(path[0]!) && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
+    const inherited = GRID_HANDED_DOWN.has(path[0]!) || (path[0] === 'notes' && path[1] === 'show');
+    return inherited && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
   };
 }
 
@@ -292,8 +294,19 @@ function layoutGridOnce(
   const normalized = normalizeGridWithTheme(data, options);
   requireChartCores(normalized.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
   assertTrackLimits(options, normalized.panels);
-  normalized.panels = normalized.panels.map((panel) => panel.options
-    ? { ...panel, options: resolveCanvasOptions(panel.options) } : panel);
+  const show = options.notes?.show;
+  const openHeight = AUTO_PANEL_HEIGHT in options || ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false)
+    || heightOmitted(options.size);
+  normalized.panels = normalized.panels.map((panel) => {
+    let panelOptions = panel.options;
+    if (panel.type !== 'text' && panel.type !== 'legend') {
+      const notes = panelOptions?.notes as GridLayoutOptions['notes'];
+      if (show !== undefined && notes?.show === undefined) panelOptions = { ...panelOptions, notes: { ...notes, show } };
+      const { vertical = 'stretch', height } = panel.align ?? {};
+      if (openHeight && (vertical === 'stretch' || height === undefined)) panelOptions = { ...panelOptions, [AUTO_PANEL_HEIGHT]: true };
+    }
+    return panelOptions ? { ...panel, options: resolveCanvasOptions(panelOptions) } : panel;
+  });
   const authored = usesAuthoredLayout(normalized.panels, options);
   // An authored layout has no row band: the row caption goes back under each panel.
   if (authored && normalized.rowCaption) {
@@ -882,9 +895,11 @@ function layoutLegacyGrid(
     // A facet's own chart title is its panel heading (grid.facets): the
     // grid prints it in the heading band at the panel's edge, the chart none.
     const childTitle = authoredPanel.options?.title;
-    const panel = facets && authoredPanel.title === undefined && typeof childTitle === 'string' && childTitle.trim().length > 0
-      ? { ...authoredPanel, title: childTitle, options: Object.fromEntries(Object.entries(authoredPanel.options!).filter(([key]) => key !== 'title')) }
-      : authoredPanel;
+    let panel = authoredPanel;
+    if (facets && authoredPanel.title === undefined && typeof childTitle === 'string' && childTitle.trim().length > 0) {
+      const { title: _title, ...options } = authoredPanel.options!;
+      panel = { ...authoredPanel, title: childTitle, options };
+    }
     const captionHeight = compactTiers ? 0 : measureCaptionBand(panel, theme, measure, slotWidth);
     const panelOptions = panel.options ?? {};
     const margin = isRecord(panelOptions.margin) ? panelOptions.margin : {};

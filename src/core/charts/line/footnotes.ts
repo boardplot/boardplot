@@ -17,7 +17,7 @@ import { fanGapNote, type FanResolved } from './fan';
 import type { BumpDerived } from './layout';
 import { nearZeroTailNote, type NearZeroTail } from './nearZero';
 import type { LineOptions } from './types';
-import { disclosureNote } from '../../notes';
+import { caveatNote, disclosureNote } from '../../notes';
 
 /** One sentence per series a rebase leaves undrawn: "Peer 1 not shown: missing base at Q1 24." */
 export function rebaseNotes(suppressed: readonly { series: string; period: string; zero: boolean }[], options: LineOptions): string[] {
@@ -48,7 +48,7 @@ export function lineFrameFootnotes(input: {
   const rebase = rebaseNotes(input.rebaseSuppressed ?? [], options);
   return [
     ...partialFootnotes(cats, options.strings, input.running, input.partialNamed),
-    ...missingStackNote(cats, input.incompleteStack ?? [], options, input.footer),
+    ...missingStackNote(cats, input.incompleteStack ?? [], options, input.footer).map(caveatNote),
     ...missingStackNote(cats, input.knownParts ?? [], options, input.footer, options.strings!.knownPartsShares!),
     ...(options.mode === 'compact' && rebase.length ? [rebase.join(' ')] : rebase).map(disclosureNote),
     // The n.m. at the baseline says what; this line says why.
