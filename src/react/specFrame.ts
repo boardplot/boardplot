@@ -1,4 +1,4 @@
-import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, TARGET_TYPE_TABLES } from '../core/target';
+import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, TARGET_TYPE_TABLES, withTypeClassCap } from '../core/target';
 import type { BaseOptions, LegendOptions, RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { BoardplotChartProps } from './spec';
@@ -39,21 +39,23 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
         const textSize = textSizeOf(chartText);
         // Keep the first frame independent of lazy validation. Read only bounded, plain geometry data.
         const targetTheme = resolveTargetTheme(undefined, target as RenderTarget, textScale, textSize);
-        const tokens = themeForWidth(narrowDashboard(target as RenderTarget, size.width, type) ? dashboardCardTheme(targetTheme)
+        const narrow = narrowDashboard(target as RenderTarget, size.width, type);
+        const tokens = themeForWidth(narrow ? dashboardCardTheme(targetTheme)
           : themeForDensity(targetTheme, settings.density, size.width), size.width);
         const authored = record(theme);
         const barRow = record(record(record(authored.overrides ?? authored).space).barRow);
         const series = Array.isArray(data.series) ? data.series : [];
         const legend = raw.legend ?? (needsSeriesKey(type, data, raw) ? 'top' : undefined);
-        const frame = solveFrame({
+        const frameSize = size;
+        const frame = withTypeClassCap(narrow ? 'XS' : undefined, () => solveFrame({
           ...frameTextOptions({ ...raw, target, textScale, textSize: undefined } as BaseOptions),
-          size, theme: tokens, measure: defaultMeasurer,
-          margin: { ...canvasMargin(tokens, size.width), ...margin(raw.margin), ...margin(record(raw.canvas).margin) },
+          size: frameSize, theme: tokens, measure: defaultMeasurer,
+          margin: { ...canvasMargin(tokens, frameSize.width), ...margin(raw.margin), ...margin(record(raw.canvas).margin) },
           ...(legend && legend !== 'none' && legend !== 'auto' ? { legend: {
             options: normalizeLegendOption(legend as LegendOptions | LegendOptions['position']),
             items: series.map(s => ({ id: s.id, label: s.label ?? s.id, paint: { token: 'ink' as const } })),
           } } : {}),
-        }, createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }));
+        }, createOccupiedIndex({ x: 0, y: 0, w: frameSize.width, h: frameSize.height })));
         let pitch = 28 * textScale;
         if (type === 'bar') {
           if ((raw.variant ?? 'grouped') === 'grouped' && raw.labels !== false && record(raw.labels).point !== false) {

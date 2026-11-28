@@ -140,6 +140,8 @@ export interface FrameInput extends IdentityCollectionOptions, CompactSourceOpti
   [LEGEND_HEIGHT]?: LegendBudget;
   /** Internal footer plan: all enabled static text already has room in this frame. */
   fullStaticFooter?: boolean;
+  /** Internal: the frame was solved in the narrow dashboard class, so its footer reads the same gaps. */
+  narrowClass?: boolean;
   target?: BaseOptions['target'];
   /** The chart's `textScale`; the title's shrink floor scales with it. */
   textScale?: number;
@@ -1922,7 +1924,7 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims, measurement
       recordFreedChrome(frame, 'key-footer-gap', REFERENCE_FOOTER_GAP - tokens.gapKeyFootnote);
   }
   // Layout-only input also keeps compact notes and their original reference numbers.
-  footerPlans.set(frame, fullStatic ? { ...input, fullStaticFooter: true } : input);
+  footerPlans.set(frame, { ...input, ...(fullStatic ? { fullStaticFooter: true } : {}), ...(typeClassCap() === 'XS' ? { narrowClass: true } : {}) });
   // The licence asks for a visible credit: no option path may drop it silently.
   if (credit?.required && frame.creditNodeId === undefined) {
     warnings.push({ code: 'credit-hidden', severity: 'warn', message: `the map credit the licence requires is not drawn: ${credit.text}`, suggest: 'Keep the credit visible under the chart, linked on a web page.' });
