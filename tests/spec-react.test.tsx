@@ -44,6 +44,11 @@ it('shows the weekly sums of a prepared zoom in the first HTML and the busy box 
   expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={plain} />)).toBeUndefined();
   expect(reading(<BoardplotChart spec={spec} size={size} prepared={zoomed} />)).toBeUndefined();
   expect(reading(<BoardplotChart spec={spec} size={size} zoom={{ aggregate: 'mean' }} prepared={zoomed} />)).toBeUndefined();
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={{ aggregate: 'sum', range: [NaN, 10] }} prepared={zoomed} />)).toBeUndefined();
+  // A width that stands in options.size gives the same grain on the server and in the browser.
+  const narrow = { ...spec, options: { ...spec.options, size: { width: 320, height: 400 } } };
+  const narrowRequest = (await parseChartSpec(narrow)).request;
+  expect(reading(<BoardplotChart spec={narrow} zoom={zoom} prepared={await prepareChart({ ...narrowRequest, zoom })} />)).toMatch(/1[34] categories/);
   const container = await prepareChart({ ...request, size: 'container', zoom });
   expect(reading(<BoardplotChart spec={spec} size="container" zoom={zoom} prepared={container} />)).toBeUndefined();
 });

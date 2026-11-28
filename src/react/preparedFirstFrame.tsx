@@ -33,7 +33,8 @@ export function usePreparedFirstFrame(spec: unknown, props: BoardplotChartProps,
   const zoomed = candidate?.result.type === 'line' ? zoom : undefined;
   const matches = useMemo(() => {
     const page = candidate?.inputKeys && preparedInputKey(spec, host, context, themes);
-    return !!page && candidate!.inputKeys!.includes(zoomPageKey(page, zoomed));
+    // A zoom the key cannot read (NaN, a function) has no prepared chart.
+    try { return !!page && candidate!.inputKeys!.includes(zoomPageKey(page, zoomed)); } catch { return false; }
     // The host props count by their values, so a new props object with the same values keeps the result.
   }, [candidate, spec, context, zoomed, ...Object.values(host)]);
   const chart = matches ? candidate : undefined;

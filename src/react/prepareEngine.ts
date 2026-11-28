@@ -86,7 +86,7 @@ function openingView(chart: Omit<ChartRequest, 'size'>, zoom: NonNullable<Prepar
   const axis = zoomAxis(spec);
   if (!axis) return chart;
   const range = zoom.range ? readZoomRange(axis, zoom.range) : axis.start;
-  const drawn = drawnGrain(axis, wantedGrain(axis, range, ((frame as { width?: number } | undefined)?.width ?? 600) * 0.85, zoom), zoom);
+  const drawn = drawnGrain(axis, wantedGrain(axis, range, (((frame ?? chart.options?.size) as { width?: number } | undefined)?.width ?? 600) * 0.85, zoom), zoom);
   const language = languageOf(chart.locale ?? chart.options?.locale) ?? languageOf(context.locale);
   const view = zoomSpec(spec, axis, range, drawn, zoom, language, context.strings as Record<string, unknown> | undefined);
   return view === spec ? chart : { ...chart, data: view.data, options: view.options, annotations: view.options?.annotations as ChartRequest['annotations'] } as Omit<ChartRequest, 'size'>;
