@@ -14,7 +14,8 @@ import { structureCount } from '../../structureCounts';
 import { fitText, lineBox } from '../../label/fitText';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import type { Rect } from '../../geometry';
-import { formatAutomaticPercent, MINUS } from '../../format';
+import { formatAutomaticPercent } from '../../format';
+import { numberMinus } from '../../numberMarks';
 import { defaultSetSpec, differenceExample, exactExampleSpec, formatNonzeroWithSpec, formatWithSpec, joinedChangeSpec, localized, parseFormatExample, percentChangeSpec, RULE_SET, sameScale, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, solveFrame, textCarriesUnit, unitPrinted } from '../../frame';
 import { withUnit } from '../../unitJoin';
@@ -442,7 +443,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         owner: { seriesId: 'attainment' },
       });
     }
-    attainmentFigure = suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${MINUS}999%` : sharePct(pct!);
+    attainmentFigure = suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${numberMinus(options.locale?.language)}999%` : sharePct(pct!);
     derived.attainment = {
       value,
       vs: attainment.vs,

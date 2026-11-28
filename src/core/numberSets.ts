@@ -6,7 +6,7 @@
  * pattern in a unit text.
  */
 import { numberRuleSet, type NumberSet, type PrintFace, type RuleKind, type RuleScale, type RuleSet } from './numberRule';
-import { splitNumberMarks } from './numberMarks';
+import { MINUS, splitNumberMarks } from './numberMarks';
 import { isMagnitudeLetter } from './format';
 
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
@@ -74,7 +74,7 @@ export function ruleSetOf(values: Iterable<number | null | undefined>, locale: s
 export function printFace(locale: string | undefined, prefix = '', suffix = '', signed = false, group?: string): PrintFace {
   const marks = splitNumberMarks(locale ?? 'en').marks;
   const thousands = group ?? marks?.thousands ?? ',';
-  return { prefix, suffix, signed, decimal: marks?.decimal ?? '.', group: thousands === ' ' ? ' ' : thousands, minus: '−' };
+  return { prefix, suffix, signed, decimal: marks?.decimal ?? '.', group: thousands === ' ' ? ' ' : thousands, minus: marks?.minusGlyph ?? MINUS };
 }
 
 /** One formatter for a set: each value's text by the rule, a value outside the set as a late value. */

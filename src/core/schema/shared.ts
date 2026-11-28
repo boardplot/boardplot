@@ -47,7 +47,7 @@ export const localeObjectSchema = z.object({
     .optional().describe('BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
   decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default '.'. The language does not change it."),
   thousands: z.enum([',', '.', '’', "'", ' ', '\u202f']).optional().describe("Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
-  minusGlyph: z.enum(['−', '-']).optional().describe('Minus glyph of the numbers a table or dimswitch formats from the locale; default Unicode minus. Other types print the Unicode minus and ignore it without a warning.'),
+  minusGlyph: z.enum(['−', '-']).optional().describe('Minus glyph for negative numbers on every chart. Default Unicode minus (−).'),
   weekStartsOn: z.union([
     z.literal(0).describe('Sunday as the requested first weekday.'),
     z.literal(1).describe('Monday as the requested first weekday.'),

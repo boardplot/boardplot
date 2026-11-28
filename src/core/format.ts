@@ -5,7 +5,7 @@
 
 import { chartString } from './strings/format';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { markedDecimal, wordLanguage } from './numberMarks';
+import { markedDecimal, numberMinus, wordLanguage } from './numberMarks';
 import type { BaseOptions, RenderTarget } from './types/options';
 import {
   AUTO_MAX_DECIMALS,
@@ -40,12 +40,11 @@ export interface NumberFormatOptions {
   prefix?: string;
   /** Show explicit '+' for positive values (variance charts). */
   signed?: boolean;
-  /** BCP 47 tag mapped to decimal and grouping separators. Default en-US. */
+  /** BCP 47 tag that can carry the chart's number marks. Default en-US. */
   locale?: string;
 }
 
-/** Typographically correct minus (U+2212), what print and slide charts use. */
-export const MINUS = '−';
+export { MINUS } from './numberMarks';
 
 /** Glued suffix for a difference of two percent levels, not a relative change. */
 export const PERCENTAGE_POINTS = 'pp';
@@ -235,11 +234,11 @@ function formattedNumber(value: number, opts: NumberFormatOptions, automatic: bo
     if (mode === 'scientific') scientific = scientificText(abs, (mantissa) => numberFormatter(locale, 1).format(mantissa));
   }
   const underflow = automatic && v === 0 && value !== 0
-    ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value) : undefined;
+    ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value, numberMinus(locale, '-')) : undefined;
   const body = underflow ?? scientific ?? markedDecimal(roundedAbs, usedDecimals, true, locale)
     ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
   const isZero = !underflow && !scientific && Number(roundedAbs) === 0;
-  const sign = value < 0 && !isZero ? MINUS : signed && value > 0 && !isZero ? '+' : '';
+  const sign = value < 0 && !isZero ? numberMinus(locale) : signed && value > 0 && !isZero ? '+' : '';
   const text = `${sign}${prefix}${body}${magSuffix ? magnitudeSuffix(magSuffix, opts.locale) : ''}${suffix}`;
   return pValue ? withoutLeadingZero(text) : text;
 }
@@ -261,7 +260,7 @@ export function formatExactNumber(value: number, locale?: string): string {
   const text = String(value);
   if (!locale) return text;
   const marked = Number.isSafeInteger(value) && !Object.is(value, -0) ? markedDecimal(text, 0, true, locale) : undefined;
-  return (marked ?? numberFormatter(locale, 'exact').format(value)).replace(/^-/, MINUS);
+  return (marked ?? numberFormatter(locale, 'exact').format(value)).replace(/^-/, () => numberMinus(locale));
 }
 
 export function formatPercent(value: number, decimals = 0, signed = false, locale?: string, automatic = false): string {
@@ -282,7 +281,7 @@ export function seriesValueDecimals(values: Iterable<number | null | undefined>)
  * "<−999%"); "+181,874.2%" is a ratio no reader compares.
  */
 export function changePercentText(percent: number, decimals: number, locale?: string): string {
-  if (Number.isFinite(percent) && Number(roundHalfUp(Math.abs(percent), decimals)) >= 1000) return percent > 0 ? '>999%' : `<${MINUS}999%`;
+  if (Number.isFinite(percent) && Number(roundHalfUp(Math.abs(percent), decimals)) >= 1000) return percent > 0 ? '>999%' : `<${numberMinus(locale)}999%`;
   return formatPercent(percent, decimals, true, locale);
 }
 

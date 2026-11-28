@@ -6,8 +6,7 @@
  */
 
 import { dateNames } from './dateNames';
-import { MINUS } from './format';
-import { wordLanguage } from './numberMarks';
+import { numberMinus, wordLanguage } from './numberMarks';
 import { NormalizeError } from './normalize/shared';
 import { parseTimeText } from './isoTime';
 
@@ -193,11 +192,11 @@ function wallOf(ms: number, clock: ZoneClock): Date {
 }
 
 /** 'UTC+2', 'UTC+5:30', 'UTC−3'. */
-export function offsetText(offset: number): string {
+export function offsetText(offset: number, language?: string): string {
   if (offset === 0) return 'UTC';
   const minutes = Math.round(Math.abs(offset) / MINUTE);
   const h = Math.floor(minutes / 60), m = minutes % 60;
-  return `UTC${offset < 0 ? MINUS : '+'}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
+  return `UTC${offset < 0 ? numberMinus(language) : '+'}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
 }
 
 /** The instant's wall time occurs twice in the zone. */
@@ -253,7 +252,7 @@ export function instantName(ms: number, clock: ZoneClock, precision: TimePrecisi
   const day = `${weekdayDayMonth(wall, language)}${style === 'us' ? ',' : ''} ${wall.getUTCFullYear()}`;
   if (!precision.clock) return day;
   const time = clockText(wall, precision.seconds);
-  return `${day}, ${time}${inRepeatedHour(ms, clock) ? ` ${offsetText(clock.offsetAt(ms))}` : ''}`;
+  return `${day}, ${time}${inRepeatedHour(ms, clock) ? ` ${offsetText(clock.offsetAt(ms), language)}` : ''}`;
 }
 
 export type TimeUnit = 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
@@ -375,7 +374,7 @@ export function timeTickText(ms: number, step: TimeStep, clock: ZoneClock, langu
     case 'millisecond': return `${clockText(wall, true)}.${String(wall.getUTCMilliseconds()).padStart(3, '0')}`;
     case 'second': return clockText(wall, true);
     case 'minute':
-    case 'hour': return `${clockText(wall, false)}${inRepeatedHour(ms, clock) ? ` ${offsetText(clock.offsetAt(ms))}` : ''}`;
+    case 'hour': return `${clockText(wall, false)}${inRepeatedHour(ms, clock) ? ` ${offsetText(clock.offsetAt(ms), language)}` : ''}`;
     case 'day':
     case 'week': return dayMonth(wall, language);
     case 'month': return step.n % 3 === 0 && wall.getUTCMonth() % 3 === 0 ? `Q${wall.getUTCMonth() / 3 + 1}` : dateNames(language).monthsShort[wall.getUTCMonth()]!;

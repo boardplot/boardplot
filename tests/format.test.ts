@@ -273,6 +273,20 @@ describe('ordinary number examples', () => {
       expect(requireGeometry(layoutResolvedRequest(request)).labels.map(label => label.text)).toContain(expected);
     }
   });
+
+  // Prevents column labels and axis ticks from taking the minus glyph of another chart with the same data.
+  it('uses the chart minus glyph in column values and axis ticks', () => {
+    const data = { categories: ['A', 'B'], series: [{ id: 'a', label: 'Delta', values: [-12.5, 8] }] };
+    for (const format of [undefined, '1.2']) {
+      for (const minusGlyph of [undefined, '-', undefined] as const) {
+        const request = resolveChartRequest({ type: 'column', data,
+          options: { format, valueAxis: { show: true, tickStep: 12.5 }, locale: { minusGlyph } } });
+        const scene = requireGeometry(layoutResolvedRequest(request)).scene;
+        const parts = scene.flatMap(node => node.t === 'text' && node.lines[0] === `${minusGlyph ?? '−'}12.5` ? [node.part] : []);
+        expect(parts).toEqual(expect.arrayContaining(['point', 'tick']));
+      }
+    }
+  });
 });
 
 // Prevents the shared accounting format from giving a false sign on any SVG or React number surface.

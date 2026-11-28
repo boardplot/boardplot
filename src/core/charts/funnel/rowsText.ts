@@ -9,7 +9,7 @@ import { chartString } from '../../strings/funnel';
  * label on the canvas can still read it from the document.
  */
 
-import { MINUS } from '../../format';
+import { numberMinus } from '../../numberMarks';
 import { clamp } from '../../geometry';
 import { type FontSpec, type TextMeasurer } from '../../text';
 import { fitText as fitTextPolicy, type FitOptions } from '../../label/fitText';
@@ -98,7 +98,7 @@ export function dropCallout(
   space: { innerW: number; avail: number; captionW: number; besideCaption: boolean },
   options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>,
 ): DropCallout {
-  const dropText = `${MINUS}${dropPercent}%`;
+  const dropText = `${numberMinus(options?.locale?.language)}${dropPercent}%`;
   const pair = chartString(options, 'stagePair', { v1: fromLabel, v2: toLabel });
   const below = space.besideCaption
     ? fitText(chartString(options, 'biggestDrop', { v1: dropText }), font, space.captionW, 2, measure)

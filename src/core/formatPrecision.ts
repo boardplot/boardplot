@@ -262,9 +262,10 @@ export function roundForDisplay(abs: number, decimals: number, automatic = false
 }
 
 /** Preserve a nonzero source when division by a display magnitude underflows. */
-export function underflowScientificText(value: number, divisor: number): string {
+export function underflowScientificText(value: number, divisor: number, minus: string): string {
   const [digit, exponent] = Math.abs(value).toExponential(0).split('e');
-  return `${digit}E${Number(exponent) - Math.log10(divisor)}`;
+  const power = Number(exponent) - Math.log10(divisor);
+  return `${digit}E${power < 0 ? minus : ''}${Math.abs(power)}`;
 }
 
 /**

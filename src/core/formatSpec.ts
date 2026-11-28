@@ -13,7 +13,7 @@ import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch'
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { markedDecimal, splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
+import { markedDecimal, numberMinus, splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
 import { MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
 import {
   AUTO_MAX_DECIMALS,
@@ -1497,7 +1497,11 @@ function signedText(core: string, negative: boolean, zero: boolean, spec: Number
     const glyph = negative ? spec.glyphs.down : spec.glyphs.up;
     return spec.glyphs.at === 'start' ? glyph + spec.glyphs.space + core : core + spec.glyphs.space + glyph;
   }
-  if (negative) return spec.negative === 'parens' ? `(${core})` : spec.negative === 'trailing' ? core + spec.trailingMinus : MINUS + core;
+  if (negative) {
+    if (spec.negative === 'parens') return `(${core})`;
+    if (spec.negative === 'trailing') return core + numberMinus(spec.locale, spec.trailingMinus);
+    return numberMinus(spec.locale) + core;
+  }
   return spec.signed && !zero ? `+${core}` : core;
 }
 
@@ -1530,7 +1534,7 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   if (spec.exponent) {
     const { mantissa, exponent } = exampleScientific(value, spec);
     const digits = spec.locale ? fractionFormat(spec.locale, spec.decimals, false).format(Number(mantissa)) : mantissa.replace('.', spec.decimalSep);
-    const power = `${exponent < 0 ? '-' : spec.exponent.sign}${String(Math.abs(exponent)).padStart(spec.exponent.digits, '0')}`;
+    const power = `${exponent < 0 ? numberMinus(spec.locale, '-') : spec.exponent.sign}${String(Math.abs(exponent)).padStart(spec.exponent.digits, '0')}`;
     return signedText(`${spec.prefix}${digits}${spec.exponent.letter}${power}${spec.suffix}`, value < 0, value === 0, spec);
   }
   const { magnitude, decimals } = effectiveScale(value, spec);
@@ -1554,7 +1558,7 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
     }
   }
   const underflow = spec.automatic && scaled === 0 && value !== 0
-    ? underflowScientificText(value, MAGNITUDE_DIVISOR[magnitude]) : undefined;
+    ? underflowScientificText(value, MAGNITUDE_DIVISOR[magnitude], numberMinus(spec.locale, '-')) : undefined;
   if (underflow) zeroLifts.count++;
   const isZero = !underflow && !scientific && Number(rounded.text) === 0;
   const negative = value < 0 && !isZero;
@@ -1625,11 +1629,9 @@ export function withChartMarks(spec: NumberFormatSpec, locale: string | undefine
 }
 
 /**
- * Marks under a chart locale (numberMarks.ts). Inside a chart the locale tag
- * carries the chart's pair (locale.decimal and locale.thousands, default '.'
- * and ','), which every number takes, authored or not. The example sets all
- * else: the decimals, grouping on or off, prefix, suffix, magnitude word, sign
- * and negative style. Outside a chart (no locale) the example's own marks stand.
+ * The locale tag carries the chart's number marks. The example sets the
+ * decimals, grouping, affixes, scale and sign style. Without a locale, the
+ * example supplies its own marks.
  */
 export function localized(spec: NumberFormatSpec, locale: string | undefined): NumberFormatSpec {
   return locale ? { ...spec, locale } : spec;

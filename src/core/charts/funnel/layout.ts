@@ -24,6 +24,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { warnSpreadOverflow } from '../../collide';
 import { formatAutomaticNumber, formatAutomaticPercent, smallRateDecimals } from '../../format';
+import { numberMinus } from '../../numberMarks';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains, rectsOverlap } from '../../geometry';
@@ -314,7 +315,7 @@ export function layoutFunnel(
   // Only when the longest bar keeps its shortest readable length: a narrower
   // frame draws as before, with the label hidden, and the minimum width stays.
   const cagrColumn = (options.annotations ?? []).some((a) => a.kind === 'cagr')
-    ? measure('−100.0% p.a.', strongFont).width + (compactForm ? 24 : 48) : 0;
+    ? measure(`${numberMinus(options.locale?.language)}100.0% p.a.`, strongFont).width + (compactForm ? 24 : 48) : 0;
   const cagrReserve = inner.w - bandW - totalReserve - (callout?.reserve ?? 0) - cagrColumn >= MIN_LONGEST_BAR
     ? cagrColumn : 0;
   const noteReserve = (callout?.reserve ?? 0) + cagrReserve;

@@ -639,8 +639,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const modelLiftsBefore = zeroLifts.count;
   // Formats repeat across cells; each caller still gets its own mutable spec.
   const formats = new Map<string, NumberFormatSpec>();
-  // Every entry (resolveChartRequest, the registry layout) has put the chart's marks into the language tag.
-  const markedLanguage = options.locale?.language;
+  const ruleLanguage = withNumberMarks(options).locale!.language;
+  // A direct table resolve with a minus override needs the same tag as a chart layout.
+  const markedLanguage = options.locale?.minusGlyph === undefined ? options.locale?.language : ruleLanguage;
   const parseFormatExample = (example: string, keepWord = false): NumberFormatSpec => {
     const key = keepWord ? `w${example}` : `n${example}`;
     let spec = formats.get(key);
@@ -1268,7 +1269,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const childrenOf = new Map([...childGroups].map(([id, rows]) => [id, rows.slice()]));
 
   // ---- display specs: from data + options ONLY (before any width solving) ----
-  const locale = localeDefaults(options.locale);
+  const locale = chartNumberMarks(options.locale);
   // Fitting may add a compact suffix. Only the original format decides
   // whether the table's forced magnitude and hoisted affix apply.
   const sourceRows = magnitudeSource === data ? flatById : new Map(flattenRows(magnitudeSource.rows).map(row => [row.id, row]));
@@ -1281,8 +1282,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const authoredColumns = new Set<Id>();
   const localeDerivedColumns = new Set<Id>();
   // The retired options.magnitude prints as today.
-  // The rule reads the marks and the smallValues mode from the language tag; a layout has put them there already.
-  const ruleLanguage = withNumberMarks(options).locale!.language;
   const forcedMagnitudeOption = options.magnitude === 'million' || options.magnitude === 'thousand' ? options.magnitude : undefined;
   const forcedMagnitude = forcedMagnitudeOption === 'million' ? 'm' : forcedMagnitudeOption === 'thousand' ? 'k' : undefined;
   const keepAuthoredFormat = forcedMagnitude !== undefined && !(DIMSWITCH_TABLE in data)
@@ -1951,17 +1950,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (raw === 0 && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
       const automatic = cellSpec ? cellSpec.automatic : rowSpec!.automatic;
-      const printed = displayFormat(base, decimals, automatic, hoisted)(raw);
-      // A scale the row took from its own figures is derived like a column's, so it takes the locale's minus glyph too.
-      return ownScaleExamples.has(rowId!) && !cellSpec && locale.minusGlyph === '-' && printed.startsWith(MINUS) ? `-${printed.slice(MINUS.length)}` : printed;
+      return displayFormat(base, decimals, automatic, hoisted)(raw);
     }
     const automatic = cellSpec ? cellSpec.automatic : base.automatic;
-    const rendered = displayFormat(base, decimals, automatic, unitByCol.get(colId) != null, cellSpec !== undefined)(raw);
-    const localized =
-      localeDerivedColumns.has(colId) && locale.minusGlyph === '-' && rendered.startsWith(MINUS)
-        ? `-${rendered.slice(MINUS.length)}`
-        : rendered;
-    return localized;
+    return displayFormat(base, decimals, automatic, unitByCol.get(colId) != null, cellSpec !== undefined)(raw);
   };
 
   /** A row that supplies every value's final format can select its formatter once. */
@@ -1970,14 +1962,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     if (!row.id || !spec || cellSpecs.has(row.id) || groupCellSpecs.has(row.id) || keptRowFormats.specs.has(row.id)
       || (!rowOverridesColumn(row.id) && (ownFormatColumns.size || (ownScaleExamples.has(row.id) && scaleChangingColumns.size)))) return undefined;
     const print = displayFormat(spec, spec.decimals, spec.automatic, hoistedRowUnits.has(row.id));
-    const grouped = groupOf(row) !== undefined;
-    const localMinus = ownScaleExamples.has(row.id) && locale.minusGlyph === '-';
-    if (!grouped && !localMinus) return print;
-    return raw => {
-      if (grouped && raw === 0) return '0';
-      const text = print(raw);
-      return localMinus && text.startsWith(MINUS) ? `-${text.slice(MINUS.length)}` : text;
-    };
+    return groupOf(row) === undefined ? print : raw => raw === 0 ? '0' : print(raw);
   }
 
   // ---- percent-scale lint (points, not fractions) ----
@@ -2320,7 +2305,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           negated = negate && s.raw !== 0;
           const signed = negate && s.raw !== 0 ? -s.raw : s.raw;
           displayed = rowFormat ? rowFormat(signed) : formatNumber(signed, col.id, row.id);
-          if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a head drawn, a column that skipped a child); else the cell says it.
           if (s.partial && !(headMarksPartial && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
         }
@@ -2942,15 +2926,6 @@ function orderRows(
   };
   emit(childrenOf.get(null) ?? []);
   return out;
-}
-
-function localeDefaults(locale: TableOptions['locale']): {
-  decimal: '.' | ',';
-  thousands: NumberFormatSpec['thousandsSep'];
-  minusGlyph: '−' | '-';
-} {
-  const { decimal, thousands } = chartNumberMarks(locale);
-  return { decimal, thousands, minusGlyph: locale?.minusGlyph ?? MINUS };
 }
 
 function resolveExpansion(

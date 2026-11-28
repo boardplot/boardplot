@@ -29,6 +29,7 @@ import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateField
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickFormatter, valueAxisTitleRequest } from '../../axis';
 import { contrastRatio } from '../../color';
 import { defaultSetSpec, engineNumberSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber, type NumberFormatSpec } from '../../formatSpec';
+import { numberMinus } from '../../numberMarks';
 import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -864,7 +865,7 @@ export function layoutBullet(
 
   const annotations = bulletAnnotations(options, sharedScale, warnings);
   const cagrColW = annotations.some(ann => ann.kind === 'cagr')
-    ? measure('−100.0% p.a.', { ...labelFont, weight: emphasisWeight(theme) }).width + 48 : 0;
+    ? measure(`${numberMinus(options.locale?.language)}100.0% p.a.`, { ...labelFont, weight: emphasisWeight(theme) }).width + 48 : 0;
   const valueW = pointOn ? Math.max(0, maxOf(rows.map(row => {
     const text = valueTextOf(row);
     return text ? measure(text, valueBaseFont).width : 0;

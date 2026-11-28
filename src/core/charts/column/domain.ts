@@ -50,6 +50,7 @@ import type { ColumnDomain, ColumnEnv, ColumnVariant, ComputedTotal, IntegratedV
 import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
+import { numberMinus } from '../../numberMarks';
 import { disclosuresShown } from '../../notes';
 import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
@@ -674,7 +675,7 @@ function integratedVarianceValues(
       growthPct === null || displayedGrowthPct === null
         ? 'n.m.'
         // A signed figure ("+6.1%"), no arrow; the tone carries the verdict.
-        : `${growthPct > 0 ? '+' : growthPct < 0 ? '−' : ''}${growthFormatter(Math.abs(displayedGrowthPct))}`;
+        : `${growthPct > 0 ? '+' : growthPct < 0 ? numberMinus(locale) : ''}${growthFormatter(Math.abs(displayedGrowthPct))}`;
     pyGrowth.set(category.id, {
       categoryId: category.id,
       referenceSeriesId: pyRef.id,
