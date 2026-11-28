@@ -763,6 +763,37 @@ describe('default card rows', () => {
     expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toBe('Share: 34% of 100%');
   });
 
+  // Hover cards showed 1% beside a slice labeled <1% and 100% beside a pie with another slice.
+  it('keeps printed pie share bounds in records and hover cards', () => {
+    const split = { values: [99, 0.5, 0.5], shares: ['99%', '<1%', '1%'] };
+    const cases: { values: number[]; shares: string[]; format?: string; labels?: object; shownValues?: string[] }[] = [
+      { ...split },
+      { values: [9999, 1], shares: ['>99.9%', '<0.1%'] },
+      { values: [99999, 1], format: '0.00%', shares: ['>99.99%', '<0.01%'] },
+      { ...split, format: '0%', shownValues: split.shares },
+      { ...split, format: '0%', labels: { outsidePie: ['category', 'absolute'] }, shownValues: split.shares },
+    ];
+    for (const { values, shares, format, labels, shownValues } of cases) {
+      const { request, geometry } = build({ type: 'pie', data: {
+        categories: ['a', 'b', 'c'].slice(0, values.length).map(id => ({ id })),
+        series: [{ id: 's', values }],
+      }, options: { format, labels, size: { width: 640, height: 360 } } });
+      const drawnLabels = geometry.labels.filter(label => label.kind === 'outsidePie' && !label.hidden);
+      expect(drawnLabels.map(label => label.lines.at(-1)?.split(' · ').at(-1))).toEqual(shares);
+      const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+      const cards = records.map(record => labelCardContent(record, undefined, { hundredPercent: true }).rows);
+      const sharedRows = sharedLabelCardContent(records).rows.filter(row => row.kind === 'value');
+      expect(records.map(record => record.share?.percent.displayed)).toEqual(shares);
+      expect(cards.map(rows => rows.find(row => row.kind === 'share')?.value)).toEqual(shares);
+      expect(sharedRows.map(row => row.share)).toEqual(shares);
+      if (shownValues) {
+        expect(records.map(record => record.value.displayed)).toEqual(shownValues);
+        expect(cards.map(rows => rows.find(row => row.kind === 'value')?.value)).toEqual(shownValues);
+        expect(sharedRows.map(row => row.value)).toEqual(shownValues);
+      }
+    }
+  });
+
   // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
   it('prints the total the stack draws', () => {
     const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];

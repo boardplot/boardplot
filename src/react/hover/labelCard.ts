@@ -1,6 +1,6 @@
 import { chartString } from '../../core/strings/hover';
 import { joinSentences, localeStrings } from '../../core/strings';
-import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber, unitMagnitude, type NumberFormatSpec } from '../../core/formatSpec';
+import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, printsBound, roundedNumber, unitMagnitude, type NumberFormatSpec } from '../../core/formatSpec';
 import { magnitudeSuffix } from '../../core/format';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
@@ -270,7 +270,7 @@ function cardFormat(values: readonly InteractionValue[], locale?: string): (valu
       let largest: { raw: number; text: string } | undefined;
       for (const other of values) {
         const text = numeric(other) && keyOf(other) === key ? shownValueText(other) : undefined;
-        if (text !== undefined && (!largest || Math.abs(other.raw as number) > Math.abs(largest.raw))) largest = { raw: other.raw as number, text };
+        if (text !== undefined && !printsBound(text) && (!largest || Math.abs(other.raw as number) > Math.abs(largest.raw))) largest = { raw: other.raw as number, text };
       }
       spec = largest ? exampleFormat(largest.text, locale, value.unit) : value.format ? exampleFormat(value.format, locale, value.unit) : null;
       // A format that does not print its own example back (a unit that holds the scale, "$m") is no card format.
@@ -280,6 +280,7 @@ function cardFormat(values: readonly InteractionValue[], locale?: string): (valu
     return spec;
   };
   return value => {
+    if (value.displayed && printsBound(value.displayed)) return cardValueText(value, locale);
     const spec = numeric(value) ? specFor(value) : null;
     return spec ? specText(value.raw as number, spec) : cardValueText(value, locale);
   };
@@ -301,12 +302,14 @@ function exampleFormat(example: string, locale: string | undefined, unit: string
 
 /** The shares of a card in one format: a drawn share's, else the shares' format, else one decimal. */
 function shareFormat(percents: readonly InteractionValue[], locale?: string): (percent: InteractionValue) => string {
-  const drawn = percents.find(percent => percent.displayed && shownValueText(percent) !== undefined);
-  const example = drawn ? drawn.displayed!.trim() : percents.find(percent => percent.format)?.format ?? SHARE_EXAMPLE;
+  const drawn = percents.find(percent => percent.displayed && !printsBound(percent.displayed) && shownValueText(percent) !== undefined);
+  const example = drawn?.displayed?.trim() ?? percents.find(percent => percent.format)?.format ?? SHARE_EXAMPLE;
   const spec = exampleFormat(example, locale, '%');
-  return percent => percent.state === 'value' && typeof percent.raw === 'number'
-    ? drawn?.displayed && percent.displayed ? displayedValueText(percent, locale) : spec ? specText(percent.raw, spec) : cardValueText(percent, locale)
-    : cardValueText(percent, locale);
+  return percent => {
+    if (percent.displayed && (drawn || printsBound(percent.displayed))) return cardValueText(percent, locale);
+    return spec && percent.state === 'value' && typeof percent.raw === 'number'
+      ? specText(percent.raw, spec) : cardValueText(percent, locale);
+  };
 }
 
 /** A heading that names the category says its date already, unless the heading is a bare id that is not the date. */
