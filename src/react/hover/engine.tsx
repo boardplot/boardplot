@@ -468,7 +468,9 @@ export function hoverTargets(model: HoverModel, request: ResolvedChartRequest, p
   const records = activation ? model.records : model.records.filter(record => record.cardFields?.length !== 0);
   // A metric stack's focus look: the pointer's column of the plots names its category, wherever the pointer is in it.
   if (placement?.focusBand) return pick.point ? focusBandTargets(records, placement.focusBand, pick.point) : [];
-  const owners = pick.nodeId === undefined ? [] : records.filter(record => record.nodeIds.includes(pick.nodeId!));
+  // Over the dotted line of an event that sits on a category, the pointer reads the period under it: its card lists the event.
+  const rule = !activation && pick.nodeId?.endsWith(':rule') && records.some(record => record.event?.categoryId !== undefined && record.nodeIds.includes(pick.nodeId!));
+  const owners = pick.nodeId === undefined || rule ? [] : records.filter(record => record.nodeIds.includes(pick.nodeId!));
   if (new Set(owners.map(record => record.target.owner.seriesId)).size > 1) return owners;
   const nodeRecord = owners[0];
   const panel = nodeRecord?.target.panel

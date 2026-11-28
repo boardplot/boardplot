@@ -1129,19 +1129,23 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
   const shares = shareColumn(rows, theme, measure);
   const shareWidth = shares ? shares + CARD_SPACE.column : 0;
   maxWidth = Math.max(1, maxWidth - shareWidth);
-  const labelReserve = Math.max(0, maxOf(rows.map(row => !row.label ? 0
+  // An event's date and title take their own columns: a long title wraps and leaves the series names their room.
+  const columns = rows.filter(row => row.kind !== 'event');
+  const labelReserve = Math.max(0, maxOf(columns.map(row => !row.label ? 0
     : measure(row.label, rowFont(row, theme)).width + CARD_SPACE.column + (row.series ? 14 : 0))));
-  const valueWidth = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(rows.map(row => row.value === undefined ? 0
+  const shared = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(columns.map(row => row.value === undefined ? 0
     : measure(row.value, { ...rowFont(row, theme), tabular: true }).width))));
   return rows.map((row, index) => {
     const font = rowFont(row, theme);
     const paired = row.value !== undefined;
+    const valueWidth = row.kind !== 'event' || !paired ? shared : Math.max(1, Math.min(measure(row.value!, font).width,
+      maxWidth - measure(row.label!, font).width - CARD_SPACE.column));
     const swatch = row.series || row.kind === 'total' ? 14 : 0;
     const label = paired ? row.label ?? '' : row.text;
     const room = paired ? Math.max(0, maxWidth - valueWidth - (label ? CARD_SPACE.column : 0) - swatch) : maxWidth;
     // The title is the record's name: in full, on as many lines as it needs.
     const fitted = row.kind === 'title' && !paired ? { lines: cardValueLines(label, font, Math.max(1, room), measure, true), title: undefined }
-      : fitText(label, font, room, row.lines ?? (row.kind === 'annotation' ? 2 : 1), measure);
+      : fitText(label, font, room, row.lines ?? (row.kind === 'annotation' || row.kind === 'event' ? 2 : 1), measure);
     const lines = fitted.lines.length ? fitted.lines : [''];
     const valueLines = paired ? cardValueLines(row.value!, font, Math.max(1, valueWidth), measure) : undefined;
     const gap = index > 0 && (rows[index - 1]?.kind === 'title' || row.kind === 'more' || row.kind === 'total'
@@ -1225,7 +1229,12 @@ function rowsWithinHeight(
     const kept = first(count);
     return [...kept, moreRow(rows.length - kept.length, locale)];
   };
-  const limited = cut < 0 ? [...rows] : cutTo(maximum);
+  // The series limit cuts series only: the period's events stay under the counting row.
+  const events = rows.filter(row => row.kind === 'event');
+  const limited = cut < 0 ? [...rows] : (() => {
+    const kept = first(maximum);
+    return [...kept, moreRow(rows.length - kept.length - events.length, locale), ...events];
+  })();
   const measured = measureRows(limited, theme, maxWidth, measure);
   const fits = (sizes: MeasuredRow[]) => cardHeight(sizes) <= maxHeight;
   if (fits(measured)) return { rows: limited, measured };

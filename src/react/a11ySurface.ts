@@ -31,8 +31,7 @@ export function a11ySurfaceStyle(theme: Theme): string {
     '[data-bp-keyed] [data-part="interaction-outline"]{stroke-width:var(--bp-key-width)}',
     '.bp-interaction-card>svg{border-radius:inherit;overflow:hidden}',
     '.bp-interaction-card :is(text,tspan){font-variant-numeric:tabular-nums!important}',
-    // An event's dotted line in the plot leaves the pointer to the period under it, whose card lists the event.
-    '[data-bp-hover] :is([data-part^="interaction-"],[data-part="eventRule"]){pointer-events:none}',
+    '[data-bp-hover] [data-part^="interaction-"]{pointer-events:none}',
     '@keyframes bp-chart-card-in{from{opacity:0}}',
     '@media (prefers-reduced-motion:reduce){[data-bp-chart-card]{animation:none!important;transition:none!important}}',
     '@media (forced-colors: active){',
