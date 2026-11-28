@@ -247,16 +247,15 @@ describe('actionable input refusals', () => {
     expect(warnings(draw('pie'))).toEqual([]);
   });
 
-  // Switching a line or column to two axes needs series kinds and acknowledgement as well as the combo type.
-  it('names every setting needed to move a line or column to two axes', () => {
+  // A line chart accepts the setting, while a column refusal tells the author how to draw two axes.
+  it('accepts a secondary-axis setting on a line and explains the column refusal', () => {
     const data = { categories: ['A', 'B'], series: [{ id: 'sales', axis: 'secondary', values: [1, 2] }] };
-    for (const type of ['line', 'column']) {
-      const error = errors({ type, data })[0];
-      expect(error).toMatchObject({ code: 'invalid-data', path: '/data/series/0/axis' });
-      expect(error?.suggest).toContain("type 'combo'");
-      expect(error?.suggest).toContain("kind to 'line' or 'column'");
-      expect(error?.suggest).toContain('options.secondaryAxis: { acknowledge: true }');
-    }
+    expect(errors({ type: 'line', data })).toEqual([]);
+    const error = errors({ type: 'column', data })[0];
+    expect(error).toMatchObject({ code: 'invalid-data', path: '/data/series/0/axis' });
+    expect(error?.suggest).toContain("type 'combo'");
+    expect(error?.suggest).toContain("kind to 'line' or 'column'");
+    expect(error?.suggest).toContain('options.secondaryAxis: { acknowledge: true }');
   });
 
   // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
