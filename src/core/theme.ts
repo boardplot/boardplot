@@ -827,7 +827,7 @@ const scaledThemes = new WeakMap<Theme, Map<string, Theme>>();
 function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget, narrow = false): Theme {
   let byScale = scaledThemes.get(theme);
   if (!byScale) { byScale = new Map(); scaledThemes.set(theme, byScale); }
-  const known = byScale.get(`${target}:${textScale}`);
+  const known = byScale.get(`${target}:${textScale}${narrow ? ':XS' : ''}`);
   if (known) return known;
   const floors = targetFloorsPx(target, 1, narrow ? 'XS' : 'M');
   const px = (size: number, floor: number): number => scaleTextAtFloor(size, textScale, floor);
@@ -854,7 +854,7 @@ function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget, 
       ...(table.section ? { section: face(table.section, floors.label) } : {}),
     } } : {}),
   });
-  byScale.set(`${target}:${textScale}`, scaled);
+  byScale.set(`${target}:${textScale}${narrow ? ':XS' : ''}`, scaled);
   return scaled;
 }
 

@@ -330,10 +330,6 @@ function automaticWaterfall(
   if (options.variant === 'vertical' || dropsOnHorizontal) return staysVertical;
   if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return staysVertical;
   const horizontal = layoutHorizontalWaterfall(data, options);
-  // A crowded dashboard bridge needs room for its names and 80 px between the name and value columns.
-  if (typeClassCap() === 'XS' && horizontal.sizing && horizontal.sizing.minWidth > horizontal.size.width + SIZE_TOLERANCE) {
-    return { geometry: horizontal, horizontal: true };
-  }
   // A finding is the same one when code, severity and owner match; a code alone lets a new omission
   // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
   // hidden labels themselves are compared.

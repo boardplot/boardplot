@@ -1,4 +1,4 @@
-import { dashboardCardTheme, spaceTokens, WIDE_CANVAS_MIN_WIDTH, withDashboardCardTheme, type SpaceTokens } from './theme';
+import { spaceTokens, WIDE_CANVAS_MIN_WIDTH, type SpaceTokens } from './theme';
 import type { Margin } from './geometry';
 import type { Theme } from './types/theme';
 
@@ -44,13 +44,11 @@ function scaleGap(tokens: SpaceTokens, wide: SpaceTokens): NonNullable<Theme['sp
 /** Compact writes scaled pads and row pitch onto the existing space fields. */
 export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact' = 'comfortable', width?: number): Theme {
   if (density !== 'compact') return theme;
-  const card = dashboardCardTheme(theme);
-  if (card !== theme && width !== undefined && width < 400) return card;
   // The default margins step with the canvas width, so a known width scales
   // the margin of its own step; without one the 960 px step is the base.
   const base = spaceTokens(theme, width !== undefined && width < WIDE_CANVAS_MIN_WIDTH ? width : WIDE_CANVAS_MIN_WIDTH - 1);
   const wide = spaceTokens(theme, WIDE_CANVAS_MIN_WIDTH);
-  const dense = {
+  return {
     ...theme,
     space: {
       tierGap: scaleSpacePx(theme.space.tierGap, TIER_FACET.min, TIER_FACET.max),
@@ -64,5 +62,4 @@ export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact'
       ...(theme.space.barRow ? { barRow: theme.space.barRow } : {}),
     },
   };
-  return card === theme ? dense : withDashboardCardTheme(dense, card);
 }

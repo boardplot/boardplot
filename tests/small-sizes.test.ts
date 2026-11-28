@@ -755,7 +755,7 @@ it('names the size that render draws in measure', () => {
   expect(refused.fix[0]!.value.width).toBe(floor);
   expect((render({ spec: { ...card, options: { ...card.options, size: { width: floor } } } }).body as { ok: boolean }).ok).toBe(true);
 
-  // A report bar keeps its 280 px floor and its width-only repair.
+  // A width-only refusal at the chart's static floor advises the width alone, and that width draws.
   const football = getFixtures('bar').find((f) => f.id === 'valuation-football-field')!;
   const narrowBar = { type: 'bar', data: football.data, options: { ...football.options, size: { width: 150 } } };
   const barRefused = (render({ spec: narrowBar }).body as { errors: { code: string; fix: { value: { width: number; height?: number } }[] }[] }).errors[0]!;
@@ -1694,8 +1694,8 @@ it('draws a KPI, a pie and a column below 280 px when their content fits, and re
     expect(at('column', quarters, { title: 'Revenue grows' }, width, 200).refused, `column ${width}`).toBeFalsy();
   }
   expect(at('pie', slices, {}, 240, 240).refused).toBeFalsy();
-  // The pie still refuses a width that cannot hold its circle and names.
-  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 212 } } }] });
+  // A pie whose circle and labels need 224 px names that width.
+  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 224 } } }] });
   const hundred = { categories: Array.from({ length: 100 }, (_, i) => `Item ${i + 1}`), series: [{ id: 's', label: 'Count', values: Array.from({ length: 100 }, (_, i) => 1 + (i % 13)) }] };
   expect(at('column', hundred, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 280 } } }] });
   expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
