@@ -2203,7 +2203,7 @@ export function sizeGate<D, O extends ChartOptions, M extends object, DV extends
   // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
   // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
   const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH)
-    : narrowDashboard(options?.target, requested.width) && measuredCardType(definition.type) ? Math.min(floor.width, MEASURED_CARD_WIDTH) : floor.width;
+    : narrowDashboard(options?.target, requested.width, definition.type) && measuredCardType(definition.type) ? Math.min(floor.width, MEASURED_CARD_WIDTH) : floor.width;
   const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   return { tight, gatePolicy };
 }
@@ -2231,7 +2231,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
 ): LayoutResult<M, DV> {
   const requested = resolveSize(options?.size, options?.target);
   const nested = panelTypeClass(options) !== undefined;
-  if (options?.target === 'dashboard' && (nested ? typeClassCap() === 'XS' : narrowDashboard(options.target, requested.width))) {
+  if (options?.target === 'dashboard' && (nested ? typeClassCap() === 'XS' : narrowDashboard(options.target, requested.width, definition.type))) {
     const ref = options.theme;
     const theme = dashboardCardTheme(resolveTargetTheme(ref, 'dashboard'));
     const card = { ...options, theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme } };

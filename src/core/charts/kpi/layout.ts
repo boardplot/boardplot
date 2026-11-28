@@ -29,7 +29,6 @@ import { chartSizing, resolveSizing } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
-  canvasMargin,
   colorblindRoles,
   resolveSemanticPaletteTheme,
   resolveSurface,
@@ -46,7 +45,7 @@ import { sparkLabelsRefusal } from './sparkLabels';
 import type { KpiOptions, LabelKind } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode, ShownMark, ShownTexts } from '../../types/scene';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE, readerFloorPx, textScaleOf } from '../../typeFloors';
-import { DEFAULT_TARGET, kpiHeroSizesPx, scaleTextPx, TARGET_SIZE, typeClassCap, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, kpiHeroSizesPx, scaleTextPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { composedTextRole } from '../../textRole';
 import { columnOverrideWarnings } from '../columnOverrides';
 import { planSteering, type SteeringPlan } from './steering';
@@ -446,12 +445,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // Kpi is a CARD (aspect class 'card'), exempt from the width classes that
   // key the canvasMargin token: a 260px tile under 28px side margins would
   // spend 21% of its width on air.
-  const narrow = typeClassCap() === 'XS';
-  const margin = { ...(narrow ? canvasMargin(theme, size.width) : { top: 12, right: 12, bottom: 12, left: 12 }), ...options.margin };
+  const margin = { top: 12, right: 12, bottom: 12, left: 12, ...options.margin };
   const subtitle = options.title
     ? (resolveSubtitle(options.subtitle) ?? (data.label ? { measure: data.label } : undefined))
     : resolveSubtitle(options.subtitle);
-  const frameTheme = !narrow && options.title && subtitle?.measure === data.label
+  const frameTheme = options.title && subtitle?.measure === data.label
     ? { ...theme, type: { ...theme.type, subtitle: { ...theme.type.subtitle, size: Math.max(scaleTextPx(13, textScaleOf(options)), theme.type.subtitle.size) } } }
     : theme;
   const frameResult = solveFrame(

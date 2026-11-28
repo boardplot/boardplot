@@ -31,8 +31,11 @@ export const SIZE_PRESETS: Record<SizePreset, Size> = {
 type TypeColumn = Readonly<Record<TypeRoleName, number>>;
 export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
 
-export function narrowDashboard(target: RenderTarget | undefined, width: number): boolean {
-  return target === 'dashboard' && width < 400;
+/** Cards that keep their own sizes in a narrow dashboard card. */
+const OWN_SIZES = new Set(['kpi', 'bullet', 'sparkline', 'creative']);
+
+export function narrowDashboard(target: RenderTarget | undefined, width: number, type?: string): boolean {
+  return target === 'dashboard' && width < 400 && !(type !== undefined && OWN_SIZES.has(type));
 }
 
 let classCap: TargetTypeClass | undefined;

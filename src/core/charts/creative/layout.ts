@@ -1,6 +1,6 @@
 import { a11yDescription } from '../../a11yDescription';
 import { chartString } from '../../strings/creative';
-import { canvasMargin, emphasisWeight, panelTypeClass, typeClassCap, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
+import { canvasMargin, emphasisWeight, panelTypeClass, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
 import type { Rect } from '../../geometry';
 import { defaultSetSpec, formatWithSpec, percentChangeSpec, statisticFormatter } from '../../formatSpec';
 import { formatDate } from '../../dateFormat';
@@ -658,7 +658,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const notesOff = authoredOff || form.notes === true;
   // The wide form's sides follow the shared margin by width (24 below 840 px, 28 from 840), not a literal 28.
   const sides = canvasMargin(theme, size.width);
-  const margin = typeClassCap() === 'XS' ? sides : stacked ? { top: 16, right: 16, bottom: 16, left: 16 } : { top: 24, right: sides.right, bottom: 24, left: sides.left };
+  const margin = stacked ? { top: 16, right: 16, bottom: 16, left: 16 } : { top: 24, right: sides.right, bottom: 24, left: sides.left };
   const frame = solveFrame({ size, margin, cardGaps: true,
     ...frameTextOptions(options), ...(notesOff ? { footnotes: [...(comparison ? [comparison] : []), ...(data.definitions?.trim() ? [data.definitions.trim()] : [])] } : {}),
     subtitle: resolveSubtitle(options.subtitle), theme, measure }, occupied);

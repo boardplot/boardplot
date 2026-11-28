@@ -13,7 +13,7 @@ import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, pl
 import type { Rect } from '../../geometry';
 import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
-import { GUTTER_MAX_SHARE, gutterBudget, stepDownFont } from '../../label/rowFit';
+import { gutterBudget, stepDownFont } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
 import { categoryCutLint } from '../../label/categoryWarnings';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate } from '../../partialPeriod';
@@ -25,8 +25,7 @@ import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { hiddenKey } from '../../hiddenSeries';
 import { breakWhileHidden, drawnWithoutBreak } from '../../columnBarChecks';
-import { defaultMeasurer, lineBlockWidth, type FontSpec } from '../../text';
-import { typeClassCap } from '../../target';
+import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
 import type { BarOptions, LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
@@ -548,16 +547,12 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   }
   const groupedH = variant === 'grouped' && labelOn(options, 'point')
     ? dataSeries.length * measure('0', labelFont).height + Math.max(0, dataSeries.length - 1) * 4 : 0;
-  const wholeNameWidth = typeClassCap() === 'XS' && nameColumn && nameTrack === undefined
-    ? maxOf(catLines.map(label => label.title === undefined ? 0 : Math.max(size.width + 1,
-      size.width - plot0.w + lineBlockWidth(label.title, catMaxLines, label.font, measure) / GUTTER_MAX_SHARE)))
-    : 0;
   return {
     frame, tickFont, labelFont, strongFont,
     // Grouped value labels print in the emphasis weight, so a value inside a
     // bar end reads at a glance.
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
-    availH, minWidth: Math.max(size.width - plotW + 10, wholeNameWidth), capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
+    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
     ...(categoryTitle ? { categoryTitle: categoryTitle.request(plot0.x, plot0.y, 'start') } : {}),
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),

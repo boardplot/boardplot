@@ -53,7 +53,7 @@ export function tableFitThemeTokens(theme: Theme, target: RenderTarget) {
 
 /** Output metadata from the final layout. Text roles are supplied by the text lanes. */
 export function presentationInfo(geometry: Geometry<object, object>, target: RenderTarget, inheritedClass?: TypeWidthClass, textScale = 1): PresentationInfo {
-  const narrow = inheritedClass ? typeClassCap() === 'XS' && target === 'dashboard' : narrowDashboard(target, geometry.size.width);
+  const narrow = inheritedClass ? typeClassCap() === 'XS' && target === 'dashboard' : narrowDashboard(target, geometry.size.width, geometry.type);
   const typeClass = narrow ? 'XS' : geometry.type === 'kpi' || geometry.type === 'bullet' ? 'M' : inheritedClass ?? typeWidthClass(geometry.size.width);
   const floors = targetFloorsPx(target, 1, typeClass);
   let minimumScale = 0.9;

@@ -244,7 +244,7 @@ export function secondaryFont(theme: Theme): FontSpec {
  * canvas (the same boundary the aspect lints draw).
  */
 export function themeForWidth(theme: Theme, widthOrClass: number | TargetTypeClass): Theme {
-  if (widthOrClass === 'XS' || typeof widthOrClass === 'number' && widthOrClass < 400) theme = dashboardCardTheme(theme);
+  if (widthOrClass === 'XS') theme = dashboardCardTheme(theme);
   const cls = typeof widthOrClass === 'number' ? typeWidthClass(widthOrClass) : widthOrClass === 'XS' ? 'S' : widthOrClass;
   const column = cls === 'M' ? undefined : theme.type.scale?.[cls];
   const roles: Partial<Record<TypeRoleName, FontSpec>> = {};

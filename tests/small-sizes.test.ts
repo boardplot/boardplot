@@ -1701,16 +1701,15 @@ it('draws a KPI, a pie and a column below 280 px when their content fits, and re
   expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
 });
 
-// A 200 px dashboard card must keep its period labels and whole bar names, and refuse below the card floor.
-it('fits a line or bar at 200 px when its names fit', () => {
+// Line, bar and waterfall in a dashboard card drew a size message under 280 px; they now draw down to 200 px and refuse below it.
+it('draws a line, bar and waterfall at 200 px in a dashboard card and refuses them below it', () => {
   const data = { categories: ['Jan', 'Feb', 'Mar'], series: [{ id: 's', label: 'Sales', values: [10, 12, 15] }] };
-  const at = (type: string, width: number, categories = data.categories) =>
-    layoutResolvedRequest(resolveChartRequest({ type, data: { ...data, categories }, options: { target: 'dashboard', size: { width, height: 240 } } }));
-  const line = at('line', 200) as Geometry;
-  expect(line.labels.filter(l => l.kind === 'category' && !l.hidden).length).toBeGreaterThanOrEqual(2);
-  expect(at('line', 199).refused).toBe(true);
-  expect(at('bar', 200).refused).toBeFalsy();
-  expect(at('bar', 200, ['Thislongnamecannotfitinthenarrowgutter', 'West', 'North']).refused).toBe(true);
+  for (const type of ['line', 'bar', 'waterfall']) {
+    const at = (width: number, target = 'dashboard') => layoutResolvedRequest(resolveChartRequest({ type, data: type === 'waterfall' ? { items: [{ id: 'a', label: 'Start', type: 'total', value: 10 }, { id: 'b', label: 'Gain', value: 5 }, { id: 'c', label: 'End', type: 'total' }] } : data, options: { target, size: { width, height: 240 } } } as never)) as Geometry;
+    expect(at(200).refused, type).toBeFalsy();
+    expect(at(199).refused, type).toBe(true);
+    expect(at(200, 'report').refused, type).toBe(true);
+  }
 });
 
 // A crowded quarter row must keep the newest period beside its value and keep value ticks at the smaller type size.
