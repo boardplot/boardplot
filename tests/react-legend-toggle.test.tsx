@@ -124,3 +124,13 @@ it('follows new data and leaves no button behind', async () => {
   expect(host.querySelector('[aria-pressed]')).toBeNull();
   expect(label('North').getAttribute('role')).toBe('button');
 });
+
+// The focus ring of a legend button sat tight on the label and touched letters that reach below the line.
+it('makes the focus button of a legend label larger than the label', async () => {
+  await render(<ColumnChart data={data} legend="top" size={size} />);
+  const button = key('North') as HTMLButtonElement;
+  act(() => button.focus());
+  // A layout-less test document measures every label as 0 x 0 px, so the button's size is its room alone.
+  expect(button.style.width).toBe('6px');
+  expect(button.style.height).toBe('6px');
+});
