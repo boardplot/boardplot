@@ -10,6 +10,7 @@ import { defaultMeasurer } from './text';
 import { prepareFractionAnnotations } from './normalize/fraction';
 import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
+import { INTERACTIVE_LAYOUT } from './footer';
 import { lacksWordTable, recordEnglishWords, withChartDefaultStrings, withLocaleStrings } from './strings';
 import { mixedLanguageWarning } from './mixedLanguage';
 import { withNumberMarks } from './numberMarks';
@@ -885,15 +886,16 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     return withLayoutMemo(() => {
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));
       // diagram and creative take no options.strings, so the author has no way to replace a word there.
-      const recorded = def.type === 'diagram' || def.type === 'creative' ? undefined
-        : recordEnglishWords(options, () => loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options));
-      let geo = recorded ? recorded.result : loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
+      const language = def.type === 'diagram' || def.type === 'creative' ? undefined : lacksWordTable(options);
+      const run = () => loadedDeferred('footer')?.(withCuts, data, options, def.type) ?? withCuts(data, options);
+      const recorded = language ? recordEnglishWords(options, run) : undefined;
+      let geo = recorded ? recorded.result : run();
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
       if (!geo.refused) {
         finishCutLabelNotes(geo);
         reportLabelOmissions(geo, options, data);
-        const language = recorded && lacksWordTable(options);
-        const warning = recorded && language ? mixedLanguageWarning(geo, options ?? {}, language, recorded.words, loadedDeferred('footer') === undefined) : undefined;
+        const warning = recorded && language
+          ? mixedLanguageWarning(geo, options ?? {}, data, language, recorded.words, Boolean((options as { [INTERACTIVE_LAYOUT]?: boolean })?.[INTERACTIVE_LAYOUT])) : undefined;
         if (warning && !geo.warnings.some(item => item.code === 'mixed-language' && item.message === warning.message)) {
           geo.warnings = [...geo.warnings, warning];
         }

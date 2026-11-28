@@ -90,6 +90,13 @@ describe('built-in wording block', () => {
     expect(warnings({ strings: { source: 'Source', others: 'Autres' } })).toEqual([]);
   });
 
+  // The scan reads drawn text, so a French author's own "Total" category or "Source: INSEE" line must not count as built-in English.
+  it('does not name words that the author wrote', () => {
+    const fixture = pieFixture();
+    const warnings = (options: Record<string, unknown>) => layout('pie', fixture, { locale: { language: 'fr' }, ...options }).warnings.filter(warning => warning.code === 'mixed-language');
+    expect(warnings({ source: 'Source: INSEE', title: 'Total' })).toEqual([]);
+  });
+
   // A French chart can print a built-in English source prefix, while the author's wording and hidden prefixes should stay quiet.
   it('reports only the built-in source prefix visible in the scene', () => {
     const fixture = pieFixture();

@@ -295,17 +295,16 @@ export function lacksWordTable(options: { locale?: { language?: string } } | und
   return language && !/^(?:en|de)(?:[-_]|$)/i.test(language) ? language : undefined;
 }
 
-/** Runs `run` and returns the key and English template of every built-in word it read for such a language. */
+/** Runs `run` and returns the key and English template of every built-in word it read for such a language. A nested layout keeps its own record: the grid names its panels' words through the scene it draws. */
 export function recordEnglishWords<T>(options: Pick<BaseOptions, 'locale' | 'strings'> | undefined, run: () => T): { result: T; words: ReadonlyMap<string, string> } {
-  if (!lacksWordTable(options)) return { result: run(), words: new Map() };
   const outer = readEnglish;
   const own = new Map<string, string>();
-  readEnglish = own;
+  // A panel with an English or German table inside a French grid records nothing into the grid.
+  readEnglish = lacksWordTable(options) ? own : null;
   try {
     return { result: run(), words: own };
   } finally {
     readEnglish = outer;
-    if (outer) for (const [key, template] of own) outer.set(key, template);
   }
 }
 
