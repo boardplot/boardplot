@@ -44,7 +44,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `axis-break-height-order` | warn | yes | core/axisBreakOrder.ts |
 | `axis-break-invalid` | error | yes | core/axisBreakInvalid.ts |
 | `axis-break-unsupported` | warn | yes | bar, box, core/charts/chartEnv.ts, core/grid/layoutGrid.ts, grid |
-| `axis-title-dropped` | warn |  | scatter |
+| `axis-title-dropped` | warn |  | core/label/categoryWarnings.ts, scatter |
 | `bad-anchor` | warn |  | core/annotate.ts, core/annotateTargets.ts, core/eventLane.ts, gantt, pie, waterfall |
 | `band-attainment-empty` | warn |  | core/annotateTargets.ts |
 | `band-bounds-invalid` | warn |  | core/annotateTargets.ts |
@@ -619,7 +619,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `notes-left-out` | warn | yes | core/frameText.ts |
 | `observed-display-too-small` | warn |  | react/useDisplayWarnings.ts |
 | `option-deprecated` | warn | yes | core/retired.ts, core/theme.ts |
-| `option-ignored` | info, warn | yes | bar, bartable, bullet, choropleth, cohort, core/retired.ts, diagram, dimswitch, gantt, grid, heatmap, waterfall |
+| `option-ignored` | info, warn | yes | bar, bartable, bullet, choropleth, cohort, core/retired.ts, diagram, dimswitch, gantt, grid, heatmap, line, waterfall |
 | `others-shade-unavailable` | info |  | core/paintWarnings.ts |
 | `others-too-strong` | warn |  | core/themeRules.ts |
 | `out-is-symlink` | error |  | cli/render.ts |

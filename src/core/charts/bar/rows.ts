@@ -598,6 +598,7 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
   const titleRequests = area.axisTitle && area.axisTitleAt && options.valueAxis?.show
     ? [valueAxisTitleRequest(area.axisTitle, area.axisTitleAt, 'end', 'axis:x:title')]
     : [];
+  if (area.categoryTitle) titleRequests.push(area.categoryTitle);
   const stated = new Map<Id, Omit<ShownMark, 'drawn'>>();
   const requested = planBarLabels(domain, paints, area, scene, warnings, stated, features.alignRow);
   if (features.positionLabels && hasLabelPosition(options)) features.positionLabels(requested, domain, paints, scene);

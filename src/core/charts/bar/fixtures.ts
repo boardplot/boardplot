@@ -1413,4 +1413,15 @@ fixtures.push({
     { kind: 'arrow', id: 'gap', from: { categoryId: 'west', value: 24 }, to: { categoryId: 'west', value: 81 } },
   ],
 });
+fixtures.push({
+  id: 'category-axis-title',
+  title: 'A header above the quarter names',
+  kind: 'example',
+  data: {
+    categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
+    series: [{ id: 'sales', label: 'Sales', values: [60, 70, 80] }],
+  },
+  options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
+});
+
 registerFixtures('bar', fixtures);

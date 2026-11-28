@@ -4,15 +4,14 @@
  * MCP and BoardplotChart answer with the full reason, and no per-type React
  * entry carries these strings.
  */
-import { valueAxisRefusal, type OPTION_CAPABILITY, type VALUE_AXIS_CAPABILITY, type VALUE_AXIS_ONLY } from './capability';
+import { CATEGORY_AXIS_SUPPORT, valueAxisRefusal, type OPTION_CAPABILITY, type VALUE_AXIS_CAPABILITY, type VALUE_AXIS_ONLY } from './capability';
 
 export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, string>> = {
   labelPosition:
     "this type has no supported bar value labels to position. Set labelPosition on a supported bar chart, or on a grid panel through that panel's options",
   rowLabels:
     "only the horizontal row-label families read rowLabels (bar, bullet, box, dot, likert). A vertical category axis prints its labels under the bands, where they already share one baseline and there is nothing to align",
-  categoryAxis:
-    "only 'line', 'column' and 'combo' accept categoryAxis; dateTicks picks a calendar interval for the tick labels of a dated row, and crossesBetween selects bands or points on a line. Other banded category types print their own category rows",
+  categoryAxis: CATEGORY_AXIS_SUPPORT,
   categoryLabels:
     "staircase category names sit in the free space over columns sorted by height, and only the vertical column family reads categoryLabels (column, combo, pareto). A horizontal bar prints each name beside its row already; a waterfall or variance keeps its bridge order and its delta labels in that space; histogram bins and mekko widths have no free triangle over sorted columns",
   secondaryAxis:
@@ -170,7 +169,7 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
   ribbons: { bar: "bar rows are items, not a sequence, and ribbons draw a rank flow from period to period; type 'column' with variant 'stacked' draws them" },
   rowLabels: { '*': "aligned row labels belong to horizontal rows such as type 'bar'; this type prints its category labels on one baseline already" },
   categoryLabels: { '*': "type 'column', 'combo' or 'pareto' over columns sorted by height takes categoryLabels 'staircase'", bar: 'a horizontal bar prints each name beside its row already' },
-  categoryAxis: { '*': "dateTicks is a setting of types 'line', 'column' and 'combo', and crossesBetween one of type 'line'; a banded type crosses between its bands already" },
+  categoryAxis: { '*': CATEGORY_AXIS_SUPPORT },
   secondaryAxis: { '*': "a second value scale needs type 'combo'" },
   labels: {
     '*': "options.labelDensity 'minimal' keeps the totals and endpoints",

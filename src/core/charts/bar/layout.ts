@@ -7,7 +7,7 @@ import { stringFields } from '../../strings';
 import { structureCount, type StructureCount } from '../../structureCounts';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
-import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
+import { applyValueAxisTitleInk, layoutValueAxis, planCategoryTitle, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { seriesRasterFormatter } from '../../formatSpec';
 import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -560,11 +560,13 @@ function layoutRows(
   const targetSizing = !(options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM];
   const rowsFor = (titleRow: boolean, rowWarnings: LintWarning[], noNameColumn: boolean) => {
     const axisH = axisShown ? tickRowH + 8 + (axisTitle && titleRow ? axisTitle.height + 2 : 0) : 0;
-    const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH);
     const lineH = tickFont.size * 1.2;
     const nameColumn = !noNameColumn && labelOn('category');
     const nameTrack = barNameTrack(options, nameColumn, plot0.w, rowWarnings);
     const catCap = nameTrack ?? Math.max(24, plot0.w * 0.28);
+    const categoryTitle = planCategoryTitle(options, tickFont, measure, plot0.w, rowWarnings);
+    const headerH = categoryTitle?.bandHeight ?? 0;
+    const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH - headerH);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
     const fittedCats = rowLabelBand(
@@ -580,7 +582,7 @@ function layoutRows(
     const nameW = noNameColumn ? 0 : catBandW + CAT_BAND_GAP;
     const valueBody: Rect = {
       x: plot0.x + nameW,
-      y: plot0.y + currentPad,
+      y: plot0.y + currentPad + headerH,
       w: Math.max(10, plot0.w - nameW),
       // Fixed rows never stretch; a shorter canvas (a grid panel) packs them.
       h: fixedRowsH === undefined ? availH : Math.min(availH, fixedRowsH),
@@ -598,7 +600,7 @@ function layoutRows(
       ? tickRowTitleEnd(axisTitle, { scale: x, ticks: stepped.ticks, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
       : undefined;
     const minWidth = size.width - plot0.w + nameW + leftReserve + rightReserve + 10;
-    return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow };
+    return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow, categoryTitle };
   };
   // With no tick row nothing reads the round ends, so the bars span the plot.
   // A football field reads its ranges against the current value, not against
@@ -627,7 +629,7 @@ function layoutRows(
   }
   /** Compact rows: the spine label stands in the first row's top air, its line starts under it. */
   const labelDrop = compact ? spineLift : 0;
-  const spineTop = plot0.y + currentPad + (labelDrop > 0 ? labelDrop - 2 : 0);
+  const spineTop = rowPlan.plot.y + (labelDrop > 0 ? labelDrop - 2 : 0);
   const { catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x } = rowPlan;
   const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.56;
   const band = compact
@@ -664,6 +666,7 @@ function layoutRows(
   const labelRequests: LabelRequest[] = axisShown && axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: rowPlan.titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (rowPlan.titleRow ? tickRowH + 2 : 0) }, 'end', 'axis:x:title')]
     : [];
+  if (rowPlan.categoryTitle) labelRequests.push(rowPlan.categoryTitle.request(plot0.x, plot0.y, 'start'));
   const currentX = spine ? x(spine.value) : undefined;
   const canvas: Rect = { x: 0, y: 0, w: size.width, h: size.height };
   const currentRuleClaim =

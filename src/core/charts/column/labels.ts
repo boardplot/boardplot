@@ -10,7 +10,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { namesOnly } from '../../markVisibility';
 import type { Rect } from '../../geometry';
 import { notApplicableGlyph, numberRange } from '../../format';
-import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
+import { categoryLineAlign, placeCategoryTitle, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import type { OccupiedIndex } from '../../label/occupied';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx, type SolveResult } from '../../label/solver';
@@ -955,6 +955,9 @@ export function planColumnLabels(
   rightEdgeSeriesRequests(domain, area, requests);
   const namedExtreme = extremeNameRequest(domain, area, scene, requests);
   if (area.showCatRow) categoryRequests(domain, area, requests);
+  if (domain.options.categoryAxis?.title) {
+    placeCategoryTitle(area.catPlan(), area.plot.x + area.plot.w, area.catRowY + (domain.anomaly ? 4 : 6), requests);
+  }
   rankValueLabels(requests, request => {
     const ci = cats.findIndex(c => c.id === request.owner.categoryId);
     if (ci < 0) return undefined;

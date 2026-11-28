@@ -8,6 +8,7 @@
  */
 
 import type { ValueAxisTitle } from '../../axis';
+import type { LabelRequest } from '../../label/solver';
 import type { AnchorResolution } from '../../annotate';
 import type { FrameResult } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -258,6 +259,7 @@ export interface BarArea {
   plot: Rect;
   /** The value-axis title: in the tick row where it fits, else in its own row under it. */
   axisTitle: ValueAxisTitle | undefined;
+  categoryTitle?: LabelRequest;
   /** Where the title ends on the right and where its top sits. */
   axisTitleAt?: { x: number; y: number };
   activeBreak: LinearBreak | undefined;

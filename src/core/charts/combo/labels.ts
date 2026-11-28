@@ -13,7 +13,7 @@ import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { sideAwayFrom, type Rect } from '../../geometry';
 import { preparePolyline, type PolylineQueries } from '../../polyline';
-import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
+import { categoryLineAlign, placeCategoryTitle, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import { seatValuesOnGround } from '../../label/areaGround';
 import { shadesFills } from '../line/shared';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
@@ -803,6 +803,7 @@ export function planComboLabels(
   referenceLabels(env, domain, area, requests);
   growthLabels(env, area, requests);
   if (area.showCatTickRow) categoryLabels(domain, area, requests);
+  placeCategoryTitle(area.catPlan, area.plot.x + area.plot.w, area.catRowY + 6, requests);
   rankValueLabels(requests, request => request.kind === 'grandTotal' && request.owner.categoryId !== undefined
     ? domain.stackTotals[request.owner.categoryId] : undefined, env.density, domain.options.labelPlacements,
     { categories: domain.cats.length, last: domain.options.mode === 'compact' ? domain.cats.at(-1)?.id : undefined, pitch: band.step, orientation: 'vertical', measure: env.measure });

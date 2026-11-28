@@ -8,7 +8,7 @@ import { stringFields } from '../../strings';
 import { BAND_PAD } from '../../annotateParts';
 import { valueLineHasTargetExtras } from '../../annotateFields';
 import { drawnToleranceBands, toleranceLegendKeys } from '../../valueLineDomain';
-import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
+import { axisTitleAllowed, planCategoryTitle, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity';
@@ -323,7 +323,14 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   const { maxPosW, maxNegW } = outsideLabelWidths(domain, labelFont, strongFont);
   // A target line from the shared pass seats its label above the plot as a local line does.
-  const annPad = domain.localAnns.length > 0 || domain.passAnns.some(valueLineHasTargetExtras) ? 26 : 8;
+  const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
+  const nameColumn = !noNameColumn && labelOn(options, 'category');
+  const nameTrack = options.columnOverrides !== undefined && features.nameTrack
+    ? features.nameTrack(options, nameColumn, plot0.w, warnings) : (options as { [NAME_TRACK]?: number })[NAME_TRACK];
+  const capW = nameTrack ?? Math.max(24, plot0.w * 0.28);
+  const categoryTitle = planCategoryTitle(options, tickFont, measure, plot0.w, warnings);
+  const annPad = (domain.localAnns.length > 0 || domain.passAnns.some(valueLineHasTargetExtras) ? 26 : 8)
+    + (categoryTitle?.bandHeight ?? 0);
   // The title of a drawn value axis sits in its tick row, or under it (barPlotArea).
   const axisTitle = options.valueAxis?.show && axisTitleAllowed(options.labels)
     ? planValueAxisTitle(valueAxisTitleText(theme, options.axisTitles?.primary, options,
@@ -344,11 +351,6 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const rowStep = theme.space.barRow?.pitch ?? availH / bandSteps(cats.length, gapAfter);
   // As many name lines as the row step holds, up to CAT_MAX_LINES, so a long name wraps before it is cut.
   const catMaxLines = Math.max(1, Math.min(CAT_MAX_LINES, Math.floor((stepEst - 4) / lineH)));
-  const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
-  const nameColumn = !noNameColumn && labelOn(options, 'category');
-  const nameTrack = options.columnOverrides !== undefined && features.nameTrack
-    ? features.nameTrack(options, nameColumn, plot0.w, warnings) : (options as { [NAME_TRACK]?: number })[NAME_TRACK];
-  const capW = nameTrack ?? Math.max(24, plot0.w * 0.28);
   const authored = authoredFootnoteCount(options);
   // A 100% bar that misses a part says so on its name where the note naming it does not print: its shares are of the known parts.
   const incompleteWord = options.strings!.incomplete!;
@@ -551,6 +553,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     // bar end reads at a glance.
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
     availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
+    ...(categoryTitle ? { categoryTitle: categoryTitle.request(plot0.x, plot0.y, 'start') } : {}),
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),
     segmentStep: Math.ceil(Math.max(segmentBar, groupedH) / bandFraction),

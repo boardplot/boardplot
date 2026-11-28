@@ -26,15 +26,17 @@
  * warn lint so an agent can pick a wider canvas or a horizontal chart.
  */
 
-import { DEFAULT_TARGET, targetFloorsPx } from '../target';
+import { DEFAULT_TARGET, scaleTextPx, targetFloorsPx } from '../target';
 import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
-import type { RenderTarget } from '../types/options';
+import type { BaseOptions, RenderTarget } from '../types/options';
+import { textScaleOf } from '../typeFloors';
 import type { Theme } from '../types/theme';
 import { secondaryFont } from '../theme';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
 import { defaultMeasurer, layoutText, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
 import { hasCompleteTableWidths } from '../fontMetrics/injected';
 import { categoryCutLint } from './categoryWarnings';
+import type { CategoryTitle } from '../axis';
 import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
@@ -229,6 +231,7 @@ export interface CategoryRowPlan {
   maxLines: number;
   /** Height the band must reserve for the labels themselves (the +8 is the caller's). */
   rowHeight: number;
+  title?: CategoryTitle;
   /** Anchored x of a label's rect (unrotated). */
   x(index: number): number;
   /** Anchored x of a label of the given width at a category, by the row's rule. */
@@ -250,6 +253,25 @@ export interface CategoryRowPlan {
 
 /** Gap between the category labels and the year row under them. */
 const YEAR_ROW_GAP = 2;
+
+/** Column and combo use the same tick face for the title and the first step of the name row. */
+export function bandedCategoryStyle(options: Pick<BaseOptions, 'target' | 'textScale' | 'textSize'>, theme: Theme, tickFont: FontSpec) {
+  const textScale = textScaleOf(options);
+  return {
+    target: options.target, textScale, stepToFloor: true, padding: 4, secondary: secondaryFont(theme),
+    fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScale) }, { family: theme.type.family, ...theme.type.footnote }],
+  };
+}
+
+/** Append the title after the final names, period rows or ranks. A hidden name row leaves the title on its own. */
+export function withCategoryTitle(plan: CategoryRowPlan, title: CategoryTitle, showNames: boolean): CategoryRowPlan {
+  return { ...plan, title, rowHeight: showNames ? plan.rowHeight + title.bandHeight : title.height };
+}
+
+export function placeCategoryTitle(plan: CategoryRowPlan, right: number, rowTop: number, requests: LabelRequest[]): void {
+  if (plan.title) requests.push(plan.title.request(right, rowTop + plan.rowHeight - plan.title.height, 'end'));
+}
+
 function categoryTextHeight(rotation: number, width: number, line: number, lines: number): number {
   const whole = Math.max(1, width);
   return rotation === 90 ? whole : rotation ? whole * SIN45 + line * SIN45 : lines * line;

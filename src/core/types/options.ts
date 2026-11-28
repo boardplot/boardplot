@@ -381,6 +381,8 @@ export interface ValueAxisOptions {
 }
 
 export interface CategoryAxisOptions {
+  /** One line naming the categories, below a column, line or combo, or above the row names on bar. */
+  title?: string;
   crossesBetween?: boolean;
   dateTicks?: 'years' | 'quarters' | 'months' | 'weeks' | 'days';
 }
@@ -788,8 +790,8 @@ export interface AnomalyThresholdSpec {
 export type AnomalySpec = AnomalyMadSpec | AnomalyThresholdSpec;
 
 export interface ColumnOptions extends Omit<BaseOptionsFor<'column'>, 'categoryAxis'> {
-  /** dateTicks only: columns always sit in the middle of their bands. */
-  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
+  /** Columns always sit in the middle of their bands. */
+  categoryAxis?: Omit<CategoryAxisOptions, 'crossesBetween'> & { crossesBetween?: never };
   /** Title of the drawn value axis. */
   axisTitles?: { primary?: string };
   variant?: 'grouped' | 'stacked' | 'stacked100'; // default 'grouped'
@@ -912,8 +914,8 @@ export interface BarOptions
   > {
   /** Settings per generated column, by column id. A width beats the width the type would pick. */
   columnOverrides?: Record<string, ColumnOverride>;
-  /** Refused: a bar has no date ticks or band crossing; column, combo and line read categoryAxis. */
-  categoryAxis?: { crossesBetween?: never; dateTicks?: never };
+  /** A header over the row names. */
+  categoryAxis?: { title?: string; crossesBetween?: never; dateTicks?: never };
   /** Refused: a horizontal bar prints each name beside its row already (staircase names are column, combo and pareto). */
   categoryLabels?: never;
   /**
@@ -1206,8 +1208,8 @@ export interface LinePhase {
 }
 /** First line point defaults to its value; last defaults to series name and value. */
 export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAxis' | 'categoryAxis'> {
-  /** dateTicks only: columns always sit in the middle of their bands. */
-  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
+  /** Columns always sit in the middle of their bands. */
+  categoryAxis?: ColumnOptions['categoryAxis'];
   /** The event lane and key: placement, lane rows, event groups. */
   events?: EventOptions;
   /** Visible category endpoints; source means retain all observations. */

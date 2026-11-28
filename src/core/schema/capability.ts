@@ -45,12 +45,16 @@ export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
   'rowLabels', 'categoryAxis', 'categoryLabels',
 ]);
 
+export const CATEGORY_AXIS_SUPPORT = 'Column, bar, line and combo accept a category axis title. Column, line and combo accept dateTicks. Line accepts crossesBetween.';
+
 /**
  * Settings these types accept and draw nothing for, by dotted path under
  * options. Each is removed with one option-ignored warning that says what the
  * setting does on the types that have it (retired.ts).
  */
 export const IGNORED_ON: Readonly<Record<string, { types: readonly string[]; does: string }>> = {
+  'categoryAxis.dateTicks': { types: ['bar'], does: CATEGORY_AXIS_SUPPORT },
+  'categoryAxis.crossesBetween': { types: ['bar'], does: CATEGORY_AXIS_SUPPORT },
   focus: { types: ['table', 'dimswitch'], does: 'On a chart, focus lets the labels of one data owner win contested label space. A table prints every cell and places no labels.' },
   labelDensity: { types: ['table', 'dimswitch'], does: 'On a chart, labelDensity sets how many value labels print. A table prints every cell.' },
   highlight: { types: ['bartable'], does: 'On a bar, column, line or table chart, highlight colours the named series or categories. A bar table draws no highlight.' },
@@ -90,7 +94,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['column', 'combo', 'line'],
+    implementedBy: ['column', 'bar', 'line', 'combo'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],

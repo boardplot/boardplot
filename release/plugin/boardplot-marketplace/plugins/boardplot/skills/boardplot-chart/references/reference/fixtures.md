@@ -136,6 +136,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | stacked-inside-base-values | column.stacked | example | Stacked column values inside each base |
 | drawing-kinds | column.grouped | example | A box around the launch months, the old level and an arrow from a note |
 | stacked-series-cagr-card | column.stacked | torture | One series CAGR beside its name and two period CAGRs over a stack at card width, the key on top |
+| category-axis-title | column.grouped | example | A title below the quarter names |
 
 ## bar
 
@@ -205,6 +206,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
 | centered-values | bar.grouped | example | Bar values at the center |
 | drawing-on-value-axis | bar.grouped | example | A line at the top level and an arrow over the gap, on a horizontal value axis |
+| category-axis-title | bar.grouped | example | A header above the quarter names |
 
 ## line
 
@@ -285,6 +287,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | iso-months-year-row | line.line | example | ISO month ids across two years print months and a year row |
 | rates-as-fractions | line.line | torture | SQL fractions use percentage cells at input |
 | ordered-ramp-rest-apart | line.line | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
+| category-axis-title | line.line | example | A title below the quarter names |
 | drawing-kinds | line.line | example | A box over the maintenance weeks, the normal load and an arrow from a note |
 | value-line-end-value | line.line | example | A named value line at the series end value prints its name beside that value |
 | shade-band-inside-wrap | line.line | example | A narrow shaded band wraps its name inside |
@@ -580,6 +583,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | area-capacity-behind-columns | combo.overlay | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
 | inside-base-values | combo.overlay | example | Combo column values inside the base |
 | daily-columns-lines-labels | combo.overlay | torture | Two column series and three lines on 60 days with every value label at phone width |
+| category-axis-title | combo.overlay | example | A title below the quarter names |
 
 ## variance
 

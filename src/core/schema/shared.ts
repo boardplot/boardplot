@@ -21,7 +21,7 @@ import {
 } from '../normalize/shared';
 import { parseFormatExample, specUnitKind } from '../formatSpec';
 import { isIconName, listIcons } from '../icons';
-import { ANNOTATIONS_RETIRED, IGNORED_OPTION_KEYS, LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
+import { ANNOTATIONS_RETIRED, CATEGORY_AXIS_SUPPORT, IGNORED_OPTION_KEYS, LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
 import {
   LEGEND_DRAWS_REASONS, LEGEND_REFUSED_REASONS, OPTION_REASONS, TRANSPOSE_REFUSED, VALUE_AXIS_ONLY_REASONS, notImplemented, valueAxisReason,
 } from './capabilityReasons';
@@ -1485,10 +1485,11 @@ export const baseOptionsSchema = z.object({
     .optional().describe('Value-axis display and domain settings; each chart schema narrows the supported fields.'),
   categoryAxis: z
     .object({
+      title: z.string().optional().describe('One line below the names at the right plot edge, or above the row names on bar. A title that does not fit is omitted with a warning.'),
       crossesBetween: z.boolean().optional().describe('Line-chart category placement: default true centres categories in bands; false places the end categories at the plot edges. Column and combo always centre their categories in bands: false is ignored there and reports cross-between-ignored.'),
       dateTicks: z.enum(['years', 'quarters', 'months', 'weeks', 'days']).optional().describe("Date tick interval on line, column and combo. A short tick under the plot marks the first category of each calendar interval; on column and combo it stands at the middle of the band, and every column keeps its place. 'years', 'quarters' and 'months' name those ticks on the calendar: quarters read Jan, Apr, Jul, Oct. A row too narrow for every name keeps a larger round step counted from January (years 2, 5, 10, 20, 25, 50 or 100, so every tenth year from 1980; quarters 2, 4, 8, 20 or 40; months 2, 3, 6, 12, 24, 60 or 120), at most eight names. The latest period is always named; if it collides with the tick before it, that tick drops. 'weeks' and 'days' count equal steps back from the latest period (weeks 2, 4, 13, 26 or 52; days 2, 7, 14 or 28) and name it too. 'years' names the year alone ('Jan 1980' reads 1980) where the label carries it. 'months' over day dates the engine labels names the month ('1 Apr 2025' reads Apr 2025, then May, Jun). A monthly series through July 2026 with 'years' reads 1980, 1990, 2000, 2010, 2020, Jul 2026. Without dateTicks, column, stacked column, line, area and combo pick tick months by the same calendar rule for rows of months and quarters (step 3: Jan, Apr, Jul, Oct; step 6: Jan, Jul; step 12: Jan; plus the latest period) and count back from the latest period for days and weeks, so side-by-side panels with the same categories show the same months. A line or area day row that would step past 28 days names months as 'months' does. Categories without an ISO date, or not in date order (sorted by value), leave the option unused and report date-ticks-unsupported."),
     })
-    .optional().describe('Category-axis settings: dateTicks on line, column and combo, crossesBetween on line; other shared-base charts ignore this option with an option-ignored warning.'),
+    .optional().describe(CATEGORY_AXIS_SUPPORT),
   secondaryAxis: z.object({
     acknowledge: z.literal(true).optional().describe('Retired flag. Boardplot accepts and ignores it and warns option-deprecated.').meta({ deprecated: true }),
   }).optional().describe("In a combo chart, a line or area series with axis: 'secondary' draws a second value scale and warns dual-axis. Combo adds options for that scale and for a percentage ruler."),
@@ -1625,10 +1626,9 @@ export const topNOnPareto = optionShapeSchema('topN', z.object({
 }), topNCount);
 
 /** categoryAxis on a banded row, where every category sits in the middle of its band: column and combo. */
-export const bandedCategoryAxis = z.object({
+export const bandedCategoryAxis = baseOptionsSchema.shape.categoryAxis.unwrap().extend({
   crossesBetween: retiredKey("'categoryAxis.crossesBetween' has no effect on columns; drop it, or use type 'line'", 'columns always sit in the middle of their bands.'),
-  dateTicks: baseOptionsSchema.shape.categoryAxis.unwrap().shape.dateTicks,
-}).optional().describe('Category-axis settings: dateTicks.');
+}).optional().describe('Category title and date tick interval for a banded axis.');
 
 /** sort where a chart has no segments to order: butterfly. */
 export const sortCategoriesOnly = optionShapeSchema('sort', z.object({

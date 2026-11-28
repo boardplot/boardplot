@@ -9,6 +9,7 @@
 import { GAP_BRACKET_REFUSED, gapBracketPairs } from '../../annotateParts';
 import { rectContains, type Rect } from '../../geometry';
 import { screenEdges, seatValuesOnGround, type AreaGround } from '../../label/areaGround';
+import { placeCategoryTitle } from '../../label/categoryRow';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
 import { addRatioTierRequests, type RatioTierRequestState } from '../../ratioTier';
 import type { Annotation } from '../../types/annotations';
@@ -191,6 +192,7 @@ export function planLineLabels(
       bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, plotLeft: plot.x, labelRequests, ...xPartial })
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,
       plot: { ...plot, h: plot.h + area.categoryTickGap - 6 }, labelRequests });
+  if (scene) placeCategoryTitle(area.catPlan, plot.x + plot.w, plot.y + plot.h + area.categoryTickGap, labelRequests);
   return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false,
     wouldShow: pointWouldShows({ ...valueInput, format: domain.options.format }), tieShows };
 }

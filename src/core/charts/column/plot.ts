@@ -1,8 +1,8 @@
-import { categoryHeightLimit } from '../../label/categoryRow';
+import { bandedCategoryStyle, categoryHeightLimit, withCategoryTitle } from '../../label/categoryRow';
 import { hiddenKey } from '../../hiddenSeries';
 import { chartString } from '../../strings/column';
 import { stringFields } from '../../strings';
-import { DEFAULT_TARGET, scaleTextPx } from '../../target';
+import { DEFAULT_TARGET } from '../../target';
 /**
  * Column phase 1, frame and scale: the legend, the margins and the frame,
  * then the reserves around the plot, the band, the category row and the
@@ -10,7 +10,7 @@ import { DEFAULT_TARGET, scaleTextPx } from '../../target';
  */
 
 import { BAND_PAD, VALUE_LINE_RESERVE } from '../../annotateParts';
-import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit } from '../../axis';
+import { axisTitleAllowed, measureValueAxisWidth, planCategoryTitle, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { bandedCrossesBetween } from '../../intervalTicks';
 import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import { formatAutomaticPercent, notApplicableGlyph } from '../../format';
@@ -42,7 +42,7 @@ import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLege
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, secondaryFont } from '../../theme';
+import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import type { Annotation } from '../../types/annotations';
 import { percentLevels } from '../../annotatePass';
 import { toleranceLegendKeys } from '../../valueLineDomain';
@@ -720,6 +720,7 @@ function columnBand(
   const keyed = !!domain.pyRef && pyTickKeyed(domain, frame.legend);
   const { x, w } = frame.plot;
   const axisShown = !!domain.va.show;
+  const title = planCategoryTitle(options, tickFont, measure, frame.plot.w - (axisShown ? valueAxisReserve : 0), warnings);
   const entries = search && bandsBySearch.get(search);
   const shared = entries?.find(entry => entry.stacks === domain.stacks && entry.left === x && entry.width === w
     && entry.axis === valueAxisReserve && entry.axisShown === axisShown && entry.keyed === keyed && entry.stair === stair);
@@ -748,14 +749,11 @@ function columnBand(
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, toDate, domain.running);
     ticked?.name(row);
     const input: Parameters<typeof planCategoryRow>[0] = {
-      target: options.target, textScale: textScaleOf(options),
+      ...bandedCategoryStyle(options, theme, tickFont),
       ...row,
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
-      fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
-      stepToFloor: true,
-      secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
-      padding: 4,
+      periods: cats.length > 0 && cats.every(c => c.date !== undefined),
       measure,
       // Calendar ticks stay horizontal at every height. The same width can use the same row plan.
       plotHeight: domain.incompleteCats.size && measure === defaultMeasurer && row.calendar?.length === row.labels.length
@@ -811,6 +809,7 @@ function columnBand(
     if (ticked && ticked !== authored) planned = planRow(band, ticked);
     // A rotated first name hangs left of its column; the band yields that much.
     if (!stair) ({ plan: planned, band } = yieldToRotatedName(planned, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
+    if (title) planned = withCategoryTitle(planned, title, !stair && kindSetting(options, 'category') !== false && cats.length > 0);
     return planned;
   };
   // The band must be final before return. Authored footnote warnings retain their order.
@@ -925,10 +924,11 @@ export function columnPlotArea(
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan().warnings);
   if (showCatRow && catPlan().step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
+  const categoryTitle = options.categoryAxis?.title ? catPlan().title : undefined;
   const rowHeight = showCatRow && keylessLimit
-    ? categoryHeightLimit(cats, theme, measure)
+    ? categoryHeightLimit(cats, theme, measure) + (categoryTitle?.bandHeight ?? 0)
     : undefined;
-  const tickReserve = showCatRow ? (rowHeight ?? catPlan().rowHeight) + 8 : 0;
+  const tickReserve = showCatRow || categoryTitle ? (rowHeight ?? catPlan().rowHeight) + 8 : 0;
   // With a ratio tier the band additionally carries the tier's 19px caption
   // rhythm minus the tierGap the tier adds back below the band — the
   // same arithmetic as line's tier branch. The caption gap is a between-blocks
@@ -1017,7 +1017,7 @@ export function columnPlotArea(
     && !cats.some(category => category.footnote !== undefined)) {
     widthMemo.plotAtPad = { plot: frame.plot, at: atPad };
   }
-  if (widthMemo?.heightAxes && widthMemo.plotHeightAt && typeof options.size === 'object' && !axisTitle && !tier && !ruleH
+  if (widthMemo?.heightAxes && widthMemo.plotHeightAt && typeof options.size === 'object' && !axisTitle && !categoryTitle && !tier && !ruleH
     && !growthAndCagr && !ratioTierHeight && !domain.activeBreak && !domain.incompleteCats.size && !(BAND_PAD in options)) {
     const search = columnHeightSearch.get(options.size);
     if (search && stair && widthMemo.plotAtPad && catBandH === 0 && hangingRoom === 0) {

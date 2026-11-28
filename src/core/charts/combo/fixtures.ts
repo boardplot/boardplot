@@ -1213,4 +1213,18 @@ fixtures.push({
   options: { title: 'Invented daily measures', valueLabels: 'all', size: { width: 400 } },
 });
 
+fixtures.push({
+  id: 'category-axis-title',
+  title: 'A title below the quarter names',
+  kind: 'example',
+  data: {
+    categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
+    series: [
+      { id: 'sales', label: 'Sales', values: [60, 70, 80] },
+      { id: 'plan', label: 'Plan', kind: 'line', values: [85, 90, 95] },
+    ],
+  },
+  options: { title: 'Sales grow and stay below plan', categoryAxis: { title: 'Quarter' } },
+});
+
 registerFixtures('combo', fixtures);
