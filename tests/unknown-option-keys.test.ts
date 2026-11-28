@@ -271,6 +271,12 @@ describe('unknown option keys are refused on every type', () => {
       expect(finding.fix, key).toBeUndefined();
     }
   });
+  // With no required key in the first axis branch, a typo inside the ruler was reported as an unknown key `ruler`.
+  it('reports a typo inside secondaryAxis.ruler at the typo', () => {
+    const data = getFixtures('combo')[0]!.data;
+    const errors = cliErrors({ type: 'combo', data, options: { secondaryAxis: { ruler: { of: 'primary', total: 100, typo: 1 } } } }).errors;
+    expect(errors.map((error) => error.path)).toEqual(['/options/secondaryAxis/ruler/typo']);
+  });
   // A retired-setting fix that does not apply (an add under a missing parent) leaves an agent with no way to clean the spec.
   it('gives every retired setting a fix that applies, also under a missing parent and in a repeat template', () => {
     const combo = getFixtures('combo').find(fixture => fixture.id === 'margin-line-own-scale')!;

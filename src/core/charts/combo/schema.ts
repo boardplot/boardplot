@@ -82,10 +82,9 @@ export const comboDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 /** A second scale and a percentage ruler have different settings for the right axis. */
-const legacySecondaryAxisSchema = baseOptionsSchema.shape.secondaryAxis.unwrap();
 const secondaryAxisSchema = z.union([
-  legacySecondaryAxisSchema
-    .extend({
+  z
+    .object({
       domain: z
         .tuple([z.number(), z.number()])
         .optional()
@@ -102,8 +101,8 @@ const secondaryAxisSchema = z.union([
     })
     .strict()
     .describe('Customize the second value scale a line or area series uses.'),
-  legacySecondaryAxisSchema
-    .extend({
+  z
+    .object({
       ruler: z
         .object({
           of: z.literal('primary').describe("Use the primary axis positions for the percentage ruler."),
