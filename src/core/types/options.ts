@@ -647,7 +647,11 @@ export interface BaseOptions {
    * where the hatch is the only cue (theme.ts, HATCH_STRENGTH_DEFAULT).
    */
   hatchStrength?: number;
-  /** `sum-consistent` makes computed shares total 100%. Incompatible precisions or more than 13 decimals warn and keep the requested formats without adjustment. */
+  /**
+   * `sum-consistent` makes computed shares total 100% and is the default for pie.
+   * Other charts that support rounding default to `nearest`, which rounds each share separately.
+   * Incompatible precisions or more than 13 decimals warn and keep the requested formats without adjustment.
+   */
   rounding?: 'nearest' | 'sum-consistent';
   animate?: boolean;
   /** Emit progressive-enhancement metadata; layout geometry is unchanged. */

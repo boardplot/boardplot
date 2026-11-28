@@ -821,8 +821,8 @@ function layoutPiePass(
     return Math.max(40, centred, edge - RING_GAP - 2, columns ? plot.w / 2 - baseFit - columnGap(plot.w) - 2 : 0);
   };
 
-  // rounding 'sum-consistent': the drawn slices' shares print so they add up to 100%.
-  const rounded = options.rounding === 'sum-consistent'
+  // By default the drawn slices' shares print so they add up to 100%.
+  const rounded = options.rounding !== 'nearest'
     ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language, shareExample ? parseFormatExample(shareExample) : undefined)
     : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
@@ -936,8 +936,7 @@ function layoutPiePass(
   };
   let sliceLabels = buildSliceLabels();
 
-  // The printed shares of the drawn slices sum to 100, or the drift is
-  // disclosed; no share is bent to close it.
+  // Nearest rounding can leave the printed shares with a total other than 100%.
   if (!rounded && sliceLabels.some((sl) => (sl.insideEligible ? insideContent : outsideContent)?.includes('percent'))) {
     warnShareRoundingDrift(warnings, [{ name: ser.label ?? sid, shares: geoms.map((g) => g.share * 100), decimals: shareSet.decimals }]);
   }
