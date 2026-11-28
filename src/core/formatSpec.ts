@@ -1534,7 +1534,7 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   if (spec.exponent) {
     const { mantissa, exponent } = exampleScientific(value, spec);
     const digits = spec.locale ? fractionFormat(spec.locale, spec.decimals, false).format(Number(mantissa)) : mantissa.replace('.', spec.decimalSep);
-    const power = `${exponent < 0 ? numberMinus(spec.locale, '-') : spec.exponent.sign}${String(Math.abs(exponent)).padStart(spec.exponent.digits, '0')}`;
+    const power = `${exponent < 0 ? '-' : spec.exponent.sign}${String(Math.abs(exponent)).padStart(spec.exponent.digits, '0')}`;
     return signedText(`${spec.prefix}${digits}${spec.exponent.letter}${power}${spec.suffix}`, value < 0, value === 0, spec);
   }
   const { magnitude, decimals } = effectiveScale(value, spec);
@@ -1558,7 +1558,7 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
     }
   }
   const underflow = spec.automatic && scaled === 0 && value !== 0
-    ? underflowScientificText(value, MAGNITUDE_DIVISOR[magnitude], numberMinus(spec.locale, '-')) : undefined;
+    ? underflowScientificText(value, MAGNITUDE_DIVISOR[magnitude]) : undefined;
   if (underflow) zeroLifts.count++;
   const isZero = !underflow && !scientific && Number(rounded.text) === 0;
   const negative = value < 0 && !isZero;

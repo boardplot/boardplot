@@ -59,6 +59,7 @@ export interface HoverModel {
   panelHundred?: Map<string, boolean>;
   /** A grid's panel titles by panel path (`panelNames`). */
   panelNames?: Map<string, string>;
+  panelLocales?: ReadonlyMap<string, string>;
   markBounds?: Map<InteractionRecord, Rect | undefined>;
 }
 
@@ -277,7 +278,9 @@ export function hoverModel(request: ResolvedChartRequest, geometry: RenderGeomet
     ? { records: interactionRecords({ request, geometry, scope: request.scope, claims: [] }), placement: overlayInputs(request, geometry) }
     : { records: prepared?.records ?? [], placement: prepared?.overlay };
   const legend = (geometry as { legend?: { items: { id: unknown }[] } }).legend?.items.map(item => String(item.id));
-  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map(), ...legend?.length ? { legend } : {} };
+  const panelLocales = model.placement?.panelLocales;
+  return { ...model, occupied: hoverOccupied(model, geometry), cardRows: new Map(), markBounds: new Map(),
+    ...(panelLocales ? { panelLocales: new Map(panelLocales) } : {}), ...legend?.length ? { legend } : {} };
 }
 
 /**
@@ -296,6 +299,7 @@ export function cardOptions(model: HoverModel, request: ResolvedChartRequest, fi
     stackSeries: model.stackSeries ??= new Set([...model.records.filter(record => record.share).map(stackKey),
       ...stackSeries(request, [undefined, ...model.placement?.panels?.map(entry => entry.panel) ?? []])]),
     panelNames: model.panelNames ??= panelNames(request, panels),
+    panelLocales: model.panelLocales,
     // Each panel words its own shares: parts that sum to 100 print no Total on a 100 % panel, a stacked panel prints it.
     ...model.placement?.panels ? { panelHundred: model.panelHundred ??= new Map(model.placement.panels.map(entry =>
       [entry.panel, hundredPercentComposition(entry.type, entry.composition)])) } : {},

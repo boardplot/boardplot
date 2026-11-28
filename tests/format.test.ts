@@ -287,6 +287,31 @@ describe('ordinary number examples', () => {
       }
     }
   });
+
+  // An explicit default minus changed exponent signs, accounting signs and unnamed pyramid bounds.
+  it('keeps the same number text when the default minus glyph is explicit', () => {
+    const data = { bands: [{ id: 'cold', from: -10, to: -5 }],
+      groups: [{ id: 'left', values: [12] }, { id: 'right', values: [14] }] };
+    const columns = [{ id: 'name', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Value', format: '$1.2k-' }];
+    const rows = [{ id: 'a', label: 'A', cells: { v: -1200 } }];
+    for (const minusGlyph of [undefined, '−', '-'] as const) {
+      const options = { locale: { minusGlyph } };
+      const pyramid = resolveChartRequest({ type: 'pyramid', data, options });
+      const table = resolveChartRequest({ type: 'table', data: { columns, rows }, options });
+      expect(renderSvg(requireGeometry(layoutResolvedRequest(pyramid)), pyramid.theme)).toContain('>-10–-5<');
+      expect(renderSvg(requireGeometry(layoutResolvedRequest(table)), table.theme)).toContain('>1.2-<');
+      const language = pyramid.locale?.language;
+      expect(formatterFromExample('1.2E+06', language)(0.0034)).toBe('3.4E-03');
+      expect(formatterFromExample('1.2−', language)(-1.2)).toBe(minusGlyph === '-' ? '1.2-' : '1.2−');
+    }
+  });
+});
+
+// An unsupported minus glyph from JavaScript could crash chart preparation before a chart drew.
+it('prepares a chart with the default minus when given an unknown glyph', async () => {
+  const data = { categories: ['A'], series: [{ id: 'actual', values: [-20] }] };
+  const prepared = await prepareChart({ type: 'column', data, options: { locale: { minusGlyph: '–' as '-' } } });
+  expect(prepared.records?.map(record => record.value.displayed)).toEqual(['−20']);
 });
 
 // Prevents the shared accounting format from giving a false sign on any SVG or React number surface.

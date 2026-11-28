@@ -10,7 +10,7 @@
  * The Map is bounded: a host that cycles through many locales clears it
  * instead of growing without limit.
  */
-import { MINUS, splitNumberMarks } from './numberMarks';
+import { splitNumberMarks } from './numberMarks';
 
 const MAX_FORMATTERS = 256;
 // One bound for the texts of all formatters: past it every text map is cleared, so long-lived
@@ -34,16 +34,9 @@ export function numberFormat(locale: string, options: Intl.NumberFormatOptions):
     const intl = new Intl.NumberFormat(marks ? 'en-US' : language, options);
     // A space groups with a no-break space, as formatWithSpec does.
     const group = marks?.thousands === ' ' ? '\u00a0' : marks?.thousands;
-    const minus = marks?.minusGlyph;
-    // The English formatter already writes '.', ',' and '-'.
-    const base: Pick<Intl.NumberFormat, 'format'> = marks && (marks.decimal !== '.' || marks.thousands !== ',' || minus === MINUS)
-      ? { format: (value: number) => intl.formatToParts(value).map((part) => {
-        if (part.type === 'group') return group;
-        if (part.type === 'decimal') return marks.decimal;
-        if (part.type === 'minusSign' || part.type === 'exponentMinusSign') return minus ?? part.value;
-        return part.value;
-      }).join('') }
-      : intl;
+    // English marks need no swap: the English formatter already writes them.
+    const base: Pick<Intl.NumberFormat, 'format'> = marks && (marks.decimal !== '.' || marks.thousands !== ',') ? { format: (value: number) => intl.formatToParts(value)
+      .map((part) => part.type === 'group' ? group : part.type === 'decimal' ? marks.decimal : part.value).join('') } : intl;
     // A size search formats the same values once per probe. The text depends on the value alone,
     // so each formatter keeps its texts. A Map key folds -0 into 0, so -0 skips the memo.
     const texts = new Map<number, string>();

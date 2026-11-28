@@ -234,7 +234,7 @@ function formattedNumber(value: number, opts: NumberFormatOptions, automatic: bo
     if (mode === 'scientific') scientific = scientificText(abs, (mantissa) => numberFormatter(locale, 1).format(mantissa));
   }
   const underflow = automatic && v === 0 && value !== 0
-    ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value, numberMinus(locale, '-')) : undefined;
+    ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value) : undefined;
   const body = underflow ?? scientific ?? markedDecimal(roundedAbs, usedDecimals, true, locale)
     ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
   const isZero = !underflow && !scientific && Number(roundedAbs) === 0;

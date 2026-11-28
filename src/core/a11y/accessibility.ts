@@ -103,7 +103,8 @@ function columnsOf(records: readonly InteractionRecord[]): A11yTableColumn[] {
 }
 
 /** Category rows in draw order, nested under a panel header when panels exist. */
-function rowsOf(records: readonly InteractionRecord[], columns: readonly A11yTableColumn[], locale?: string): A11yTableRow[] {
+function rowsOf(records: readonly InteractionRecord[], columns: readonly A11yTableColumn[], locale?: string,
+  panelLocales?: ReadonlyMap<string, string>): A11yTableRow[] {
   const rows: A11yTableRow[] = [];
   const seen = new Set<string>();
   let lastPanel: string | undefined;
@@ -121,13 +122,14 @@ function rowsOf(records: readonly InteractionRecord[], columns: readonly A11yTab
     const id = category === undefined ? record.id : `${record.target.panel ?? ''}/${category}`;
     if (seen.has(id)) continue;
     seen.add(id);
+    const rowLocale = panel === undefined ? locale : panelLocales?.get(panel) ?? locale;
     rows.push({
       id,
       level: panelAnchored ? depth + 1 : 0,
       header,
       cells: columns.map(column => cellFor(records.find(entry => entry.target.panel === panel
         && (category === undefined ? entry.id === record.id : categoryIdentity(entry) === category)
-        && (seriesIdentity(entry) ?? 'value') === column.key), locale)),
+        && (seriesIdentity(entry) ?? 'value') === column.key), rowLocale)),
     });
   }
   return rows;
@@ -136,7 +138,7 @@ function rowsOf(records: readonly InteractionRecord[], columns: readonly A11yTab
 /** Spec-derived accessible table over the displayed records; no invented values. */
 export function accessibleDataTable(
   records: readonly InteractionRecord[],
-  options: { title?: string; locale?: string } = {},
+  options: { title?: string; locale?: string; panelLocales?: ReadonlyMap<string, string> } = {},
 ): A11yDataTable {
   records = withoutEvents(records);
   const columns = columnsOf(records);
@@ -144,6 +146,6 @@ export function accessibleDataTable(
     ...(options.locale === undefined ? {} : { locale: options.locale }),
     caption: options.title === undefined ? chartString({ locale: { language: options.locale } }, 'chartData') : chartString({ locale: { language: options.locale } }, 'chartDataTitle', { v1: options.title }),
     columns,
-    rows: rowsOf(records, columns, options.locale),
+    rows: rowsOf(records, columns, options.locale, options.panelLocales),
   };
 }

@@ -6,6 +6,7 @@
  */
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { interactionRecords } from '../src/core/a11y/records';
@@ -18,7 +19,9 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { withChartFormats } from '../src/core/formatSpec';
 import { LineChart } from '../src/react/charts/line';
 import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from '../src/react/hover/labelCard';
-import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
+import { categorySiblings, hoverModel, hoverTargets, hoverView, keyboardReading } from '../src/react/hover/engine';
+import { DataTable } from '../src/react/hover/dataTable';
+import { prepareChart } from '../src/react/prepare';
 import { highlightScene } from '../src/react/hover/highlight';
 import { getFixtures } from '../src/fixtures';
 import { boxGap } from '../src/core/geometry';
@@ -643,6 +646,31 @@ describe('default card rows', () => {
       panel('rate', 'line', 'Conversion rate', '%', [2.1, 2.3, 2.2]), panel('cost', 'line', 'Cost per visit', '$', [0.42, 0.45, 0.41])] },
     options: { columns: 3, size: { width: 900, height: 360 } } }, 'w1')).toEqual([['Week of 14 Sep 2026'],
       ['Visits:', '118,200', true], ['Conversion rate:', '2.3%', false], ['Cost per visit:', '$0.45', false]]);
+  });
+
+  // A grid's readouts used the grid's minus glyph even when the drawn panel used another glyph.
+  it('uses each grid panel’s minus glyph in the hover card, keyboard reading and data table', async () => {
+    const data = { categories: ['Jan'], series: [{ id: 'actual', label: 'Actual', values: [-20] },
+      { id: 'prior', label: 'Prior', role: 'reference', scenario: 'PY', values: [10] }] };
+    const spec = { type: 'grid', data: { panels: [
+      { id: 'north', type: 'column', data, options: { locale: { minusGlyph: '-' } } },
+      { id: 'south', type: 'column', data },
+    ] }, options: { size: { width: 900, height: 450 } } };
+    const { request, geometry } = build(spec);
+    const prepared = await prepareChart(spec);
+    if (prepared.result.refused) throw new Error('Expected the prepared grid to draw');
+    for (const drawn of [geometry, prepared.result]) {
+      const model = hoverModel(request, drawn, prepared);
+      const hit = model.records.find(record => record.target.panel === 'north' && record.target.owner.seriesId === 'actual')!;
+      const hovered = hoverView(model, request, drawn, [hit.id], { card: true, highlight: false });
+      expect(hovered.card?.rows.filter(row => row.kind === 'comparison').map(row => row.value)).toEqual(['-30 (-300%)', '−30 (−300%)']);
+      const keyboard = keyboardReading(model, request, hit);
+      expect(keyboard).toContain('-30 (-300%)');
+      expect(keyboard).toContain('−30 (−300%)');
+      const table = renderToStaticMarkup(<DataTable request={request} geometry={drawn} prepared={prepared} mode="below" />);
+      expect(table).toContain('>-20</td>');
+      expect(table).toContain('>−20</td>');
+    }
   });
 
   // The grid card named panels by their ids, read a tier stack bottom up, gave every panel the hovered panel's 100 % rule,
