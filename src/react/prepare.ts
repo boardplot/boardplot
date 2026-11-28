@@ -7,11 +7,12 @@ import type { RowsColumns, RowsProps } from './rowsInput';
 import { canonicalJson } from './canonicalJson';
 import type { PreparedChart } from './prepared';
 import type { PreparedTable } from './preparedTable';
+import type { ZoomOption } from './useZoom';
 
 export type PrepareChartRequest<D = unknown, O extends object = RequestInputOptions> =
   (| (Omit<ChartRequest<DataInput<D>, O>, 'size'> & { rows?: undefined; columns?: undefined })
    | (Omit<ChartRequest<D, O>, 'size' | 'data'> & { data?: Partial<D>; rows: NonNullable<RowsProps['rows']>; columns: RowsColumns }))
-  & ContainerSizeOptions & { window?: LiveWindowOptions };
+  & ContainerSizeOptions & { window?: LiveWindowOptions; zoom?: ZoomOption };
 
 type Planner = ReturnType<typeof import('./prepareEngine').linkedPlanner>;
 let planner: Promise<Planner> | undefined;

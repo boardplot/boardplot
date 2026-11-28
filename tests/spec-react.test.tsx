@@ -30,6 +30,29 @@ beforeEach(() => { host = document.createElement('div'); document.body.append(ho
 afterEach(() => { if (root) act(() => root!.unmount()); root = undefined; host.remove(); vi.restoreAllMocks(); });
 const mountRoot = (element: Parameters<typeof mount>[0]) => mount(element, host);
 
+// A line chart that opens on weekly sums showed the prepared daily values in the server HTML until the browser loaded.
+it('shows the weekly sums of a prepared zoom in the first HTML and the busy box for a page it was not prepared for', async () => {
+  const x = Array.from({ length: 400 }, (_, i) => new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10));
+  const spec = { type: 'profile', data: { x, series: [{ id: 'units', label: 'Units', values: x.map(() => 1) }] }, options: { xAxis: { type: 'time' } } };
+  const size = { width: 700, height: 400 };
+  const zoom = { aggregate: 'sum' as const };
+  const request = (await parseChartSpec(spec)).request;
+  const reading = (element: Parameters<typeof renderToString>[0]) => { host.innerHTML = renderToString(element); return host.querySelector('svg desc')?.textContent; };
+  const zoomed = await prepareChart({ ...request, size, zoom });
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={zoomed} />)).toMatch(/58 categories.*Latest values: Units 3\./);
+  const plain = await prepareChart({ ...request, size });
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={zoom} prepared={plain} />)).toBeUndefined();
+  expect(reading(<BoardplotChart spec={spec} size={size} prepared={zoomed} />)).toBeUndefined();
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={{ aggregate: 'mean' }} prepared={zoomed} />)).toBeUndefined();
+  expect(reading(<BoardplotChart spec={spec} size={size} zoom={{ aggregate: 'sum', range: [NaN, 10] }} prepared={zoomed} />)).toBeUndefined();
+  // A width that stands in options.size gives the same grain on the server and in the browser.
+  const narrow = { ...spec, options: { ...spec.options, size: { width: 320, height: 400 } } };
+  const narrowRequest = (await parseChartSpec(narrow)).request;
+  expect(reading(<BoardplotChart spec={narrow} zoom={zoom} prepared={await prepareChart({ ...narrowRequest, zoom })} />)).toMatch(/1[34] categories/);
+  const container = await prepareChart({ ...request, size: 'container', zoom });
+  expect(reading(<BoardplotChart spec={spec} size="container" zoom={zoom} prepared={container} />)).toBeUndefined();
+});
+
 it('attaches a prepared SVG after hydration and switches provider paint without layout', async () => {
   const prepared = await prepareChart((await parseChartSpec(spec, 'regions')).request, { theme: 'standard' });
   const layout = vi.spyOn(getChart('column')!, 'layout');

@@ -5,7 +5,7 @@ import { resolveTargetTheme, themes } from '../core/theme';
 import type { RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import { checkedIdPrefix, IdPrefixContext } from './idPrefix';
-import { preparedInputKey, preparedResult } from './preparedInput';
+import { preparedInputKey, preparedResult, zoomPageKey } from './preparedInput';
 import { SceneRenderer } from './SceneRenderer';
 import { LayoutRefusal, SizePlaceholder, type PlaceholderFrame } from './SizePlaceholder';
 import { BoardplotThemeContext } from './themeContext';
@@ -24,15 +24,19 @@ const quiet = () => {};
  * not in the prepared value), a story (its step is not either), or a theme that needs a module the page has not loaded.
  */
 export function usePreparedFirstFrame(spec: unknown, props: BoardplotChartProps, frame: PlaceholderFrame & { theme?: Theme | ThemeRef }): ReactElement | undefined {
-  const { prepared, size, fit, fallbackSize, rows, columns, theme: hostTheme, target: hostTarget, fixedSize, idPrefix } = props;
+  const { prepared, size, fit, fallbackSize, rows, columns, theme: hostTheme, target: hostTarget, fixedSize, idPrefix, zoom } = props;
   const context = useContext(BoardplotThemeContext);
   const grouped = useContext(ScaleGroupContext) !== undefined;
   const story = (props as { storyLink?: unknown }).storyLink !== undefined;
   const candidate = !grouped && !story && prepared?.kind === 'svg' && prepared.engineRev === ENGINE_REV && prepared.result.type !== 'dimswitch' ? prepared : undefined;
   const host = { theme: hostTheme, target: hostTarget, size, fit, fallbackSize, rows, columns };
-  const matches = useMemo(() => !!candidate?.inputKeys?.includes(preparedInputKey(spec, host, context, themes)!),
+  const zoomed = candidate?.result.type === 'line' ? zoom : undefined;
+  const matches = useMemo(() => {
+    const page = candidate?.inputKeys && preparedInputKey(spec, host, context, themes);
+    // A zoom the key cannot read (NaN, a function) has no prepared chart.
+    try { return !!page && candidate!.inputKeys!.includes(zoomPageKey(page, zoomed)); } catch { return false; }
     // The host props count by their values, so a new props object with the same values keeps the result.
-    [candidate, spec, context, ...Object.values(host)]);
+  }, [candidate, spec, context, zoomed, ...Object.values(host)]);
   const chart = matches ? candidate : undefined;
   const target = frame.options?.target as RenderTarget;
   const theme = useMemo(() => {

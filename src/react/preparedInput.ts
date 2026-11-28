@@ -70,6 +70,12 @@ export function preparedInputKey(spec: unknown, host: Fields, context: PreparedC
 /** The hash of a chart's data as JSON carries it. */
 export const dataHash = (data: unknown): string => fnv64(canonicalJson(JSON.parse(JSON.stringify(data))));
 
+/** A line chart with a zoom aggregate is prepared for that zoom: its page key carries the range, grains and aggregate of the zoom. */
+export const zoomPageKey = (page: string, zoom: unknown): string => {
+  const z = zoom as { aggregate?: unknown; grains?: unknown; range?: unknown } | undefined;
+  return z && typeof z === 'object' && z.aggregate ? `${page}:zoom:${fnv64(canonicalJson({ aggregate: z.aggregate, grains: z.grains, range: z.range }))}` : page;
+};
+
 type MatrixInk = { token: string; theme: { kind: 'contrast-ink'; matrix?: Paint[] | number } };
 export const matrixInk = (node: SceneNode): MatrixInk | undefined => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix !== undefined
   ? node.ink as unknown as MatrixInk : undefined;

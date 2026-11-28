@@ -455,6 +455,8 @@ A strict content security policy needs two allowances for styles, and one settin
 
 Prepare on the server, pass the JSON result through your framework and render the component with the same props. The first client render attaches to the prepared scene without layout. A later change of data, options or measured size lays out again. `BoardplotChart` and the type's own component, such as `BarChart` from `boardplot/react/bar`, both put a prepared SVG chart into the server HTML.
 
+A line chart whose `zoom` has an `aggregate` is prepared for that zoom: pass the same `zoom` to `prepareChart` and to the component, for example `zoom: { aggregate: "sum" }`, with a fixed `size`. The server HTML then shows the sums the chart draws after load. In every other case the first frame is the loading placeholder, and the chart follows when it can draw: a page with a zoom aggregate and a chart prepared without that `zoom`, and a chart with `size="container"`, whose grain depends on the measured width (`prepareChart` ignores `zoom` there). The component never shows a chart with other values first. As with `theme` and `target`, a chart prepared for another `zoom` than the page sets does not match the page: pass the same `zoom` to both. A `zoom` without an `aggregate` changes nothing here.
+
 ```tsx
 import { parseChartSpec, prepareChart } from 'boardplot/react/prepare';
 import { BoardplotChart } from 'boardplot/react/spec';
