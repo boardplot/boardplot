@@ -751,6 +751,18 @@ describe('default card rows', () => {
     expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toMatch(/^Share: 3% of /);
   });
 
+  // A pie label can show 34% while the hover card says 33% when the label only shows the value.
+  it('uses the rounded share in the hover card when pie labels only show values', () => {
+    const { request, geometry } = build({ type: 'pie', data: {
+      categories: ['a', 'b', 'c'].map(id => ({ id })),
+      series: [{ id: 's', values: [33.3, 33.3, 33.4] }],
+    }, options: { format: '0%', labels: { outsidePie: ['category', 'absolute'] }, size: { width: 640, height: 360 } } });
+    const label = geometry.labels.find(entry => entry.kind === 'outsidePie' && !entry.hidden && entry.owner.categoryId === 'c');
+    expect(label?.text).toBe('c 34%');
+    const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'c')!;
+    expect(labelCardContent(record).rows.find(row => row.kind === 'share')?.text).toBe('Share: 34% of 100%');
+  });
+
   // A stack total read the authored base instead of the drawn sum, or went missing on a stack with a negative part or of counts on a 100 % axis.
   it('prints the total the stack draws', () => {
     const cats = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];

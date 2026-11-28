@@ -356,15 +356,16 @@ function layoutPiePass(
   const sid = ser.id;
   let cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const cells = normalizeSeriesValues(ser, cats, 0, 'values', data.series);
-  // A percent options.format sets the precision of the computed shares. It prints the slice values too
-  // only when they are percents (a % unit, percent cells, or values adding to 100); counts or money would read as percent.
-  const shareExample = shareFormatExample(options);
+  // A percent format can set the precision of the computed shares. A percent options.format prints
+  // slice values only when they are percents (a % unit, percent cells, or values adding to 100).
+  const optionShareExample = shareFormatExample(options);
+  const shareExample = ser.format ? shareFormatExample(options, [ser]) : optionShareExample;
   const isPercentWhole = (sum: number): boolean => Math.abs(sum - 100) <= 0.05;
   const valuesArePercent = [options.unit, ser.unit].some((unit) => unit?.includes('%'))
     || cells.every((cell) => cell === null || isPctCell(cell))
     || isPercentWhole(cells.map(cellValue).reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0));
-  const valueExample = shareExample && !valuesArePercent ? undefined : options.format;
-  if (shareExample && !valuesArePercent) {
+  const valueExample = optionShareExample && !valuesArePercent ? undefined : options.format;
+  if (optionShareExample && !valuesArePercent) {
     warnings.push({
       code: 'percent-format-on-values',
       severity: 'warn',
@@ -572,11 +573,10 @@ function layoutPiePass(
     : undefined;
   const shareSet = sharesFormatter(shownSlices.map(shareOf));
   const shareText = (slice: Slice): string => rounded?.texts.get(`${sid}\0${slice.cat.id}`) ?? shareSet.format(shareOf(slice));
-  // A slice value and its share can be the same percent printed with the same format.
-  const valuesMatchShares = rounded !== undefined && shareExample !== undefined && isPercentWhole(total);
   const sliceText = (slice: Slice): string => {
-    if (valuesMatchShares && (slice.format ?? ser.format ?? valueExample) === shareExample) return shareText(slice);
     const value = slice.v ?? 0;
+    if (rounded && shareExample && (slice.format ?? ser.format ?? valueExample) === shareExample &&
+      Math.abs(value - shareOf(slice)) <= 4 * Number.EPSILON * value) return shareText(slice);
     return slice.format ? formatterFromExample(slice.format, options.locale?.language)(value) : fmt(value);
   };
   // A name wraps to a label column before the reserve is measured, so a long name does not take the room
@@ -1233,13 +1233,12 @@ function layoutPiePass(
     if (g.labelOverride === false || !content) return {};
     return { ...(content.includes('absolute') ? { value: geomText(g) } : {}), ...(content.includes('percent') ? { 'share.percent': shareText(g) } : {}) };
   };
-  const labelsShowShare = insideContent?.includes('percent') || outsideContent?.includes('percent');
   marks.shown = geoms.flatMap((g): ShownMark[] => {
     const owner = { categoryId: g.cat.id };
     const label = solved.placed.find((l) => !l.hidden && (l.kind === 'insidePie' || l.kind === 'outsidePie') && l.owner.categoryId === g.cat.id);
     // An inside label that landed outside prints its outside form.
     const drawn = label ? shownParts(g, label.kind === 'insidePie' && !(label.slot === 'outside' && outsideForms.has(label.id)) ? insideContent : outsideContent) : {};
-    const fallback = { value: geomText(g), ...(labelsShowShare ? { 'share.percent': shareText(g) } : {}) };
+    const fallback = { value: geomText(g), 'share.percent': shareText(g) };
     return [...(Object.keys(drawn).length > 0 ? [{ owner, shows: drawn, drawn: true as const }] : []), { owner, shows: fallback }];
   });
   // What a hidden slice label would have said, name first, for the note.
