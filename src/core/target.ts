@@ -31,8 +31,8 @@ export const SIZE_PRESETS: Record<SizePreset, Size> = {
 type TypeColumn = Readonly<Record<TypeRoleName, number>>;
 export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
 
-/** The chart types that take the narrow dashboard class. The others keep their sizes under 400 px. */
-const NARROW_TYPES = new Set(['line', 'bar', 'waterfall', 'column']);
+/** The chart types that keep their sizes under 400 px: KPI, bullet, sparkline and creative have their own, and table, dimswitch, gantt, slope and grid read the class in their own references and in React, which the next change gives them. */
+const NARROW_EXCLUDED = new Set(['kpi', 'bullet', 'sparkline', 'creative', 'table', 'dimswitch', 'gantt', 'slope', 'grid']);
 
 export type NarrowMode = 'on' | 'off';
 let narrowMode: NarrowMode | undefined;
@@ -45,7 +45,7 @@ export function withNarrow<T>(mode: NarrowMode | undefined, run: () => T): T {
 export const narrowModeKey = (): string => narrowMode ?? '';
 
 export function narrowDashboard(target: RenderTarget | undefined, width: number, type: string): boolean {
-  return target === 'dashboard' && NARROW_TYPES.has(type) && (narrowMode ? narrowMode === 'on' : width < 400);
+  return target === 'dashboard' && !NARROW_EXCLUDED.has(type) && (narrowMode ? narrowMode === 'on' : width < 400);
 }
 
 /** A refused card from 400 px draws in the narrow sizes up to this width, where the canvas margins and the type class step up. */
@@ -53,7 +53,7 @@ const NARROW_FLIP_LIMIT = 600;
 
 /** The other class for a refused card of a type that has a narrow class: the usual sizes under 400 px, the narrow sizes from 400 to 599 px. */
 export function narrowFlip(target: RenderTarget | undefined, width: number, type: string): NarrowMode | undefined {
-  if (target !== 'dashboard' || !NARROW_TYPES.has(type)) return undefined;
+  if (target !== 'dashboard' || NARROW_EXCLUDED.has(type)) return undefined;
   return width < 400 ? 'off' : width < NARROW_FLIP_LIMIT ? 'on' : undefined;
 }
 

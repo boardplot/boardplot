@@ -7,6 +7,7 @@ import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, 
 import { fittedNote } from './frame';
 import { emphasisWeight, panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
+import { withTypeClassCap } from './target';
 import { CARD_CLASS_WIDTH, heightOmitted } from './sizing';
 import { TEXT_ASCENT } from './svg/renderSvg';
 import type { FrameGeometry, Geometry, LayoutResult, LintWarning, PlacedLabel, SceneNode } from './types/scene';
@@ -125,7 +126,7 @@ type Panel = { id: string; titleNodeId?: string; chart?: { geometry: Geometry<ob
 function footerPlan(frame: FrameGeometry) {
   const input = footerPlans.get(frame);
   if (!input) return;
-  const tokens = spaceTokens(input.theme, input.size.width);
+  const tokens = input.narrowClass ? withTypeClassCap('XS', () => spaceTokens(input.theme, input.size.width)) : spaceTokens(input.theme, input.size.width);
   const boldWeight = emphasisWeight(input.theme);
   const measure = (input.source && hasBold(input.source)) || frame.noteList?.some(note => hasBold(note.text) || !!note.short && hasBold(note.short)) || input.numberedFootnotes?.some(hasBold)
     ? boldMeasurer(input.measure, boldWeight) : input.measure;
