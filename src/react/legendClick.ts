@@ -8,6 +8,8 @@ import { noZoom, type ZoomHook } from './zoomHook';
 
 const NONE: string[] = [];
 const ITEM = '[data-bp-legend-item]';
+/** Px the focus button extends past its label on every side. */
+const RING_ROOM = 3;
 
 /**
  * The view hook of a column or bar chart, in the slot the zoom hook of a line chart takes: a click on a legend entry
@@ -89,7 +91,9 @@ export const useLegendClick: ZoomHook = (input) => {
       const place = button.onfocus = () => {
         const box = node.getBoundingClientRect();
         const frame = element.getBoundingClientRect();
-        Object.assign(button!.style, { left: `${box.left - frame.left}px`, top: `${box.top - frame.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+        // The button is a little larger than the label, so its focus ring clears letters that reach below the line.
+        Object.assign(button!.style, { left: `${box.left - frame.left - RING_ROOM}px`, top: `${box.top - frame.top - RING_ROOM}px`,
+          width: `${box.width + 2 * RING_ROOM}px`, height: `${box.height + 2 * RING_ROOM}px` });
       };
       if (button === document.activeElement) place();
       if (keys!.children[at] !== button) keys!.insertBefore(button, keys!.children[at] ?? null);
