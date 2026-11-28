@@ -432,20 +432,20 @@ export function referenceNameRequests(
   const requests: LabelRequest[] = [];
   for (const [series, { x, y }] of references) {
     const id = `series:${series.id}`;
-    if (options.labelOffsets?.[id] || (modes.only && !modes.only.has(series.id))
+    if (options.labelOffsets?.[id] || options.labelPlacements?.[id] || (modes.only && !modes.only.has(series.id))
       || area.frame.legend?.items.some(item => item.id === series.id)
-      || placed.some(label => label.id === id || (!label.hidden && label.owner.seriesId === series.id))
+      || placed.some(label => label.id === id || (!label.hidden && label.kind === 'series' && label.owner.seriesId === series.id))
       || references.some(([other, end]) => other !== series && Math.hypot(end.x - x, end.y - y) <= labelH)) continue;
     const block = wrapEndpointLabel(series.label, nameFont, endpoint.textBudget, env.measure);
     if (!block?.lines.length || block.w > endpoint.textBudget) continue;
     const w = block.w;
     const h = block.lines.length * labelH;
     const candidates = [
-      { slot: 'besideEnd', rect: { x: x >= lastX ? columnX : x + 8, y: y - h / 2, w, h }, penalty: 0 },
+      { slot: 'besideEnd', rect: { x: x >= lastX - 0.5 && (!reserves.namesAtPlotEdge || x >= plot.x + plot.w - 0.5) ? columnX : x + 8, y: y - h / 2, w, h }, penalty: 0 },
       { slot: 'aboveEnd', rect: { x: x - w, y: y - h - 6, w, h }, penalty: 1 },
       { slot: 'belowEnd', rect: { x: x - w, y: y + 6, w, h }, penalty: 2 },
     ].filter(({ rect, penalty }) => rectContains(canvas, rect, 1) && (!penalty || rectContains(plot, rect))
-      && !visible.some(label => rectsOverlap(label.rect, rect, 2))
+      && !visible.some(label => rectsOverlap(label.rect, rect, label.kind === 'point' ? 8 : 2))
       && !leaders.some(([a, b]) => segmentHitsRect(a, b, rect, 2))
       && !rules.some(rule => segmentHitsRect({ x: rule.x1, y: rule.y1 }, { x: rule.x2, y: rule.y2 }, rect, rule.width / 2 + 1)));
     // The series owns the printed name. During the solve even its own stroke must block a seat.

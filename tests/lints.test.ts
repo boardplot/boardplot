@@ -716,6 +716,20 @@ describe('mechanical lints', () => {
     expect(pair).not.toMatch(/data-id="label:series:(?:budget|target)"/);
   });
 
+  // A name must stand at its own line end, also on a cut number axis, and a target note on the reference must not take its place.
+  it('puts a reference name beside its own end and keeps it beside a target note', () => {
+    const cut = (render({ return: ['svg'], spec: { type: 'line', options: { xAxis: { type: 'number', max: 3.6 } }, data: { x: [0, 1, 2, 3, 4], series: [
+      { id: 'a', label: 'Actual', values: [4, 5, 6, 8, 12] },
+      { id: 'b', label: 'Target', role: 'reference', values: [10.4, 10.4, 10.4, 10.4, null] },
+    ] } } }).body as { svg: string }).svg;
+    expect(Number(/<text data-id="label:series:b"[^>]* x="([\d.]+)"/.exec(cut)![1])).toBeLessThan(600);
+    const noted = (render({ return: ['svg'], spec: { type: 'line', data: { categories: ['2024', '2025', '2026', '2027'], series: [
+      { id: 'a', label: 'Actual', values: [10, 12, 14, 16] },
+      { id: 'b', label: 'Benchmark', role: 'reference', values: [8, 9, 10, null], targets: [{ at: '2027', value: 12, label: 'goal' }] },
+    ] } } }).body as { svg: string }).svg;
+    expect(noted).toContain('data-id="label:series:b"');
+  });
+
   it("series-unexplained keys combo endpoint names to the 'point' label kind", () => {
     const comboData = {
       categories: [{ id: 'q1' }, { id: 'q2' }],
