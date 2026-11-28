@@ -22,3 +22,16 @@ describe('options.strings takes every built-in word', () => {
     expect(result.errors[0]!.message).toContain('try: others');
   });
 });
+
+// A key of Object.prototype passed the check as a word, and an explicit undefined on a built-in key was refused.
+describe('options.strings key edge cases', () => {
+  const waffle = getFixtures('waffle')[0]!;
+  const render = (strings: Record<string, unknown>) => JSON.parse(callTool('boardplot_render', {
+    spec: { type: 'waffle', data: waffle.data, options: { ...waffle.options, strings } },
+  }).text) as { ok: boolean };
+
+  it('refuses toString as a key and accepts an undefined built-in key', () => {
+    expect(render({ toString: 'x' }).ok).toBe(false);
+    expect(render({ referenceKey: undefined }).ok).toBe(true);
+  });
+});

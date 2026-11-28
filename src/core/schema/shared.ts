@@ -1293,10 +1293,10 @@ export const topNWithoutRestCount = optionShapeSchema('topN', z
  */
 export function builtInStringsSchema<S extends z.ZodRawShape>(shape: S) {
   return z.object(shape)
-    .catchall(z.string().describe('Another built-in word, listed in docs/reference/strings.md.'))
+    .catchall(z.string().optional().describe('Another built-in word, listed in docs/reference/strings.md.'))
     .superRefine((value, ctx) => {
       const words = linkedWordKeys();
-      const unknown = words ? Object.keys(value).filter((key) => !(key in shape) && !words.has(key)) : [];
+      const unknown = words ? Object.keys(value).filter((key) => !Object.hasOwn(shape, key) && !words.has(key)) : [];
       if (unknown.length > 0) ctx.addIssue({ code: 'unrecognized_keys', keys: unknown, input: value });
     });
 }
