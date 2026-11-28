@@ -918,6 +918,32 @@ describe('ruleset and CLI integration', () => {
     }
   });
 
+  // A combo refused a dashed line on actual data, while the line chart drew it with this warning.
+  it('draws a dashed combo line or area edge on actual data with one warning, and ignores the stroke of a column', () => {
+    const spec = {
+      type: 'combo',
+      data: {
+        categories: ['Jan', 'Feb', 'Mar'],
+        series: [
+          { id: 'sales', label: 'Sales', kind: 'column', values: [10, 12, 14], lineStyle: 'dashed' },
+          { id: 'trend', label: 'Trend', kind: 'line', values: [9, 11, 15], lineStyle: 'dashed' },
+          { id: 'band', label: 'Band', kind: 'area', values: [5, 6, 7], lineStyle: 'dotted' },
+          { id: 'forecast', label: 'Forecast', kind: 'line', values: [10, 12, 16], lineStyle: 'dashed', scenario: 'FC' },
+        ],
+      },
+      options: { title: 'Sales rise' },
+    };
+    const result = render({ spec, return: ['svg'] });
+    const body = result.body as { ok: boolean; svg: string; warnings: { code: string; message: string }[] };
+    expect(result.exit).toBe(0);
+    expect(body.ok).toBe(true);
+    expect(body.svg.match(/<path[^>]*data-id="mark:line:trend"[^>]*>/)?.[0]).toContain('stroke-dasharray=');
+    const warnings = body.warnings.filter(warning => warning.code === 'dash-on-actual-data');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.message).toContain("'trend', 'band'");
+    expect(warnings[0]!.message).not.toMatch(/'(sales|forecast)'/);
+  });
+
   it('render emits all typed lint codes in JSON and keeps exit code zero', () => {
     const dir = mkdtempSync(join(tmpdir(), 'boardplot-lints-'));
     tempDirs.push(dir);
