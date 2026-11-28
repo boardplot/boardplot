@@ -603,7 +603,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `missing-value` | error, info |  | bartable, core/dataGaps.ts, core/rows.ts, scatter, waterfall |
 | `missing-variance` | error |  | variance |
 | `mixed-directions` | error |  | heatmap |
-| `mixed-language` | warn |  | core/registry.ts |
+| `mixed-language` | warn |  | core/mixedLanguage.ts |
 | `more-errors` | not stated at the site |  | cli/result.ts |
 | `name-slugified` | warn | yes | core/doc/document.ts |
 | `negative-value` | error, warn |  | funnel, waffle |
