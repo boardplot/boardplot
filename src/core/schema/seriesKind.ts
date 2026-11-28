@@ -9,10 +9,13 @@ const SECOND_AXIS_GUIDANCE = "For a second axis, use type 'combo', set each seri
 /** Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. */
 export const seriesKindField = z.enum(KINDS).optional().describe('Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused.');
 export const seriesAxisField = z.enum(AXES).optional().describe(
-  `On line and column, only 'primary' is accepted and it has no effect. ${SECOND_AXIS_GUIDANCE}`,
+  `On column charts, only 'primary' is accepted and it has no effect. ${SECOND_AXIS_GUIDANCE}`,
+);
+export const lineSeriesAxisField = seriesAxisField.describe(
+  `Line charts draw all series on one scale and report secondary-axis-ignored for 'secondary'. ${SECOND_AXIS_GUIDANCE}`,
 );
 
-/** Refuses a `kind` that is not the chart's own and `axis: 'secondary'`. Pattern of `addProjectedDashIssues`. */
+/** Refuses a mismatched `kind` on line and column charts and `axis: 'secondary'` on column charts. */
 export function addSeriesKindIssues(
   ctx: z.RefinementCtx,
   series: { id: string; kind?: string; axis?: string }[],
@@ -30,7 +33,7 @@ export function addSeriesKindIssues(
             : `series '${entry.id}': kind '${entry.kind}' belongs to a combo chart. Remove kind or use type combo.`,
       });
     }
-    if (entry.axis === 'secondary') {
+    if (own === 'column' && entry.axis === 'secondary') {
       ctx.addIssue({
         code: 'custom',
         path: [...basePath, index, 'axis'],
