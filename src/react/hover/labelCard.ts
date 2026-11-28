@@ -89,6 +89,7 @@ export interface LabelCardOptions {
   panelHundred?: ReadonlyMap<string, boolean>;
   /** A grid's panel titles by path: they name a row whose series name another panel's row repeats. */
   panelNames?: ReadonlyMap<string, string>;
+  panelLocales?: ReadonlyMap<string, string>;
 }
 
 /** The options that say a chart draws its categories as 100 %. */
@@ -446,6 +447,11 @@ function repeatedHeadline(record: InteractionRecord): boolean {
     || record.comparisons.some(comparison => sameNumber(comparison.delta, record.value) || sameNumber(comparison.percent, record.value));
 }
 
+function cardLocale(record: InteractionRecord, locale: string | undefined, options: LabelCardOptions | undefined): string | undefined {
+  const panel = record.target.panel;
+  return panel === undefined ? locale : options?.panelLocales?.get(panel) ?? locale;
+}
+
 /**
  * Format only the existing record facts; never infer comparisons from rounded
  * strings. The value row, the field rows, the change and the share print the
@@ -458,6 +464,7 @@ function repeatedHeadline(record: InteractionRecord): boolean {
  */
 export function labelCardContent(record: InteractionRecord, locale?: string, options?: LabelCardOptions, share = true): LabelCardContent {
   if (record.event) return eventCardContent(record.event);
+  locale = cardLocale(record, locale, options);
   // Only the facts the mark does not print: no title or value that repeats it.
   if (record.cardFields) {
     return cardContent(record.fields.filter(field => record.cardFields!.includes(field.key)).map(field => fieldRow(field, locale)));
@@ -672,7 +679,7 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
     // heading once instead of repeating under every series.
     const date = options?.title === undefined && pointed.fields.find(field => field.key === 'date' && !headingNamesDate(pointed, field.value));
     const heading = options?.title ?? pointed.categoryLabel ?? pointed.target.owner.categoryId ?? pointed.label;
-    rows.push({ kind: 'title', text: date ? `${heading}, ${displayedValueText(date.value, locale)}` : heading });
+    rows.push({ kind: 'title', text: date ? `${heading}, ${displayedValueText(date.value, cardLocale(pointed, locale, options))}` : heading });
   }
   const order = options?.order;
   const sorted = order ? [...records].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : [...records];
@@ -690,7 +697,7 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
     const last = groups.at(-1);
     if (last && last[0]!.target.panel === record.target.panel) last.push(record); else groups.push([record]);
   }
-  for (const group of groups) pushAll(rows, groupRows(group, pointed, rowName, locale, options, scene));
+  for (const group of groups) pushAll(rows, groupRows(group, pointed, rowName, cardLocale(group[0]!, locale, options), options, scene));
   const content = cardContent(rows);
   if (key !== undefined) cache!.set(key, content);
   return content;

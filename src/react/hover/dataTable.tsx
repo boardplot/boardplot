@@ -5,6 +5,7 @@ import { withChartFormats } from '../../core/formatSpec';
 import type { ResolvedChartRequest } from '../../core/request';
 import { AccessibleTable } from '../AccessibleTable';
 import { isFullGeometry, type PreparedChart, type RenderGeometry } from '../prepared';
+import { gridPanelLocales } from './gridPanelLocales';
 
 export { preparedTableRecords as tableRecords } from '../../core/a11y/structuralRecords';
 export { a11ySurfaceStyle as surfaceStyle } from '../a11ySurface';
@@ -15,9 +16,12 @@ export function DataTable({ request, geometry, prepared, mode }: {
 }): ReactElement | null {
   // The table formats values after layout: it follows the chart's smallValues mode and unit-only formats.
   const table = useMemo(() => withChartFormats(request.options, () => {
-    const records = isFullGeometry(geometry)
+    const full = isFullGeometry(geometry);
+    const records = full
       ? interactionRecords({ request, geometry, scope: request.scope, claims: [] }) : prepared?.records ?? [];
-    return accessibleDataTable(records, { title: geometry.a11y.title, locale: request.locale?.language });
+    const locales = full ? gridPanelLocales(geometry, request) : prepared?.overlay?.panelLocales;
+    return accessibleDataTable(records, { title: geometry.a11y.title, locale: request.locale?.language,
+      panelLocales: locales ? new Map(locales) : undefined });
   }), [request, geometry, prepared]);
   return <AccessibleTable table={table} mode={mode} />;
 }

@@ -6,6 +6,7 @@ import type { ResolvedChartRequest } from '../../core/request';
 import { panelTypeClass, resolveTheme, type TypeWidthClass } from '../../core/theme';
 import type { Geometry, OccupiedRect, SceneNode } from '../../core/types/scene';
 import type { Theme, ThemeRef } from '../../core/types/theme';
+import { gridPanelLocales } from './gridPanelLocales';
 import { compositionOptions, type CompositionOptions } from './labelCard';
 
 export interface HoverViewport {
@@ -38,6 +39,7 @@ export interface OverlayInputs {
   plot: Rect;
   occupied: OccupiedRect[];
   panels?: PanelOverlayInput[];
+  panelLocales?: [string, string][];
   /**
    * A metric stack's focus look: the band of the plots, one equal column per category, and each panel's plot.
    * A pointer in a category's column addresses that category in every panel.
@@ -66,7 +68,7 @@ function translated(rect: Rect, offset: { x: number; y: number }): Rect {
 }
 
 
-/** Project only placement and theme fields; no source data, derived values or claims. */
+/** Project placement, theme and locale fields; no source data, derived values or claims. */
 export function overlayInputs(request: ResolvedChartRequest, geometry: Geometry): OverlayInputs {
   const panels: PanelOverlayInput[] = [];
   const visit = (parent: Geometry, path: string | undefined, offset: { x: number; y: number }, inheritedTheme?: ThemeRef): void => {
@@ -86,11 +88,13 @@ export function overlayInputs(request: ResolvedChartRequest, geometry: Geometry)
     }
   };
   visit(geometry, request.scope.panel, { x: 0, y: 0 });
+  const panelLocales = gridPanelLocales(geometry, request);
   const stack = (geometry.derived as { metricStack?: { focusBand?: Rect; panels: { id: string; plot: Rect }[] } } | undefined)?.metricStack;
   return {
     plot: { ...geometry.plot },
     occupied: geometry.debug.occupied.map(item => ({ ...item, rect: { ...item.rect }, owner: { ...item.owner } })),
     ...(panels.length ? { panels } : {}),
+    ...(panelLocales ? { panelLocales } : {}),
     ...(stack?.focusBand ? { focusBand: { rect: { ...stack.focusBand },
       panels: stack.panels.map(panel => ({ panel: panel.id, plot: { ...panel.plot } })) } } : {}),
   };

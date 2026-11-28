@@ -23,7 +23,7 @@ const formatters = new Map<string, Pick<Intl.NumberFormat, 'format'>>();
 /**
  * The cached formatter for `locale` and `options`. Options must hold plain values.
  * A locale with chart marks ("de-x-marks-cp", numberMarks.ts) prints the
- * number by English rules with the chart's decimal and grouping marks.
+ * number by English rules with the chart's number marks.
  */
 export function numberFormat(locale: string, options: Intl.NumberFormatOptions): Pick<Intl.NumberFormat, 'format'> {
   const key = `${locale}\u0000${JSON.stringify(options)}`;

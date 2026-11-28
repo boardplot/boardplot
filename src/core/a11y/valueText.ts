@@ -263,7 +263,7 @@ function offZeroText(raw: number, spec: NumberFormatSpec): string {
   if (raw === 0 || spec.exact !== true || !printsZero(text)) return text;
   const affix = (spec.prefix + spec.suffix).trim();
   const own = defaultSetSpec([raw], spec.locale, isUnitText(affix) ? affix : undefined, isPercentUnit(affix) ? { kind: 'percent' } : {});
-  return formatWithSpec(raw, { ...own, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed, glyphs: spec.glyphs, negative: spec.negative });
+  return formatWithSpec(raw, { ...own, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed, glyphs: spec.glyphs, negative: spec.negative, trailingMinus: spec.trailingMinus });
 }
 
 /** One interaction value as text (a suppressed value stays withheld). */

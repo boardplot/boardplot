@@ -37,7 +37,7 @@
  */
 
 import { chartString } from '../../strings/histogram';
-import { MINUS, shareSetFormatter } from '../../format';
+import { shareSetFormatter } from '../../format';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../../formatPrecision';
 import {
   MAGNITUDE_DIVISOR,
@@ -71,7 +71,7 @@ import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/
 import { axisTitleAllowed } from '../../axis';
 import { ruleFormatter } from '../../numberSets';
 import { fixedRuleSet } from '../../numberRule';
-import { chartNumberMarks } from '../../numberMarks';
+import { chartNumberMarks, numberMinus } from '../../numberMarks';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
 import { authoredNotes, frameTextOptions, withAuthoredFootnotes } from '../../frame';
@@ -360,7 +360,8 @@ export function layoutHistogram(
     && roundedNumber(binning.anchor, noteSpecFor(binning.anchor, true)) === binning.anchor;
   // A negative edge carries a minus of its own, so the range dash gets spaces
   // ("−100 – −80", not "−100–−80"), on every bin of the exhibit.
-  const rangeDash = edgeLabels.some((text) => text.startsWith(MINUS)) ? ' – ' : '–';
+  const minus = numberMinus(options.locale?.language);
+  const rangeDash = edgeLabels.some((text) => text.startsWith(minus)) ? ' – ' : '–';
   const openName = openValue === undefined ? undefined : chartString(options, 'histogramOpenBin', { v1: fmt(openValue) });
   const binLabels = counts.map((_, index) => index === openIndex ? openName!
     : perValue ? edgeLabels[index]! : `${edgeLabels[index]}${rangeDash}${edgeLabels[index + 1]}`);

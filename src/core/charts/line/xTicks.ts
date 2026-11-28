@@ -330,6 +330,7 @@ export function timeZoneNote(domain: { x?: { model: LineXModel; lo: number; hi: 
   const changes = offsetChanges(x.lo, x.hi, clock);
   const text = changes.length === 0
     ? chartString(options, 'timeZoneNote', { v1: clock.zone })
-    : chartString(options, 'timeZoneChangeNote', { v1: clock.zone, v2: [changes[0]!.from, ...changes.map((c) => c.to)].map(offsetText).join(chartString(options, 'offsetThen')) });
+    : chartString(options, 'timeZoneChangeNote', { v1: clock.zone,
+      v2: [changes[0]!.from, ...changes.map((c) => c.to)].map(offset => offsetText(offset, options.locale?.language)).join(chartString(options, 'offsetThen')) });
   return [disclosureNote(text)];
 }

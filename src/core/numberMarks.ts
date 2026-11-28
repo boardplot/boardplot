@@ -1,12 +1,10 @@
 /**
- * One pair of number marks per chart, as in a spreadsheet: `options.locale.decimal`
- * and `options.locale.thousands` set the decimal and grouping mark of every
- * number the chart prints. Default '.' and ','; `decimal: ','` alone groups
- * with '.'. The language changes words only: numbers follow English rules,
- * then take the two marks. A format example gives only the shape (decimals,
- * grouping on or off, prefix, suffix, scale, sign); its own marks never win.
+ * A chart's locale sets the decimal, grouping and minus glyphs. The defaults
+ * are '.', ',' and '−'. With `decimal: ','` alone, grouping uses '.'. The
+ * language changes words. A format example sets the shape, including the
+ * placement of the sign.
  *
- * The pair travels in the chart's language tag as a BCP 47 private-use
+ * The marks travel in the chart's language tag as a BCP 47 private-use
  * subtag ("de-x-marks-pc"), because every number formatter already receives
  * that tag. `withNumberMarks` writes it once, where a chart request enters
  * (resolveChartRequest, the registry layout); `numberFormat`
@@ -22,8 +20,10 @@ type SmallValues = 'bound' | 'zero' | 'scientific' | 'p-value';
 interface NumberMarks {
   decimal: '.' | ',';
   thousands: ',' | '.' | ' ' | "'";
+  minusGlyph?: '-';
 }
 
+export const MINUS = '−';
 const PRIVATE = '-x-marks-';
 const CODE = { '.': 'p', ',': 'c', ' ': 's', "'": 'a' } as const;
 const MARK: Record<string, NumberMarks['thousands']> = { p: '.', c: ',', s: ' ', a: "'" };
@@ -31,13 +31,13 @@ const MARK: Record<string, NumberMarks['thousands']> = { p: '.', c: ',', s: ' ',
 const SMALL_CODE: Record<SmallValues, string> = { bound: 'b', zero: 'z', scientific: 'e', 'p-value': 'v' };
 const SMALL: Record<string, SmallValues> = { b: 'bound', z: 'zero', e: 'scientific', v: 'p-value' };
 
-/** The chart's pair: the explicit marks, else '.' and ','. */
-export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands'> | undefined): NumberMarks {
+/** The chart's separators and its optional minus override. */
+export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands' | 'minusGlyph'> | undefined): NumberMarks {
   // The typed apostrophe and the curly one are one mark, as are the space and the narrow no-break space.
   const requested = locale?.thousands === '’' ? "'" : locale?.thousands === '\u202f' ? ' ' : locale?.thousands;
   const decimal = locale?.decimal ?? '.';
   const thousands = requested !== undefined && requested !== decimal ? requested : decimal === ',' ? '.' : ',';
-  return { decimal, thousands };
+  return { decimal, thousands, minusGlyph: locale?.minusGlyph === '-' ? '-' : undefined };
 }
 
 /** A marked chart uses English digits. A short decimal already rounded to its printed precision needs only its two separators. */
@@ -55,9 +55,16 @@ export function markedDecimal(text: string, decimals: number, grouped: boolean, 
 /** The language tag without a marks subtag, and the marks it carries. */
 export function splitNumberMarks(tag: string): { language: string; marks?: NumberMarks; small?: SmallValues } {
   // Only a tag this module wrote decodes: a caller's own private-use subtag ("en-x-marks-zz") stays a language tag.
-  const match = /^(.+)-x-marks-([pc])([pcsa])([bzev])?$/.exec(tag);
+  const match = /^(.+)-x-marks-([pc])([pcsa])([bzev])?(h)?$/.exec(tag);
   if (!match) return { language: tag };
-  return { language: match[1]!, marks: { decimal: MARK[match[2]!] as NumberMarks['decimal'], thousands: MARK[match[3]!]! }, ...(match[4] ? { small: SMALL[match[4]]! } : {}) };
+  const minusGlyph = match[5] ? '-' : undefined;
+  const marks: NumberMarks = { decimal: MARK[match[2]!] as NumberMarks['decimal'], thousands: MARK[match[3]!]!, minusGlyph };
+  return { language: match[1]!, marks, ...(match[4] ? { small: SMALL[match[4]]! } : {}) };
+}
+
+/** The requested minus glyph or the format's default. */
+export function numberMinus(locale: string | undefined, fallback: string = MINUS): string {
+  return (locale === undefined ? undefined : splitNumberMarks(locale).marks?.minusGlyph) ?? fallback;
 }
 
 /** The language a word comes from: the tag without its marks ("de-x-marks-pc" gives "de"). */
@@ -70,7 +77,8 @@ export function withNumberMarks<O extends { locale?: LocaleSpec; smallValues?: S
   const marks = chartNumberMarks(options.locale);
   const split = splitNumberMarks(options.locale?.language ?? 'en');
   const small = options.smallValues ?? split.small;
-  const locale = { ...options.locale, language: `${split.language}${PRIVATE}${CODE[marks.decimal]}${CODE[marks.thousands]}${small ? SMALL_CODE[small] : ''}` };
+  const minus = marks.minusGlyph ? 'h' : '';
+  const locale = { ...options.locale, language: `${split.language}${PRIVATE}${CODE[marks.decimal]}${CODE[marks.thousands]}${small ? SMALL_CODE[small] : ''}${minus}` };
   AUTHORED.set(locale, AUTHORED.has(options.locale ?? {}) ? AUTHORED.get(options.locale!) : options.locale);
   return { ...options, locale };
 }

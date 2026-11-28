@@ -22,6 +22,7 @@ import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, 
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
 import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { numberMinus } from '../../numberMarks';
 import { clamp, deltaGap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -796,7 +797,7 @@ export function layoutButterfly(
       })();
       if (own === null || vs === null) continue;
       const d = own - vs;
-      const text = ann.text ?? `${d < 0 ? '−' : '+'}${(side === 'a' ? fmtA : fmtB)(Math.abs(d))}`;
+      const text = ann.text ?? `${d < 0 ? numberMinus(opts.locale?.language) : '+'}${(side === 'a' ? fmtA : fmtB)(Math.abs(d))}`;
       const size = measure(text, strongFont);
       tail = Math.max(tail, deltaGap(size.height) + size.width + 2);
     }

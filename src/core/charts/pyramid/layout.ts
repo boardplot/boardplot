@@ -37,6 +37,7 @@ import { structureCount } from '../../structureCounts';
 import { formatAutomaticPercent } from '../../format';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { formatterFromExample } from '../../formatSpec';
+import { numberMinus } from '../../numberMarks';
 import { ruleFormatter } from '../../numberSets';
 import { accessibleTitle, NormalizeError } from '../../normalize/shared';
 import { isPctCell, type Cell, type Id } from '../../types/cell';
@@ -281,6 +282,10 @@ export function layoutPyramid(
   const plotted = (bandId: Id, group: 0 | 1): number =>
     isShare ? shares![bandId]![groupIds[group]]! : values[bandId]![groupIds[group]]!;
 
+  const minus = numberMinus(options.locale?.language, '-');
+  const boundary = (value: number) => trim(value).replace(/^-/, minus);
+  const labelOf = (band: PyramidBand) => band.label ?? (band.to === undefined
+    ? `${boundary(band.from)}+` : `${boundary(band.from)}–${boundary(band.to)}`);
   const comparableWidth = bandWidth === null ? '' : chartString(options, 'bandWidthClause', { v1: trim(bandWidth) });
   const footnotes = [
     ...authoredNotes(options),
@@ -288,7 +293,7 @@ export function layoutPyramid(
       bandCount: bands.length,
       bandWidth: bandWidth === null ? null : trim(bandWidth),
       openTop: openTopBand === null ? null : labelOf(bands[bands.length - 1]!),
-      openFrom: trim(bands[bands.length - 1]!.from),
+      openFrom: boundary(bands[bands.length - 1]!.from),
       shareBase: basis === 'shareOfTotal' ? fmtCount(grandTotal) : null,
       methodNote: options.methodNote === true,
     }),
@@ -740,12 +745,6 @@ function check(raw: unknown, path: string, groupId: Id, bandId: Id, group: numbe
     );
   }
   return raw;
-}
-
-/** `${from}-${to}` for closed bands, `${from}+` for the open one. */
-function labelOf(band: PyramidBand): string {
-  if (band.label !== undefined) return band.label;
-  return band.to === undefined ? `${trim(band.from)}+` : `${trim(band.from)}–${trim(band.to)}`;
 }
 
 /** Business default matching butterfly's: whole numbers get no decimals. */

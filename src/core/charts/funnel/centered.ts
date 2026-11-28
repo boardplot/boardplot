@@ -12,6 +12,7 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
 import { formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
+import { numberMinus } from '../../numberMarks';
 import { cellMeta, cellValue } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
@@ -396,7 +397,7 @@ export function layoutCenteredFunnel(
 
   const minFunnelW = compactForm ? MIN_FUNNEL_W_COMPACT : MIN_FUNNEL_W;
   const cagrReserve = (options.annotations ?? []).some(ann => ann.kind === 'cagr')
-    ? measure('−100.0% p.a.', strongFont).width + (compactForm ? 24 : 48) : 0;
+    ? measure(`${numberMinus(options.locale?.language)}100.0% p.a.`, strongFont).width + (compactForm ? 24 : 48) : 0;
   // One placement for every stage label.
   // All inside when every label fits its band; otherwise all in one column
   // left of the funnel, flush right towards it, without leaders, so the
