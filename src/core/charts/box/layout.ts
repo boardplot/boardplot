@@ -1076,7 +1076,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         const under = rowY + boxH + 4;
         const onRow = rowCenter - size.height / 2;
         const inside = stat === 'q1' ? statX + 3 : statX - 3 - size.width;
-        const insideFits = quartilesInside && (stat === 'q1' ? inside + size.width < medianX - 3 : inside > medianX + 3);
+        const insideFits = quartilesInside && size.height <= boxH && (stat === 'q1' ? inside + size.width < medianX - 3 : inside > medianX + 3);
         const candidates: SlotCandidate[] = [
           ...(stat.startsWith('q') && insideFits
             ? [{ slot: 'insideBox', rect: { x: inside, y: onRow, w: size.width, h: size.height }, penalty: 0, insideFill: paintColor(theme, boxFill), insidePaint: boxFill }]

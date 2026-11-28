@@ -82,7 +82,6 @@ export function layoutCohort(
   const basis = options.basis ?? 'cohort';
   // `total` wins over `averages`: one row, two names.
   const averagesMode = options.total ?? options.averages ?? false;
-  const methodNote = options.methodNote === true;
 
   // Periods are ordinal time-since-acquisition and cohorts are chronological:
   // reordering either axis by value scrambles the staircase into a shape that
@@ -293,7 +292,7 @@ export function layoutCohort(
   };
 
   const host = build();
-  const lost = countSuppressed(host, derived, methodNote, shown);
+  const lost = countSuppressed(host, derived, shown);
 
   // ---- rebuild the parts that would otherwise speak the host's language ----
   const rowIndex = new Map<Id, number>();
@@ -494,15 +493,11 @@ interface SuppressionCount {
 }
 
 /**
- * What the reader cannot see. Period 0 is excluded while the method note is on:
- * its value is 100% for every cohort by definition and the note says so in
- * words, so its cells carry no number to lose. With the note off nothing states
- * it, and the anchor column counts like any other.
+ * What the reader cannot see. The anchor column counts like any other.
  */
 function countSuppressed(
   host: Geometry<object, object>,
   derived: CohortDerived,
-  methodNote: boolean,
   shown: ReadonlySet<number>,
 ): SuppressionCount {
   const visible = new Set(host.labels.filter((label) => !label.hidden).map((label) => label.id));
@@ -510,7 +505,6 @@ function countSuppressed(
   const lostPer = new Map<number, number>();
   const count = (rowId: Id, t: number, value: number | null): void => {
     if (value === null || !shown.has(t)) return;
-    if (t === 0 && methodNote) return;
     drawnPer.set(t, (drawnPer.get(t) ?? 0) + 1);
     if (!visible.has(`point:${rowId}:t${t}`)) lostPer.set(t, (lostPer.get(t) ?? 0) + 1);
   };

@@ -9,9 +9,7 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
-import { defaultNotePlacement } from './notes';
 import { ANNOTATIONS_RETIRED, CATEGORY_AXIS_SUPPORT, IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
-import type { RenderTarget } from './types/options';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -44,38 +42,7 @@ export function linkRetiredSettings(type: string, settings: readonly RetiredSett
 type SharedRetiredSetting = Omit<RetiredSetting, 'at'> & { at: string | readonly string[] };
 
 const RETIRED_NOTE_WORDS = new Set([
-  'about', 'afterPeriod', 'allSuppressed', 'anchorClause', 'anchorHidden', 'anchorNote',
-  'andMore', 'authoredSharesBrief', 'authoredSharesFull', 'averageBase', 'averagePrevious', 'averageSupports',
-  'axesNonzero', 'axesUntitled', 'beyond', 'bold', 'bothColumns', 'boxBriefNoPoints',
-  'boxBriefPoints', 'boxHighlight', 'boxMinmaxNoPoints', 'boxMinmaxPoints', 'boxP10P90NoPoints', 'boxP10P90Points',
-  'boxSmallSample', 'boxTukeyNoPoints', 'boxTukeyPoints', 'cellNote', 'cellsLower', 'circles',
-  'codesSentence', 'columnsRankNote', 'combinedShadedLead', 'combinedShareNote', 'combinedShareRangeNote', 'combinedShareZero',
-  'countedInNote', 'countedInNotes', 'countedQuantities', 'countedValues', 'cumulativeMethodNote', 'cumulativeOffNote',
-  'cutLabels', 'cutProvenance', 'emptyUnobserved', 'equalBandsMethod', 'everySupport', 'forcedChoiceBrief',
-  'forcedChoiceFull', 'funnelUndefined', 'hatchedBaseNote', 'heatmapBaseNote', 'heatmapTopValuesNote', 'histogramAbout',
-  'histogramBinsShort', 'histogramBinsShortTitled', 'histogramMethod', 'histogramOpenClause', 'histogramOpenMethod', 'histogramPerValue',
-  'histogramPerValueRange', 'histogramPerValueTitled', 'histogramRounded', 'histogramRuleCount', 'histogramRuleWidth', 'histogramSmallSample',
-  'histogramSnapped', 'hoverMoreListed', 'inUnitClause2', 'insideRest', 'itemsCount', 'keyBetter',
-  'keyBoth', 'keyWorse', 'lastRegardlessSize', 'likertBaseBrief', 'likertBaseFull', 'likertBasesBrief',
-  'likertBasesFull', 'likertNetBrief', 'likertNetFull', 'likertNetNamedBrief', 'likertNetShort', 'likertNeutralBrief',
-  'likertNeutralFull', 'likertNeutralSideBrief', 'likertNeutralSideFull', 'listedInNote', 'listedInNotes', 'lowerCpaBetter',
-  'mapLabelPolicy', 'maturingCohortNote', 'medianBasis', 'mekkoUnnamedNote', 'midMissing', 'midMissingCount',
-  'mixedCoverage', 'mixedShares', 'narrowSharesNotPrinted', 'nearZeroChange', 'nearZeroNote', 'neutralShareOnce',
-  'noCommonUnit', 'noCountingUnit', 'noValueNote', 'notPrintedTiles', 'observedCauses', 'observedCausesDrawn',
-  'oneItem', 'oneUnitSits', 'openBandsMethod', 'otherMembers', 'overlays', 'paretoFoldedMethod',
-  'paretoHiddenHighlights', 'paretoHighlightNote', 'paretoNoConcentrationNote', 'paretoNoReachNote', 'paretoNoThresholdNote', 'paretoReferenceConvention',
-  'paretoRestMethod', 'paretoUnlabelled', 'partsMissTotal', 'pieHiddenSlices', 'placeholder', 'pointLabelsOff',
-  'pointsCountAbove', 'pointsCountRight', 'positiveAnchor', 'previousStageZero', 'pvmBasisNote', 'pvmConventionShort',
-  'pvmConventionShortCombined', 'pvmCoverageHead', 'pvmCoverageShares', 'pvmCoverageShort', 'pvmMethodNoteCombined', 'pvmMethodNoteCombinedSeparate',
-  'pvmMethodNoteInPrice', 'pvmMethodNoteSeparate', 'pvmPriceAtPriorShort', 'pvmSplitInvariant', 'pvmSplitNote', 'pyramidBandsMethod',
-  'pyramidSharesDisclosure', 'quadrantAllUnits', 'quadrantCutShort', 'quadrantCutX', 'quadrantCutY', 'quadrantEquality',
-  'quadrantOnThreshold', 'quadrantOutsideRange', 'quadrantWeights', 'quantityUnit', 'rangeMidNote', 'rankFormat',
-  'rankMethod', 'rankRing', 'sankeyHiddenLead', 'sensitivityNote', 'sliverKnown', 'sliverNote',
-  'slopeBaseNote', 'someSuppressed', 'sortedNetBrief', 'sortedNetFull', 'stackAboveRates', 'stackAverages',
-  'stackLeftRates', 'stackRightRates', 'steppedBlank', 'tableArrowNote', 'tableFavourableGood', 'tableFavourableGreen',
-  'tableGroupsNote', 'tableHigher', 'tableLower', 'tableRoundingNote', 'treemapCircleHiddenLead', 'treemapRectHiddenLead',
-  'uncountedSuppressed', 'unitsSit', 'unsupportedAverage', 'valuesNotBesideMarks', 'valuesNotOnColumns', 'valuesNotPrinted',
-  'varianceNmNote', 'vertical', 'weightedObserved', 'weightedTotal',
+  'cellNote', 'hatchedBaseNote', 'histogramAbout', 'histogramMethod', 'histogramRounded', 'histogramRuleCount', 'histogramRuleWidth', 'histogramSmallSample', 'histogramSnapped', 'mixedCoverage', 'mixedShares', 'nearZeroChange', 'nearZeroNote', 'rangeMidNote', 'rankFormat', 'rankMethod', 'rankRing', 'sensitivityNote', 'stackAverages', 'valuesNotBesideMarks', 'valuesNotOnColumns',
 ]);
 
 const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
@@ -85,7 +52,7 @@ const RETIRED_SETTINGS: readonly SharedRetiredSetting[] = [
   { at: 'options.strings.highlight', use: 'A highlight is never a key entry.' },
   { at: 'options.strings.partialTotals', use: 'Set options.strings.knownPartsTotals to change the footer wording.' },
   { at: 'options.methodNote', types: ['box', 'choropleth', 'dot', 'histogram', 'likert', 'line', 'pareto', 'pvm', 'pyramid', 'scatter'],
-    to: 'options.notes.placement', values: { true: 'frame', false: null } },
+    values: { true: null, false: null }, use: 'The method note is no longer printed.' },
   { at: 'options.notes.show.[]', values: { ranks: null } },
   { at: 'options.quadrants.axisNames', types: ['scatter'] },
   { at: 'options.target', values: { legacy: null }, use: "Set target to 'report', 'dashboard', 'slide' or 'print'." },
@@ -410,21 +377,18 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
       if (ANNOTATIONS_RETIRED.includes(type) && at.at(-1) === 'annotations' && Array.isArray(value) && value.length === 0) { next = setAt(next, at, undefined); continue; }
       const scalar = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
       if (entry.values && !(scalar && Object.hasOwn(entry.values, String(value)))) continue;
-      const methodNote = entry.at === 'options.methodNote';
-      const renderTarget = methodNote ? (readAt(next, ['target']) ?? readAt(next, ['options', 'target'])) as RenderTarget | undefined : undefined;
-      const successor = methodNote && String(value) === 'true' ? defaultNotePlacement(renderTarget) : entry.values ? entry.values[String(value)] : value;
+      const successor = entry.values ? entry.values[String(value)] : value;
       const target = entry.to?.split('.') ?? at;
       const dotted = at.join('.');
       const what = entry.values ? `${dotted} ${quoted(value)}` : dotted;
       const path = toJsonPointer(at);
       // A successor the author already set wins over the retired setting.
-      const taken = entry.to !== undefined && readAt(next, target) !== undefined ? entry.to
-        : methodNote && readAt(next, ['options', 'notes', 'show']) !== undefined ? 'options.notes.show' : undefined;
+      const taken = entry.to !== undefined && readAt(next, target) !== undefined;
       if (successor === null || (!entry.values && !entry.to) || taken) {
         next = setAt(next, at, undefined);
         warnings.push({ code: 'option-deprecated', severity: 'warn', field: at,
           message: `${what} is retired and ignored.`,
-          suggest: [`Remove ${dotted}.`, ...(taken ? [`${taken} is set and wins.`] : entry.use ? [entry.use] : [])].join(' '),
+          suggest: [`Remove ${dotted}.`, ...(taken ? [`${entry.to} is set and wins.`] : entry.use ? [entry.use] : [])].join(' '),
           fix: [{ op: 'remove', path }] });
       } else if (entry.to === undefined) {
         next = setAt(next, at, successor);
