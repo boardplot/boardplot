@@ -2,7 +2,7 @@ import { PLAN_ONLY, RETAIN_TABLE_RESULT, isPlanned, materializeLayout, requestMe
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { classStepWidth, dashboardCardTheme, DEFAULT_PRESET, layoutStepKey, panelTypeClass, resolveTargetTheme, WIDE_CANVAS_MIN_WIDTH } from './theme';
-import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, TARGET_SIZE, typeClassCap, withTypeClassCap, type TargetSizeOptions } from './target';
+import { DEFAULT_TARGET, narrowDashboard, resolveTargetSize, withNarrow, TARGET_SIZE, typeClassCap, withTypeClassCap, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { localeStrings, singleStops } from './strings';
 import type { FrameGeometry, Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types/scene';
@@ -1511,7 +1511,8 @@ function cardClassHeight<D, O extends ChartOptions, M extends object, DV extends
   if (memo) (raw as Record<symbol, unknown>)[CARD_HEIGHT_MEMO] = memo;
   let height: number | undefined;
   try {
-    const wider = layout(data, raw as O);
+    // The 480 px reference lays out in its own class, not in the class a flipped card is forced into.
+    const wider = withNarrow(undefined, () => layout(data, raw as O));
     height = isRefused(wider) ? undefined : wider.size.height;
   } catch (error) {
     if (!(error instanceof NormalizeError)) throw error;
