@@ -3430,7 +3430,7 @@ fixtures.push({
     categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
     series: [{ id: 'sales', label: 'Sales', values: [60, 70, 80] }],
   },
-  options: { categoryAxis: { title: 'Quarter' } },
+  options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
 });
 
 registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, pointEmphasisFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

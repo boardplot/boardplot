@@ -1421,7 +1421,7 @@ fixtures.push({
     categories: ['Q1', 'Q2', 'Q3'].map(id => ({ id })),
     series: [{ id: 'sales', label: 'Sales', values: [60, 70, 80] }],
   },
-  options: { categoryAxis: { title: 'Quarter' } },
+  options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
 });
 
 registerFixtures('bar', fixtures);

@@ -1242,7 +1242,7 @@ fixtures.push({
       { id: 'plan', label: 'Plan', kind: 'line', values: [85, 90, 95] },
     ],
   },
-  options: { categoryAxis: { title: 'Quarter' } },
+  options: { title: 'Sales grow and stay below plan', categoryAxis: { title: 'Quarter' } },
 });
 
 registerFixtures('combo', fixtures);
