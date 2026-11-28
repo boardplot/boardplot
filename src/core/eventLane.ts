@@ -200,7 +200,7 @@ function resolveEvents(input: {
       title: ann.label,
       detail: detailLines(ann.detail),
       more: ann.items?.length ?? 0,
-      reading: { ...when!, ...(group ? { group: group.label } : {}), items },
+      reading: { ...when!, ...(group ? { group: group.label } : {}), ...(input.scale ? {} : { categoryId: cats[Math.floor(pos)]!.id }), ...(date ? { day: date } : {}), items },
       priority: ann.priority ?? 0,
       placement: input.inline && ann.labelPlacement === 'inline' ? 'inline' : ann.placement ?? input.events?.placement ?? 'auto',
       ...(period ? { period } : {}),

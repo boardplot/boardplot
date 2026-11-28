@@ -29,7 +29,7 @@ import { SceneRenderer } from '../SceneRenderer';
 import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlight';
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, followSeat, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
-  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
+  labelCardContent, layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, withPeriodEvents, stackKey, type CardSide, type CompositionOptions, type LabelCardContent, type LabelCardInput, type LabelCardLayout, type LabelCardOptions } from './labelCard';
 import { cardTitle, keyOrder, metricName, panelNames, stackSeries } from './cardRows';
 import { chartString as funnelString } from '../../core/strings/funnel';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
@@ -585,7 +585,8 @@ export function hoverView(
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
   const listed = flags.card ? cardRecords(model, active) : active;
   const layout = !flags.card ? undefined : withChartFormats(request.options, () => listed.length > 1
-    ? layoutLabelCardContent(input, sharedLabelCardContent(listed, locale, card, geometry.scene, model.cardRows)) : layoutLabelCard(input));
+    ? layoutLabelCardContent(input, withPeriodEvents(sharedLabelCardContent(listed, locale, card, geometry.scene, model.cardRows), model.records, first))
+    : layoutLabelCardContent(input, withPeriodEvents(labelCardContent(first, locale, card), model.records, first)));
   const scene = flags.highlight ? highlightScene(geometry.scene, model.records, active, theme)
     : flags.keyboard ? outlineScene(geometry.scene, model.records, active, theme) : geometry.scene;
   // Keep the chart's description fallback alongside the tooltip's reading.

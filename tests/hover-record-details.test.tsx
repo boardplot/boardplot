@@ -41,6 +41,31 @@ function build(spec: object) {
   return { request, geometry };
 }
 
+describe('hover card events', () => {
+  const months = ['2026-01', '2026-02', '2026-03'].map(id => ({ id, date: `${id}-01` }));
+  const lineData = { categories: months, series: [{ id: 'web', label: 'Web', values: [10, 12, 14] }] };
+  const events = [{ kind: 'event', id: 'a', date: '2026-03-02', label: 'New checkout' }, { kind: 'event', id: 'b', date: '2026-03-23', label: 'TV campaign' },
+    { kind: 'event', id: 'c', date: '2026-01-10', label: 'Price change' }];
+  const card = (spec: object, month: string) => {
+    const { request, geometry } = build(spec);
+    const model = hoverModel(request, geometry);
+    const hit = model.records.find(record => record.target.owner.categoryId === month && record.target.owner.seriesId === 'web')!;
+    return hoverView(model, request, geometry, [hit.id], { card: true, highlight: false }).card!.rows.map(row => row.text);
+  };
+  // A reader pointing at a month could not see what happened in it: the card now lists that month's events, and no others.
+  it('lists the events of the hovered period under its values, in a chart and in a grid panel', () => {
+    const size = { size: { width: 640, height: 360 } };
+    const expected = ['March 2026', 'Web: 14', '2 Mar New checkout', '23 Mar TV campaign'];
+    expect(card({ type: 'line', data: lineData, annotations: events, options: size }, '2026-03')).toEqual(expected);
+    expect(card({ type: 'grid', data: { panels: [{ id: 'p', type: 'line', data: lineData, annotations: events }] }, options: size }, '2026-03')).toEqual(expected);
+  });
+  // A period without events must keep the card it had before.
+  it('keeps the card of a period without events', () => {
+    const size = { size: { width: 640, height: 360 } };
+    expect(card({ type: 'line', data: lineData, annotations: events, options: size }, '2026-02')).toEqual(card({ type: 'line', data: lineData, options: size }, '2026-02'));
+  });
+});
+
 describe('hover card date', () => {
   // A line that has ended must leave the shared card, while an internal gap stays visible as missing.
   it('leaves ended lines out of a shared card and keeps internal gaps', () => {

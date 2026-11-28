@@ -36,6 +36,10 @@ export interface InteractionEvent {
   /** The label of the category an `at` event sits on. */
   place?: string;
   group?: string;
+  /** The category the event sits on, on a category axis: a hover card of that period lists the event. */
+  categoryId?: string;
+  /** The date as the lane prints it ("2 Mar"), for the period's card. */
+  day?: string;
   /** The event's own title and detail first, then each further item. */
   items: { title: string; detail: string[] }[];
 }

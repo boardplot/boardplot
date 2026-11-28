@@ -27,7 +27,7 @@ import { maxOf, pushAll } from '../../core/arrays';
 
 export interface LabelCardRow {
   /** 'more' is the card's own row counting what the frame's height left out. */
-  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'more';
+  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'event' | 'more';
   text: string;
   /** Separate drawn cells. `text` keeps the complete accessible reading. */
   label?: string;
@@ -535,6 +535,25 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
     for (const annotation of record.annotations) rows.push({ kind: 'annotation', text: annotation.text });
   }
   return cardContent(rows);
+}
+
+/**
+ * The card of a period with the events that sit on it under its rows: the
+ * date the lane prints in front, then the title, one row per item. The
+ * engine names each event's category, so the card and the lane agree.
+ * A period without events keeps its card, and an event's own card is left as it is.
+ */
+export function withPeriodEvents(content: LabelCardContent, records: readonly InteractionRecord[], first: InteractionRecord): LabelCardContent {
+  const { categoryId } = first.target.owner;
+  if (categoryId === undefined || first.event) return content;
+  const events = records.flatMap(record => record.event?.categoryId === categoryId
+    && record.target.chart === first.target.chart && record.target.panel === first.target.panel ? [record.event] : []);
+  const rows: LabelCardRow[] = events.flatMap(event => event.items.map(({ title }) => event.day
+    ? { kind: 'event' as const, label: event.day, value: title, text: `${event.day} ${title}` } : { kind: 'event' as const, text: title }));
+  if (!rows.length) return content;
+  // An event the record already names as an annotation is listed once, as an event.
+  const titles = new Set(events.flatMap(event => event.items.map(item => item.title)));
+  return cardContent([...content.rows.filter(row => row.kind !== 'annotation' || !titles.has(row.text)), ...rows]);
 }
 
 /** The widest an event's card is: its detail is prose and wraps at a reading measure. */
@@ -1123,7 +1142,7 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
     const lines = fitted.lines.length ? fitted.lines : [''];
     const valueLines = paired ? cardValueLines(row.value!, font, Math.max(1, valueWidth), measure) : undefined;
     const gap = index > 0 && (rows[index - 1]?.kind === 'title' || row.kind === 'more' || row.kind === 'total'
-      || (row.series && !rows[index - 1]?.series) || (row.kind === 'annotation' && rows[index - 1]?.kind !== 'annotation')) ? CARD_SPACE.group : 0;
+      || (row.series && !rows[index - 1]?.series) || (row.kind === 'annotation' && rows[index - 1]?.kind !== 'annotation') || (row.kind === 'event' && rows[index - 1]?.kind !== 'event')) ? CARD_SPACE.group : 0;
     return { lines, title: fitted.title, valueLines, gap, shareWidth: shares, ...row.kind === 'total' ? { rule: true as const } : {},
       width: Math.max(...lines.map(line => measure(line, font).width)) + swatch + (paired ? valueWidth + (label ? CARD_SPACE.column : 0) : 0) + shareWidth,
       height: Math.max(lines.length, valueLines?.length ?? 0) * lineBox(font) };
