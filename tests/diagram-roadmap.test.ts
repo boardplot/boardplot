@@ -51,4 +51,23 @@ describe('roadmap with a pinned milestone', () => {
       }
     }
   });
+  // A pin on the edge of its own phase is not an outside pin, and a moved name never lands on an arrowhead.
+  it('keeps the name of a milestone pinned at its own phase edge, and off arrowheads', () => {
+    const node = (id: string, label: string, secondaryLabel: string, laneId: string, x: number, y: number) =>
+      ({ id, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel, laneId, position: { x, y } });
+    const draw = (laneIds: string[], nodes: unknown[], edges: unknown[], size: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'diagram', data: { lanes: laneIds.map(id => ({ id, label: id.toUpperCase(), orientation: 'vertical' })), nodes, edges }, options: { variant: 'roadmap', size },
+    } as any)));
+    const edge = draw(['a', 'b', 'c'], [node('m', 'Name', 'Q1 FY27', 'b', 0.6666, 0.55)], [], { width: 800, height: 300 });
+    expect(edge.labels.find(label => label.id === 'node-label:m')!.slot).toBe('aboveInLane');
+    const arrows = draw(['l1', 'l2'], [node('m1', 'Regional rollout', 'Target: October 2027', 'l1', 0.6, 0.65), node('m2', 'Two', 'Q1', 'l2', 0.69, 0.59)],
+      [{ id: 'e1', source: { nodeId: 'm1' }, target: { nodeId: 'm2' }, arrowEnd: true }], { width: 720, height: 320 });
+    const label = arrows.labels.find(l => l.id === 'node-label:m1')!;
+    for (const head of arrows.scene.filter(n => n.t === 'path' && n.part === 'diagramArrow')) {
+      const [x1, y1, x2, y2, x3, y3] = (head as { d: string }).d.match(/-?\d+(\.\d+)?/g)!.map(Number);
+      const hx = [x1!, x2!, x3!], hy = [y1!, y2!, y3!];
+      const apart = Math.max(...hx) <= label.rect.x || Math.min(...hx) >= label.rect.x + label.rect.w || Math.max(...hy) <= label.rect.y || Math.min(...hy) >= label.rect.y + label.rect.h;
+      expect(apart).toBe(true);
+    }
+  });
 });

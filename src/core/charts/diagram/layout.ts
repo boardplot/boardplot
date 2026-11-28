@@ -778,7 +778,7 @@ function layoutDiagramPass(
   if (!narrow && !narrowCard && panelTypeClass(options) === undefined) sizing.minWidth = Math.max(sizing.minWidth, DIAGRAM_MIN_WIDTH);
 
   if (options.variant === 'roadmap' && !org) {
-    placePinnedRoadmapNames(data.nodes, preset, labelRequests, solvedStructural, occupied, structuralCtx, u);
+    placePinnedRoadmapNames(data.nodes, preset, labelRequests, solvedStructural, occupied, structuralCtx, u, arrowheadRects(routed.scene));
   }
   const structuralLabelNodes = labelsToNodes(theme, solvedStructural.placed, (label) =>
     ['diagramLane', 'diagramGroup', 'diagramBadge'].includes(label.kind as string)
@@ -1070,17 +1070,29 @@ function settleJoinedLabels(
   return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
 }
 
+/** The bounds of each arrowhead the edges drew; the occupied index holds only the edge lines of a roadmap. */
+function arrowheadRects(scene: readonly SceneNode[]): Rect[] {
+  return scene.flatMap(node => {
+    if (node.t !== 'path' || node.part !== 'diagramArrow') return [];
+    const n = node.d.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    const xs = [n[0]!, n[2]!, n[4]!], ys = [n[1]!, n[3]!, n[5]!];
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return [{ x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }];
+  });
+}
+
 /** Once the roadmap fits, a milestone pinned outside its phase can move its whole label without displacing another. */
 function placePinnedRoadmapNames(
   nodes: readonly DiagramNode[], preset: PresetLayout, requests: readonly LabelRequest[],
-  solved: ReturnType<typeof solveLabels>, occupied: OccupiedIndex, ctx: SolveCtx, u: number,
+  solved: ReturnType<typeof solveLabels>, occupied: OccupiedIndex, ctx: SolveCtx, u: number, arrowheads: readonly Rect[],
 ): void {
   for (const node of nodes) {
     if (!node.position || node.kind !== 'milestone') continue;
     const circle = preset.nodeRects.get(node.id)!;
     const lane = preset.lanes.find(lane => lane.id === node.laneId)!.bounds;
     const cx = q(circle.x + circle.w / 2);
-    if (cx >= lane.x && cx <= lane.x + lane.w) continue;
+    // The lane bounds round x and width apart, so a pin on the phase edge can fall half a pixel outside them.
+    if (cx >= lane.x - 1 && cx <= lane.x + lane.w + 1) continue;
 
     const id = `node-label:${node.id}`;
     const index = solved.placed.findIndex(label => label.id === id);
@@ -1094,7 +1106,8 @@ function placePinnedRoadmapNames(
       .map(seat => ({ ...seat, keepOffLines: true as const }));
     const retry = solveLabels([{ ...request, text: label.text, lines: label.lines, candidates }], occupied, ctx);
     const moved = retry.placed[0]!;
-    if (moved.hidden) {
+    // The label stays when the move needs a leader (the scene draws none for these labels) or would cover an arrowhead.
+    if (moved.hidden || moved.leader || arrowheads.some(arrow => rectsOverlap(arrow, moved.rect))) {
       occupied.claim(label.rect, 'label', label.owner);
       continue;
     }
