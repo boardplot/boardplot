@@ -45,16 +45,17 @@ function refusal(data: unknown, options: Record<string, unknown>): string | unde
 
 const series = (n: number, f = (i: number) => i) => [{ id: 'a', label: 'Probe', values: Array.from({ length: n }, (_, i) => f(i)) }];
 
+const dateWarnings = (categories: unknown[], type = 'line', options = {}) =>
+  (resolveChartRequest({ type, data: { categories, series: series(categories.length) }, options }).inputWarnings ?? [])
+    .filter(warning => warning.code === 'categories-are-dates');
+
 // Equal category spacing can make a long gap between dated readings look like a single day.
 it('warns when line categories hide unequal date gaps and leaves regular series quiet', () => {
-  const warnings = (categories: unknown[], type = 'line', options = {}) =>
-    (resolveChartRequest({ type, data: { categories, series: series(categories.length) }, options }).inputWarnings ?? [])
-      .filter(warning => warning.code === 'categories-are-dates');
   const irregular = ['2026-01-01', '2026-01-02', '2026-04-01'];
-  expect(warnings(irregular)).toMatchObject([{
+  expect(dateWarnings(irregular)).toMatchObject([{
     severity: 'warn', field: ['data', 'categories'], suggest: expect.stringContaining("options.xAxis to { type: 'time' }"),
   }]);
-  expect(warnings(irregular.map((label, i) => ({ id: String(i), label })), 'profile')).toHaveLength(1);
+  expect(dateWarnings(irregular.map((label, i) => ({ id: String(i), label })), 'profile')).toHaveLength(1);
   for (const names of [
     ['2026-01-01', '2026-01-02', '2026-01-03'],
     ['2026-01-01', '2026-02-01', '2026-03-01'],
@@ -67,10 +68,17 @@ it('warns when line categories hide unequal date gaps and leaves regular series 
     ['2026-01-01', '2026-02-29', '2026-04-01'],
     ['2026-01-02', '2026-01-01', '2026-04-01'],
   ]) {
-    expect(warnings(names), names.join(', ')).toEqual([]);
+    expect(dateWarnings(names), names.join(', ')).toEqual([]);
   }
-  expect(warnings(irregular.map(date => ({ id: date, date })))).toEqual([]);
-  expect(warnings(irregular, 'line', { variant: 'bump' })).toEqual([]);
+  expect(dateWarnings(irregular.map(date => ({ id: date, date })))).toEqual([]);
+  expect(dateWarnings(irregular, 'line', { variant: 'bump' })).toEqual([]);
+});
+
+// Charts with one reading per month should stay quiet when the day of the month varies.
+it('leaves first Mondays and business month ends quiet and still warns about irregular dates', () => {
+  expect(dateWarnings(['2026-01-05', '2026-02-02', '2026-03-02', '2026-04-06'])).toEqual([]);
+  expect(dateWarnings(['2026-01-30', '2026-02-27', '2026-03-31'])).toEqual([]);
+  expect(dateWarnings(['2026-01-05', '2026-01-12', '2026-02-02'])).toHaveLength(1);
 });
 
 describe('time zone reading', () => {

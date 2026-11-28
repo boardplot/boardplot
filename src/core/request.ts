@@ -34,7 +34,7 @@ import type { GridMarks } from './grid/layoutGrid';
 import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
-import { parseISODate, utcDate } from './isoDate';
+import { parseISODate } from './isoDate';
 import { retireChartSettings } from './retired';
 import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
 import { tableFitThemeTokens, themeGeometryTokens } from './themeGeometry';
@@ -1031,13 +1031,9 @@ function categoryDateWarnings(data: unknown, options: RequestOptions & { xAxis?:
   const weekdays = dates.every(date => date.getUTCDay() >= 1 && date.getUTCDay() <= 5);
   if (weekdays && dayGaps.every(gap => gap <= 5)) return [];
 
-  const sameDay = dates.every(date => date.getUTCDate() === dates[0]!.getUTCDate());
-  const monthEnds = dates.every(date => utcDate(date.getUTCFullYear(), date.getUTCMonth() + 1, 0).getUTCDate() === date.getUTCDate());
-  if (sameDay || monthEnds) {
-    const months = dates.map(date => 12 * date.getUTCFullYear() + date.getUTCMonth());
-    const gap = months[1]! - months[0]!;
-    if (gap > 0 && months.slice(1).every((month, index) => month - months[index]! === gap)) return [];
-  }
+  const months = dates.map(date => 12 * date.getUTCFullYear() + date.getUTCMonth());
+  const gap = months[1]! - months[0]!;
+  if (gap > 0 && months.slice(1).every((month, index) => month - months[index]! === gap)) return [];
   return [{
     code: 'categories-are-dates', severity: 'warn', field: ['data', 'categories'],
     message: 'The category names are dates with unequal gaps.',
