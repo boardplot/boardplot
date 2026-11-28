@@ -11,6 +11,7 @@ import { canonicalChartType, getChart, type DiscardRepair } from './registry';
 import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
+import { localeMarksWarnings } from './localeMarks';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './widthRepair';
@@ -217,6 +218,7 @@ export function resolveChartRequest<D, O extends object>(
     }
     if (canonical !== language) options.locale = { ...options.locale, language: canonical };
   }
+  const marksWarnings = localeMarksWarnings(options.locale);
   // The entry of every chart request: from here `locale.language` carries the chart's number marks (numberMarks.ts).
   options.locale = withNumberMarks(options).locale;
   const theme = resolveTargetTheme(options.theme, target, textScale, textSize);
@@ -230,7 +232,7 @@ export function resolveChartRequest<D, O extends object>(
   const data = prepared(def, read.data, options) as D;
   const inputWarnings = [...shaped.warnings, ...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
     input.annotations === undefined ? '/options/annotations' : '/annotations'),
-    ...colorVariableWarnings(input.data, options.theme)];
+    ...colorVariableWarnings(input.data, options.theme), ...marksWarnings];
   return {
     ...(inputWarnings.length ? { inputWarnings } : {}),
     type: def.type,

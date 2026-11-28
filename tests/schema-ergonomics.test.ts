@@ -194,7 +194,7 @@ it('accepts short option shapes and preserves their content', async () => {
   expect(result.options).toMatchObject({ footnotes: ['Keep this note.'], source: 'Example ledger; Example plan',
     sort: { categories: 'desc' }, topN: { n: 2 } });
   expect(splitNumberMarks(result.options.locale!.language!)).toEqual({ language: 'de', marks: { decimal: '.', thousands: ',' } });
-  expect(result.inputWarnings ?? []).toEqual([]);
+  expect(result.inputWarnings).toMatchObject([{ code: 'locale-marks-unset' }]);
   expect(request({ source: [] }).options.source).toBe('');
   expect(() => request({ source: ['Example ledger', 7] })).toThrow();
   expect(sourceLine('Example ledger', '')).toBe('Example ledger');

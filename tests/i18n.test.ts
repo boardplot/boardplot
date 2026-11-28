@@ -16,6 +16,7 @@ import { resolveChartRequest } from '../src/core/request';
 import { chartString as layoutString } from '../src/core/strings/createChartComponent';
 import { resolveTable } from '../src/core/charts/table/resolve';
 import { tableFrame } from '../src/react/tablePresentation';
+import type { LocaleSpec } from '../src/core/types/options';
 import type { TableData, TableOptions } from '../src/core/types/table';
 
 const pieFixture = () => getFixtures('pie').find((fixture) => fixture.id === 'streaming-genre-share')!;
@@ -37,6 +38,24 @@ function texts(geo: { scene: readonly unknown[] }): string {
 }
 
 describe('locale numbers and dates', () => {
+
+  // A chart can silently print a decimal point where readers expect a decimal comma.
+  it('suggests explicit number marks for languages that use a decimal comma', () => {
+    const data = { categories: ['A', 'B'], series: [{ id: 'sales', label: 'Sales', values: [1345.6, 1000] }] };
+    const warnings = (locale: LocaleSpec | string) => resolveChartRequest({ type: 'column', data, options: { locale, format: '0.0' } })
+      .inputWarnings?.filter(warning => warning.code === 'locale-marks-unset') ?? [];
+
+    for (const [language, thousands] of [['de-DE', '.'], ['de-AT', '.'], ['fr-BE', ' '], ['fr-CH', ' ']] as const) {
+      expect(warnings(language), language).toMatchObject([{
+        severity: 'info', field: ['options', 'locale'],
+        message: expect.stringContaining(`options.locale to { language: '${language}', decimal: ',', thousands: '${thousands}' }`),
+      }]);
+    }
+    for (const locale of ['de-CH', 'de-LI', 'es-MX', 'es-419', 'en-US',
+      { language: 'de-DE', decimal: ',', thousands: '.' }, { language: 'de-DE', decimal: '.' }] as const) {
+      expect(warnings(locale), JSON.stringify(locale)).toEqual([]);
+    }
+  });
 
   it('formats month names and numeric dates for de and en', () => {
     const date = new Date(Date.UTC(2026, 4, 15));
