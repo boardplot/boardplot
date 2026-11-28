@@ -19,7 +19,7 @@ import { act, type ReactElement } from 'react';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getFixtures } from '../src/fixtures';
 import { chartLoaders } from '../src/react/chartLoaders';
 import { maskEngineStamp, stampFreeSha } from './golden/stamp';
@@ -105,5 +105,21 @@ describe('per-type React entries draw the recorded markup', { timeout: 120_000 }
     expect(Object.keys(recorded).length, 'no recorded markup; run with MARKUP_UPDATE=1').toBe(TYPES.length);
     expect(changed, `the markup of these entries changed: ${changed.join(', ')}`).toEqual([]);
     expect(fresh).toEqual(recorded);
+  });
+
+  // The typed React entry needs to tell the author when a dashed actual line can read as a forecast.
+  it('reports dashed actuals through LineChart onWarnings', async () => {
+    const { LineChart } = await import('../src/react/charts/line');
+    const data = {
+      categories: [{ id: 'Jan' }, { id: 'Feb' }, { id: 'Mar' }, { id: 'Apr' }],
+      series: [
+        { id: 'a', label: '2025', values: [10, 12, 14, 13] },
+        { id: 'b', label: '2024', values: [8, 9, 11, 10], lineStyle: 'dashed' as const },
+      ],
+    };
+    const onWarnings = vi.fn();
+    const markup = await mount(<LineChart data={data} size={SIZE} onWarnings={onWarnings} />);
+    expect(markup.match(/<path[^>]*data-id="mark:line:b:0"[^>]*>/)?.[0]).toContain('stroke-dasharray=');
+    expect(onWarnings).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ code: 'dash-on-actual-data' })]));
   });
 });

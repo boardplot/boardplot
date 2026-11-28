@@ -80,6 +80,20 @@ function cliTriggerChart(code: LintCode): LintChart {
       return chart({ data: { categories: oneCategory, series: [{ id: 'plan', scenario: 'PL', values: [10] }] } });
     case 'series-unexplained':
       return chart({ type: 'column', options: { ...options, legend: 'none' }, data: { categories: oneCategory, series: [{ id: 'a', label: 'Gross', values: [10] }, { id: 'b', label: 'Net', values: [8] }] } });
+    case 'dash-on-actual-data':
+      return chart({ data: {
+        categories: ['Jan', 'Feb', 'Mar', 'Apr'],
+        series: [
+          { id: 'a', label: '2025', values: [10, 12, 14, 13] },
+          { id: 'b', label: '2024', values: [8, 9, 11, 10], lineStyle: 'dashed' },
+          { id: 'c', label: '2023', values: [7, 8, 9, 8], lineStyle: 'dotted', scenario: 'AC' },
+          { id: 'forecast', label: 'Forecast', values: [11, 13, 15, 14], lineStyle: 'dashed', scenario: 'FC' },
+          { id: 'plan', label: 'Plan', values: [12, 14, 16, 15], lineStyle: 'dotted', scenario: 'PL' },
+          { id: 'cell-forecast', label: 'Cell forecast', values: [11, 12, 13, 14].map(number => ({ number, scenario: 'FC' })), lineStyle: 'dotted' },
+          { id: 'cell-plan', label: 'Cell plan', values: ['Jan', 'Feb', 'Mar', 'Apr'].map((categoryId, i) => ({ categoryId, value: { number: 10 + i, scenario: 'PL' } })), lineStyle: 'dashed' },
+          { id: 'benchmark', label: 'Benchmark', values: [6, 7, 8, 7], lineStyle: 'dashed', role: 'reference' },
+        ],
+      } });
   }
 }
 
@@ -882,6 +896,28 @@ describe('mechanical lints', () => {
 });
 
 describe('ruleset and CLI integration', () => {
+  // Warn once when dashed or dotted strokes can make actuals look like a forecast. Stacked areas draw fills.
+  it('draws dashed and dotted actuals with one warning that names the series', () => {
+    const spec = cliTriggerChart('dash-on-actual-data');
+    const result = render({ spec, return: ['svg'] });
+    const body = result.body as { svg: string; warnings: { code: string; severity: string; message: string }[] };
+    expect(result.exit).toBe(0);
+    expect(body.svg.match(/<path[^>]*data-id="mark:line:b:0"[^>]*>/)?.[0]).toContain('stroke-dasharray=');
+    expect(body.svg.match(/<path[^>]*data-id="mark:line:c:0"[^>]*>/)?.[0]).toContain('stroke-dasharray=');
+    const warnings = body.warnings.filter(warning => warning.code === 'dash-on-actual-data');
+    expect(warnings).toMatchObject([{ severity: 'warn', message: expect.stringContaining("'b', 'c'") }]);
+    expect(warnings[0]!.message).not.toMatch(/'(forecast|plan|cell-forecast|cell-plan|benchmark)'/);
+    for (const options of [
+      { variant: 'stacked-area' },
+      { variant: 'stacked100-area' },
+      { valueAxis: { percent: true } },
+    ]) {
+      const area = render({ spec: { ...spec, options: { ...spec.options, ...options } } });
+      expect(area.exit).toBe(0);
+      expect((area.body as typeof body).warnings.map(warning => warning.code), JSON.stringify(options)).not.toContain('dash-on-actual-data');
+    }
+  });
+
   it('render emits all typed lint codes in JSON and keeps exit code zero', () => {
     const dir = mkdtempSync(join(tmpdir(), 'boardplot-lints-'));
     tempDirs.push(dir);

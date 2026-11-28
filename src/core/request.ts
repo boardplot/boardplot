@@ -1042,6 +1042,28 @@ function lineSecondaryAxisWarnings(data: unknown): LintWarning[] {
   }];
 }
 
+function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant?: string; valueAxis?: { percent?: boolean } }): LintWarning[] {
+  // valueAxis.percent turns a line chart into a 100% area, as drawnVariant in stackAdds.ts reads it.
+  const variant = options.valueAxis?.percent ? 'stacked100-area' : options.variant;
+  if (variant === 'stacked-area' || variant === 'stacked100-area' || !isRecord(data) || !Array.isArray(data.series)) return [];
+  const isPlanOrForecast = (scenario: unknown): boolean => typeof scenario === 'string' && /^(FC|PL|FCST|BUD)$/i.test(scenario);
+  const ids: string[] = [];
+  for (const series of data.series) {
+    if (!isRecord(series) || typeof series.id !== 'string' || series.role === 'reference') continue;
+    if (series.lineStyle !== 'dashed' && series.lineStyle !== 'dotted') continue;
+    if (isPlanOrForecast(series.scenario)) continue;
+    const cells = Array.isArray(series.values)
+      ? series.values.map(entry => isRecord(entry) && 'categoryId' in entry ? entry.value : entry).filter(cell => cell != null) : [];
+    if (cells.length && cells.every(cell => isRecord(cell) && isPlanOrForecast(cell.scenario))) continue;
+    ids.push(`'${series.id}'`);
+  }
+  if (ids.length === 0) return [];
+  return [{
+    code: 'dash-on-actual-data', severity: 'warn', field: ['data', 'series'],
+    message: `Series ${ids.join(', ')} ${ids.length === 1 ? 'uses' : 'use'} a dashed or dotted line. These styles usually mark a forecast or plan. Use a solid line for actual data. Set scenario 'FC' for a forecast, scenario 'PL' for a plan, or role 'reference' for a context line.`,
+  }];
+}
+
 function requestInputWarnings(type: string, data: unknown, options: RequestOptions, annotationsPath = ''): LintWarning[] {
   if (type !== 'grid') return [
     ...percentScaleWarnings(data, options, type),
@@ -1049,6 +1071,7 @@ function requestInputWarnings(type: string, data: unknown, options: RequestOptio
     ...(type === 'line' ? [
       ...categoryDateWarnings(data, options),
       ...lineSecondaryAxisWarnings(data),
+      ...dashOnActualWarnings(data, options),
     ] : []),
   ];
   return inputPanels(data).flatMap(panel => {
