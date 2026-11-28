@@ -1384,7 +1384,7 @@ function pushPointRequests(input: {
       slots = [...held.map(slot => preferred === 'left' || preferred === 'right' ? { ...slot, overRules: false } : slot), ...slots.filter(slot => slot.slot !== preferred)];
     }
     if (!candidate.suppressed && !rest && !keep[index]) input.lost.thinned.push(name);
-    input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, ...(candidate.shows ? { shows: candidate.shows } : {}), lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
+    input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, ...(candidate.shows ? { shows: candidate.shows } : {}), lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd && !clipped ? { noLeader: true } : {}),
       ...(candidate.highlighted ? { keepWhenDense: true as const } : {}),
       // A value over a neighbour's point reads as that point's value.
       ...(input.isStacked || input.bump ? {} : { anchor: { x: input.xOf(candidate.ci), y: candidate.py }, ...(computed ? { ownStrokeClear: true } : {}) }), ...(input.isStacked ? {} : { ownStroke: ownQueries }) });

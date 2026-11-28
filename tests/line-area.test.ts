@@ -253,6 +253,12 @@ describe('line clamp', () => {
     expect(geometry.warnings.map(warning => warning.code)).not.toContain('clamp-ignored');
   });
 
+  // The footer names the bound the chart applies, also without an authored format (it printed "1.6M" for 1,550,000).
+  it('prints the applied bound exactly', () => {
+    const geometry = requireGeometry(layout({ valueAxis: { show: true, clamp: { max: 1550000 } } }, { categories, series: rate([1000000, 1400000, 50000000, 1200000]) }));
+    expect(geometry.derived).toMatchObject({ clipped: [{ limit: 1550000, limitText: '1.55M' }] });
+  });
+
   // Invalid bounds cannot define a scale, even when another feature would otherwise disable the clamp.
   it('refuses invalid clamp bounds', () => {
     for (const min of [100, 200]) {

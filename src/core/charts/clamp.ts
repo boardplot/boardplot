@@ -1,5 +1,5 @@
 import { fmtPathNumber as fmtN } from '../curve';
-import { MAGNITUDE_DIVISOR, formatWithSpec, roundedNumber, type NumberFormatSpec } from '../formatSpec';
+import { MAGNITUDE_DIVISOR, RULE_SET, formatWithSpec, roundedNumber, type NumberFormatSpec } from '../formatSpec';
 import { NormalizeError } from '../normalize/shared';
 import { caveatNote } from '../notes';
 import { ruleSetOf } from '../numberSets';
@@ -157,7 +157,9 @@ export function discloseNumber(raw: number, spec: NumberFormatSpec, authoredForm
   // Twenty fractional digits are the practical limit of the fixed-decimal printer.
   while (decimals < 20 && Number(scaled.toFixed(decimals)) !== scaled) decimals += 1;
   const exact = Number(scaled.toFixed(decimals)) === scaled;
-  const applied = { ...spec, decimals: exact ? decimals : base };
+  // A rule set would print its own rounded digits and not these decimals.
+  const { [RULE_SET]: _rules, ...plain } = spec;
+  const applied = { ...plain, decimals: exact ? decimals : base };
   const value = exact ? raw : roundedNumber(raw, applied);
   return { value, text: formatWithSpec(value, applied), exact };
 }
