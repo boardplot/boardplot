@@ -27,8 +27,10 @@ import { maxOf, pushAll } from '../../core/arrays';
 
 export interface LabelCardRow {
   /** 'more' is the card's own row counting what the frame's height left out. */
-  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'more';
+  kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'event' | 'more';
   text: string;
+  /** The annotation an annotation row prints. */
+  annotationId?: string;
   /** Separate drawn cells. `text` keeps the complete accessible reading. */
   label?: string;
   value?: string;
@@ -532,9 +534,29 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       const value = chartString(wording, 'rankValue', { v1: record.rank.value, v2: record.rank.of, v3: chartString(wording, record.rank.direction === 'desc' ? 'highestFirst' : 'lowestFirst') });
       rows.push({ kind: 'rank', label, value, text: `${label} ${value}` });
     }
-    for (const annotation of record.annotations) rows.push({ kind: 'annotation', text: annotation.text });
+    for (const annotation of record.annotations) rows.push({ kind: 'annotation', text: annotation.text, annotationId: annotation.id });
   }
   return cardContent(rows);
+}
+
+/**
+ * The card of a period with the events that sit on it under its rows: the
+ * date the lane prints in front, then the title, one row per item. The
+ * engine names each event's category, so the card and the lane agree. An
+ * event the records also carry as an annotation is listed once, as an event.
+ * A period without events keeps its card, and an event's own card is left as it is.
+ */
+export function withPeriodEvents(base: LabelCardContent, records: readonly InteractionRecord[], first: InteractionRecord): LabelCardContent {
+  const { categoryId } = first.target.owner;
+  const events = categoryId === undefined || first.event ? [] : records.filter(record => record.event?.categoryId === categoryId
+    && record.target.chart === first.target.chart && record.target.panel === first.target.panel);
+  if (!events.length) return base;
+  // A grid panel's records name an annotation with the panel's path in front.
+  const prefix = first.target.panel === undefined ? '' : `${first.target.panel}/`;
+  const ids = new Set(events.map(record => prefix + record.target.owner.annotationId!));
+  const rows = events.flatMap(({ event }) => event!.items.map(({ title }): LabelCardRow => event!.day
+    ? { kind: 'event', label: event!.day, value: title, text: `${event!.day} ${title}` } : { kind: 'event', text: title }));
+  return cardContent([...base.rows.filter(row => row.annotationId === undefined || !ids.has(row.annotationId)), ...rows]);
 }
 
 /** The widest an event's card is: its detail is prose and wraps at a reading measure. */
@@ -1107,23 +1129,27 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
   const shares = shareColumn(rows, theme, measure);
   const shareWidth = shares ? shares + CARD_SPACE.column : 0;
   maxWidth = Math.max(1, maxWidth - shareWidth);
-  const labelReserve = Math.max(0, maxOf(rows.map(row => !row.label ? 0
+  // An event's date and title take their own columns: a long title wraps and leaves the series names their room.
+  const columns = rows.filter(row => row.kind !== 'event');
+  const labelReserve = Math.max(0, maxOf(columns.map(row => !row.label ? 0
     : measure(row.label, rowFont(row, theme)).width + CARD_SPACE.column + (row.series ? 14 : 0))));
-  const valueWidth = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(rows.map(row => row.value === undefined ? 0
+  const shared = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(columns.map(row => row.value === undefined ? 0
     : measure(row.value, { ...rowFont(row, theme), tabular: true }).width))));
   return rows.map((row, index) => {
     const font = rowFont(row, theme);
     const paired = row.value !== undefined;
+    const valueWidth = row.kind !== 'event' || !paired ? shared : Math.max(1, Math.min(measure(row.value!, font).width,
+      maxWidth - measure(row.label!, font).width - CARD_SPACE.column));
     const swatch = row.series || row.kind === 'total' ? 14 : 0;
     const label = paired ? row.label ?? '' : row.text;
     const room = paired ? Math.max(0, maxWidth - valueWidth - (label ? CARD_SPACE.column : 0) - swatch) : maxWidth;
     // The title is the record's name: in full, on as many lines as it needs.
     const fitted = row.kind === 'title' && !paired ? { lines: cardValueLines(label, font, Math.max(1, room), measure, true), title: undefined }
-      : fitText(label, font, room, row.lines ?? (row.kind === 'annotation' ? 2 : 1), measure);
+      : fitText(label, font, room, row.lines ?? (row.kind === 'annotation' || row.kind === 'event' ? 2 : 1), measure);
     const lines = fitted.lines.length ? fitted.lines : [''];
     const valueLines = paired ? cardValueLines(row.value!, font, Math.max(1, valueWidth), measure) : undefined;
     const gap = index > 0 && (rows[index - 1]?.kind === 'title' || row.kind === 'more' || row.kind === 'total'
-      || (row.series && !rows[index - 1]?.series) || (row.kind === 'annotation' && rows[index - 1]?.kind !== 'annotation')) ? CARD_SPACE.group : 0;
+      || (row.series && !rows[index - 1]?.series) || (row.kind === 'annotation' && rows[index - 1]?.kind !== 'annotation') || (row.kind === 'event' && rows[index - 1]?.kind !== 'event')) ? CARD_SPACE.group : 0;
     return { lines, title: fitted.title, valueLines, gap, shareWidth: shares, ...row.kind === 'total' ? { rule: true as const } : {},
       width: Math.max(...lines.map(line => measure(line, font).width)) + swatch + (paired ? valueWidth + (label ? CARD_SPACE.column : 0) : 0) + shareWidth,
       height: Math.max(lines.length, valueLines?.length ?? 0) * lineBox(font) };
@@ -1191,7 +1217,7 @@ function rowsWithinHeight(
   // rows under it take the place of the last kept series and its details.
   const pointedAt = rows.findIndex(row => row.series && row.pointed);
   let pointedEnd = pointedAt + 1;
-  while (pointedAt >= 0 && pointedEnd < rows.length && !rows[pointedEnd]!.series && rows[pointedEnd]!.kind !== 'total') pointedEnd++;
+  while (pointedAt >= 0 && pointedEnd < rows.length && !rows[pointedEnd]!.series && rows[pointedEnd]!.kind !== 'total' && rows[pointedEnd]!.kind !== 'event') pointedEnd++;
   const first = (count: number) => {
     const kept = rows.slice(0, count);
     if (pointedAt < 0 || pointedAt < count) return kept;
@@ -1203,7 +1229,12 @@ function rowsWithinHeight(
     const kept = first(count);
     return [...kept, moreRow(rows.length - kept.length, locale)];
   };
-  const limited = cut < 0 ? [...rows] : cutTo(maximum);
+  // The series limit cuts series only: the period's events stay under the counting row.
+  const events = rows.filter(row => row.kind === 'event');
+  const limited = cut < 0 ? [...rows] : (() => {
+    const kept = first(maximum);
+    return [...kept, moreRow(rows.length - kept.length - events.length, locale), ...events];
+  })();
   const measured = measureRows(limited, theme, maxWidth, measure);
   const fits = (sizes: MeasuredRow[]) => cardHeight(sizes) <= maxHeight;
   if (fits(measured)) return { rows: limited, measured };

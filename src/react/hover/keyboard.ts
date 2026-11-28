@@ -10,7 +10,7 @@ import { withChartFormats } from '../../core/formatSpec';
 import { minOf } from '../../core/arrays';
 import type { RenderGeometry } from '../prepared';
 import { bandTypes, cardOptions, cardRecords, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
-import { labelCardContent, sharedLabelCardContent } from './labelCard';
+import { labelCardContent, sharedLabelCardContent, withPeriodEvents } from './labelCard';
 
 /** Matrix charts read row by row: a row is a series, its cells run along the categories. */
 const MATRIX_TYPES: ReadonlySet<string> = new Set(['heatmap', 'cohort', 'status']);
@@ -204,7 +204,7 @@ export function keyboardReading(model: HoverModel, request: ResolvedChartRequest
   const active = cardRecords(model, keyboardTargets(model, request, record));
   const options = cardOptions(model, request, record);
   const locale = request.locale?.language;
-  return withChartFormats(request.options, () => active.length > 1
-    ? sharedLabelCardContent(active, locale, options).accessibleText
-    : labelCardContent({ ...record, cardFields: undefined }, locale, options).accessibleText);
+  return withChartFormats(request.options, () => withPeriodEvents(active.length > 1
+    ? sharedLabelCardContent(active, locale, options)
+    : labelCardContent({ ...record, cardFields: undefined }, locale, options), model.records, record).accessibleText);
 }
