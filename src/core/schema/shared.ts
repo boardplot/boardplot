@@ -1337,7 +1337,7 @@ export const baseOptionsSchema = z.object({
         z.literal(1).describe('Monday as the requested first weekday.'),
       ]).optional().describe("First weekday for week ticks; default Monday. Read by categoryAxis.dateTicks 'weeks' on column, combo and line, and by the week ticks of a line time axis. Those three report it (week-start-ignored) when dateTicks asks for another interval. Other types ignore it without a warning."),
     }), languageSchema)
-    .optional().describe('A string sets language only. Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5); a format example gives only the shape. language changes words only, never the marks.'),
+    .optional().describe('A string sets the language. Language changes words only. Set decimal and thousands to choose the number marks for the whole chart (default 1,234.5). Boardplot warns when the language usually uses a decimal comma and decimal is unset. A format example gives only the shape.'),
   strings: z
     .object({
       newItems: z.string().min(1).optional().describe('PVM entry-bar name; default New items.'),

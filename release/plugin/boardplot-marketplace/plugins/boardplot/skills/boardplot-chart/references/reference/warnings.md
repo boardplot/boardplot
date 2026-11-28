@@ -573,6 +573,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `line-labels-first-last` | info |  | line |
 | `line-peer-overload` | advice |  | line |
 | `locale-ignored` | warn |  | core/doc/document.ts |
+| `locale-marks-unset` | info |  | core/localeMarks.ts |
 | `log-axis-unnamed` | info |  | line, scatter |
 | `log-line-conflict` | error | yes | line |
 | `log-nonpositive` | error | yes | line, scatter |
