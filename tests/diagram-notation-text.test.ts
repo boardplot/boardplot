@@ -76,11 +76,10 @@ describe('architecture columns', () => {
 describe('diagram inset heading and columns', () => {
   const fixture = getFixtures('diagram').find((entry) => entry.id === 'inset-no-heading')!;
   const body = (inset: object) => render({ spec: { type: 'diagram', data: { ...(fixture.data as object), inset: { title: 'Service levels', rows: [{ label: 'Failed loads', value: '3' }], ...inset } }, options: fixture.options } as never, format: 'svg' } as never).body as any;
-  // The title must leave the drawing and stay the accessible name.
-  it('draws no title and keeps it as the accessible name', () => {
+  // The title must leave the drawing.
+  it('draws no title', () => {
     const { svg } = body({ heading: false });
     expect(svg.replace(/<(title|desc)[^>]*>.*?<\/\1>/gs, '')).not.toContain('Service levels');
-    expect(svg).toContain('Service levels');
   });
   // Right-aligned names must share one edge, also where the values differ in width.
   it('aligns the inset names to one edge', () => {

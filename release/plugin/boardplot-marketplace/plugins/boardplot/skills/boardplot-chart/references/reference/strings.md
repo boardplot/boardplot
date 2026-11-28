@@ -170,35 +170,35 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `compositionColumns` | `by {v1} composition` | grid |
 | `corridor` | `Corridor (\|modified z\| ≤ {value})` | shared |
 | `corridorBounds` | `Corridor (authored bounds)` | shared |
-| `countActivities` | `{v1} activities` | structureCounts |
-| `countBands` | `{v1} bands` | structureCounts |
-| `countCases` | `{v1} cases` | structureCounts |
-| `countCategories` | `{v1} categories` | structureCounts |
-| `countCauses` | `{v1} causes` | structureCounts |
-| `countCells` | `{v1} cells` | structureCounts |
-| `countCohorts` | `{v1} cohorts` | structureCounts |
-| `countColumns` | `{v1} columns` | structureCounts |
-| `countDrivers` | `{v1} drivers` | structureCounts |
-| `countEvents` | `{v1} events` | structureCounts |
-| `countFlows` | `{v1} flows` | structureCounts |
-| `countGroups` | `{v1} groups` | structureCounts |
-| `countMarkers` | `{v1} markers` | structureCounts |
-| `countMethods` | `{v1} methods` | structureCounts |
-| `countNodes` | `{v1} nodes` | structureCounts |
-| `countObservations` | `{v1} observations` | structureCounts |
-| `countPanels` | `{v1} panels` | structureCounts |
-| `countPeriods` | `{v1} periods` | structureCounts |
-| `countPhases` | `{v1} phases` | structureCounts |
-| `countPoints` | `{v1} points` | structureCounts |
-| `countReferenceSeries` | `{v1} reference-series` | structureCounts |
-| `countRegions` | `{v1} regions` | structureCounts |
-| `countRelationships` | `{v1} relationships` | structureCounts |
-| `countRows` | `{v1} rows` | structureCounts |
-| `countScalePoints` | `{v1} scale-points` | structureCounts |
-| `countSeries` | `{v1} series` | structureCounts |
-| `countSlices` | `{v1} slices` | structureCounts |
-| `countStages` | `{v1} stages` | structureCounts |
-| `countStatements` | `{v1} statements` | structureCounts |
+| `countActivities` | `{v1} {v1\|activity\|activities}` | structureCounts |
+| `countBands` | `{v1} {v1\|band\|bands}` | structureCounts |
+| `countCases` | `{v1} {v1\|case\|cases}` | structureCounts |
+| `countCategories` | `{v1} {v1\|category\|categories}` | structureCounts |
+| `countCauses` | `{v1} {v1\|cause\|causes}` | structureCounts |
+| `countCells` | `{v1} {v1\|cell\|cells}` | structureCounts |
+| `countCohorts` | `{v1} {v1\|cohort\|cohorts}` | structureCounts |
+| `countColumns` | `{v1} {v1\|column\|columns}` | structureCounts |
+| `countDrivers` | `{v1} {v1\|driver\|drivers}` | structureCounts |
+| `countEvents` | `{v1} {v1\|event\|events}` | structureCounts |
+| `countFlows` | `{v1} {v1\|flow\|flows}` | structureCounts |
+| `countGroups` | `{v1} {v1\|group\|groups}` | structureCounts |
+| `countMarkers` | `{v1} {v1\|marker\|markers}` | structureCounts |
+| `countMethods` | `{v1} {v1\|method\|methods}` | structureCounts |
+| `countNodes` | `{v1} {v1\|node\|nodes}` | structureCounts |
+| `countObservations` | `{v1} {v1\|observation\|observations}` | structureCounts |
+| `countPanels` | `{v1} {v1\|panel\|panels}` | structureCounts |
+| `countPeriods` | `{v1} {v1\|period\|periods}` | structureCounts |
+| `countPhases` | `{v1} {v1\|phase\|phases}` | structureCounts |
+| `countPoints` | `{v1} {v1\|point\|points}` | structureCounts |
+| `countReferenceSeries` | `{v1} {v1\|reference series\|reference series}` | structureCounts |
+| `countRegions` | `{v1} {v1\|region\|regions}` | structureCounts |
+| `countRelationships` | `{v1} {v1\|relationship\|relationships}` | structureCounts |
+| `countRows` | `{v1} {v1\|row\|rows}` | structureCounts |
+| `countScalePoints` | `{v1} {v1\|scale point\|scale points}` | structureCounts |
+| `countSeries` | `{v1} {v1\|series\|series}` | structureCounts |
+| `countSlices` | `{v1} {v1\|slice\|slices}` | structureCounts |
+| `countStages` | `{v1} {v1\|stage\|stages}` | structureCounts |
+| `countStatements` | `{v1} {v1\|statement\|statements}` | structureCounts |
 | `countedInNote` | `Counted in note {n}; the value is not listed there` | frame |
 | `countedInNotes` | `Not shown on the chart; counted in the notes list` | frame |
 | `countedItems` | `{count} items` | shared |

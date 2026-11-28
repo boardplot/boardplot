@@ -11,7 +11,7 @@ import { assertEmbeddedImage } from '../../image';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, solveLabels, type LabelRequest } from '../../label/solver';
-import { NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
+import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -797,7 +797,8 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
       fatigueTexts: { ...(fatigue.changePct === null ? {} : { change: numbers.fatigue(fatigue.changePct, true) }),
         ...(fatigue.baseline.mean === null ? {} : { baseline: numbers.fatigueMean(fatigue.baseline.mean) }),
         ...(fatigue.current.mean === null ? {} : { current: numbers.fatigueMean(fatigue.current.mean) }) } },
-    a11y: a11yDescription(options, 'Creative exhibit'),
+    // A creative exhibit has no data table, so the author's alt text of the media is its description.
+    a11y: { ...a11yDescription(options, 'Creative exhibit'), title: accessibleTitle(options.title, data.facts.name), desc: data.media.alt },
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }
 

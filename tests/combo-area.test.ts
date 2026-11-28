@@ -34,9 +34,9 @@ it('closes secondary area paths and occupied fills at their own zero', () => {
   };
   // SVG bytes for these three invented controls (re-recorded when Helvetica Neue moved to the Liberation Sans widths, for the 280 px compact floor in data-bp-sizing, and when the area moved behind the columns), hashed without the engine stamp.
   const hashes: Record<string, string> = {
-    primary: 'c3d8758f7051fdf10b532043abfcc60f09621bbce1adb99566b8cf0a34fd3cc6',
-    aligned: 'acd71b1a1efc79a3c6874b0325e0cb1220d07ecca24c21b4234c9c7675866d51',
-    positive: '6f9a7b11ed90e2c3d5654eefdc4195725c5a9c637f3405622ef80f82d57bde08',
+    primary: 'a8af6999d01b92e01b162f5393e9f0cbcdd722e3e5da62b63c6edee76949cd71',
+    aligned: 'c81194dcc142a8c1809f3b0537bedd6bc71fbb260e11a127fc20b8a7ada9af88',
+    positive: 'ec24044b960361134b7c13ec2079e9ae8090321dc664ea9a384ecfdf91a228a5',
   };
   for (const [name, geometry] of Object.entries(controls)) {
     expect(stampFreeSha(renderSvg(geometry as unknown as Geometry, resolveTheme())), name).toBe(hashes[name]);

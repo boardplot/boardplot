@@ -14,7 +14,7 @@ export function a11yDescription(
   summary?: StructureCount[] | false,
   metadata: DescriptionMetadata = {},
 ): Geometry['a11y'] {
-  const localized = typeof typeName === 'string' ? typeName : typeName[wordLanguage(options.locale?.language) === 'de' ? 1 : 0];
+  const localized = typeof typeName === 'string' ? typeName : typeName[/^de(?:[-_]|$)/i.test(wordLanguage(options.locale?.language) ?? '') ? 1 : 0];
   const name = localized.charAt(0).toUpperCase() + localized.slice(1);
   const desc = summary === false ? '' : `${[name, ...(summary ?? []).map(count => count.text)].join(', ')}.`;
   const notes = metadata.compactNotes?.length
