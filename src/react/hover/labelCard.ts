@@ -258,7 +258,7 @@ const SHARE_EXAMPLE = '12.3%';
  * format of its own prints through it. So a sliver beside "$5k" reads "<$1k"
  * and not "$0.43", and the total prints as the parts do.
  */
-function cardFormat(values: readonly InteractionValue[], locale?: string): (value: InteractionValue) => string {
+function cardFormat(values: readonly InteractionValue[], locale?: string, pie = false): (value: InteractionValue) => string {
   const numeric = (value: InteractionValue) => value.state === 'value' && typeof value.raw === 'number' && value.derived !== 'percent';
   // Values in one authored format, or in one unit without a format, share a card format.
   const keyOf = (value: InteractionValue) => value.format ? `format\u0000${value.format}\u0000${value.unit ?? ''}` : `unit\u0000${value.unit ?? ''}`;
@@ -280,7 +280,8 @@ function cardFormat(values: readonly InteractionValue[], locale?: string): (valu
     return spec;
   };
   return value => {
-    if (value.displayed && printsBound(value.displayed)) return cardValueText(value, locale);
+    // A pie slice reads the share text its label printed, bound included; a stack's near-zero total keeps the unit.
+    if (pie && value.displayed && printsBound(value.displayed)) return cardValueText(value, locale);
     const spec = numeric(value) ? specFor(value) : null;
     return spec ? specText(value.raw as number, spec) : cardValueText(value, locale);
   };
@@ -625,7 +626,7 @@ function groupRows(sorted: readonly InteractionRecord[], pointed: InteractionRec
   const listed = stacked ? [...members, ...sorted.filter(record => !members.includes(record))] : sorted;
   const total = stacked ? stackTotal(parts, locale) : undefined;
   // The parts and their total share one format; other series (a line on its own axis) keep theirs.
-  const stackFormat = cardFormat([...parts.map(record => record.value), ...total ? [total] : []], locale);
+  const stackFormat = cardFormat([...parts.map(record => record.value), ...total ? [total] : []], locale, parts.every(record => record.target.chart === 'pie'));
   const format = (record: InteractionRecord) => stacked && parts.includes(record) ? stackFormat(record.value) : cardValueText(record.value, locale);
   // With a part missing and no whole of its own, the base is only the known parts: their shares of it say nothing.
   const base = parts[0]?.share?.denominator;

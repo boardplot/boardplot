@@ -809,6 +809,14 @@ describe('default card rows', () => {
       options: { variant: 'stacked', size: { width: 640, height: 360 } } }, 'q2', 'a').slice(1)).toEqual([['A:', '12', true], ['B:', '6', false], ['C:', '–', false], ['Total:', '18 (partial)']]);
   });
 
+  // A stack whose total nets to nearly zero lost its unit in the hover card ("Total: <1" beside "$150") when pie bounds were kept as printed.
+  it('keeps the unit on a stack total that rounds to a bound', () => {
+    const rows = card({ type: 'column', data: { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }], series: [
+      { id: 'in', label: 'Inflow', values: [150, 120] }, { id: 'out', label: 'Outflow', values: [-149.6, -100] }] },
+    options: { variant: 'stacked', unit: '$', size: { width: 640, height: 360 } } }, 'q1', 'in');
+    expect(rows.find(row => row[0] === 'Total:')?.[1]).toBe('<$1');
+  });
+
   // The rules against repeated numbers dropped a value that only matched by chance: a KPI's value, a funnel's conversion, a variance total.
   it('keeps a value that equals another number by chance', () => {
     expect(card({ type: 'kpi', data: { label: 'Orders', value: 100, delta: { vs: 50, scenario: 'PY', mode: 'both' } } })
