@@ -2203,7 +2203,7 @@ export function sizeGate<D, O extends ChartOptions, M extends object, DV extends
   // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
   // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
   const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH)
-    : narrowDashboard(options?.target, requested.width, definition.type) && measuredCardType(definition.type) ? Math.min(floor.width, MEASURED_CARD_WIDTH) : floor.width;
+    : typeClassCap() === 'XS' && narrowDashboard(options?.target, requested.width, definition.type) && measuredCardType(definition.type) ? Math.min(floor.width, MEASURED_CARD_WIDTH) : floor.width;
   const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   return { tight, gatePolicy };
 }
@@ -2235,7 +2235,11 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
     const ref = options.theme;
     const theme = dashboardCardTheme(resolveTargetTheme(ref, 'dashboard'));
     const card = { ...options, theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme } };
-    return withTypeClassCap('XS', () => fitCanvas(definition, data, card, compactFallback, requested));
+    const narrow = withTypeClassCap('XS', () => fitCanvas(definition, data, card, compactFallback, requested));
+    // A chart that the narrow sizes refuse but the usual sizes draw keeps the usual sizes.
+    if (nested || !isRefused(narrow) || requested.width < CARD_MIN_WIDTH) return narrow;
+    const usual = fitCanvas(definition, data, options, compactFallback, requested);
+    return isRefused(usual) ? narrow : usual;
   }
   return typeClassCap() === 'XS'
     ? withTypeClassCap(panelTypeClass(options), () => fitCanvas(definition, data, options, compactFallback, requested))

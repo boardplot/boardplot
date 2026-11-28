@@ -1060,8 +1060,8 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   const n = labels.length;
   const dateNumeric = (input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels);
   const periodRow = dateNumeric || input.periods === true || calendarLike(labels);
-  // A period row keeps the muted secondary role but prints at the label step.
-  const secondary = periodRow && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
+  // A period row keeps the muted secondary role but prints at the label step. A narrow card keeps the ink: its names are 12 px and its secondary text 11 px.
+  const secondary = periodRow && typeClassCap() !== 'XS' && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
   const ladder = secondary ? [secondary, ...input.fonts.filter(font => font.size < secondary.size)] : input.fonts;
   const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis'];
   const fonts = ladder.filter((font, index) => index === 0 || font.size >= axisFloor);

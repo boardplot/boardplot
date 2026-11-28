@@ -159,9 +159,9 @@ describe('react export', () => {
     // The card frame (16 px card margin, card plot targets) draws 363 px, x 13 with this invented data.
     expect(live.size.height).toBe(363);
     // The 'info' footer keeps 24 px for its notes button (frame.ts NOTE_HIT_PX): the plot is 1.7 px shorter.
-    // Under 400 px the narrow dashboard class takes 12 px margins and 11 px notes, so the plot is 1.5 px taller.
+    // Under 400 px the narrow dashboard class takes 12 px margins and 11 px notes, so the plot is 3.5 px taller.
     expect(JSON.stringify(geometry.plot)).toBe(JSON.stringify(width === 400
-      ? { x: 13, y: 67.9, w: 374, h: 237.50000000000003 } : { x: 12, y: 67.6, w: 296, h: 238.99999999999997 }));
+      ? { x: 13, y: 67.9, w: 374, h: 237.50000000000003 } : { x: 12, y: 65.6, w: 296, h: 240.99999999999997 }));
     expect(geometry.plot).toEqual(live.plot);
     expect(geometry.frame.footerRect!.y).toBe(363);
   });

@@ -17,6 +17,7 @@ import { scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx, typeClassCap, type
 export { typeClassCap, withTypeClassCap } from './target';
 import type { RenderTarget } from './types/options';
 import { AUTHORED_TYPE_SIZE, hasAuthoredTypeSize, type FontSpec } from './text';
+import { themeForDensity } from './themeDensity';
 import { pieRamp, quietestTintCap, roleSteps } from './pieRamp';
 import { FILL_SEPARATION_FLOOR, MARK_CONTRAST_FLOOR, TEXT_CONTRAST_FLOOR, oklabLightness, PALETTE_CVD_FLOOR, PALETTE_NORMAL_FLOOR, PALETTE_TRITAN_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 import { registerDeferredLoader, requireDeferred } from './deferred';
@@ -782,6 +783,12 @@ export function resolveTargetTheme(ref: ThemeRef | undefined, target: RenderTarg
   return normal;
 }
 
+/** The tight band's pads and tier gaps for a narrow dashboard card. Its margins, gaps and legend row are the class's own (spaceTokens). */
+function tightSpace(base: Theme): Theme['space'] {
+  const { tierGap, facetGap, tierHeadingGap, labelPad } = themeForDensity(base, 'compact', 320).space;
+  return { ...base.space, tierGap, facetGap, labelPad, ...(tierHeadingGap !== undefined ? { tierHeadingGap } : {}) };
+}
+
 export function dashboardCardTheme(theme: Theme): Theme {
   return targetThemes.get(theme)?.get('XS') ?? theme;
 }
@@ -877,7 +884,7 @@ function targetTheme(ref: ThemeRef | undefined, target: RenderTarget, narrow = f
   let sized = byTarget.get(key);
   if (!sized) {
     sized = own({ ...base, type: typeForTarget(base.type, target, narrow),
-      ...(narrow ? { space: { ...base.space, labelPad: 4 } } : {}) });
+      ...(narrow ? { space: tightSpace(base) } : {}) });
     byTarget.set(key, sized);
   }
   if (pinned) sized = own({ ...sized, type: typeForTarget(base.type, target) });
@@ -1720,22 +1727,24 @@ export function spaceTokens(theme: Theme, width: number): SpaceTokens {
   const margin = wide ? canvas?.wide : canvas?.base;
   const fallback = defaultCanvasMargin(width);
   const gap = theme.space.gap;
+  // A narrow dashboard card takes the spacing of the tight band, so a card that drew there still fits.
+  const xs = typeClassCap() === 'XS';
   return {
     margin: {
       top: margin?.top ?? fallback.top, right: margin?.right ?? fallback.right,
       bottom: margin?.bottom ?? fallback.bottom, left: margin?.left ?? fallback.left,
     },
-    gapTitleSubtitle: gap?.titleSubtitle ?? 4,
+    gapTitleSubtitle: gap?.titleSubtitle ?? (xs ? 3 : 4),
     // 8 below W-L: the first plot element sits about 16-18 px under the last
     // header baseline; 12 would leave charts about 5 px lower.
-    gapSubtitlePlot: (wide ? gap?.subtitlePlotWide : gap?.subtitlePlot) ?? (wide ? 14 : 8),
-    gapAxisFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : typeClassCap() === 'XS' ? 10 : 12),
+    gapSubtitlePlot: (wide ? gap?.subtitlePlotWide : gap?.subtitlePlot) ?? (wide ? 14 : xs ? 7 : 8),
+    gapAxisFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : xs ? 10 : 12),
     // A key row under the plot sits 10 px over the footer below W-L (key
     // baseline to source baseline 25.6-25.9 px). An authored axisFootnote gap still sets both.
     gapKeyFootnote: (wide ? gap?.axisFootnoteWide : gap?.axisFootnote) ?? (wide ? 14 : 10),
-    gapFootnoteSource: gap?.footnoteSource ?? 4,
-    gapLegend: gap?.legend ?? 8,
-    legendRowH: theme.space.legendRowH ?? (typeClassCap() === 'XS' ? 16 : 18),
+    gapFootnoteSource: gap?.footnoteSource ?? (xs ? 3 : 4),
+    gapLegend: gap?.legend ?? (xs ? 7 : 8),
+    legendRowH: theme.space.legendRowH ?? (xs ? 15 : 18),
   };
 }
 

@@ -1723,6 +1723,16 @@ it('keeps the latest quarter on a narrow dashboard column', () => {
   expect(drawn).toContainEqual(expect.objectContaining({ part: 'category', lines: ['Q4 25'], font: expect.objectContaining({ size: 11 }) }));
   expect(drawn).toContainEqual(expect.objectContaining({ part: 'point', lines: ['156'], font: expect.objectContaining({ size: 11 }) }));
   expect(drawn).toContainEqual(expect.objectContaining({ part: 'tick', font: expect.objectContaining({ size: 11 }) }));
+  // The names carry data, so they keep the ink of the values and not the muted ink of the ticks.
+  const ink = (part: string) => (drawn.find(node => node.part === part) as { fill?: unknown } | undefined)?.fill;
+  expect(ink('category')).toEqual(ink('point'));
+});
+
+// A card that main draws must not be refused by the narrow sizes: this stacked area drew at 320 by 270 px and needed 272 px with the first version.
+it('draws a stacked area from the origin at 320 by 270 px in a dashboard card', () => {
+  const fixture = getFixtures('line').find(f => f.id === 'stacked-area-from-origin')!;
+  const card = { type: 'line', data: fixture.data, options: { ...fixture.options, target: 'dashboard', size: { width: 320, height: 270 } } };
+  expect((layoutResolvedRequest(resolveChartRequest(card as never)) as Geometry).refused).toBeFalsy();
 });
 
 describe('the type class step at 720 px', () => {
