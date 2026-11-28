@@ -225,7 +225,7 @@ Defaults are the `bridge` preset.
 | valueAxis | object |  |  |  | Value-axis conventions. Each switch is off when absent; an explicit chart option wins. |
 | valueAxis.titles | boolean |  |  |  | A drawn value axis without an authored title takes 'Measure, unit' from subtitle.measure and the axis unit (line, column, bar, pareto), where the drawn subtitle does not already print that unit. |
 | valueAxis.includeZero | boolean |  |  |  | Default for valueAxis.includeZero on line charts, so their value axis starts at zero. |
-| valueAxis.dualAxis | boolean |  |  |  | A combo with an acknowledged secondary axis draws the dual-axis anatomy; the combo option dualAxis wins. |
+| valueAxis.dualAxis | boolean |  |  |  | Draws the dual-axis anatomy on an unpinned second value scale in a combo chart. The combo option dualAxis.anatomy takes precedence. |
 | valueAxis.gridDash | string |  | `'solid'`, `'dotted'`, `'dashed'` |  | The gridlines of a value axis: 'solid' (default), 'dotted' (dash.dotted) or 'dashed' (dash.reference). |
 | interaction | object |  |  | `{"dim":0.25,"outlineWidth":1}` | Optional host interaction paint tokens. They change paint only; chart geometry is unaffected. |
 | interaction.dim | number |  |  | `0.25` | Opacity applied to marks outside the active interaction set (0 to 1); default 0.25. |

@@ -1158,33 +1158,6 @@ export function annotationArraySchema<T extends z.ZodType>(itemSchema: T) {
   }).describe('Annotations in authored order; explicit ids must be unique within this array.');
 }
 
-/**
- * Dashed/dotted line ink is the engine's scenario
- * channel for PROJECTED data (AC→FC transitions, FC/PL series). An authored
- * `lineStyle` that dashes an ACTUAL series makes the exhibit claim a forecast
- * that is not one, a break of the scenario grammar worse than any layout
- * defect. Reference context lines are exempt: the engine draws them in its
- * own dash and they carry no scenario claim.
- * Data dashes also mark provisional metric-stack values. That mode
- * owns its scoped states and dash geometry; it does not accept lineStyle.
- */
-export function addProjectedDashIssues(
-  ctx: z.RefinementCtx,
-  series: { id: string; lineStyle?: string; scenario?: string; role?: string }[],
-  basePath: (string | number)[] = ['series'],
-): void {
-  series.forEach((entry, index) => {
-    if (entry.lineStyle !== 'dashed' && entry.lineStyle !== 'dotted') return;
-    if (entry.scenario === 'FC' || entry.scenario === 'PL') return;
-    if (entry.role === 'reference') return;
-    ctx.addIssue({
-      code: 'custom',
-      path: [...basePath, index, 'lineStyle'],
-      message: `series '${entry.id}': lineStyle '${entry.lineStyle}' on actual data claims forecast status — dashed/dotted ink marks projected data only; declare scenario 'FC' or 'PL' if the series is projected, use role 'reference' for a context line, or drop lineStyle and let color carry identity`,
-    });
-  });
-}
-
 export const derivedRatioTierSchema = z
   .object({
     id: idSchema.describe('Stable id for the derived ratio tier.'),
@@ -1517,7 +1490,9 @@ export const baseOptionsSchema = z.object({
       dateTicks: z.enum(['years', 'quarters', 'months', 'weeks', 'days']).optional().describe("Date tick interval on line, column and combo. A short tick under the plot marks the first category of each calendar interval; on column and combo it stands at the middle of the band, and every column keeps its place. 'years', 'quarters' and 'months' name those ticks on the calendar: quarters read Jan, Apr, Jul, Oct. A row too narrow for every name keeps a larger round step counted from January (years 2, 5, 10, 20, 25, 50 or 100, so every tenth year from 1980; quarters 2, 4, 8, 20 or 40; months 2, 3, 6, 12, 24, 60 or 120), at most eight names. The latest period is always named; if it collides with the tick before it, that tick drops. 'weeks' and 'days' count equal steps back from the latest period (weeks 2, 4, 13, 26 or 52; days 2, 7, 14 or 28) and name it too. 'years' names the year alone ('Jan 1980' reads 1980) where the label carries it. 'months' over day dates the engine labels names the month ('1 Apr 2025' reads Apr 2025, then May, Jun). A monthly series through July 2026 with 'years' reads 1980, 1990, 2000, 2010, 2020, Jul 2026. Without dateTicks, column, stacked column, line, area and combo pick tick months by the same calendar rule for rows of months and quarters (step 3: Jan, Apr, Jul, Oct; step 6: Jan, Jul; step 12: Jan; plus the latest period) and count back from the latest period for days and weeks, so side-by-side panels with the same categories show the same months. A line or area day row that would step past 28 days names months as 'months' does. Categories without an ISO date, or not in date order (sorted by value), leave the option unused and report date-ticks-unsupported."),
     })
     .optional().describe(CATEGORY_AXIS_SUPPORT),
-  secondaryAxis: z.object({ acknowledge: z.literal(true).describe('Explicitly acknowledge that the chart uses an independent second value scale.') }).optional().describe('Opt in to a second value scale on supported charts; combo adds chart-specific secondary-axis options.'),
+  secondaryAxis: z.object({
+    acknowledge: z.literal(true).optional().describe('Retired flag. Boardplot accepts and ignores it and warns option-deprecated.').meta({ deprecated: true }),
+  }).optional().describe("In a combo chart, a line or area series with axis: 'secondary' draws a second value scale and warns dual-axis. Combo adds options for that scale and for a percentage ruler."),
   scaleGroup: z.object({
     // x shares nothing: no type reads back or pins its x domain, so it is refused.
     x: z

@@ -254,8 +254,8 @@ describe('actionable input refusals', () => {
     const error = errors({ type: 'column', data })[0];
     expect(error).toMatchObject({ code: 'invalid-data', path: '/data/series/0/axis' });
     expect(error?.suggest).toContain("type 'combo'");
-    expect(error?.suggest).toContain("kind to 'line' or 'column'");
-    expect(error?.suggest).toContain('options.secondaryAxis: { acknowledge: true }');
+    expect(error?.suggest).toContain("kind: 'line' or 'area'");
+    expect(error?.suggest).toContain("axis: 'secondary'");
   });
 
   // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
@@ -758,18 +758,18 @@ describe('ignored options', () => {
     const draw = (type: string, options: object, chartData: unknown = data) => render({ spec: { type, data: chartData, options }, return: ['svg'] }).body;
     const ignored = (body: ReturnType<typeof draw>) => (body.warnings as { code: string; severity: string; path: string; fix?: unknown }[])
       .filter(warning => warning.code === 'option-ignored');
-    const ignoredOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4, secondaryAxis: { acknowledge: true } };
-    const lineOptions = { ...ignoredOptions, animate: true, debug: true };
+    const ignoredOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4 };
+    const lineOptions = { ...ignoredOptions, animate: true, debug: true, secondaryAxis: { acknowledge: true } };
     const untouched = structuredClone(lineOptions);
     const line = draw('line', lineOptions);
     expect(line.ok, JSON.stringify(line.errors)).toBe(true);
-    expect(ignored(line)).toHaveLength(4);
+    expect(ignored(line)).toHaveLength(3);
     for (const key of Object.keys(ignoredOptions)) {
       expect(ignored(line)).toContainEqual(expect.objectContaining({ severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }] }));
     }
     const retired = (line.warnings as { code: string }[]).filter(warning => warning.code === 'option-deprecated');
-    expect(retired).toMatchObject(['animate', 'debug'].map(key => ({
-      severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }],
+    expect(retired).toMatchObject(['animate', 'debug', 'secondaryAxis/acknowledge'].map(path => ({
+      severity: 'warn', path: `/options/${path}`, fix: [{ op: 'remove', path: `/options/${path}` }],
     })));
     expect(line.svg).toBe(draw('line', {}).svg);
     expect(lineOptions).toEqual(untouched);

@@ -239,7 +239,7 @@ describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawi
 
   /** Keys a generic value cannot probe: their values name the fixture's own series or scales. */
   const UNPROBED: Partial<Record<keyof typeof OPTION_CAPABILITY, string>> = {
-    secondaryAxis: 'acknowledges or relabels a scale the fixture data has to declare',
+    secondaryAxis: 'customizes or relabels the value scale the fixture data uses',
     highlight: 'names categories, series or points of the fixture',
     story: 'names categories, series or points of the fixture in its steps',
     detailFields: 'labels the cell details for the hover record only; the static SVG draws the same picture',

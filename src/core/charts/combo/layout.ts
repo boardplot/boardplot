@@ -14,11 +14,8 @@ import { structureCount } from '../../structureCounts';
  * column-kind series stack into ONE group per category (column chart's
  * stacking approach); line/area series draw over them, lines on top.
  *
- * Secondary axis is gated: `series.axis: 'secondary'` without
- * `options.secondaryAxis.acknowledge` is refused with the error-severity
- * lint 'dual-axis' in every path. Acknowledged, the right-hand axis gets
- * an independent nice domain whose tick COUNT is synced to the primary
- * (same number of ticks ⇒ shared gridline rows) and always warns 'dual-axis'.
+ * A line or area series with `axis: 'secondary'` draws on a second scale
+ * and warns 'dual-axis'. The scales share gridline rows by default.
  *
  * `options.secondaryAxis.ruler` is the other right-hand axis: a RELABELLING of
  * the primary domain as a share of a declared total. It creates no second
@@ -122,7 +119,7 @@ export interface ComboDerived {
   stackTotals: Record<Id, number>;
   /** The column-series parts of each total in stackTotals, per category × series. */
   stackParts: Record<Id, Record<Id, number>>;
-  /** Acknowledged secondary axis only: its nice [min, max] domain. */
+  /** Second value scale only: its nice [min, max] domain. */
   secondaryDomain?: [number, number];
   /** The anomaly rule over the line series and what it flagged (options.anomaly). */
   anomaly?: AnomalyDerived;

@@ -292,7 +292,7 @@ A percent format sets the printed style; it does not multiply values by 100. `pe
 Numeric cells and their ranges convert. Null stays missing. Explicit `{ "pct": 15.3 }` cells already use percent units and do not convert again.
 Formats, targets and axis bounds still use percent units. A numeric `valueLine` also uses percent units by default. Set its own `valueKind: "fraction"` to multiply its value and tolerance by 100. This setting is independent of `data.valueKind`. A value line within ±1 far below fraction data warns `percent-scale-suspect` with this fix. `"0.0%"` and `"1.0%"` both mean one decimal.
 This field applies to bar, column, line, combo, dot, butterfly, slope, variance, heatmap, mekko, pie and funnel data. Sparkline uses `data.valueKind` for its single series.
-Other data schemas refuse the field. For a combo rate, keep its separate percent axis and the required `secondaryAxis.acknowledge` setting.
+Other data schemas refuse the field. In a combo chart, set `axis: 'secondary'` on the rate series to give it a separate percent scale. Boardplot draws the second scale and warns `dual-axis`.
 
 ### Small values
 

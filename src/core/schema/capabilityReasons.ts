@@ -15,7 +15,7 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
   categoryLabels:
     "staircase category names sit in the free space over columns sorted by height, and only the vertical column family reads categoryLabels (column, combo, pareto). A horizontal bar prints each name beside its row already; a waterfall or variance keeps its bridge order and its delta labels in that space; histogram bins and mekko widths have no free triangle over sorted columns",
   secondaryAxis:
-    "only 'combo' has a second value scale to acknowledge; a single-scale chart has no second axis, so declaring one acknowledges nothing",
+    "a line or area series in a combo chart draws a second value scale with axis: 'secondary' and warns dual-axis",
   labels:
     "this type never consults the per-kind label toggle map. On waterfall use labelDensity ('minimal' keeps totals and endpoints, dropping delta and segment values); pvm takes labels.point: false; on grid author labels on each panel's own options; table and diagram have their own display models",
   hatchStrength:

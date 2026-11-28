@@ -35,6 +35,8 @@ it('draws the grid whose panel core loaded when another grid\'s core fails in th
   while ((bar.querySelector('[data-bp-loading]') || column.querySelector('[data-bp-loading]')) && Date.now() < deadline) {
     await act(async () => { await new Promise(settled => setTimeout(settled, 10)); });
   }
+  // The error details come from a lazy chunk that can arrive after the loading marker is gone, so wait for the text itself.
+  for (let i = 0; i < 200 && !column.textContent!.includes('column chunk is missing'); i++) await act(async () => { await new Promise(settled => setTimeout(settled, 25)); });
   expect(getChart('bar')).toBeDefined();
   expect(bar.querySelector('svg')).not.toBeNull();
   expect(bar.innerHTML).not.toContain('chunk-load-failed');
