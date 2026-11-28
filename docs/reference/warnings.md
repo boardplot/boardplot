@@ -603,6 +603,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `mixed-language` | warn |  | core/registry.ts |
 | `more-errors` | not stated at the site |  | cli/result.ts |
 | `name-slugified` | warn | yes | core/doc/document.ts |
+| `narrow-sizes-used` | warn |  | core/request.ts |
 | `negative-value` | error, warn |  | funnel, waffle |
 | `net-line-ignored` | warn | yes | bar, column |
 | `net-line-series-missing` | warn |  | core/columnBarChecks.ts |

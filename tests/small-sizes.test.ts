@@ -1728,6 +1728,17 @@ it('keeps the latest quarter on a narrow dashboard column', () => {
   expect(ink('category')).toEqual(ink('point'));
 });
 
+// A dashboard card of 400 px or wider that the usual sizes refuse drew a size message; it draws in the narrow sizes with one warning, and measure agrees with render.
+it('draws a refused card from 400 px in the narrow sizes and measures it as drawn', () => {
+  const fixture = getFixtures('line').find(f => f.id === 'brand-share-bump')!;
+  const request = resolveChartRequest({ type: 'line', data: fixture.data, options: { ...fixture.options, target: 'dashboard', size: { width: 400, height: 270 } } } as never);
+  const geometry = layoutResolvedRequest(request) as Geometry;
+  expect(geometry.refused).toBeFalsy();
+  expect(geometry.warnings.map(w => w.code)).toContain('narrow-sizes-used');
+  expect(geometry.presentation?.typeClass).toBe('XS');
+  expect(measureResolvedRequest(request).refused).toBeFalsy();
+});
+
 // A card that main draws must not be refused by the narrow sizes: this stacked area drew at 320 by 270 px and needed 272 px with the first version.
 it('draws a stacked area from the origin at 320 by 270 px in a dashboard card', () => {
   const fixture = getFixtures('line').find(f => f.id === 'stacked-area-from-origin')!;

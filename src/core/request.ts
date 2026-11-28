@@ -19,7 +19,7 @@ import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
 import type { TableOptions } from './types/table';
 import { DEFAULT_PRESET, inMarginStepBand, layoutStepKey, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
-import { DEFAULT_TARGET, floorTextScale, narrowDashboard, resolveTargetSize, withoutNarrow } from './target';
+import { DEFAULT_TARGET, floorTextScale, narrowFlip, resolveTargetSize, withNarrow, type NarrowMode } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { AUTHORED_TYPE_SIZE, defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
@@ -295,16 +295,7 @@ export function tableViewportFrame(request: ResolvedChartRequest): { width: numb
   });
 }
 
-/** A card the narrow dashboard sizes refuse draws in the usual sizes when those fit: a chart that drew before is never refused by smaller text. */
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
-  const narrow = layoutNarrowRequest(request);
-  if (!isRefused(narrow) || request.size.width + SIZE_TOLERANCE < CARD_MIN_WIDTH || !narrowDashboard(request.target, request.size.width, request.type)
-    || panelTypeClass(request.options) !== undefined) return narrow;
-  const usual = withoutNarrow(() => layoutNarrowRequest(request));
-  return isRefused(usual) ? narrow : usual;
-}
-
-function layoutNarrowRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
@@ -369,7 +360,26 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   const drawnLast = typeStepped(result, narrowerForm(final, stepped, plainLayout) ?? stepped);
   const below = marginBelowRequest(request, drawnLast);
   const marginStepped = below && afterFirstLayout(below, layout(below), layout, probe, plainLayout);
-  return marginStepped && !isRefused(marginStepped) ? drawnBy(marginStepped, 'marginStep') : drawnLast;
+  const settled = marginStepped && !isRefused(marginStepped) ? drawnBy(marginStepped, 'marginStep') : drawnLast;
+  const flip = classFlipRequest(request, settled);
+  const flipped = flip && afterFirstLayout(flip, layout(flip), layout, probe, plainLayout);
+  return flipped && !isRefused(flipped) ? drawnBy(flipped, 'classFlip') : settled;
+}
+
+/** A request whose layouts take the other dashboard class (`withNarrow`). */
+const NARROW_MODE = Symbol('boardplot.narrowMode');
+
+/**
+ * Text size and spacing give way before a chart is refused. A dashboard card of a type with a narrow class that is
+ * refused in its own class draws in the other one when that fits: a card under 400 px in the usual sizes, a card from
+ * 400 px in the narrow sizes. A drawn card keeps its layout, and a card both classes refuse keeps the first refusal.
+ */
+function classFlipRequest(request: ResolvedChartRequest, result: LayoutResult): ResolvedChartRequest | undefined {
+  const options = request.options as RequestOptions & { [NARROW_MODE]?: NarrowMode };
+  const mode = narrowFlip(request.target, request.size.width, request.type);
+  if (!mode || options[NARROW_MODE] || !isRefused(result) || panelTypeClass(options) !== undefined || options.belowMinimum === 'refuse'
+    || (mode === 'off' && request.size.width + SIZE_TOLERANCE < CARD_MIN_WIDTH)) return undefined;
+  return { ...request, options: { ...options, [NARROW_MODE]: mode } as RequestOptions };
 }
 
 /** A request whose layouts take the default canvas margins of the step under its width (`withMarginStepBelow`). */
@@ -402,7 +412,7 @@ function narrowerForm(request: ResolvedChartRequest, result: LayoutResult, layou
 
 /** Which of render's later steps drew a result; it survives the copies render and the request cache make. */
 const DRAWN_BY = Symbol('boardplot.drawnBy');
-type DrawnBy = 'narrowerForm' | 'smallerClass' | 'marginStep';
+type DrawnBy = 'narrowerForm' | 'smallerClass' | 'marginStep' | 'classFlip';
 function drawnBy(result: LayoutResult, step: DrawnBy): LayoutResult {
   return Object.assign(result, { [DRAWN_BY]: step });
 }
@@ -1122,6 +1132,11 @@ function stackPaletteWarnings(type: string, data: unknown, options: RequestOptio
   }];
 }
 
+function narrowSizesWarning(): LintWarning {
+  return { code: 'narrow-sizes-used', severity: 'warn', message: 'The card draws in the narrow text sizes because the usual sizes do not fit it.',
+    suggest: 'Give the card more room to draw in the usual sizes.' };
+}
+
 /** Prepare the registry once for this call; probes change only its frame and mode markers. */
 function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fitOnly: DiscardRepair = false): LayoutCall<any, any, any> {
   const def = getChart(request.type);
@@ -1134,7 +1149,10 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fit
     ...((request as { [RETAIN_TABLE_RESULT]?: boolean })[RETAIN_TABLE_RESULT] ? { [RETAIN_TABLE_RESULT]: true } : {}),
     ...(verifyAdvice ? { [VERIFY_ADVICE]: true } : {}),
   };
-  const warnings = request.inputWarnings ?? [];
+  const mode = (request.options as { [NARROW_MODE]?: NarrowMode })[NARROW_MODE];
+  // A card from 400 px that draws in the narrow sizes says so to the author; nothing prints in the drawing.
+  const warnings = mode === 'on' ? [...request.inputWarnings ?? [], narrowSizesWarning()] : request.inputWarnings ?? [];
+  const inMode = <T>(layout: () => T): T => (mode ? withNarrow(mode, layout) : layout());
   const run = def[LAYOUT_CALL]?.(request.data, options, fitOnly);
   const disclose = (result: LayoutResult): LayoutResult => {
     if (result.refused) return result;
@@ -1143,7 +1161,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fit
   };
   const draw = (frame: RequestOptions, fresh = false): LayoutResult => {
     if (!run) {
-      const plain = () => disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
+      const plain = () => inMode(() => disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] })));
       return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(plain) : plain();
     }
     const current: Record<PropertyKey, unknown> = fresh ? { ...options } : { ...options, [LAYOUT_CALL]: run };
@@ -1152,7 +1170,8 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false, fit
       else delete current[key];
     }
     // A margin-stepped request lays out with the margins of the step under its width (marginBelowRequest).
-    return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(() => disclose(def.layout(request.data, current))) : disclose(def.layout(request.data, current));
+    const drawn = () => inMode(() => disclose(def.layout(request.data, current)));
+    return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(drawn) : drawn();
   };
   // The frame probes of a chart that drew in a smaller class draw as render does at that frame:
   // a smaller class lays out in a fresh call, as render's class step does.
@@ -1291,6 +1310,10 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   if (step === 'smallerClass' && !classStepping) return measuredWithClassStep(() => measureWithLayout(request, result, layoutAt, verify, asked));
   if (step === 'marginStep' && !(request.options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW]) {
     return measureSteps({ ...request, options: { ...request.options, [MARGIN_BELOW]: true } as RequestOptions });
+  }
+  const flip = step === 'classFlip' ? narrowFlip(request.target, request.size.width, request.type) : undefined;
+  if (flip && !(request.options as { [NARROW_MODE]?: NarrowMode })[NARROW_MODE]) {
+    return measureSteps({ ...request, options: { ...request.options, [NARROW_MODE]: flip } as RequestOptions });
   }
   if (step === 'narrowerForm' && !(request.options as { [NARROW_FORM]?: true })[NARROW_FORM]) {
     const narrow = { ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions };
@@ -1557,6 +1580,13 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
 }
 
 export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeasurement {
+  const first = measureMarginStep(request);
+  const flip = first.refused ? classFlipRequest(request, first.refused as LayoutResult) : undefined;
+  const flipped = flip && measureMarginStep(flip);
+  return flipped && !flipped.refused ? flipped : first;
+}
+
+function measureMarginStep(request: ResolvedChartRequest): ChartMeasurement {
   const measured = measureSteps(request);
   // The same margin step as layoutResolvedRequest: a chart render draws with the margins of the step below is measured so.
   const below = measured.refused && marginBelowRequest(request, measured.refused as LayoutResult);
