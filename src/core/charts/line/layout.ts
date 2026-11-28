@@ -75,6 +75,7 @@ import type { LineTrend } from './trend';
 import type { EmittedLane } from '../../eventLane';
 import { pushAll } from '../../arrays';
 import { rebaseNotes } from './footnotes';
+import type { ClipRecord } from '../clamp';
 
 export interface LineMarks {
   series: {
@@ -85,7 +86,7 @@ export interface LineMarks {
     areaNodeId?: Id;
     /** Dashed AC→FC continuation path node, when a per-cell FC split exists. */
     fcPathNodeId?: Id;
-    points: { categoryId: Id; x: number; y: number; nodeId?: Id; highlighted?: true; markerRadius?: number }[];
+    points: { categoryId: Id; x: number; y: number; nodeId?: Id; highlighted?: true; markerRadius?: number; clipped?: true }[];
   }[];
   /** The value texts of points without a node of their own (ShownMark): texts another series' label draws. */
   shown?: ShownMark[];
@@ -214,6 +215,8 @@ export interface BumpDerived {
 }
 
 export interface LineDerived {
+  /** The real values of points drawn at a clamp edge. */
+  clipped?: ClipRecord[];
   /** Least-squares receipts; x is elapsed days or category positions, starting at the first displayed category. */
   trends?: LineTrend[];
   /** Computed shares moved from separate rounding to close a complete whole. */
@@ -394,7 +397,7 @@ function annotateLine(
     const di = dataSeries.indexOf(s);
     const v = pv[rowOf.get(s)!]![ci]!;
     if (v === null) return null;
-    const py = isStacked && di >= 0 ? y(cumTop[di]![ci]!) : y(v);
+    const py = isStacked && di >= 0 ? y(cumTop[di]![ci]!) : area.pointY(v);
     // Geometry is plotted units (percent under stacked100-area); the annotation VALUE
     // stays absolute. absOf === pvOf outside stacked100-area, and rebase100 is ignored under
     // stacked100-area, so under rebase100 the plotted index is the value.
@@ -530,7 +533,7 @@ function lineAnomalyMarks(theme: Theme, domain: LineDomain, anomaly: LineAnomaly
     corridorPaint: columnCorridorPaint(domain.options.colorblindSafe), plot: area.forecastPlot, y: area.y, seriesId: series.id,
     // The rule numbers read in the right margin, which solveLineFrame reserves (anomalyRuleReserve).
     labelX: area.plot.x + area.plot.w + 4,
-    points: domain.cats.flatMap((c, ci) => (row[ci] === null ? [] : [{ categoryId: c.id, x: area.xOf(ci), y: area.y(row[ci]!) }])),
+    points: domain.cats.flatMap((c, ci) => (row[ci] === null ? [] : [{ categoryId: c.id, x: area.xOf(ci), y: area.pointY(row[ci]!) }])),
     font: text.labelFont, measure, nodes: scene.nodes, claims: scene.claims,
   });
 }
@@ -552,6 +555,7 @@ function lineDerived(
   const domainEpsilon = Math.max(Math.abs(dLo), Math.abs(dHi), 1) * 1e-9;
   return {
     ...(population?.sampling ? { liveWindow: population.sampling } : {}), endpoints,
+    ...(domain.clamp ? { clipped: domain.clamp.records } : {}),
     ...(domain.trends.length ? { trends: domain.trends } : {}),
     ...(domain.roundingAdjustments ? { roundingAdjustments: domain.roundingAdjustments } : {}),
     ...(domain.anomaly ? { anomaly: anomalyReceipt(domain.anomaly.model) } : {}),

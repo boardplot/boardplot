@@ -10,7 +10,6 @@ export const EN = {
   "groupsCount": "{v1} group{v2}",
   "gridCellsCount": "{v1} grid cells",
   "authoredRegionsCount": "{v1} authored regions",
-  "pointsCount": "{v1} point{v2}",
   "paretoLine": "Pareto line",
   "trendFitLabel": "{v1}{v2}: slope {v3}, r² {v4}",
   "horizontal": "horizontal",
@@ -34,7 +33,6 @@ export const EN = {
   "minimumDotSize": "the smallest dot is larger than its size",
   // The short method line, with authored axis names.
   "declaredLower": "declared",
-  "clippedPointsNote": "{v1} clipped at {v2} ({v3}).",
   "droppedPointsNote": "{v1} with a count below {v2} dropped: {v3}.",
   "noPositionNote": "{v1} with no x or y not drawn: {v2}.",
   "topLeft": "top-left",
@@ -44,7 +42,6 @@ export const EN = {
   "cutAt": "Cut at",
   "cutMeanCapital": "Mean",
   "sizeValue": "Size {v1}",
-  "clippedAt": "clipped at {v1}",
   "clippedAtAxis": "{v1} ({v2})",
   "clippedAtJoin": " and at ",
 } as const;
@@ -58,7 +55,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "groupsCount": "{v1} {v1|Gruppe|Gruppen}",
   "gridCellsCount": "{v1} {v1|Rasterzelle|Rasterzellen}",
   "authoredRegionsCount": "{v1} {v1|angegebener Bereich|angegebene Bereiche}",
-  "pointsCount": "{v1} {v1|Punkt|Punkte}",
   "paretoLine": "Pareto-Linie",
   "trendFitLabel": "{v1}{v2}: Steigung {v3}, r² {v4}",
   "horizontal": "horizontal",
@@ -82,7 +78,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "minimumDotSize": "der kleinste Punkt ist größer als sein Wert",
   // The short method line, with authored axis names.
   "declaredLower": "angegeben",
-  "clippedPointsNote": "{v1} bei {v2} begrenzt ({v3}).",
   "droppedPointsNote": "{v1} mit einer Anzahl unter {v2} entfernt: {v3}.",
   "noPositionNote": "{v1} ohne x oder y nicht gezeichnet: {v2}.",
   "topLeft": "oben links",
@@ -92,7 +87,6 @@ const DE: { [K in keyof typeof EN]: string } = {
   "cutAt": "Trennpunkt bei",
   "cutMeanCapital": "Mittelwert",
   "sizeValue": "Größe {v1}",
-  "clippedAt": "abgeschnitten bei {v1}",
   "clippedAtAxis": "{v1} ({v2})",
   "clippedAtJoin": " und bei ",
 };

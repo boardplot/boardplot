@@ -284,6 +284,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | rates-as-fractions | line.line | torture | SQL fractions use percentage cells at input |
 | ordered-ramp-rest-apart | line.line | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
 | category-axis-title | line.line | example | A title below the quarter names |
+| line-clamp | line.line | example | A line point above the axis cap keeps its value |
 | drawing-kinds | line.line | example | A box over the maintenance weeks, the normal load and an arrow from a note |
 | value-line-end-value | line.line | example | A named value line at the series end value prints its name beside that value |
 | shade-band-inside-wrap | line.line | example | A narrow shaded band wraps its name inside |

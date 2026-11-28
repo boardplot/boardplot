@@ -335,9 +335,9 @@ function layoutGridOnce(
       );
     }
   }
-  const legacy = (at: GridLayoutOptions) => layoutLegacyGrid({ ...normalized, panels: ordered.panels }, at);
+  const legacy = (at: GridLayoutOptions) => layoutLegacyGrid({ ...normalized, panels: ordered.panels }, at, data);
   const legacyGrid = (at: GridLayoutOptions) => withNoteRoom(withSliverRoom(withOnePanelContent(withTierPlot(legacy(at), ordered.panels, at), legacy, ordered.panels, at), legacy, at, data), legacy, ordered.panels, at);
-  const geometry = withWarnings(authored ? layoutAuthoredGrid(ordered.panels, options, normalized.repeatFacet === true)
+  const geometry = withWarnings(authored ? layoutAuthoredGrid(ordered.panels, options, normalized.repeatFacet === true, data)
     : legacyGrid(reflowed(legacyGrid, ordered.panels, options, data)), ordered.warnings);
   if (!geometry.refused && heightOmitted(options.size) && geometry.sizing?.fit === 'content'
     && Math.abs(geometry.size.height - geometry.sizing.naturalHeight) > 1) {
@@ -862,11 +862,12 @@ export function gridFormOf(data: GridInput, options: GridLayoutOptions = {}): 'm
 function layoutLegacyGrid(
   normalized: ReturnType<typeof normalizeGridData>,
   options: GridLayoutOptions,
+  data: GridInput,
   headPull = FACET_HEAD_PULL,
 ): LayoutResult<GridMarks, GridDerived> {
   const theme = themeForWidth(resolveTheme(options.theme), gridTypeClass(options));
   const measure = options.measure ?? defaultMeasurer;
-  const groupResult = resolveSharedYDomains(normalized.panels, options, normalized.repeatFacet === true);
+  const groupResult = resolveSharedYDomains(normalized.panels, options, normalized.repeatFacet === true, data);
   const form = legacyGridForm(groupResult.panels, options);
   const compactTiers = form === 'tiers';
   const canvasWidth = resolveSize(options.size).width;
@@ -996,7 +997,7 @@ function layoutLegacyGrid(
       }
     }
   }
-  if (headClash > 0.01) return layoutLegacyGrid(normalized, options, Math.max(0, headPull - headClash));
+  if (headClash > 0.01) return layoutLegacyGrid(normalized, options, data, Math.max(0, headPull - headClash));
 
   const markById = new Map(geometry.marks.panels.map((panel) => [panel.id, panel]));
   for (const entry of captionSlots) {
@@ -1224,6 +1225,7 @@ function layoutAuthoredGrid(
   rawPanels: GridPanelSpec[],
   options: GridLayoutOptions,
   repeatFacet: boolean,
+  data: GridInput,
 ): LayoutResult<GridMarks, GridDerived> {
   const theme = themeForWidth(resolveTheme(options.theme), gridTypeClass(options));
   const size = resolveSize(options.size);
@@ -1362,6 +1364,7 @@ function layoutAuthoredGrid(
     rawPanels.filter((panel) => panel.type !== 'text' && panel.type !== 'legend'),
     options,
     repeatFacet,
+    data,
   );
   pushAll(warnings, scaledPanels.warnings);
   const scaledById = new Map(scaledPanels.panels.map((panel) => [panel.id, panel]));
@@ -2868,14 +2871,15 @@ function probedPanelDomain(
   panel: GridPanelSpec,
   options: GridLayoutOptions,
   valueAxis: Record<string, unknown>,
-): readonly [number, number] | null {
+): { domain: readonly [number, number] | null; ignoredClamp?: LintWarning } | null {
   const key = optionKey({
     type: panel.type, data: panel.data, options: panel.options, annotations: panel.annotations,
     theme: options.theme, measure: options.measure, typeClass: gridTypeClass(options), valueAxis,
   });
   return requestMemo(probedPanelDomain, key, () => {
     const probe = probePanelGeometry(panel, options, valueAxis);
-    return probe && !probe.refused ? inferLinearYDomain(probe, panelValueAxis(panel)) : null;
+    if (!probe || probe.refused) return null;
+    return { domain: inferLinearYDomain(probe, panelValueAxis(panel)), ignoredClamp: probe.warnings.find(warning => warning.code === 'clamp-ignored') };
   });
 }
 
@@ -2946,6 +2950,7 @@ function resolveSharedYDomains(
   panels: GridPanelSpec[],
   options: GridLayoutOptions,
   repeatFacet: boolean,
+  data: GridInput,
 ): { panels: GridPanelSpec[]; domains: Record<string, [number, number]>; members: Record<string, string[]>; warnings: LintWarning[] } {
   const groups = new Map<string, number[]>();
   panels.forEach((panel, index) => {
@@ -2956,12 +2961,21 @@ function resolveSharedYDomains(
     groups.set(scaleGroup.y, members);
   });
 
-  const panelDomains = panels.map((panel): [number, number] | null => {
+  const panelDomains: ([number, number] | null)[] = [];
+  const ignoredClampWarnings: LintWarning[] = [];
+  panels = panels.map((panel) => {
     const panelOptions = panel.options ?? {};
     const valueAxis = isRecord(panelOptions.valueAxis) ? panelOptions.valueAxis : {};
     const { break: _ignoredBreak, ...axisWithoutBreak } = valueAxis;
-    const domain = probedPanelDomain(panel, options, { ...axisWithoutBreak, show: true });
-    return domain && [domain[0], domain[1]];
+    const probe = probedPanelDomain(panel, options, { ...axisWithoutBreak, show: true });
+    panelDomains.push(probe?.domain ? [...probe.domain] : null);
+    if (!probe?.ignoredClamp) return panel;
+    // The line already gave up the clamp, so it can share the scale and keep its original warning.
+    const rebase = authoredPanelRebase({ panelId: panel.id, data: panel.data, options: panelOptions }, data, options);
+    const warning = rebaseWarning(probe.ignoredClamp, rebase);
+    ignoredClampWarnings.push({ ...warning, message: `[${panel.id}] ${warning.message}` });
+    const { clamp: _ignoredClamp, ...uncappedAxis } = valueAxis;
+    return { ...panel, options: { ...panelOptions, valueAxis: uncappedAxis } };
   });
 
   /*
@@ -3037,7 +3051,7 @@ function resolveSharedYDomains(
     panels: pinSharedYAxis(panels, groupByIndex, domains, breaks),
     domains,
     members: Object.fromEntries([...groups].map(([group, indexes]) => [group, indexes.map((index) => panels[index]!.id)])),
-    warnings: [...clampWarnings, ...warnings],
+    warnings: [...ignoredClampWarnings, ...clampWarnings, ...warnings],
   };
 }
 

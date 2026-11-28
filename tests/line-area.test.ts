@@ -1,7 +1,7 @@
 /**
  * The unstacked area variant with several series.
  */
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
@@ -198,6 +198,102 @@ it('draws decade ticks evenly on a log axis and refuses zero', () => {
   const positions = [10, 100, 1000].map((value) => ticks.find((tick) => tick.at === value)!.pos);
   expect(positions[0]! - positions[1]!).toBeCloseTo(positions[1]! - positions[2]!, 5);
   expect(() => layoutResolvedRequest(request([4, 0, 4000]))).toThrowError(expect.objectContaining({ code: 'log-nonpositive' }));
+});
+
+describe('line clamp', () => {
+  const categories = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const rate = (values: number[]) => [{ id: 'a', label: 'Rate', values }];
+  const data = { categories, series: rate([20, 40, 300, 50]) };
+  const continuous = { x: [1, 2, 3, 4], series: rate([20, 40, 50, 500]) };
+  const allAbove = { categories, series: rate([200, 300, 400, 500]) };
+  const valueAxis = { show: true, clamp: { max: 100 } };
+  const layout = (options: Record<string, unknown>, source: unknown = data) => layoutResolvedRequest(resolveChartRequest({
+    type: 'line', data: source, options: { valueAxis, size: { width: 720, height: 440 }, ...options },
+  }));
+  const yTicks = (geometry: Geometry) => geometry.axes.find(axis => axis.axis === 'y')!.ticks.map(tick => tick.at);
+
+  // A fill, range edge or reference that needs the uncapped scale must still draw without a clip disclosure.
+  it.each([
+    { feature: 'gapFill', options: { gapFill: { between: ['a', 'b'] } }, source: { categories, series: [...data.series, { id: 'b', values: [60, 30, 40, 70] }] } },
+    { feature: 'phases', options: { phases: [{ id: 'p', label: 'Trial', from: 'Q1', to: 'Q4', tone: 'neutral' }] }, source: data },
+    { feature: 'fan', options: { fan: { of: 'a', bands: [{ low: 'lo', high: 'hi', label: '80% interval' }] } },
+      source: { categories, series: [...rate([30, 40, 60, 50]), { id: 'lo', values: [20, 30, 40, 40] }, { id: 'hi', values: [40, 50, 200, 60] }] } },
+    { feature: 'xAxis.min', options: { xAxis: { type: 'number', min: 1.5 } }, source: continuous },
+    { feature: 'xAxis.max', options: { xAxis: { type: 'number', max: 3.5 } }, source: continuous },
+    { feature: 'viewDomain.x', options: { xAxis: { type: 'number' }, viewDomain: { x: [1, 3.5] } }, source: continuous },
+    { feature: 'valueAxis.max', options: { valueAxis: { ...valueAxis, max: 350 } }, source: data },
+    { feature: 'valueLine', options: { annotations: [{ kind: 'valueLine', value: 150 }] }, source: data },
+    { feature: 'valueLine mean', options: { annotations: [{ kind: 'valueLine', value: 'mean' }] }, source: data },
+    { feature: 'valueLine mean', options: { annotations: [{ kind: 'valueLine', value: 'mean', seriesId: 'a', from: 'Q2', to: 'Q4' }] }, source: data },
+    { feature: 'target', options: { targets: [{ seriesId: 'a', at: 'Q4', value: 150 }] }, source: data },
+    { feature: 'reference band', options: { referenceBands: [{ low: 80, high: 120, label: 'Target range' }] }, source: data },
+    { feature: 'target', options: { targets: [{ seriesId: 'a', at: 'Q4', value: 150 }], annotations: [{ kind: 'valueLine', value: 175 }] }, source: data },
+  ])('ignores the clamp and draws $feature on the full scale', ({ feature, options, source }) => {
+    const geometry = requireGeometry(layout(options, source));
+    const { clamp: _clamp, ...axis } = options.valueAxis ?? valueAxis;
+    const full = requireGeometry(layout({ ...options, valueAxis: axis }, source));
+    expect(geometry.axes).toEqual(full.axes);
+    expect(geometry.scene).toEqual(full.scene);
+    expect(geometry.a11y).toEqual(full.a11y);
+    expect(geometry.derived).not.toHaveProperty('clipped');
+    expect(geometry.warnings.filter(warning => warning.code === 'clamp-ignored')).toEqual([expect.objectContaining({
+      severity: 'warn', message: expect.stringContaining(feature), fix: [{ op: 'remove', path: '/options/valueAxis/clamp' }],
+    })]);
+  });
+
+  // A clamp can still show the reference marks that the axis contains.
+  it('draws a value line, target and reference band inside the cap', () => {
+    const geometry = requireGeometry(layout({
+      annotations: [{ kind: 'valueLine', value: 75 }],
+      targets: [{ seriesId: 'a', at: 'Q4', value: 90 }],
+      referenceBands: [{ low: 60, high: 70, label: 'Target range' }],
+    }));
+    expect(geometry.scene.map(node => node.part)).toEqual(expect.arrayContaining(['valueLine', 'targetMarker', 'referenceBand']));
+    expect(geometry.derived).toHaveProperty('clipped');
+    expect(geometry.warnings.map(warning => warning.code)).not.toContain('clamp-ignored');
+  });
+
+  // The footer names the bound the chart applies, also without an authored format (it printed "1.6M" for 1,550,000).
+  it('prints the applied bound exactly', () => {
+    const geometry = requireGeometry(layout({ valueAxis: { show: true, clamp: { max: 1550000 } } }, { categories, series: rate([1000000, 1400000, 50000000, 1200000]) }));
+    expect(geometry.derived).toMatchObject({ clipped: [{ limit: 1550000, limitText: '1.55M' }] });
+    // A small bound under a huge outlier printed "0.0001M" for 50 when the scale came from the outlier.
+    const small = requireGeometry(layout({ valueAxis: { show: true, clamp: { max: 50 } } }, { categories, series: rate([10, 20, 50000000, 30]) }));
+    expect(small.derived).toMatchObject({ clipped: [{ limit: 50, limitText: '50' }] });
+  });
+
+  // Invalid bounds cannot define a scale, even when another feature would otherwise disable the clamp.
+  it('refuses invalid clamp bounds', () => {
+    for (const min of [100, 200]) {
+      expect(() => layout({ valueAxis: { ...valueAxis, log: true, min } }, allAbove)).toThrowError(expect.objectContaining({ code: 'clamp-bound-conflict' }));
+    }
+    const allBelow = { categories, series: rate([1, 2, 3, 4]) };
+    expect(() => layout({ valueAxis: { log: true, max: 5, clamp: { min: 10 } } }, allBelow)).toThrowError(expect.objectContaining({ code: 'clamp-bound-conflict' }));
+    for (const min of [100, 200]) {
+      expect(() => layout({ valueAxis: { clamp: { min, max: 100 } } })).toThrowError(expect.objectContaining({ code: 'clamp-empty-range' }));
+    }
+    expect(() => layout({ valueAxis: { log: true, clamp: { max: 0 } } })).toThrowError(expect.objectContaining({ code: 'log-nonpositive' }));
+    expect(() => layout({ valueAxis: { clamp: { max: Infinity } }, phases: [] })).toThrowError(expect.objectContaining({ code: 'invalid-options' }));
+  });
+
+  // A step that leaves zero or one tick inside the cap still needs a readable log axis.
+  it('falls back to log ticks when fewer than two step ticks fit', () => {
+    const source = { categories, series: rate([10, 80, 1000, 90]) };
+    for (const [min, tickStep] of [[70, 60], [10, 80]]) {
+      const geometry = requireGeometry(layout({ valueAxis: { show: true, log: true, tickStep, clamp: { min, max: 100 } } }, source));
+      expect(yTicks(geometry).length).toBeGreaterThanOrEqual(2);
+      expect(yTicks(geometry)).toContain(100);
+    }
+  });
+
+  // Points at one capped value still need the requested zero baseline or authored lower bound.
+  it('honours includeZero and an in-range min when every point clips', () => {
+    const zero = requireGeometry(layout({ valueAxis: { ...valueAxis, includeZero: true } }, allAbove));
+    expect(yTicks(zero)).toContain(0);
+    const lower = requireGeometry(layout({ valueAxis: { ...valueAxis, min: 95 } }, allAbove));
+    expect(yTicks(lower)[0]).toBe(95);
+    expect(lower.warnings.map(warning => warning.code)).not.toContain('value-axis-min-ignored');
+  });
 });
 
 // Opaque fills down to the baseline hid a crossing series' area and showed the

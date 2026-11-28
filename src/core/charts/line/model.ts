@@ -25,6 +25,7 @@ import type { Theme } from '../../types/theme';
 import type { applyCategoryViewport } from '../../viewport';
 import type { NormSer, NormTarget } from './context';
 import type { AnomalyModel } from '../column/anomaly';
+import type { AxisClamp } from '../clamp';
 import type { FanPaintStep, FanResolved } from './fan';
 import type { ForecastBoundary } from './forecast';
 import type { EndpointLabelPlan } from './labels';
@@ -83,6 +84,7 @@ export interface LineDomain {
   variant: LineVariant;
   isArea: boolean;
   isStacked: boolean;
+  clamp?: AxisClamp;
   valueSpec: ValueSpec;
   fmt: (v: number) => string;
   interpolationFor: (s: NormSer) => LineInterpolation;
@@ -306,6 +308,8 @@ export interface LineArea {
   topPad: number;
   plot: Rect;
   y: LinearScale;
+  /** The drawing position of a line point. The axis scale keeps the true mapping. */
+  pointY: (value: number) => number;
   xOf: (ci: number) => number;
   /** A continuous axis: its tick row and the pixel x of an x value. */
   xTicks?: import('./xTicks').XTickPlan;

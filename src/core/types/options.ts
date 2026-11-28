@@ -507,7 +507,7 @@ export interface BaseOptions {
    * report and dashboard (2 under 720 px), 2 for slide and 3 for print.
    * `show` selects what the frame prints. By default it prints authored notes
    * and three caveats: incomplete stack totals, missing values drawn as zero
-   * in stacked area charts, and clipped scatter points. An explicit list with
+   * in stacked area charts, and clipped scatter and line points. An explicit list with
    * 'disclosure' prints the caveats and other disclosures outside the budget.
    * 'method' adds retained method notes, such as the cohort formula.
    * Without `show`, an authored `placement` or a supported `methodNote: true`
@@ -1044,6 +1044,8 @@ export interface LineXAxis {
 }
 
 export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'> {
+  /** Clamp bounds apply to plain lines and pin the axis only when a point lies beyond them. */
+  valueAxis?: ValueAxisOptionsFor<'line'> & { clamp?: ValueClampOptions };
   /** Drawn series IDs, or category IDs on one plain data line without a fan. Category selection enlarges the marker and focuses its value while preserving line ink. Series IDs win a shared ID. References do not count as data lines. Unsupported IDs warn without changing the drawing. */
   highlight?: Id | Id[];
   /** On a time x axis, x anchors also accept epoch milliseconds, including categoryId, date and end. */
@@ -1277,16 +1279,16 @@ export interface QuadrantOptions {
   captionPlacement?: 'corner' | 'centre';
 }
 
-/**
- * Per-axis outlier clamp. `min`/`max` are the vertical axis, the one
- * `valueAxis.min` and `valueAxis.max` address on this type; `x` and `y` name an
- * axis. Stating the vertical bound both ways is refused, not merged.
- */
-export interface ScatterClampOptions {
+/** Lower and upper limits for the points drawn along one axis. */
+export interface ValueClampOptions {
   min?: number;
   max?: number;
-  x?: { min?: number; max?: number };
-  y?: { min?: number; max?: number };
+}
+
+/** The top-level bounds apply to the vertical axis. The x and y fields name each axis. */
+export interface ScatterClampOptions extends ValueClampOptions {
+  x?: ValueClampOptions;
+  y?: ValueClampOptions;
 }
 
 /**

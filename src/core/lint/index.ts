@@ -26,7 +26,7 @@ export const docLintCodes = [
   'series-unexplained',
 ] as const;
 
-export const lintCodes = [...docLintCodes, 'dash-on-actual-data'] as const;
+export const lintCodes = [...docLintCodes, 'dash-on-actual-data', 'clamp-ignored'] as const;
 
 export type LintCode = (typeof lintCodes)[number];
 export interface DocLintWarning extends Omit<LintWarning, 'code'> {

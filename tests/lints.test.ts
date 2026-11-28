@@ -80,6 +80,8 @@ function cliTriggerChart(code: LintCode): LintChart {
       return chart({ data: { categories: oneCategory, series: [{ id: 'plan', scenario: 'PL', values: [10] }] } });
     case 'series-unexplained':
       return chart({ type: 'column', options: { ...options, legend: 'none' }, data: { categories: oneCategory, series: [{ id: 'a', label: 'Gross', values: [10] }, { id: 'b', label: 'Net', values: [8] }] } });
+    case 'clamp-ignored':
+      return chart({ options: { ...options, valueAxis: { clamp: { max: 15 } }, annotations: [{ kind: 'valueLine', value: 18 }] } });
     case 'dash-on-actual-data':
       return chart({ data: {
         categories: ['Jan', 'Feb', 'Mar', 'Apr'],

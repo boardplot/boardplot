@@ -8,6 +8,7 @@ import {
   addDuplicateIdIssues,
   baseOptionsSchema,
   cellSchema,
+  clampBoundsSchema,
   idSchema,
   refusedBaseOptions,
   valueAxisSchema,
@@ -236,17 +237,12 @@ const zonesSchema = z.union([
  * scatter can cap both measures. Stating the vertical bound both ways is
  * refused rather than merged.
  */
-const clampBoundSchema = z.strictObject({
-  min: z.number().finite().optional().describe('Lower bound; points below it are drawn at the lower edge and counted in a footnote.'),
-  max: z.number().finite().optional().describe('Upper bound; points above it are drawn at the upper edge and counted in a footnote.'),
-});
-
 export const scatterClampSchema = z
   .strictObject({
     min: z.number().finite().optional().describe('Lower bound of the vertical axis, the short form of clamp.y.min.'),
     max: z.number().finite().optional().describe('Upper bound of the vertical axis, the short form of clamp.y.max.'),
-    x: clampBoundSchema.optional().describe('Bounds of the horizontal measure.'),
-    y: clampBoundSchema.optional().describe('Bounds of the vertical measure, the long form of clamp.min and clamp.max.'),
+    x: clampBoundsSchema.optional().describe('Bounds of the horizontal measure.'),
+    y: clampBoundsSchema.optional().describe('Bounds of the vertical measure, the long form of clamp.min and clamp.max.'),
   })
   .superRefine((clamp, ctx) => {
     const stated = [clamp.min, clamp.max, clamp.x?.min, clamp.x?.max, clamp.y?.min, clamp.y?.max];

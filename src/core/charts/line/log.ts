@@ -31,6 +31,10 @@ export function validateLineLog(options: LineOptions, series: NormSer[]): void {
   if (options.trend) conflict('options.trend', 'a fitted straight trend in data units bends on a log axis');
   if (options.phases) conflict('options.phases', 'phases fill the area under a line and require a zero baseline');
   validateLogBounds(va);
+  for (const bound of ['min', 'max'] as const) {
+    const value = va.clamp?.[bound];
+    if (value !== undefined && value <= 0) nonpositive(['options', 'valueAxis', 'clamp', bound], value);
+  }
   series.forEach((s, si) => {
     s.vals.forEach((cell, ci) => {
       if (cell.v !== null && cell.v <= 0) nonpositive(['data', 'series', si, 'values', ci], cell.v);

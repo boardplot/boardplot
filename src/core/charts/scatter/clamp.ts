@@ -1,44 +1,18 @@
-import type { BaseOptions } from '../../types/options';
-import { chartString } from '../../strings/scatter';
-/**
- * Scatter outliers: the value clamp and the minimum-count filter.
- *
- * Both options change WHAT IS DRAWN and nothing else. A clipped point keeps its
- * real coordinate in `derived`, in its own mark record, in the accessible
- * description and in the claim receipt; only its pixel position moves to the
- * axis edge, where an open marker says so. A dropped point leaves the picture
- * entirely, and the footnote states how many went and at which threshold, so a
- * reader can subtract the difference from the point count they see.
- *
- * Every number a footnote prints is computed here from the plotted values. The
- * limit is printed through the same disclosure the quadrant cut points use: the
- * printed bound denotes the applied bound exactly, so "clipped at 25,000" names
- * the line the engine actually drew.
- */
-
 import { NormalizeError } from '../../normalize/shared';
+import { disclosureNote } from '../../notes';
+import { chartString } from '../../strings/scatter';
 import type { Id } from '../../types/cell';
+import type { BaseOptions, ValueClampOptions } from '../../types/options';
+import {
+  boundBeyond, clippedValueState, planAxisClamp, pointCountText, validateClampBounds,
+  type ClampAxis, type ClampBound, type ClipRecord,
+} from '../clamp';
 import type { DrawnValueLine } from './valueLines';
-import { caveatNote, disclosureNote } from '../../notes';
 
-type ScatterAxis = 'x' | 'y';
-type ScatterBoundName = 'min' | 'max';
-
-/** One applied bound, with the points it moved and the sentence it earns. */
-export interface ScatterClipRecord {
-  axis: ScatterAxis;
-  bound: ScatterBoundName;
-  /** The bound as applied, taken back from its own disclosure. */
-  limit: number;
-  /** The one spelling of the bound the exhibit prints. */
-  limitText: string;
-  /** How many points are drawn at the edge instead of at their value. */
-  count: number;
-  /** Every clipped point, in input order, with the value it really has. */
-  points: { id: Id; label: string; value: number }[];
-  /** The derived footnote. */
-  note: string;
-}
+type ScatterAxis = ClampAxis;
+type ScatterBoundName = ClampBound;
+type AxisBounds = ValueClampOptions;
+export type ScatterClipRecord = ClipRecord;
 
 /** The minimum-count filter, with the points it removed. */
 export interface ScatterDropRecord {
@@ -57,11 +31,6 @@ interface ClampablePoint {
   count: number | null;
 }
 
-interface AxisBounds {
-  min?: number;
-  max?: number;
-}
-
 export interface ScatterClampPlan {
   /** Drawn coordinate for a value on this axis; the value itself never changes. */
   project: Record<ScatterAxis, (value: number) => number>;
@@ -78,11 +47,11 @@ export interface ScatterClampPlan {
   notes: string[];
 }
 
-/** Text for the limit, exact by construction: see `discloseNumber` in layout.ts. */
+/** Text for the limit, exact by construction: see the shared `discloseNumber`. */
 export type Disclose = (raw: number, axis: ScatterAxis) => { value: number; text: string };
 
 interface ScatterClampInput {
-  options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>;
+  options?: Pick<BaseOptions, 'locale' | 'strings'>;
   clamp: unknown;
   /** Axis titles, so a footnote names the measure a reader sees on the axis. */
   axisTitles: { x?: string; y?: string };
@@ -138,51 +107,9 @@ function refuseClampConflicts(bounds: Record<ScatterAxis, AxisBounds>, input: Sc
       ['options', 'valueAxis', 'clamp'],
     );
   }
-  for (const bound of ['min', 'max'] as const) {
-    if (bounds.y[bound] !== undefined && input.valueAxisBounds[bound] !== undefined) {
-      throw new NormalizeError(
-        'clamp-bound-conflict',
-        `options.valueAxis.clamp.${bound}`,
-        `valueAxis.${bound} widens the vertical domain so nothing is cut off, and valueAxis.clamp.${bound} caps it so outliers are cut off at ${input.valueAxisBounds[bound]}; one of the two has to go`,
-        `drop valueAxis.${bound} to cap the axis, or drop valueAxis.clamp.${bound} to keep every point at its own position`,
-        undefined,
-        ['options', 'valueAxis', 'clamp', bound],
-      );
-    }
-  }
-  for (const axis of ['x', 'y'] as const) {
-    const { min, max } = bounds[axis];
-    if (min !== undefined && max !== undefined && min >= max) {
-      throw new NormalizeError(
-        'clamp-empty-range',
-        `options.valueAxis.clamp${axis === 'y' ? '' : '.x'}`,
-        `the ${axis} clamp keeps values from ${min} up to ${max}, which is an empty range`,
-        `set the lower bound below the upper one`,
-        undefined,
-        ['options', 'valueAxis', 'clamp'],
-      );
-    }
-  }
+  validateClampBounds(bounds, input.valueAxisBounds);
 }
 
-/** The points beyond one bound, in input order, with the values they keep. */
-function clippedAt(
-  points: readonly ClampablePoint[],
-  axis: ScatterAxis,
-  bound: ScatterBoundName,
-  limit: number,
-): ScatterClipRecord['points'] {
-  return points
-    .filter((point) => (bound === 'max' ? point[axis] > limit : point[axis] < limit))
-    .map((point) => ({ id: point.id, label: point.label, value: point[axis] }));
-}
-
-/**
- * Plan the clamp: which points are beyond a bound, where the axis then ends,
- * and what the footnotes say. A bound that cuts nothing changes no pixel and
- * earns no footnote, so a clamp set as a guard rail stays invisible until it
- * catches something.
- */
 export function planScatterClamp(
   points: readonly ClampablePoint[],
   input: ScatterClampInput,
@@ -191,44 +118,20 @@ export function planScatterClamp(
   if (!input.clamp || typeof input.clamp !== 'object') return undefined;
   const bounds = readClampBounds(input.clamp as Record<string, unknown>);
   refuseClampConflicts(bounds, input);
-  const applied: Record<ScatterAxis, AxisBounds> = { x: {}, y: {} };
-  const edges: Record<ScatterAxis, AxisBounds> = { x: {}, y: {} };
-  const clipped = new Set<Id>();
-  const records: ScatterClipRecord[] = [];
-  for (const axis of ['x', 'y'] as const) {
-    for (const bound of ['min', 'max'] as const) {
-      const raw = bounds[axis][bound];
-      if (raw === undefined) continue;
-      const { value: limit, text: limitText } = disclose(raw, axis);
-      applied[axis][bound] = limit;
-      const beyond = clippedAt(points, axis, bound, limit);
-      if (beyond.length === 0) continue;
-      edges[axis][bound] = limit;
-      for (const point of beyond) clipped.add(point.id);
-      records.push({
-        axis,
-        bound,
-        limit,
-        limitText,
-        count: beyond.length,
-        points: beyond,
-        note: caveatNote(chartString(input.options, 'clippedPointsNote', { v1: chartString(input.options, 'pointsCount', { v1: beyond.length, v2: beyond.length === 1 ? '' : 's' }), v2: limitText, v3: axisName(axis, input.axisTitles) })),
-      });
-    }
-  }
-  const project = (axis: ScatterAxis) => (value: number) => {
-    const { min, max } = applied[axis];
-    if (max !== undefined && value > max) return max;
-    if (min !== undefined && value < min) return min;
-    return value;
-  };
+  const axisNames = { x: axisName('x', input.axisTitles), y: axisName('y', input.axisTitles) };
+  const plan = (axis: ScatterAxis) => planAxisClamp(
+    axis, bounds[axis], points, (point) => point[axis], (raw) => disclose(raw, axis), input.options, axisNames[axis],
+  );
+  const x = plan('x');
+  const y = plan('y');
+  const records = [...x.records, ...y.records];
   return {
-    project: { x: project('x'), y: project('y') },
-    clipped,
+    project: { x: x.project, y: y.project },
+    clipped: new Set(records.flatMap((record) => record.points.map((point) => point.id))),
     records,
-    edges,
-    applied,
-    axisNames: { x: axisName('x', input.axisTitles), y: axisName('y', input.axisTitles) },
+    edges: { x: x.edges, y: y.edges },
+    applied: { x: x.applied, y: y.applied },
+    axisNames,
     notes: records.map((record) => record.note),
   };
 }
@@ -246,7 +149,7 @@ export function applyMinCount<T extends ClampablePoint>(
   minCount: number | undefined,
   /** A count disclosure: never the axis format, whose unit a count does not have. */
   discloseCount: (raw: number) => { value: number; text: string },
-  options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>,
+  options?: Pick<BaseOptions, 'locale' | 'strings'>,
 ): { kept: T[]; record?: ScatterDropRecord } {
   if (minCount === undefined) return { kept: points };
   const counted = points.filter((point) => point.count !== null);
@@ -295,32 +198,11 @@ export function applyMinCount<T extends ClampablePoint>(
       count: dropped.length,
       points: dropped.map((point) => ({ id: point.id, label: point.label, count: point.count as number })),
       // The note names the points it dropped.
-      note: disclosureNote(chartString(options, 'droppedPointsNote', { v1: chartString(options, 'pointsCount', { v1: dropped.length, v2: dropped.length === 1 ? '' : 's' }), v2: thresholdText, v3: dropped.map((point) => point.label).join(', ') })),
+      note: disclosureNote(chartString(options, 'droppedPointsNote', { v1: pointCountText(options, dropped.length), v2: thresholdText, v3: dropped.map((point) => point.label).join(', ') })),
     },
   };
 }
 
-
-/**
- * The domain seed on one axis: the data extent, capped into the clamp. Without
- * this the padded, "niced" domain would be chosen for values the plot does not
- * show, and the visible ladder would be wrong for every point that is drawn.
- */
-export function clampSeed(
-  plan: ScatterClampPlan | undefined,
-  axis: ScatterAxis,
-  lo: number,
-  hi: number,
-): [number, number] {
-  if (!plan) return [lo, hi];
-  const { min, max } = plan.applied[axis];
-  const into = (value: number): number => {
-    if (max !== undefined && value > max) return max;
-    if (min !== undefined && value < min) return min;
-    return value;
-  };
-  return [into(lo), into(hi)];
-}
 
 /**
  * What a clipped point's own record says about where it was drawn. A point
@@ -330,20 +212,8 @@ export function clampSeed(
 export function clampStateOf(plan: ScatterClampPlan | undefined, id: Id, options?: Pick<BaseOptions, 'locale' | 'strings'>): string | undefined {
   if (!plan?.clipped.has(id)) return undefined;
   const records = plan.records.filter((entry) => entry.points.some((point) => point.id === id));
-  if (records.length === 1) return chartString(options, 'clippedAt', { v1: records[0]!.limitText });
-  return chartString(options, 'clippedAt', { v1: records.map((record) => chartString(options, 'clippedAtAxis', { v1: record.limitText, v2: plan.axisNames[record.axis] })).join(chartString(options, 'clippedAtJoin')) });
-}
-
-/** The first applied bound a value lies beyond, if any. */
-function boundBeyond(
-  plan: ScatterClampPlan,
-  axis: ScatterAxis,
-  value: number,
-): { bound: ScatterBoundName; limit: number } | undefined {
-  const { min, max } = plan.applied[axis];
-  if (max !== undefined && value > max) return { bound: 'max', limit: max };
-  if (min !== undefined && value < min) return { bound: 'min', limit: min };
-  return undefined;
+  if (records.length === 1) return clippedValueState(records[0]!.limitText, options);
+  return clippedValueState(records.map((record) => chartString(options, 'clippedAtAxis', { v1: record.limitText, v2: plan.axisNames[record.axis] })).join(chartString(options, 'clippedAtJoin')), options);
 }
 
 const clampPath = (axis: ScatterAxis, bound: ScatterBoundName): string =>
@@ -363,7 +233,7 @@ export function refuseClampedRegions(
   for (const region of regions) {
     for (const vertex of region.points) {
       for (const axis of ['x', 'y'] as const) {
-        const beyond = boundBeyond(plan, axis, vertex[axis]);
+        const beyond = boundBeyond(plan.applied[axis], vertex[axis]);
         if (!beyond) continue;
         throw new NormalizeError(
           'clamp-zone-conflict',
@@ -391,14 +261,15 @@ export function refuseClampedValueLines(
 ): void {
   if (!plan) return;
   for (const line of lines) {
-    const beyond = boundBeyond(plan, 'y', line.value);
+    const beyond = boundBeyond(plan.applied.y, line.value);
     if (!beyond) continue;
+    const path = clampPath('y', beyond.bound);
     const what = line.isMean ? `the mean of the plotted points (${format(line.value)})` : `its value ${format(line.value)}`;
     throw new NormalizeError(
       'clamp-value-line-conflict',
       line.ref.name,
-      `valueLine '${line.id}' sits at ${what}, beyond ${clampPath('y', beyond.bound)} ${beyond.limit}, so the line would be drawn outside the plot`,
-      `move ${clampPath('y', beyond.bound)} past the line, or drop the value line`,
+      `valueLine '${line.id}' sits at ${what}, beyond ${path} ${beyond.limit}, so the line would be drawn outside the plot`,
+      `move ${path} past the line, or drop the value line`,
       undefined,
       line.ref.segments,
     );

@@ -46,6 +46,7 @@ import { rectsOverlap, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { ScatterData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from '../../types/scene';
+import { pointCountText } from '../clamp';
 import { inView, resolveScatterDomain, resolveScatterEnv } from './domain';
 import { planScatterLabels, scatterSolveCtx } from './labels';
 import { DENSE_POINTS, layoutScatterMarks, quadrantBoxRect, sizeMarkerOf, type ScatterMarkGeometry } from './marks';
@@ -216,8 +217,8 @@ function assembleScatterGeometry(input: {
         ...(domain.shownGroups.length ? [structureCount('groups', domain.shownGroups.length, chartString(env.options, 'groupsCount', { v1: domain.shownGroups.length, v2: domain.shownGroups.length === 1 ? '' : 's' }))] : []),
         ...(quadrants ? QUADRANT_BOXES.map(box => structureCount('points', quadrants.counts[box], `${quadrantBoxName(box, env.options)} ${quadrants.counts[box]}`)) : []),
         ...(zonesDerived ? [zonesDerived.kind === 'grid' ? structureCount('cells', zonesDerived.cellCount!, chartString(env.options, 'gridCellsCount', { v1: zonesDerived.cellCount })) : structureCount('regions', zonesDerived.regionCount!, chartString(env.options, 'authoredRegionsCount', { v1: zonesDerived.regionCount }))] : []),
-        ...(clamp?.records ?? []).map(record => structureCount('points', record.count, chartString(env.options, 'pointsCount', { v1: record.count, v2: record.count === 1 ? '' : 's' }))),
-        ...(dropped ? [structureCount('points', dropped.count, chartString(env.options, 'pointsCount', { v1: dropped.count, v2: dropped.count === 1 ? '' : 's' }))] : []),
+        ...(clamp?.records ?? []).map(record => structureCount('points', record.count, pointCountText(env.options, record.count))),
+        ...(dropped ? [structureCount('points', dropped.count, pointCountText(env.options, dropped.count))] : []),
         ...domain.trends.map(fit => structureCount('points', fit.n, undefined, env.options)),
         ...(domain.frontier ? [structureCount('points', domain.frontier.ids.length, undefined, env.options)] : [])],
     }),

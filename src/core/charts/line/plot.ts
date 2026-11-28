@@ -469,6 +469,7 @@ export function solveLineFrame(
           incompleteStack: domain.incompleteStack, knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)),
           rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
         ...domain.shareNotes,
+        ...(domain.clamp?.records.map(record => record.note) ?? []),
         // The anomaly rule, stated on the exhibit (column prints it over the plot).
         ...(options.anomaly?.label ? [disclosureNote(options.anomaly.label)] : []),
         ...timeZoneNote(domain, options),
@@ -531,7 +532,7 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain) {
   const baselineValue = sigRound(va.reverse ? dHi : dLo)!;
   const valueLineTicks = domain.domainExtendingValueLines
     .map(({ value }) => sigRound(value))
-    .filter((value): value is number => value !== null && Number.isFinite(value));
+    .filter((value): value is number => value !== null && Number.isFinite(value) && (!domain.clamp || (value >= dLo && value <= dHi)));
   let disclosedTicks: number[] | undefined;
   const stepTicks = axisShown && !bumpDerived ? domain.stepTicks : undefined;
   if (!log && !bumpDerived && (discloseNonzeroBaseline || valueLineTicks.length > 0)) {
@@ -1027,6 +1028,8 @@ export function linePlotArea(
   const yRange: [number, number] = isBump
     ? reverse ? [plot.y + plot.h, plot.y] : [plot.y, plot.y + plot.h]
     : reverse ? [plot.y + innerHead, plot.y + plot.h] : [plot.y + plot.h, plot.y + topRoom];
+  const y = (options.valueAxis?.log ? logScale : linearScale)([dLo, dHi], yRange);
+  const project = domain.clamp?.project;
   return {
     ...framed,
     ...axis,
@@ -1049,7 +1052,8 @@ export function linePlotArea(
     axisTitleY,
     topPad,
     plot,
-    y: (options.valueAxis?.log ? logScale : linearScale)([dLo, dHi], yRange),
+    y,
+    pointY: project ? (value) => y(project(value)) : y,
     // Proportional positions land on 0.01 px, as the path coordinates drawn from them do.
     xOf,
     ...(domain.x && xTicks ? { xTicks, xOfValue: (value: number) => span.x + (value - domain.x!.lo) / (domain.x!.hi - domain.x!.lo) * span.w } : {}),
