@@ -1579,6 +1579,8 @@ export function markNotedLabels(
   noted: ReadonlySet<Id>,
   /** The options the run was given, or the ids its note only counts. */
   from?: object | ReadonlySet<Id>,
+  /** With the counted ids as `from`: the options the run was given, which carry the note's heading and wording. */
+  wording?: object,
 ): void {
   const ids = new Set(geo.frame.footnoteNodeIds ?? []);
   const notes = [
@@ -1587,7 +1589,8 @@ export function markNotedLabels(
     ...(geo.a11y.compactNotes ?? []),
   ];
   // A narrow note wraps inside a word, so lines joined with spaces are compared without spaces.
-  const heading = (from as BaseOptions | undefined)?.strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
+  const words = (from instanceof Set ? wording : from) as BaseOptions | undefined;
+  const heading = words?.strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD;
   const prefix = `${heading}:`.replace(/\s+/g, '');
   const leads = (text: string) => text.replace(/\s+/g, '').includes(prefix);
   const destination = notes.find(leads);
@@ -1614,7 +1617,7 @@ export function markNotedLabels(
     // The reader-facing name the note gives it ("Elo 1,563 (Orion)"), for the omission lists.
     label.noteText ??= own?.[NOTE_ITEMS]?.get(label.id)?.text;
     if (counted?.has(label.id)) label.noteCounted = true;
-    label.noteLocation = chartString(from as BaseOptions | undefined, node && note
+    label.noteLocation = chartString(words, node && note
       ? counted?.has(label.id) ? 'countedInNote' : 'listedInNote'
       : counted?.has(label.id) ? 'countedInNotes' : 'listedInNotes', { n: note?.n ?? 1 });
   }

@@ -1171,7 +1171,7 @@ function layoutScatterRun(
       const at = names.indexOf(entryFor(label)?.text ?? '');
       if (hiddenNote.counted.has(`scatter:${at}`)) counted.add(label.id);
     }
-    markNotedLabels(drawn, new Set([...hiddenNote.ids].filter((id) => !id.startsWith('scatter:')).concat(own.map((label) => label.id))), counted);
+    markNotedLabels(drawn, new Set([...hiddenNote.ids].filter((id) => !id.startsWith('scatter:')).concat(own.map((label) => label.id))), counted, options);
     for (const label of own) label.noted = true;
     return drawn;
   }

@@ -860,3 +860,12 @@ it('lists a value with labels off in the reading as its label would print it', (
   const off = render({ spec: { type: 'line', data, options: { labels: false, size: { width: 640 } } }, return: ['reading'] }).body as { reading: ChartReading };
   expect(off.reading.omissions.find(item => item.labelId === 'point:s:a')?.text).toMatch(/(^|\s)0\.1%$/);
 });
+
+// A scatterplot with quadrant captions marked its noted labels only when the note heading was English, so a German chart counted fewer hidden labels than the same English chart.
+it('counts the same noted labels on a scatterplot in every language', () => {
+  const fixture = getFixtures('scatter').find(item => item.id === 'risk-impact-likelihood')!;
+  const noted = (locale?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'scatter', data: fixture.data,
+    options: { ...fixture.options, size: { width: 375 }, ...locale ? { locale } : {} }, annotations: fixture.annotations } as never))).labels.filter(label => label.noted).length;
+  expect(noted({ language: 'de' })).toBe(noted());
+  expect(noted()).toBeGreaterThan(0);
+});
