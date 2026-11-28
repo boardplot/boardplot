@@ -7,6 +7,7 @@ import { NOT_AVAILABLE, NOT_MEANINGFUL, notApplicableGlyph } from '../../format'
 
 import { emitBarMark, type BarMarkInput } from '../band/barMark';
 import { stackConnectors } from '../band/connectors';
+import { categoryGapAfter } from '../../label/categoryGroups';
 import { sk } from '../band/stacks';
 import { categoryBreakGlyph, layoutValueAxis } from '../../axis';
 import { type Rect } from '../../geometry';
@@ -69,7 +70,7 @@ function columnRibbons(domain: ColumnDomain, paints: ColumnPaints, area: ColumnA
     const left = cats[ci]!;
     const right = cats[ci + 1]!;
     // A gap, a break or a total column sets the next column apart: no flow crosses it.
-    if (left.breakAfter || (left.gapAfter !== undefined && left.gapAfter !== false && left.gapAfter !== 0) || right.role === 'total') continue;
+    if (categoryGapAfter(left, right) > 0) continue;
     const x1 = band.position(ci) + band.bandwidth;
     const x2 = band.position(ci + 1);
     dataSeries.forEach((s, si) => {

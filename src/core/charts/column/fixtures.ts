@@ -9,6 +9,7 @@
 
 import { registerFixtures } from '../../../fixtures/registry';
 import { cohortColumnFixtures } from './cohortFixtures';
+import { groupedStacksFixture } from './groupedStacksFixture';
 import { staircaseColumnFixtures } from './staircaseFixtures';
 import { EVENT_GROUPS, EVENT_GROUPS_ALL, WEEKLY_EVENTS, WEEKLY_EVENTS_MORE, WEEKLY_REVENUE, weeklyEventCategories } from '../eventSample';
 import type { Fixture } from '../../registry';
@@ -2892,4 +2893,5 @@ fixtures.push({
   options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
 });
 
+fixtures.push(groupedStacksFixture);
 registerFixtures('column', fixtures);

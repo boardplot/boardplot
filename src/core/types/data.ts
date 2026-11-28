@@ -7,6 +7,8 @@ import type { Cell, ColorRole, ComparisonDirection, Direction, Id, RangeCell, Sc
 export interface Category {
   id: Id;
   label?: string; // default: id; '\n' supported
+  /** Column and bar share this name across consecutive categories with the same group. */
+  group?: string;
   date?: string; // ISO 8601; strictly increasing across ALL categories ⇒ date-axis promotion
   total100?: number; // explicit "100% =" basis; default: column sum
   /** Extra band-step fractions after this category; true means 0.5. */

@@ -15,6 +15,7 @@ import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { gutterBudget, stepDownFont } from '../../label/rowFit';
 import { rowLabelBand } from '../../label/rowLabels';
+import { barGroupColumn, categoryGapAfter } from '../../label/categoryGroups';
 import { categoryCutLint } from '../../label/categoryWarnings';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate } from '../../partialPeriod';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
@@ -341,11 +342,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const availH = plotHeightAfter(frame, size.height, plot0.h - annPad - axisH);
   const lineH = tickFont.size * 1.2;
   // A fixed bar row sizes the names to its pitch, not to the canvas.
-  const gapAfter = cats.map((cat) => {
-    const gap = cat.gapAfter === true ? 0.5 : typeof cat.gapAfter === 'number' ? Math.max(0, cat.gapAfter) : 0;
-    // A category break needs a gap wide enough to carry its glyph.
-    return cat.breakAfter ? Math.max(gap, 0.5) : gap;
-  });
+  const gapAfter = cats.map((cat, i) => categoryGapAfter(cat, cats[i + 1]));
   const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
   // The step the sizing keeps per row: the authored gaps take steps of their own, so an extra name line must fit what is left to a row.
   const rowStep = theme.space.barRow?.pitch ?? availH / bandSteps(cats.length, gapAfter);
@@ -420,6 +417,18 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     // Fixed rows never stretch; a shorter canvas (a grid panel) packs them.
     h: fixedRowsH === undefined ? availH - bandPad : Math.min(availH - bandPad, fixedRowsH),
   };
+  const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.7;
+  const band = bandScale(cats.length, [plot.y, plot.y + plot.h], {
+    paddingInner: 1 - bandFraction, paddingOuter: (1 - bandFraction) / 2, gapAfter,
+  });
+  const groups = noNameColumn ? undefined : barGroupColumn(cats, band, catLines[0]?.font ?? tickFont, measure, {
+    cap: capW, wider: nameTrack ?? gutterBudget(24, plot0.w), spare: plotW - 10, gap: CAT_BAND_GAP, x: plot0.x,
+  });
+  const categoryX = plot0.x + (groups?.width ?? 0);
+  if (groups) {
+    plot.x += groups.width;
+    plot.w -= groups.width;
+  }
   // A theme's outside labels on grouped bars that cross zero
   // put the negative values right of the zero line, so the negative side
   // reserves room for its bars only. With no value axis drawn, the domain is
@@ -502,12 +511,6 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     ? tickRowTitleEnd(axisTitle, { scale: stepTicks ? breakAxisScale(x, stepTicks) : x, ...(activeBreak ? {} : { ticks: stepTicks }), plot, orient: 'x', gridlines: false, ...domain.axisFmt, theme, measure, canvasWidth: size.width }, plot0.x)
     : undefined;
   if (axisTitle && options.valueAxis?.show && !titleRow && titleEnd === undefined) return undefined;
-  const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.7;
-  const band = bandScale(cats.length, [plot.y, plot.y + plot.h], {
-    paddingInner: 1 - bandFraction,
-    paddingOuter: (1 - bandFraction) / 2,
-    gapAfter,
-  });
   // Value labels on bars thinner than a label line step down one
   // role for the whole chart, so neighbouring rows do not fight over slots.
   // When grouped bars are thinner than even a compact label, only the first
@@ -552,8 +555,9 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     // Grouped value labels print in the emphasis weight, so a value inside a
     // bar end reads at a glance.
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
-    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
-    ...(categoryTitle ? { categoryTitle: categoryTitle.request(plot0.x, plot0.y, 'start') } : {}),
+    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, categoryX, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
+    ...(groups ? { groupLabels: groups.labels } : {}),
+    ...(categoryTitle ? { categoryTitle: categoryTitle.request(categoryX, plot0.y, 'start') } : {}),
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),
     segmentStep: Math.ceil(Math.max(segmentBar, groupedH) / bandFraction),

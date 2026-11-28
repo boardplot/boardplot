@@ -135,8 +135,7 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
   }
 
   for (const chart of charts) {
-    const counts = new Map<string, number>();
-    const datesByLabel = new Map<string, (string | undefined)[]>();
+    const byName = new Map<string, { label: string; dates: (string | undefined)[] }>();
     const categories = categoriesOf(chart);
     const data = asRecord(chart.data);
     const periods = chart.type === 'grid' && asRecord(chart.options).stack && Array.isArray(data.measures) ? records(data.periods) : [];
@@ -149,19 +148,17 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
       const label = period ? `${String(period.label)} / ${labelOf(category)}` : labelOf(category);
       // A blank label is a name left out on purpose, not a copy of another.
       if (label !== null && label.trim() !== '') {
-        counts.set(label, (counts.get(label) ?? 0) + 1);
+        const group = chart.type === 'column' || chart.type === 'bar' ? category.group : undefined;
+        const key = JSON.stringify([label, group]);
+        const entry = byName.get(key) ?? { label: group === undefined ? label : `${label} ${group}`, dates: [] };
         // A month name that comes back in another year names another period, not a copy.
         const date = typeof category.date === 'string' ? category.date : typeof category.id === 'string' && ISO_PERIOD.test(category.id) ? category.id : undefined;
-        const dates = datesByLabel.get(label) ?? [];
-        dates.push(date);
-        datesByLabel.set(label, dates);
+        entry.dates.push(date);
+        byName.set(key, entry);
       }
     }
-    const duplicates = [...counts].filter(([label, count]) => {
-      if (count < 2) return false;
-      const dates = datesByLabel.get(label)!;
-      return !(dates.every((date) => date !== undefined) && new Set(dates).size === dates.length);
-    }).map(([label]) => label);
+    const duplicates = [...byName.values()].filter(({ dates }) => dates.length > 1
+      && !(dates.every((date) => date !== undefined) && new Set(dates).size === dates.length)).map(entry => entry.label);
     if (duplicates.length > 0) {
       warnings.push(
         warning(

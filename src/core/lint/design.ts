@@ -10,6 +10,7 @@
  */
 import { designRuleText } from '../catalog';
 import { CROWDED_NAMES } from '../label/categoryWarnings';
+import { categoryGapAfter } from '../label/categoryGroups';
 import type { JsonPatchOperation } from '../diagnostics/jsonPatch';
 import type { LintWarning } from '../types/scene';
 import { categoriesOf, cellNumber, chartOptions, isRecord, labelOf, records, seriesOf, type LintRecord, type ScopedLintChart } from './shared';
@@ -103,9 +104,9 @@ function largestFirst(values: readonly number[]): boolean {
  * and no names of periods, ranges, scales, totals or rests.
  */
 function rankable(categories: readonly LintRecord[]): boolean {
-  return categories.every((category) => {
+  return categories.every((category, i) => {
     const name = labelOf(category) ?? '';
-    return category.date === undefined && !category.gapAfter && !category.breakAfter
+    return category.date === undefined && !categoryGapAfter(category, categories[i + 1])
       && !ORDERED_NAME.test(name) && !PINNED_NAME.test(name.trim());
   });
 }

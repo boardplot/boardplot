@@ -5,6 +5,7 @@
  */
 
 import { registerFixtures } from '../../../fixtures/registry';
+import { groupedStacksFixture } from '../column/groupedStacksFixture';
 import type { Fixture } from '../../registry';
 import type { RangeChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
@@ -1424,4 +1425,5 @@ fixtures.push({
   options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
 });
 
+fixtures.push(groupedStacksFixture);
 registerFixtures('bar', fixtures);

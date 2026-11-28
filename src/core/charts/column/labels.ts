@@ -937,8 +937,14 @@ export function planColumnLabels(
   rightEdgeSeriesRequests(domain, area, requests);
   const namedExtreme = extremeNameRequest(domain, area, scene, requests);
   if (area.showCatRow) categoryRequests(domain, area, requests);
+  if (area.groupRow) {
+    const names = area.catPlan();
+    const bottom = area.showCatRow ? area.catRowY + (domain.anomaly ? 4 : 6) + names.rowHeight - (names.title?.bandHeight ?? 0)
+      : area.plot.y + area.plot.h;
+    pushAll(requests, area.groupRow.requests(bottom));
+  }
   if (domain.options.categoryAxis?.title) {
-    placeCategoryTitle(area.catPlan(), area.plot.x + area.plot.w, area.catRowY + (domain.anomaly ? 4 : 6), requests);
+    placeCategoryTitle(area.catPlan(), area.plot.x + area.plot.w, area.catRowY + (domain.anomaly ? 4 : 6) + (area.groupRow?.height ?? 0), requests);
   }
   rankValueLabels(requests, request => {
     const ci = cats.findIndex(c => c.id === request.owner.categoryId);

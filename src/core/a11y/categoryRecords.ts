@@ -286,7 +286,11 @@ export function categoryRecords(ctx: RecordContext): InteractionRecord[] | undef
   const periods = ['line', 'column', 'combo'].includes(ctx.request.type) ? calendarNames(data.categories, ctx.request.locale?.language) : undefined;
   const categories = data.categories.map((raw, index) => {
     const category = normalizeCategory(raw, index);
-    return periods?.[index] === undefined ? category : { ...category, label: periods[index] };
+    category.label = periods?.[index] ?? category.label;
+    if (category.group !== undefined && (ctx.request.type === 'column' || ctx.request.type === 'bar')) {
+      category.label += ` ${category.group}`;
+    }
+    return category;
   });
   // Slope 'diverging' draws each negative share as its own series (`<id>:negative`), so it reads its own values.
   const negName = (ctx.request.options as { diverging?: { labels?: { negative?: string } } }).diverging?.labels?.negative ?? 'Negative';

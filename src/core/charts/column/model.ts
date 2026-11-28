@@ -10,6 +10,7 @@ import type { NumberFormatSpec } from '../../formatSpec';
 import type { FrameResult } from '../../frame';
 import type { Rect } from '../../geometry';
 import type { CategoryRowPlan } from '../../label/categoryRow';
+import type { columnGroupRow } from '../../label/categoryGroups';
 import type { DataRange, RangeMark } from '../../rangeRules';
 import type { PreparedRatioTier } from '../../ratioTier';
 import type { BandScale, LinearBreak, LinearScale } from '../../scale';
@@ -230,6 +231,8 @@ export interface ColumnArea {
   /** Measuring this band added no warnings or adjustments to number formatting. */
   quietBand: boolean;
   catPlan: () => CategoryRowPlan;
+  groupRow?: ReturnType<typeof columnGroupRow>;
+  plotBeforeGroupRow?: Rect;
   /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
   intervalTicks?: readonly boolean[];
   showCatRow: boolean;

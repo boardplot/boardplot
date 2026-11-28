@@ -42,7 +42,7 @@ import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
+import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, PLOT_FLOOR_RECT, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
@@ -534,6 +534,7 @@ function assembleColumnGeometry(
     type: 'column',
     size: domain.size,
     plot: area.plot,
+    ...(area.plotBeforeGroupRow ? { [PLOT_FLOOR_RECT]: area.plotBeforeGroupRow } : {}),
     scene: measuring ? nodes : withSegmentSeams(joinHatchPeers(nodes), domain.theme),
     labels: lane ? [...allLabels, ...lane.labels] : allLabels,
     axes,
@@ -566,7 +567,7 @@ function assembleColumnGeometry(
               measuredLines: catPlan().maxLines,
               lineHeight: catPlan().font.size * 1.2,
               // Rotated rows reserve more than lines × line height; the receipt names it.
-              extra: catPlan().rowHeight - catPlan().maxLines * catPlan().font.size * 1.2,
+              extra: catPlan().rowHeight - catPlan().maxLines * catPlan().font.size * 1.2 + (area.groupRow?.height ?? 0),
               dateNumeric: catPlan().dateNumeric,
               position: 'below' as const,
             },
