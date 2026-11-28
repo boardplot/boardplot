@@ -4,6 +4,7 @@ import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, pri
 import { magnitudeSuffix } from '../../core/format';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
+import { isPercentLevel } from '../../core/a11y/comparison';
 import type { SlotCandidate } from '../../core/label/solver';
 import { fitText, lineBox } from '../../core/label/fitText';
 import { defaultMeasurer, graphemes, type FontSpec, type TextMeasurer } from '../../core/text';
@@ -444,7 +445,9 @@ function valueIsShare(record: InteractionRecord): boolean {
   const base = share?.denominator;
   if (!share || !base || value.state !== 'value' || typeof value.raw !== 'number' || share.percent.state !== 'value' || typeof share.percent.raw !== 'number') return false;
   // The pie computes its percent by division, so the two numbers can differ by float residue.
-  return base.state === 'value' && base.raw === 100 && base.unit?.startsWith('%') === true && Math.abs(value.raw - share.percent.raw) < 1e-9;
+  if (base.state !== 'value' || base.raw !== 100 || Math.abs(value.raw - share.percent.raw) >= 1e-9) return false;
+  // A unit that opens with "%" ("% of workloads"), or a percent format where the author gave no unit.
+  return base.unit !== undefined ? base.unit.trim().startsWith('%') : isPercentLevel(base);
 }
 
 /**
