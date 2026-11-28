@@ -254,7 +254,8 @@ describe('React adapter boundary', () => {
     expect(server).not.toContain('<svg');
 
     await act(async () => { root.render(chart); });
-    for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    // The details come from a lazy chunk that can arrive after the loading marker is gone, so wait for the text itself.
+    for (let i = 0; i < 200 && !container.querySelector('[role="status"]')?.textContent?.includes('Column needs at least'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
     const placeholder = container.querySelector('[role="status"]');
     // the lazy reader box says the chart needs more room; the exact sizes sit in its details and title.
     expect(placeholder?.textContent).toContain('This chart needs more room.');
@@ -341,7 +342,7 @@ describe('React adapter boundary', () => {
     };
     for (const [code, element] of Object.entries(bad)) {
       await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
-      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      for (let i = 0; i < 200 && !container.querySelector('[data-bp-error-code]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
       expect(container.querySelectorAll('svg').length, code).toBe(1);
       expect(container.querySelector(`[data-bp-error-code="${code}"]`), code).not.toBeNull();
     }
@@ -384,7 +385,7 @@ describe('React adapter boundary', () => {
     };
     for (const [code, element] of Object.entries(bad)) {
       await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
-      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      for (let i = 0; i < 200 && !container.querySelector('[data-bp-error-code]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
       expect(container.querySelectorAll('svg').length, code).toBe(1);
       expect(container.querySelector('[data-bp-error-code]'), code).not.toBeNull();
     }
