@@ -8,18 +8,15 @@ import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { numericViewportRange } from '../../viewport';
 import {
-  MAGNITUDE_DIVISOR,
   RULE_SET,
   defaultSetSpec,
   exampleSpec,
   formatWithSpec,
   formatterFromExample,
-  roundedNumber,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { tickScale } from '../../numberRule';
 import type { ShownMark } from '../../types/scene';
-import { ruleSetOf } from '../../numberSets';
 import {
   MAGNITUDE_CEILING,
   NormalizeError,
@@ -36,14 +33,14 @@ import type { ScatterData, ScatterPoint } from '../../types/data';
 import type { LintWarning } from '../../types/scene';
 import {
   applyMinCount,
-  clampSeed,
   planScatterClamp,
   refuseClampedQuadrants,
   refuseClampedRegions,
   refuseClampedValueLines,
   type ScatterClampPlan,
 } from './clamp';
-import type { Disclosed, NormGroup, NormPt, ScatterDomain, ScatterEnv } from './model';
+import { clampSeed, discloseNumber, pinClampDomain, pointCountText } from '../clamp';
+import type { NormGroup, NormPt, ScatterDomain, ScatterEnv } from './model';
 import { logAxesOf, logDomain, refuseNonPositiveOnLog } from './logAxis';
 import { deriveQuadrants } from './quadrants';
 import { planFrontier } from './frontier';
@@ -76,10 +73,6 @@ function scatterFormatter(options: ScatterStrategyOptions, format: string): (val
   };
 }
 
-/** Doubles need at most ~17 significant digits; 20 fractional digits is the
- *  practical ceiling at which `toFixed` still round-trips. */
-const MAX_DISCLOSED_DECIMALS = 20;
-
 /**
  * A number with no unit: grouped digits and nothing else. The cut points use it
  * when the chart has no authored format, and `minCount` always does, because a
@@ -97,32 +90,6 @@ function plainNumberSpec(locale: string | undefined): NumberFormatSpec {
     negative: 'minus',
     signed: false,
   };
-}
-
-/**
- * Print a boundary so the printed number denotes the applied one exactly, and
- * hand the applied value back with it. Used by the quadrant cut points and by
- * the outlier clamp: printed and applied are one value produced once, not two
- * paths that happen to agree.
- *
- * Sub-representable magnitudes (1e-30 under a plain spec) cannot be printed
- * exactly at any decimal count. Escalating buys nothing there, so the text falls
- * back to the chart's own precision and `exact` is false. The caller then has
- * to apply the number that is printed and say so out loud, which is what the
- * quadrant path's `quadrant-threshold-unprintable` does.
- */
-function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boolean): Disclosed {
-  const scaled = Math.abs(raw / MAGNITUDE_DIVISOR[spec.magnitude]);
-  // Where no decimal count prints it exactly, a default number falls back to the rule's decimals for it as a set of one, without scale words.
-  const base = authoredFormat ? spec.decimals : ruleSetOf([scaled], undefined, { words: false }).groupOf(scaled).decimals;
-  let decimals = base;
-  while (decimals < MAX_DISCLOSED_DECIMALS && Number(scaled.toFixed(decimals)) !== scaled) {
-    decimals += 1;
-  }
-  const exact = Number(scaled.toFixed(decimals)) === scaled;
-  const applied = { ...spec, decimals: exact ? decimals : base };
-  const value = exact ? raw : roundedNumber(raw, applied);
-  return { value, text: formatWithSpec(value, applied), exact };
 }
 
 /** A point's number in one field, as its record reads it; null where it has none. */
@@ -422,13 +389,13 @@ function scatterAxisDomain(
   // The margin an authored valueAxis.min/max keeps around the points. It is
   // sized before the value lines join the seed: a line far below the points
   // must not widen an authored max past a line just above it.
-  const pyBound = padOf(...clampSeed(clamp, 'y', domainYMin, domainYMax));
+  const pyBound = padOf(...clampSeed(clamp?.project.y, domainYMin, domainYMax));
   [domainYMin, domainYMax] = withValueLines(valueLines, domainYMin, domainYMax);
   // A clamp caps what the plot shows, so the domain is sized on the capped
   // values; the edge itself is pinned below, once it is known that a point is
   // actually beyond it.
-  [domainXMin, domainXMax] = clampSeed(clamp, 'x', domainXMin, domainXMax);
-  [domainYMin, domainYMax] = clampSeed(clamp, 'y', domainYMin, domainYMax);
+  [domainXMin, domainXMax] = clampSeed(clamp?.project.x, domainXMin, domainXMax);
+  [domainYMin, domainYMax] = clampSeed(clamp?.project.y, domainYMin, domainYMax);
   const px = padOf(domainXMin, domainXMax);
   const py = padOf(domainYMin, domainYMax);
   // Both scatter domains are TWO-SIDED — no
@@ -507,10 +474,8 @@ function scatterAxisDomain(
   [dyLo, dyHi] = numericViewportRange(options.viewDomain?.y, [dyLo, dyHi], 'y');
   // The axis ends ON the clamp, so a clipped point lands exactly on the edge
   // and the footnote's number is a line the reader can find.
-  if (clamp?.edges.x.min !== undefined) dxLo = clamp.edges.x.min;
-  if (clamp?.edges.x.max !== undefined) dxHi = clamp.edges.x.max;
-  if (clamp?.edges.y.min !== undefined) dyLo = clamp.edges.y.min;
-  if (clamp?.edges.y.max !== undefined) dyHi = clamp.edges.y.max;
+  [dxLo, dxHi] = pinClampDomain(clamp?.edges.x, dxLo, dxHi);
+  [dyLo, dyHi] = pinClampDomain(clamp?.edges.y, dyLo, dyHi);
   if (stepTicks) {
     stepTicks = stepTicks.filter((v) => v >= dyLo && v <= dyHi);
     if (stepTicks.length < 2) {
@@ -671,7 +636,7 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
   const valueLines = drawnValueLines(options.annotations, meanY);
   refuseClampedValueLines(clamp, valueLines, env.axisFmt.y);
   const noPositionNote = noPosition.length === 0 ? undefined
-    : disclosureNote(chartString(options, 'noPositionNote', { v1: chartString(options, 'pointsCount', { v1: noPosition.length, v2: noPosition.length === 1 ? '' : 's' }), v2: noPosition.join(', ') }));
+    : disclosureNote(chartString(options, 'noPositionNote', { v1: pointCountText(options, noPosition.length), v2: noPosition.join(', ') }));
   // The points the chart does not draw: the minCount drop and the points with no x or y.
   const omitted = [...(dropped ? [dropped.note] : []), ...(noPositionNote ? [noPositionNote] : [])];
   const clippingNotes = clamp?.notes ?? [];

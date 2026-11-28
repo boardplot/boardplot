@@ -24,6 +24,13 @@ import { getFixtures } from '../src/fixtures';
 import { chartLoaders } from '../src/react/chartLoaders';
 import { maskEngineStamp, stampFreeSha } from './golden/stamp';
 import '../src/core/geo/packs';
+import { render } from '../src/cli/render';
+import { interactionRecords } from '../src/core/a11y/records';
+import type { LineMarks } from '../src/core/charts/line/layout';
+import { fmtPathNumber } from '../src/core/curve';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
+import type { LineOptions } from '../src/core/types/options';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -121,5 +128,40 @@ describe('per-type React entries draw the recorded markup', { timeout: 120_000 }
     const markup = await mount(<LineChart data={data} size={SIZE} onWarnings={onWarnings} />);
     expect(markup.match(/<path[^>]*data-id="mark:line:b:0"[^>]*>/)?.[0]).toContain('stroke-dasharray=');
     expect(onWarnings).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ code: 'dash-on-actual-data' })]));
+  });
+
+  // A capped line endpoint needs an open marker and its real value, and a bar cannot imply a shortened value.
+  it('draws a clipped line endpoint and keeps its reading', async () => {
+    const { LineChart } = await import('../src/react/charts/line');
+    const data = {
+      categories: ['Q1', 'Q2', 'Q3', 'Q4'].map(id => ({ id })),
+      series: [{ id: 'rate', label: 'Rate', values: [20, 40, 50, 300] }],
+    };
+    const options: LineOptions = { title: 'Rate peaks in Q4', size: SIZE, valueAxis: { min: 30, clamp: { max: 100 }, show: true } };
+    const request = resolveChartRequest({ type: 'line', data, options });
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const series = (geometry.marks as unknown as LineMarks).series[0]!;
+    const point = series.points.at(-1)!;
+    expect(point).toMatchObject({ categoryId: 'Q4', y: geometry.plot.y, clipped: true });
+    const path = geometry.scene.find(node => node.id === series.pathNodeId);
+    expect(path).toMatchObject({ t: 'path', d: expect.stringContaining(`L${fmtPathNumber(point.x)} ${fmtPathNumber(point.y)}`) });
+    const marker = geometry.scene.find(node => node.id === point.nodeId);
+    expect(marker).toMatchObject({ t: 'path', dash: expect.any(Array), display: { value: '300', state: 'clipped at 100' } });
+    expect(marker).not.toHaveProperty('fill');
+    expect(geometry.derived).toMatchObject({ clipped: [{ limit: 100, points: [{ value: 300 }] }] });
+    expect(geometry.a11y.desc).toContain('Q4 / Rate (300)');
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    expect(records.find(record => record.target.owner.categoryId === 'Q4')).toMatchObject({ anchor: { y: point.y }, value: { raw: 300 } });
+
+    const onWarnings = vi.fn();
+    const markup = await mount(<LineChart data={data} {...options} onWarnings={onWarnings} />);
+    expect(markup).toContain('1 point clipped at 100 (y).');
+    expect(markup).toMatch(/>300<|>Rate 300</);
+    expect(onWarnings).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ code: 'value-axis-min-ignored' })]));
+    const hidden = await mount(<LineChart data={data} {...options} notes={{ show: ['note'] }} />);
+    expect(hidden).not.toContain('1 point clipped at 100 (y).');
+
+    const bar = render({ spec: { type: 'bar', data, options: { valueAxis: { clamp: { max: 100 } } } } });
+    expect(bar.body.errors).toMatchObject([{ code: 'unknown-option', path: '/options/valueAxis/clamp' }]);
   });
 });

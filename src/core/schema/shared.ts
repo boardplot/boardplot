@@ -1227,6 +1227,11 @@ export const valueAxisSchema = z
       .optional(),
   });
 
+export const clampBoundsSchema = z.strictObject({
+  min: z.number().finite().optional().describe('Lower bound; points below it are drawn at the lower edge and counted in a footnote.'),
+  max: z.number().finite().optional().describe('Upper bound; points above it are drawn at the upper edge and counted in a footnote.'),
+});
+
 /** Where a key sits: one row above the plot, one below it, or in a column beside it. */
 export const keyPositionSchema = z.enum(['top', 'bottom', 'right', 'left']).describe("Key position: 'top', one row above the plot, 'bottom', one row under it, or 'right' or 'left', a column beside the plot. A column beside the plot takes the plot's width: where the plot block would keep under 68% of the chart width, or the column does not fit the height, the key goes to the row above the plot with a legend-side-fallback warning.");
 

@@ -47,7 +47,7 @@ export function layoutLineMarks(
 ): LineMarkGeometry {
   const { theme, measure, highlights } = env;
   const { options, drawnSeries, pv, rowOf, cats, isStacked, isArea, compositionInvalidAt, cumTop, cumBot, interpolationFor, dLo, dHi } = domain;
-  const { plot, y, xOf } = area;
+  const { plot, y, pointY, xOf } = area;
   const { tickFont, labelFont } = text;
   const nodes: SceneNode[] = [...area.frame.nodes];
   /**
@@ -140,8 +140,10 @@ export function layoutLineMarks(
   const rendered = renderLineMarks({
     theme,
     language: options.locale?.language,
+    clamp: domain.clamp,
+    strings: options.strings,
     highlights: env.highlights,
-    drawnSeries, refSeries: domain.refSeries, pv, rowOf, cats, isStacked, isArea, compositionInvalidAt, y, cumTop, cumBot, xOf,
+    drawnSeries, refSeries: domain.refSeries, pv, rowOf, cats, isStacked, isArea, compositionInvalidAt, y: pointY, cumTop, cumBot, xOf,
     hasSuppressed100: domain.nmCats100.size > 0 || domain.naCats100.size > 0, baseY, plot,
     range: domain.x?.range, xOfValue: area.xOfValue,
     // A stacked band's forecast overlay is a second cue (hatchStrength). Its
@@ -194,21 +196,21 @@ export function layoutLineMarks(
   // shaded difference between two named series
   renderGapFill({
     range: domain.x?.range, xOfValue: area.xOfValue,
-    gapFillSeries: domain.gapFillSeries, gapFill: options.gapFill, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
+    gapFillSeries: domain.gapFillSeries, gapFill: options.gapFill, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y: pointY,
     warnings, occupied: claims, nodes, marks, analyticalSceneStart,
   });
   // uncertainty fan: nested washes, outermost first, behind everything
   renderFanWashes(theme, {
     language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
-    fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
+    fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y: pointY,
     pathFor, reversePathTail, fmt: domain.fanFmt ?? domain.fmt, numberSpec: domain.valueSpec.spec, occupied: claims, warnings, nodes, marks, analyticalSceneStart,
   });
   const phaseRequests: LabelRequest[] = [];
   const phaseDerived = renderPhaseFills(theme, {
     language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
-    phases: domain.phases, pv, rowOf, cats, xOf, y, baseY, plot: area.forecastPlot, phaseHeaderHeight: area.phaseHeaderHeight,
+    phases: domain.phases, pv, rowOf, cats, xOf, y: pointY, zeroY: domain.clamp ? y(0) : undefined, baseY, plot: area.forecastPlot, phaseHeaderHeight: area.phaseHeaderHeight,
     paletteRamp: env.paletteRamp, palette: options.palette, fmt: domain.fmt, measure, tickFont,
     labelRequests: phaseRequests, occupied: claims, nodes, marks, analyticalSceneStart, forecast: area.forecast,
   });

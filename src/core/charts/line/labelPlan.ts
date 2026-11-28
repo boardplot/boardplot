@@ -58,7 +58,7 @@ export function planLineLabels(
 ): LineLabelPlan {
   const { isBump, theme, size, measure, highlights } = env;
   const { drawnSeries, cats, rowOf, isStacked, isArea, cumTop, cumBot, interpolationFor } = domain;
-  const { plot, y, xOf, categoryOrder } = area;
+  const { plot, pointY: y, xOf, categoryOrder } = area;
   const { labelFont, labelH } = text;
   const focusName = lineFocusFont(env, domain, text.nameFont, emphasisWeight(theme));
   const focusValue = lineFocusFont(env, domain, labelFont, emphasisWeight(theme));
@@ -126,6 +126,7 @@ export function planLineLabels(
   });
   const lastCarried = new Set([...merged, ...reserves.keyValues.keys()]);
   const valueInput: Parameters<typeof placePointValueLabels>[0] = {
+    clamp: domain.clamp,
     drawnEdges: scene?.rendered.rangeEdges,
     valueLabels: domain.labelModes.values,
     firstWithheld: domain.x?.range && isArea && usesEndLabelKey(domain.options) && domain.labelModes.values === 'ends'
@@ -228,7 +229,7 @@ function addFanEdgeLabels(domain: LineDomain, area: LineArea, marks: LineMarkGeo
     const text = (domain.fanFmt ?? domain.fmt)(value);
     const w = measure(text, font).width;
     const px = area.xOf(ci);
-    const py = area.y(value);
+    const py = area.pointY(value);
     const categoryId = domain.cats[ci]!.id;
     labelRequests.push({
       id: `fan-edge:${id}`, kind: 'point', owner: { seriesId: id, categoryId }, text, ...(domain.rebased ? {} : { shows: { value: text } }), lines: [text], typeRole: 'label', font,
@@ -256,7 +257,7 @@ function seatValuesOffGapGuides(domain: LineDomain, area: LineArea, annotations:
     const ends = pair.map((id) => {
       const series = domain.drawnSeries.find((s) => s.id === id);
       const value = series ? domain.pv[domain.rowOf.get(series)!]![ci] : null;
-      return series && value !== null && value !== undefined ? { id, py: area.y(value) } : undefined;
+      return series && value !== null && value !== undefined ? { id, py: area.pointY(value) } : undefined;
     });
     if (!ends[0] || !ends[1] || Math.abs(ends[0].py - ends[1].py) < 1) continue;
     for (const end of ends) {

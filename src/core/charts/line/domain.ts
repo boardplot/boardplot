@@ -10,7 +10,7 @@ import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { requestMemo } from '../../layoutPlan';
-import { formatAuthoredPercent, formatShare, shareText } from '../../format';
+import { formatAuthoredPercent, formatExactNumber, formatShare, shareText } from '../../format';
 import { formatStatWithSpec, ruleStatistics, seriesRasterFormatter, statisticFormatter, type RuleStatistics } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
@@ -50,6 +50,9 @@ import { checkPointBudget } from '../../itemBudget';
 import { logValueDomain } from '../logAxis';
 import { shareSetDecimals } from '../../formatPrecision';
 import { validateLineLog, validateLogTolerances } from './log';
+import { clampSeed, discloseNumber, pinClampDomain, planAxisClamp, validateClampBounds, type AxisClamp } from '../clamp';
+import { percentCellsOnly } from '../../annotatePass';
+import { notImplemented } from '../../schema/capabilityReasons';
 
 /**
  * The nice domain already caps wasted domain on either side at 15%. If the plotted data
@@ -478,7 +481,7 @@ type Core = Pick<LineDomain, 'options' | 'cats' | 'seriesNorm' | 'dataSeries' | 
  * as the data, so both enter the extent passed to niceDomain; scale changes do
  * not alter acceptance.
  */
-function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBump: boolean, warnings: LintWarning[], edges: number[] = []) {
+function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][]; clamp?: AxisClamp }, isBump: boolean, warnings: LintWarning[], edges: number[] = []) {
   const { options, cats, variant, pv, rowOf } = d;
   const va = options.valueAxis ?? {};
   let lo = Infinity;
@@ -562,18 +565,23 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
     lo = log ? 1 : 0;
     hi = log ? 10 : 1;
   }
+  const clamp = d.clamp;
+  if (clamp) [lo, hi] = clampSeed(clamp.project, lo, hi);
   const dataLo = lo;
   const dataHi = hi;
   if (log) {
-    const { domain: [dLo, dHi], ticks: stepTicks } = logValueDomain(lo, hi, va, warnings, va.tickStep);
-    return { dLo, dHi, domainExtendingValueLines, bumpLadderMax: 1, stepTicks, gridDataHi: dataHi };
+    const { domain, ticks } = logValueDomain(lo, hi, va, warnings, va.tickStep);
+    const [dLo, dHi] = clamp ? pinClampDomain(clamp.edges, ...domain) : domain;
+    const stepTicks = clamp ? ticks?.filter(value => value >= dLo && value <= dHi) : ticks;
+    return { dLo, dHi, domainExtendingValueLines, bumpLadderMax: 1, stepTicks, ...(!clamp ? { gridDataHi: dataHi } : {}) };
   }
   let dLo: number;
   let dHi: number;
+  const zeroBased = (d.isArea || va.includeZero) && (!clamp || (lo !== hi && (clamp.edges.min ?? 0) <= 0 && (clamp.edges.max ?? 0) >= 0));
   if (variant === 'stacked100-area') {
     dLo = Math.min(0, lo);
     dHi = Math.max(100, hi);
-  } else if (d.isArea || va.includeZero) {
+  } else if (zeroBased) {
     // area variants force includeZero; the bound covers this zero-anchored
     // branch too, as well as the profile branch below
     const lo2 = Math.min(0, lo);
@@ -594,8 +602,7 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
   // A drawn value axis ends on its ticks: the plot's top edge is its top
   // gridline, and a label over the top point needs no headroom inside the
   // domain. Authored bounds and an authored tick step keep their own rules.
-  const zeroBased = d.isArea || va.includeZero;
-  const grid = va.show === true && !isBump && !d.bumpDerived && variant !== 'stacked100-area' &&
+  const grid = va.show === true && !clamp && !isBump && !d.bumpDerived && variant !== 'stacked100-area' &&
     va.min === undefined && va.max === undefined && va.tickStep === undefined
     ? axisGrid(zeroBased ? Math.min(0, lo) : lo, zeroBased ? Math.max(0, hi) : hi)
     : undefined;
@@ -617,7 +624,8 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
       });
     }
   }
-  [dLo, dHi] = applyAxisBounds([dLo, dHi], [lo, hi], va, isBump ? [] : warnings);
+  const naturalDomain: [number, number] = [dLo, dHi];
+  [dLo, dHi] = applyAxisBounds(naturalDomain, clamp && lo === hi ? naturalDomain : [lo, hi], va, isBump ? [] : warnings);
   // Bump replaces the whole value domain: the half-step padding keeps the
   // rank-1 and rank-maxRank markers and labels off the plot edges, and
   // overriding here (after va.min/va.max) is what makes those two options
@@ -648,6 +656,12 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
       bumpLadderMax = Math.max(bumpLadderMax, Math.round(va.max - 0.5));
     }
     dHi = bumpLadderMax + 0.5;
+  }
+  if (clamp) {
+    [dLo, dHi] = pinClampDomain(clamp.edges, dLo, dHi);
+    if (!(dHi > dLo)) [dLo, dHi] = pinClampDomain(clamp.edges, ...naturalDomain);
+    stepTicks = stepTicks?.filter(value => value >= dLo && value <= dHi);
+    if (stepTicks && stepTicks.length < 2) stepTicks = undefined;
   }
   return { dLo, dHi, domainExtendingValueLines, bumpLadderMax, stepTicks, ...(grid ? { gridDataHi: dataHi } : {}) };
 }
@@ -706,6 +720,16 @@ function namedSeries(modes: LineLabelModes, options: LineOptions, drawn: number,
 
 export function resolveLineDomain(data: LineChartData, input: LineOptions, env: LineEnv, warnings: LintWarning[]): LineDomain {
   let options = input;
+  const bounds = options.valueAxis?.clamp;
+  if (bounds) {
+    const variant = drawnVariant('line', options) ?? 'line';
+    if (variant !== 'line') {
+      const suggest = 'use a plain line or remove valueAxis.clamp';
+      throw new NormalizeError('invalid-options', 'options.valueAxis.clamp', notImplemented('valueAxis.clamp', variant, suggest),
+        suggest, [{ op: 'remove', path: '/options/valueAxis/clamp' }], ['options', 'valueAxis', 'clamp']);
+    }
+    validateClampBounds({ y: bounds }, options.valueAxis ?? {});
+  }
   // a theme may make a zero-based value axis the default; an
   // authored includeZero, true or false, still wins.
   const themeZero = env.theme.valueAxis?.includeZero;
@@ -953,7 +977,21 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     suggest: 'Supply each missing component value. Use 0 only when the source proves zero.',
   });
   const core = { options, cats, seriesNorm, dataSeries, targets, variant, isArea, isStacked, pv, rowOf, bumpDerived };
-  const values = valueDomain({ ...core, cumTop, cumBot }, isBump, warnings, edgeValues);
+  let clamp: AxisClamp | undefined;
+  if (bounds) {
+    const points = [...drawnSeries, ...refSeries].flatMap(series => pv[rowOf.get(series)!]!.flatMap((value, ci) => {
+      if (value === null) return [];
+      const category = cats[ci]!;
+      return [{ id: `marker:${series.id}:${category.id}`, label: `${category.label ?? category.id} / ${series.label}`, value }];
+    }));
+    const spec = !rebased && percentCellsOnly(dataSeries) ? valueSpec.percentSpec : valueSpec.spec;
+    const plan = planAxisClamp('y', bounds, points, point => point.value, raw => {
+      const result = discloseNumber(raw, spec, options.format !== undefined);
+      return result.exact ? result : { value: raw, text: formatExactNumber(raw, options.locale?.language) };
+    }, options, options.axisTitles?.primary);
+    if (plan.records.length) clamp = plan;
+  }
+  const values = valueDomain({ ...core, cumTop, cumBot, clamp }, isBump, warnings, edgeValues);
   const anomaly: LineAnomaly | undefined = anomalyRun && {
     model: anomalyRun.anomaly, seriesId: anomalyRun.seriesId, statFmt,
     ...anomalyCorridor(anomalyRun.anomaly, values.dLo, values.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, valueSpec.fmt)),
@@ -965,6 +1003,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     population, timeline, ...(xModel ? { x: { model: xModel, lo: xRange!.lo, hi: xRange!.hi, shown: population ? population.indexes.map((i) => xModel.xs[i]!) : xModel.xs, ...(range ? { range } : {}) } } : {}), autoSampled: live.auto === true, absOf, compositionInvalidAt, nmCats100, overfullCats100, naCats100, sharesWithheld, incompleteStack, rebaseSuppressed, cumTop, cumBot, endpoints, lastIdxOf,
     labelPv, shareTexts: rounded?.texts ?? nearestTexts, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,
     ...values,
+    clamp,
     anomaly,
   };
   const trends = fitLineTrends(resolved, warnings);

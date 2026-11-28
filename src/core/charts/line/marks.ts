@@ -11,8 +11,10 @@ import { strokeToken, dashToken, markRolePaint, mixedPaint, seriesPaint as theme
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id, OwnerRef } from '../../types/cell';
 import type { Category, MarkerShape } from '../../types/data';
+import type { BaseOptions } from '../../types/options';
 import type { Theme } from '../../types/theme';
 import type { Paint, SceneNode } from '../../types/scene';
+import { clippedMarker, clippedValueState, clipRecordFor, type AxisClamp, type ClipRecord } from '../clamp';
 import { renderBumpTies } from './bump';
 import type { NormSer } from './context';
 import type { ForecastBoundary } from './forecast';
@@ -26,6 +28,7 @@ type LineVariant = 'line' | 'area' | 'stacked-area' | 'stacked100-area';
 
 interface Pt extends Point {
   ci: number;
+  clip?: ClipRecord;
 }
 
 export interface LinePhaseResolved {
@@ -166,7 +169,10 @@ function buildSeriesGeometry(input: RenderLineMarksInput, series: NormSer, dataI
       return;
     }
     const value = input.isStacked ? input.y(input.cumTop[dataIdx]![ci]!) : row[ci] === null ? null : input.y(row[ci]!);
-    if (value !== null) current.push({ ci, x: input.xOf(ci), y: value });
+    if (value !== null) {
+      const clip = input.clamp && clipRecordFor(input.clamp, row[ci]!);
+      current.push({ ci, x: input.xOf(ci), y: value, ...(clip ? { clip } : {}) });
+    }
   });
   if (current.length > 0) runs.push(current);
   const interpolation = input.interpolationFor(series);
@@ -419,7 +425,11 @@ function pushMarkerNode(input: RenderLineMarksInput, series: NormSer, dataIdx: n
   const owner = { seriesId: series.id, categoryId: input.cats[point.ci]!.id };
   const display = markerDisplay(input, series, row, point.ci);
   const r = 3 * scale;
-  if (shape === 'circle') input.nodes.push({ t: 'circle', id, cx: point.x, cy: point.y, r, fill, ...(hollow ? { stroke } : {}), owner, part: 'marker', display });
+  if (point.clip) {
+    const state = clippedValueState(point.clip.limitText, { locale: { language: input.language }, strings: input.strings });
+    input.nodes.push(clippedMarker(input.theme, { id, owner, part: 'marker', display: { ...display, state },
+      marker: shape === 'none' ? 'circle' : shape, cx: point.x, cy: point.y, r, paint: stroke }));
+  } else if (shape === 'circle') input.nodes.push({ t: 'circle', id, cx: point.x, cy: point.y, r, fill, ...(hollow ? { stroke } : {}), owner, part: 'marker', display });
   else if (shape === 'square') input.nodes.push({ t: 'rect', id, rect: { x: point.x - r, y: point.y - r, w: 2 * r, h: 2 * r }, fill, ...(hollow ? { stroke, strokeWidth: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
   else if (shape !== 'none') input.nodes.push({ t: 'path', id, d: markerPath(shape, point, scale), fill, ...(hollow ? { stroke, width: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
 }
@@ -433,13 +443,13 @@ function renderMarkers(input: RenderLineMarksInput, series: NormSer, dataIdx: nu
     }
     const extent = input.markerExtent(series, dataIdx, point.ci);
     let nodeId: Id | undefined;
-    if (shape !== 'none') {
+    if (shape !== 'none' || point.clip) {
       nodeId = `marker:${series.id}:${input.cats[point.ci]!.id}`;
       pushMarkerNode(input, series, dataIdx, geometry.row, point, shape, nodeId, extent?.scale);
       const reach = extent ? Math.max(4, extent.reach + 1) : 4;
       input.occupied.claim({ x: point.x - reach, y: point.y - reach, w: 2 * reach, h: 2 * reach }, 'mark', claims.lineOwner(series.id, input.cats[point.ci]!.id));
     }
-    entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y, ...(nodeId ? { nodeId } : {}), ...(extent ? { highlighted: true as const, markerRadius: extent.reach } : {}) });
+    entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y, ...(nodeId ? { nodeId } : {}), ...(extent ? { highlighted: true as const, markerRadius: extent.reach } : {}), ...(point.clip ? { clipped: true } : {}) });
   });
 }
 
@@ -469,7 +479,7 @@ function renderLatestPointRing(
   if (input.latestPointSeries === undefined || input.latestPointSeries !== series.id) return;
   const observed = geometry.allPoints.filter((point) => geometry.row[point.ci] !== null);
   const point = observed[observed.length - 1];
-  if (point === undefined) return;
+  if (point === undefined || point.clip) return;
   const categoryId = input.cats[point.ci]!.id;
   const owner = { seriesId: series.id, categoryId };
   const display = markerDisplay(input, series, geometry.row, point.ci);
@@ -541,14 +551,18 @@ function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): vo
   input.refSeries.forEach((series) => {
     const geometry = buildSeriesGeometry({ ...input, isStacked: false }, series, 0);
     const { interpolation, runs } = geometry;
+    const clipped = input.clamp ? new Map(geometry.allPoints.filter(point => point.clip).map(point => [point.ci, point])) : undefined;
+    const drawPoint = (point: Pt) => {
+      const categoryId = input.cats[point.ci]!.id;
+      const shape = input.markerOf(series, 0, point.ci);
+      // A lone reference has no path, so it keeps a mark when markers are off.
+      pushMarkerNode(input, series, 0, geometry.row, point, shape === 'none' ? 'circle' : shape, `marker:${series.id}:${categoryId}`);
+      input.occupied.claim({ x: point.x - 4, y: point.y - 4, w: 8, h: 8 }, 'mark', claims.lineOwner(series.id, categoryId));
+    };
     runs.forEach((points, runIndex) => {
       if (points.length === 1) {
         const point = points[0]!;
-        const categoryId = input.cats[point.ci]!.id;
-        const shape = input.markerOf(series, 0, point.ci);
-        // A lone reference has no path, so keep its marker even when regular markers are off.
-        pushMarkerNode(input, series, 0, geometry.row, point, shape === 'none' ? 'circle' : shape, `marker:${series.id}:${categoryId}`);
-        input.occupied.claim({ x: point.x - 4, y: point.y - 4, w: 8, h: 8 }, 'mark', claims.lineOwner(series.id, categoryId));
+        if (!clipped?.has(point.ci)) drawPoint(point);
         return;
       }
       if (points.length < 2) return;
@@ -558,12 +572,15 @@ function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): vo
       else for (let index = 0; index + 1 < points.length; index++) claims.linePair(points[index]!, points[index + 1]!, input.cats[points[index]!.ci]!.id, input.cats[points[index + 1]!.ci]!.id, series.id, interpolation);
       if (series.interpolateGaps) markBridgedGaps(input, series, 0, geometry, points, runIndex);
     });
+    clipped?.forEach(drawPoint);
   });
 }
 
 interface RenderLineMarksInput {
   /** The chart language, for the words of hover and accessible values. */
   language?: string;
+  clamp?: AxisClamp;
+  strings?: BaseOptions['strings'];
   range?: LineRange;
   xOfValue?: (value: number) => number;
   theme: Theme;
@@ -796,6 +813,7 @@ export function renderPhaseFills(theme: Theme, input: {
   cats: Category[];
   xOf: (categoryIndex: number) => number;
   y: (value: number) => number;
+  zeroY?: number;
   baseY: number;
   plot: Rect;
   phaseHeaderHeight: number;
@@ -830,7 +848,7 @@ export function renderPhaseFills(theme: Theme, input: {
   // An area down to a broken axis floor reads as the value's size and
   // exaggerates it: where zero is off the plot, each phase is a pale band
   // across the plot height behind the line, and the line alone carries the values.
-  const zeroY = input.y(0);
+  const zeroY = input.zeroY ?? input.y(0);
   const banded = zeroY < input.plot.y - 0.5 || zeroY > input.plot.y + input.plot.h + 0.5;
   drawn.forEach((phase, index) => {
     const start = resolved.boundaries[index]!;

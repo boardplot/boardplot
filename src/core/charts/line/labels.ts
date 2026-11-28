@@ -30,6 +30,7 @@ import { chartString } from '../../strings';
 import type { Theme } from '../../types/theme';
 import type { ComposeShows, LineDomain, LineEnv, LinePaints, LineText } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { clipRecordFor, type AxisClamp } from '../clamp';
 
 type LineVariant = 'line' | 'area' | 'stacked-area' | 'stacked100-area';
 type ComposeText = (content: LabelContent, abs: number | null, pct: number | null, category: string, series: string, unitSuffix?: string, authoredPct?: boolean, source?: NormSer, categoryId?: Id) => string;
@@ -1093,6 +1094,7 @@ function pushPointRequests(input: {
   /** The existing seat preferred by the shape of one plain line. */
   shapeSide?: ReadonlyMap<number, string>;
   continued?: boolean;
+  clamp?: AxisClamp;
   /** The selected point's painted marker extent, absent for unchanged points. */
   markerRadiusOf?: (categoryIndex: number) => number | undefined;
   candidates: PointLabelCandidate[];
@@ -1163,6 +1165,8 @@ function pushPointRequests(input: {
     const namedEnd = input.namedEnd && candidate.ci === lastDrawn;
     const computed = !namedEnd && !authored;
     const continuedEnd = input.continued && (candidate.ci === firstDrawn || candidate.ci === lastDrawn);
+    const value = input.row?.[candidate.ci];
+    const clipped = input.clamp && value != null && clipRecordFor(input.clamp, value);
     // A seat beside the point centres 4px + half the value off it: nearer the
     // neighbour's point where the step is narrower than the value plus 8px.
     const beside = computed && input.step > w + 8;
@@ -1371,8 +1375,8 @@ function pushPointRequests(input: {
           return rivals.some(stroke => stroke.distance(rect) < own) ? [] : [{ slot, rect, penalty }];
         });
     }
-    // A continued edge can occupy the near seats; keep the existing higher seats and leaders.
-    if (computed && !continuedEnd) slots = slots.filter(slot => !slot.leaderFrom && !/Shifted|Raised|Step/.test(slot.slot));
+    // A clamped or continued edge can occupy the near seats. Keep the farther seats and leaders.
+    if (computed && !continuedEnd && !clipped) slots = slots.filter(slot => !slot.leaderFrom && !/Shifted|Raised|Step/.test(slot.slot));
     const preferred = continuedEnd ? undefined : input.shapeSide?.get(candidate.ci);
     if (preferred) {
       const held = slots.filter(slot => slot.slot === preferred);
@@ -1514,6 +1518,7 @@ export function pointValueWidths(input: Parameters<typeof placePointValueLabels>
 
 export function placePointValueLabels(input: Parameters<typeof pointLabelSelection>[0] & {
   shapeSides?: boolean;
+  clamp?: AxisClamp;
   markerExtent?: LinePaints['markerExtent'];
   drawnEdges?: ReadonlyMap<Id, { runs: Point[][]; bottom?: Point[] }>;
   cats: Category[];
@@ -1612,7 +1617,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     const namedEnd = input.valueLabels !== 'all' && !input.isStacked && !input.bump && (input.endNamed.has(series.id)
       || input.labelRequests.some(request => request.kind === 'series' && request.owner.seriesId === series.id));
     // Every highlight mode, fade included: fade has no focus font, but its focus value needs the seat too.
-    pushPointRequests({ shapeSide, markerRadiusOf: (ci) => input.markerExtent?.(series, dataIdx, ci)?.reach, continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
+    pushPointRequests({ shapeSide, clamp: input.clamp, markerRadiusOf: (ci) => input.markerExtent?.(series, dataIdx, ci)?.reach, continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
     // The last actual's value is an extra the default adds where a seat is free;
     // with none it gives way quietly, as no default promised it.
     // An authored cell label is the author's, not the default's: it keeps its note.

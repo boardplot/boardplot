@@ -3431,4 +3431,20 @@ fixtures.push({
   options: { title: 'Sales grow every quarter', categoryAxis: { title: 'Quarter' } },
 });
 
+fixtures.push({
+  id: 'line-clamp',
+  title: 'A line point above the axis cap keeps its value',
+  kind: 'example',
+  data: {
+    categories: ['Q1', 'Q2', 'Q3', 'Q4'].map(id => ({ id })),
+    series: [{ id: 'rate', label: 'Rate', values: [20, 40, 300, 50] }],
+  },
+  options: {
+    title: 'Rate peaked at 300 in Q3',
+    valueAxis: { show: true, includeZero: true, clamp: { max: 100 } },
+    valueLabels: 'all',
+    source: 'Illustrative data',
+  },
+});
+
 registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, pointEmphasisFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

@@ -2,7 +2,7 @@ import { chartString } from '../../strings/scatter';
 import type { SlotCandidate } from '../../label/solver';
 import type { Theme } from '../../types/theme';
 import { printFace } from '../../numberSets';
-import { emphasisWeight, secondaryFont, strokeToken, dashToken } from '../../theme';
+import { emphasisWeight, secondaryFont, strokeToken } from '../../theme';
 /**
  * Scatter phase 2: scales in, scene nodes out. Zone backgrounds, both
  * value axes, quadrant shading, zero rules, the point marks and the quadrant
@@ -17,6 +17,7 @@ import { requestMemo } from '../../layoutPlan';
 import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import type { AxisGeometry, LintWarning, Paint, SceneDisplay, SceneNode } from '../../types/scene';
+import { clippedMarker, pointMarkerOutline } from '../clamp';
 import { clampStateOf } from './clamp';
 import { DeferredShownMarks } from '../../shownMarks';
 import { fitLogTicks, logSpecFormat } from './logAxis';
@@ -71,10 +72,6 @@ function sizeMarkerNode(theme: Theme, kind: SizeMarker, input: { id: Id; cx: num
   return { t: 'path', id, d, stroke: paint, width: strokeToken(theme, 'mark'), owner, part: 'point', display };
 }
 
-/** Outline weight and dash of the open marker a clipped point is drawn with. */
-
-
-
 /** A plotted point where it is drawn: the axis edge for a clipped one. */
 export interface PlacedPoint {
   p: NormPt;
@@ -126,7 +123,7 @@ export interface ScatterMarkGeometry {
  */
 function pointMarkNode(theme: Theme, input: {
   id: Id;
-  marker: MarkerShape;
+  marker: Exclude<MarkerShape, 'none'>;
   cx: number;
   cy: number;
   r: number;
@@ -140,17 +137,8 @@ function pointMarkNode(theme: Theme, input: {
 }): SceneNode {
   const { id, marker, cx, cy, r, owner, display } = input;
   const shared = { id, owner, part: 'point', display } as const;
-  const side = r * 1.8;
-  const d =
-    marker === 'circle'
-      ? `M${fmtN(cx - r)} ${fmtN(cy)}A${fmtN(r)} ${fmtN(r)} 0 1 0 ${fmtN(cx + r)} ${fmtN(cy)}A${fmtN(r)} ${fmtN(r)} 0 1 0 ${fmtN(cx - r)} ${fmtN(cy)}Z`
-      : marker === 'square'
-        ? `M${fmtN(cx - side / 2)} ${fmtN(cy - side / 2)}H${fmtN(cx + side / 2)}V${fmtN(cy + side / 2)}H${fmtN(cx - side / 2)}Z`
-        : marker === 'triangle'
-          ? `M${fmtN(cx)} ${fmtN(cy - r * 1.2)}L${fmtN(cx + r * 1.15)} ${fmtN(cy + r)}L${fmtN(cx - r * 1.15)} ${fmtN(cy + r)}Z`
-          : `M${fmtN(cx)} ${fmtN(cy - r * 1.3)}L${fmtN(cx + r * 1.3)} ${fmtN(cy)}L${fmtN(cx)} ${fmtN(cy + r * 1.3)}L${fmtN(cx - r * 1.3)} ${fmtN(cy)}Z`;
   if (input.clipped) {
-    return { t: 'path', ...shared, d, stroke: input.paint, width: strokeToken(theme, 'mark'), dash: dashToken(theme, 'dotted'), lineCap: 'round' as const };
+    return clippedMarker(theme, { ...shared, marker, cx, cy, r, paint: input.paint });
   }
   const fill: Paint = input.hollow ? { token: 'background' } : input.paint;
   const stroke: Paint | undefined = input.hollow ? input.paint : undefined;
@@ -159,6 +147,7 @@ function pointMarkNode(theme: Theme, input: {
     return { t: 'circle', ...shared, cx, cy, r, fill, ...(stroke ? { stroke, strokeWidth: strokeToken(theme, 'mark') } : { stroke: { token: 'background' }, strokeWidth: strokeToken(theme, 'rule') }) };
   }
   if (marker === 'square') {
+    const side = r * 1.8;
     // A hollow square draws as the key's hollow box does, so mark and key agree.
     return {
       t: 'rect',
@@ -167,7 +156,7 @@ function pointMarkNode(theme: Theme, input: {
       ...(input.hollow ? { fill: input.paint, pattern: 'hollow' as const } : { fill }),
     };
   }
-  return { t: 'path', ...shared, d, fill, ...(stroke ? { stroke, width: strokeToken(theme, 'mark') } : {}) };
+  return { t: 'path', ...shared, d: pointMarkerOutline(marker, cx, cy, r), fill, ...(stroke ? { stroke, width: strokeToken(theme, 'mark') } : {}) };
 }
 
 /** Both value axes, their titles and the frame lines (position encoding needs a frame). */
