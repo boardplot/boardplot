@@ -1042,7 +1042,7 @@ function lineSecondaryAxisWarnings(data: unknown): LintWarning[] {
   }];
 }
 
-function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant?: string; valueAxis?: { percent?: boolean } }): LintWarning[] {
+function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant?: string; valueAxis?: { percent?: boolean } }, lineKindOnly = false): LintWarning[] {
   // valueAxis.percent turns a line chart into a 100% area, as drawnVariant in stackAdds.ts reads it.
   const variant = options.valueAxis?.percent ? 'stacked100-area' : options.variant;
   if (variant === 'stacked-area' || variant === 'stacked100-area' || !isRecord(data) || !Array.isArray(data.series)) return [];
@@ -1050,6 +1050,8 @@ function dashOnActualWarnings(data: unknown, options: RequestOptions & { variant
   const ids: string[] = [];
   for (const series of data.series) {
     if (!isRecord(series) || typeof series.id !== 'string' || series.role === 'reference') continue;
+    // A combo draws stroke ink for line series only.
+    if (lineKindOnly && series.kind !== 'line') continue;
     if (series.lineStyle !== 'dashed' && series.lineStyle !== 'dotted') continue;
     if (isPlanOrForecast(series.scenario)) continue;
     const cells = Array.isArray(series.values)
@@ -1073,6 +1075,7 @@ function requestInputWarnings(type: string, data: unknown, options: RequestOptio
       ...lineSecondaryAxisWarnings(data),
       ...dashOnActualWarnings(data, options),
     ] : []),
+    ...(type === 'combo' ? dashOnActualWarnings(data, options, true) : []),
   ];
   return inputPanels(data).flatMap(panel => {
     const definition = getChart(panel.type);
