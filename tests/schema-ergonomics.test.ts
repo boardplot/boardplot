@@ -150,9 +150,9 @@ describe('tagged union issues', () => {
 
   // A branch that only misses a field (combo's ruler axis without `ruler`) must not outrank the meant shape.
   it('keeps the real errors of the meant branch when the other branch only misses a field', () => {
-    const result = (getChartSchemas('combo')!.optionsSchema as z.ZodType).safeParse({ secondaryAxis: { acknowledge: false, domain: ['oops', 10] } });
+    const result = (getChartSchemas('combo')!.optionsSchema as z.ZodType).safeParse({ secondaryAxis: { show: 'no', domain: ['oops', 10] } });
     expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.')))
-      .toEqual(['secondaryAxis.acknowledge', 'secondaryAxis.domain.0']);
+      .toEqual(['secondaryAxis.domain.0', 'secondaryAxis.show']);
   });
   // A share calc without `of` listed four op-enum errors for the other branches and never named `of`.
   it('names the missing field of the branch the op points at', () => {

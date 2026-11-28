@@ -1038,7 +1038,7 @@ function lineSecondaryAxisWarnings(data: unknown): LintWarning[] {
   return [{
     code: 'secondary-axis-ignored', severity: 'warn', field: ['data', 'series'],
     message: `Series ${ids.join(', ')} requested a second axis. The line chart draws every series on the shared scale. `
-      + "Use type 'combo' with options.secondaryAxis set to { acknowledge: true } to draw two axes.",
+      + "Use type 'combo' and set kind: 'line' on the series assigned to axis: 'secondary'. The combo chart draws a second value scale and warns dual-axis.",
   }];
 }
 

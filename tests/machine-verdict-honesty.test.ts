@@ -14,13 +14,14 @@
  * keeps it as named documents from three layout families.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { main } from '../src/cli/main';
-import { isRefused, layoutResolvedRequest, resolveChartRequest } from '../src/index';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
+import { requireGeometry } from '../src/core/sizing';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -56,7 +57,7 @@ function runJson(args: string[]): { code: number; envelope: Envelope } {
   return { code: r.code, envelope: JSON.parse(r.log) as Envelope };
 }
 
-describe('a severity:error lint is a refusal, not a nag', () => {
+describe('combo secondary axes', () => {
   const comboDoc = {
     version: 1,
     charts: [
@@ -77,77 +78,53 @@ describe('a severity:error lint is a refusal, not a nag', () => {
     ],
   };
 
-  it('render refuses the document instead of calling it valid', () => {
+  // Retiring the consent flag must leave old charts byte-identical to charts that omit it.
+  it('draws the same SVG with the retired flag and warns how to remove it', () => {
     const dir = tdir();
     const docPath = join(dir, 'doc.json');
-    writeFileSync(docPath, JSON.stringify(comboDoc));
-
-    const { code, envelope } = runJson(['render', docPath]);
-    expect(code).toBe(1);
-    expect(envelope.ok).toBe(false);
-    const refusal = envelope.errors.find((e) => e.code === 'dual-axis-unacknowledged');
-    expect(refusal, JSON.stringify(envelope)).toBeDefined();
-    expect(refusal!.path).toBe('/charts/0/data/series/1/axis');
-    expect(refusal!.suggest).toContain('acknowledge');
-    // and it is not ALSO a warning — one severity, one place
-    expect(envelope.warnings.some((w) => w.code === 'dual-axis-unacknowledged')).toBe(false);
-  });
-
-  // The library layout drew this chart on one scale while the CLI refused it.
-  it('the library layout refuses an unacknowledged secondary axis with the code and message the CLI prints', () => {
-    const dir = tdir();
-    const docPath = join(dir, 'doc.json');
-    writeFileSync(docPath, JSON.stringify(comboDoc));
-    const cli = runJson(['render', docPath]).envelope.errors.find((e) => e.code === 'dual-axis-unacknowledged')!;
-    const { name: _name, ...chart } = comboDoc.charts[0]!;
-    const layout = layoutResolvedRequest(resolveChartRequest(chart as never));
-    expect(isRefused(layout)).toBe(true);
-    const refusal = layout.warnings.find((w) => w.severity === 'error')!;
-    // The CLI names the chart in front of the engine's message.
-    expect({ code: refusal.code, message: `chart 'revenue-units': ${refusal.message}`, suggest: refusal.suggest })
-      .toEqual({ code: cli.code, message: cli.message, suggest: cli.suggest });
-    expect(refusal.message).toContain("'units'");
-    expect(refusal.message).toContain('options.secondaryAxis.acknowledge');
-    expect(refusal.suggest).toContain('secondaryAxis.ruler');
-    // The ruler repair the fix names draws: the series leaves the secondary axis, the ruler relabels the primary.
-    const [revenue, units] = chart.data.series;
-    const { axis: _axis, ...unitsOnPrimary } = units!;
-    const ruled = layoutResolvedRequest(resolveChartRequest({ ...chart,
-      data: { ...chart.data, series: [revenue!, unitsOnPrimary] },
-      options: { secondaryAxis: { ruler: { of: 'primary', total: 500 } } } } as never));
-    expect(isRefused(ruled), JSON.stringify(ruled.warnings)).toBe(false);
-  });
-
-  it('render writes no SVG for a refused chart', () => {
-    const dir = tdir();
-    const docPath = join(dir, 'doc.json');
-    writeFileSync(docPath, JSON.stringify(comboDoc));
     const svg = join(dir, 'chart.svg');
+    writeFileSync(docPath, JSON.stringify(comboDoc));
 
-    const r = runCli(['render', docPath, '-o', svg]);
-    expect(r.code).toBe(1);
-    expect(existsSync(svg)).toBe(false);
+    const args = ['render', docPath, '--format', 'svg', '--out', svg, '--overwrite'];
+    const normal = runJson(args);
+    expect(normal.code).toBe(0);
+    expect(normal.envelope.ok).toBe(true);
+    expect(normal.envelope.warnings.filter(w => w.code === 'dual-axis')).toMatchObject([{ severity: 'warn' }]);
+    const original = readFileSync(svg, 'utf8');
+
+    writeFileSync(docPath, JSON.stringify({
+      ...comboDoc,
+      charts: [{ ...comboDoc.charts[0], options: { secondaryAxis: { acknowledge: true } } }],
+    }));
+    const legacy = runJson(args);
+    expect(legacy.code).toBe(0);
+    expect(legacy.envelope.ok).toBe(true);
+    expect(legacy.envelope.warnings.filter(w => w.code === 'option-deprecated')).toMatchObject([{
+      severity: 'warn', fix: [{ op: 'remove', path: '/charts/0/options/secondaryAxis/acknowledge' }],
+    }]);
+    expect(readFileSync(svg, 'utf8')).toBe(original);
   });
 
-  it('acknowledging the second axis renders exactly as before — the gate is the refusal, not the chart', () => {
-    const dir = tdir();
-    const docPath = join(dir, 'doc.json');
-    writeFileSync(
-      docPath,
-      JSON.stringify({
-        ...comboDoc,
-        charts: [{ ...comboDoc.charts[0], options: { secondaryAxis: { acknowledge: true } } }],
-      }),
-    );
-    const out = join(dir, 'out');
-    const { code, envelope } = runJson(['render', docPath, '-o', out]);
-    expect(code).toBe(0);
-    expect(envelope.ok).toBe(true);
-    expect(existsSync(join(out, 'revenue-units.svg'))).toBe(true);
-    // the acknowledged chart still NAGS — that one really is a warning
-    expect(envelope.warnings.some((w) => w.code === 'dual-axis' && w.severity === 'warn')).toBe(true);
+  // A percentage ruler must keep its meaning when a series asks for a second scale.
+  it('draws the ruler and keeps all series on the primary scale with one warning', () => {
+    const { name: _name, ...chart } = comboDoc.charts[0]!;
+    const draw = (axis: 'primary' | 'secondary') => requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      ...chart,
+      data: { ...chart.data, series: chart.data.series.map(series => ({ ...series, axis })) },
+      options: { secondaryAxis: { ruler: { of: 'primary', total: 500 } } },
+    } as never)));
+    const ruled = draw('secondary');
+    const primary = draw('primary');
+    expect(ruled.axes).toEqual(primary.axes);
+    expect(ruled.scene).toEqual(primary.scene);
+    expect(ruled.scene.some(node => node.t === 'text' && node.lines.includes('100%'))).toBe(true);
+    expect(ruled.warnings.filter(w => w.code === 'secondary-axis-ignored' || w.code === 'dual-axis')).toMatchObject([{
+      code: 'secondary-axis-ignored', severity: 'warn', message: expect.stringContaining("keeps 'revenue', 'units' on the primary scale"),
+    }]);
   });
+});
 
+describe('an error-severity lint refuses the chart', () => {
   // Hand-built documents cover error lints that shipped fixtures do not reach.
   // Every severity:'error' lint must refuse, regardless of chart family.
   it.each([

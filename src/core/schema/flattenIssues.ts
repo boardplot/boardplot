@@ -46,9 +46,12 @@ function flattenUnions(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] 
   const out: z.core.$ZodIssue[] = [];
   for (const issue of issues) {
     // A branch that failed on extra keys alone matched the shape: the extra key is the finding,
-    // not a field another branch misses (for example `{ acknowledge, typo }` against a two-branch union).
+    // not a field another branch misses (for example `{ domain, typo }` against combo's axis options union).
+    // A key that another branch knows is no extra: that branch matched, and its issue inside the key is the finding.
+    const known = (branch: readonly z.core.$ZodIssue[]) => issue.code === 'invalid_union' && issue.errors.some((other) => other !== branch
+      && other.some((inner) => inner.path.length > 0 && branch.some((own) => own.code === 'unrecognized_keys' && own.path.length === 0 && own.keys.includes(String(inner.path[0])))));
     const extrasOnly = issue.code === 'invalid_union'
-      ? issue.errors.find((branch) => branch.length > 0 && branch.every((inner) => inner.code === 'unrecognized_keys'))
+      ? issue.errors.find((branch) => branch.length > 0 && branch.every((inner) => inner.code === 'unrecognized_keys') && !known(branch))
       : undefined;
     if (extrasOnly) {
       for (const inner of extrasOnly) out.push({ ...inner, path: [...issue.path, ...inner.path] } as z.core.$ZodIssue);

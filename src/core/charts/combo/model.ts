@@ -86,7 +86,7 @@ export interface ComboDomain {
   lines: NormSer[];
   refs: NormSer[];
   secondaryActive: boolean;
-  /** An acknowledged secondary scale drawn without its tick column (`secondaryAxis.show: false`). */
+  /** A second value scale drawn without its tick column (`secondaryAxis.show: false`). */
   secondaryTicksHidden: boolean;
   /** The anatomy labels every value, so neither tick column is drawn by default. */
   ticksFromLabels?: boolean;
@@ -194,7 +194,7 @@ export interface ComboArea {
   rightTickX: number;
   y: LinearScale;
   y0: number;
-  /** The secondary scale when one is acknowledged, else `y`. */
+  /** The secondary scale when it is active, else `y`. */
   y2: LinearScale;
   /** The anatomy's growth statement beyond the right ticks, when asked for. */
   growth?: { x: number; valueFont: FontSpec; nameFont: FontSpec; items: GrowthItem[]; oneLine: boolean };

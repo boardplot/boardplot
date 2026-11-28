@@ -530,10 +530,11 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
-| revenue-units-secondary | combo.dual-axis | example | Revenue columns + units-sold line on acknowledged secondary axis, every value labelled |
+| revenue-units-secondary | combo.dual-axis | example | Revenue columns and a units-sold line on separate scales, every value labelled |
 | margin-line-own-scale | combo.dual-axis | example | Revenue columns with the EBITDA margin % line on its own scale, no right ticks |
 | line-labels-extremes | combo.dual-axis | example | Order columns with a conversion line labelled at its ends, its low and its high |
 | line-labels-none | combo.dual-axis | example | Revenue columns with a units line read off its own tick axis, no point labels |
+| revenue-units-separate-scales | combo.dual-axis | example | Revenue columns and a units-sold line with separate value axes |
 | stacked-shares-sum | combo.dual-axis | torture | Torture: stacked segment shares that add up to 100% in every column |
 | line-only | combo.overlay | torture | Torture: combo with no column series (area band + two lines) |
 | dense-12-months | combo.dual-axis | torture | Torture: 12 monthly categories, stacked columns + line, smart density |
@@ -541,7 +542,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | smooth-forecast-overlay | combo.dual-axis | example | Monotone combo overlay stays continuous as actuals turn to forecast dashes |
 | secondary-axis-direct-labels | combo.dual-axis | example | Secondary axes identified by full series names and endpoint values |
 | zoom-preserves-source-mean | combo.overlay | torture | Zoom retains the full-series mean |
-| theme-dual-axis-anatomy | combo.dual-axis | example | A theme draws every acknowledged dual axis with its anatomy |
+| theme-dual-axis-anatomy | combo.dual-axis | example | The theme enables the dual-axis anatomy |
 | revenue-units-dual-axis-anatomy | combo.dual-axis | example | Dual-axis anatomy: shared gridlines, the line above the columns, both growth rates stated |
 | daily-columns-rate-reference | combo.dual-axis | torture | Daily columns, rate endpoints and a named reference on a flat dashboard |
 | dual-axis-line-floated | combo.dual-axis | example | A margin line floats over the revenue columns on its own scale |

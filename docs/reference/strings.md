@@ -908,7 +908,7 @@ A word with a field in braces, such as `{count}`, keeps the field in the replace
 | `scatterGroupDesc` | ` in {v1} group{v2} ({v3})` | scatter |
 | `scatterName` | `Scatter` | scatter |
 | `scatterTitle` | `{v1} chart: {v2} points` | scatter |
-| `secondaryAxisDesc` | `. Line series on an acknowledged secondary axis` | combo |
+| `secondaryAxisDesc` | `. Some series use a second value scale` | combo |
 | `segmentsSentence` | `Segments: {v1}. {v2}` | bartable |
 | `sensitivityNote` | `One-at-a-time sensitivity: each driver is varied alone with every other driver held at its base input. The swings do not sum to a total and interaction effects are not shown.` | shared |
 | `seriesCount` | `{v1} series` | waffle |

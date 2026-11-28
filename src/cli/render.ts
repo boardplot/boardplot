@@ -210,6 +210,7 @@ function renderWithTables(input: RenderInput): VerbResult {
     // would otherwise share every id on the page they are inlined into.
     // Ignored settings do not change the chart's SVG ids.
     const { name: _name, ...drawing } = ignoreChartSettings(canonicalChartType(sized.type) ?? sized.type, sized, canonicalChartType).chart;
+    if (drawing.options && Object.keys(drawing.options).length === 0) delete drawing.options;
     // A target argument draws differently, so it joins the hash; without one the hash keeps its old input.
     const hashed = sha256(canonicalJson({ drawing, locale: doc.locale ?? null, theme: resolveTheme(doc.theme), ...(options.target ? { target: options.target } : {}) })).slice(0, 10);
     const uses = (scopeUses.get(hashed) ?? 0) + 1;

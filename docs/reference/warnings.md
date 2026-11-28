@@ -199,7 +199,6 @@ Every code a render, a measure or a React chart can return, read from the source
 | `column-override-no-head` | warn |  | core/charts/columnOverrides.ts |
 | `column-stepped-to-bar` | info |  | column |
 | `column-visibility-ref-unknown` | warn |  | table |
-| `combo-ruler-conflict` | error |  | combo |
 | `combo-ruler-total-exceeded` | warn |  | combo |
 | `combo-ruler-total-invalid` | error |  | combo |
 | `compact-notes-omitted` | info |  | core/frame.ts, core/sizing.ts |
@@ -280,7 +279,6 @@ Every code a render, a measure or a React chart can return, read from the source
 | `dual-axis-anatomy-off` | info |  | combo |
 | `dual-axis-columns-squeezed` | info |  | combo |
 | `dual-axis-line-floated` | info |  | combo |
-| `dual-axis-unacknowledged` | error |  | combo |
 | `dumbbell-two-series` | error |  | dot |
 | `duplicate-binding` | error |  | status |
 | `duplicate-category-labels` | warn |  | core/lint/honesty.ts |
@@ -800,7 +798,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `scatter-dense-paths` | info |  | scatter |
 | `scenario-unexplained` | info |  | core/lint/partner.ts |
 | `schema-hint-unusable` | warn |  | core/doc/document.ts |
-| `secondary-axis-ignored` | warn |  | core/request.ts |
+| `secondary-axis-ignored` | warn |  | combo, core/request.ts |
 | `segment-identity-mismatch` | warn |  | waterfall |
 | `segment-labels-hidden` | info |  | column |
 | `segment-share-mixed-signs` | warn |  | band |

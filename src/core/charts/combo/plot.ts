@@ -425,8 +425,8 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
 }
 
 /**
- * The dual-axis key rule: on a combo with an acknowledged
- * secondary axis, an authored axis title over exactly one series carries
+ * The dual-axis key rule: on a combo with a second value scale,
+ * an authored axis title over exactly one series carries
  * that series' swatch, so the series is keyed there and the key row lists
  * only what no title names (references, scenarios, anomaly marks).
  */
@@ -470,7 +470,7 @@ function comboFrameMargins(env: ComboEnv, domain: ComboDomain) {
   // force (an authored margin.left stays the author's baseline, the label's
   // air is added to it), so the label anchors at that margin like everything
   // else. Only annotations annotate.ts will actually render count: a string
-  // label known this early, and — for `axis: 'secondary'` — an acknowledged
+  // label known this early, and — for `axis: 'secondary'` — an active
   // secondary axis with a numeric value (annotate.ts rejects the rest with a
   // warning, and a reserve for a rejected line is a permanently blank
   // gutter). Mean-derived texts keep the annotate.ts clamp as their backstop.

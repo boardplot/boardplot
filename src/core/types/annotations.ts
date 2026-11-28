@@ -105,11 +105,10 @@ export type Annotation<X extends string | number = Id> =
       label?: string | false;
       side?: 'left' | 'right';
       /**
-       * Which value scale `value` is expressed in. 'secondary' requires an
-       * acknowledged secondary axis (combo); a chart without one WARNS
-       * `valueline-axis-unsupported` and draws nothing — never a silent
-       * no-op. Used by the pareto threshold, which lives
-       * in cumulative-share percent, not in count units.
+       * Value scale for the annotation. 'secondary' uses the second value scale
+       * drawn by a combo series on axis: 'secondary'. When the scale is missing,
+       * Boardplot warns `valueline-axis-unsupported` and skips the annotation.
+       * Pareto uses the secondary scale for its cumulative-share threshold.
        */
       axis?: 'primary' | 'secondary';
       /**

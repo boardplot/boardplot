@@ -311,7 +311,7 @@ export interface AnnotatePassInput {
   /** Category ids in display order, for attainment cells. */
   categoryIds?: Id[];
   /**
-   * Acknowledged-secondary-axis mapping, for `valueLine.axis: 'secondary'`
+   * Second value scale for `valueLine.axis: 'secondary'`
    * (combo passes its y2). Absent everywhere else, which makes the option a
    * WARNED refusal rather than a silent no-op.
    */
@@ -1329,8 +1329,7 @@ function valueLineMean(
     warn(
       s,
       'valueline-axis-unsupported',
-      `valueLine '${id}': axis 'secondary' needs an acknowledged secondary axis (a combo series on axis 'secondary' ` +
-        'with options.secondaryAxis.acknowledge) — this chart has none',
+      `valueLine '${id}': axis 'secondary' needs a second value scale. A combo line or area series with axis: 'secondary' creates that scale when there is no percentage ruler.`,
     );
     return undefined;
   }
