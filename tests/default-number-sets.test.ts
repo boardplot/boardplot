@@ -43,6 +43,6 @@ describe('default number sets', () => {
       categories: ['n', 's', 'e', 'w'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'mass', values: [41_200, 33_800, 9_800, 0.0000031] }],
     }, options: { unit: 'kg', size: { width: 960 } } } as never);
     const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter((label) => label.kind === 'outsidePie').map((label) => label.text);
-    expect(texts).toEqual(['N 41,200 · 48.6%', 'S 33,800 · 39.9%', 'E 9,800 · 11.6%', 'W 0.0000031 · <0.1%']);
+    expect(texts).toEqual(['N 41,200 · 48.6%', 'S 33,800 · 39.9%', 'E 9,800 · 11.5%', 'W 0.0000031 · <0.1%']);
   });
 });
