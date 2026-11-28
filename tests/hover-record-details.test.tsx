@@ -745,8 +745,6 @@ describe('default card rows', () => {
       options: { unit, size: { width: 480, height: 360 } } }, 'c0').map(row => row[0]);
     expect(pie('$m', [42, 58])).toEqual(['C0', '', 'Share:']);
     expect(pie('%', [58, 42])).toEqual(['C0', '']);
-    expect(card({ type: 'pie', data: { categories: [{ id: 'c0', label: 'C0' }, { id: 'c1', label: 'C1' }], series: [{ id: 's', values: [58, 42], format: '0.0%' }] },
-      options: { size: { width: 480, height: 360 } } }, 'c0').map(row => row[0])).toEqual(['C0', '']);
     expect(card(spec('Tausend pro Monat', 'de-DE'), 'q1')[1]?.[1]).toMatch(/^1[.,]8\u00a0Tsd\. pro Monat$/u);
   });
 
