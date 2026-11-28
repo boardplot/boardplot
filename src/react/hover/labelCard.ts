@@ -29,6 +29,8 @@ export interface LabelCardRow {
   /** 'more' is the card's own row counting what the frame's height left out. */
   kind: 'title' | 'value' | 'field' | 'comparison' | 'share' | 'total' | 'rank' | 'annotation' | 'event' | 'more';
   text: string;
+  /** The annotation an annotation row prints. */
+  annotationId?: string;
   /** Separate drawn cells. `text` keeps the complete accessible reading. */
   label?: string;
   value?: string;
@@ -532,7 +534,7 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       const value = chartString(wording, 'rankValue', { v1: record.rank.value, v2: record.rank.of, v3: chartString(wording, record.rank.direction === 'desc' ? 'highestFirst' : 'lowestFirst') });
       rows.push({ kind: 'rank', label, value, text: `${label} ${value}` });
     }
-    for (const annotation of record.annotations) rows.push({ kind: 'annotation', text: annotation.text });
+    for (const annotation of record.annotations) rows.push({ kind: 'annotation', text: annotation.text, annotationId: annotation.id });
   }
   return cardContent(rows);
 }
@@ -544,20 +546,17 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
  * event the records also carry as an annotation is listed once, as an event.
  * A period without events keeps its card, and an event's own card is left as it is.
  */
-export function withPeriodEvents(records: readonly InteractionRecord[], listed: readonly InteractionRecord[],
-  content: (listed: readonly InteractionRecord[]) => LabelCardContent): LabelCardContent {
-  const first = listed[0]!;
+export function withPeriodEvents(base: LabelCardContent, records: readonly InteractionRecord[], first: InteractionRecord): LabelCardContent {
   const { categoryId } = first.target.owner;
   const events = categoryId === undefined || first.event ? [] : records.filter(record => record.event?.categoryId === categoryId
     && record.target.chart === first.target.chart && record.target.panel === first.target.panel);
-  if (!events.length) return content(listed);
-  // A grid panel's records name an annotation with the panel's prefix.
-  const ids = events.map(record => record.target.owner.annotationId!);
-  const own = (id: string) => ids.some(event => id === event || id.endsWith(`/${event}`));
-  const base = content(listed.map(record => ({ ...record, annotations: record.annotations.filter(annotation => !own(annotation.id)) })));
+  if (!events.length) return base;
+  // A grid panel's records name an annotation with the panel's id in front.
+  const prefix = first.target.panel === undefined ? '' : `${first.target.panel.split('/').at(-1)}/`;
+  const ids = new Set(events.map(record => prefix + record.target.owner.annotationId!));
   const rows = events.flatMap(({ event }) => event!.items.map(({ title }): LabelCardRow => event!.day
     ? { kind: 'event', label: event!.day, value: title, text: `${event!.day} ${title}` } : { kind: 'event', text: title }));
-  return cardContent([...base.rows, ...rows]);
+  return cardContent([...base.rows.filter(row => row.annotationId === undefined || !ids.has(row.annotationId)), ...rows]);
 }
 
 /** The widest an event's card is: its detail is prose and wraps at a reading measure. */

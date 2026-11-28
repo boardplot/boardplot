@@ -585,8 +585,8 @@ export function hoverView(
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
   const listed = flags.card ? cardRecords(model, active) : active;
   const layout = !flags.card ? undefined : withChartFormats(request.options, () => listed.length > 1
-    ? layoutLabelCardContent(input, withPeriodEvents(model.records, listed, records => sharedLabelCardContent(records, locale, card, geometry.scene, model.cardRows)))
-    : layoutLabelCardContent(input, withPeriodEvents(model.records, [first], records => labelCardContent(records[0]!, locale, card))));
+    ? layoutLabelCardContent(input, withPeriodEvents(sharedLabelCardContent(listed, locale, card, geometry.scene, model.cardRows), model.records, first))
+    : layoutLabelCardContent(input, withPeriodEvents(labelCardContent(first, locale, card), model.records, first)));
   const scene = flags.highlight ? highlightScene(geometry.scene, model.records, active, theme)
     : flags.keyboard ? outlineScene(geometry.scene, model.records, active, theme) : geometry.scene;
   // Keep the chart's description fallback alongside the tooltip's reading.

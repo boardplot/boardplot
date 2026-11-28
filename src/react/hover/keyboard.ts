@@ -204,7 +204,7 @@ export function keyboardReading(model: HoverModel, request: ResolvedChartRequest
   const active = cardRecords(model, keyboardTargets(model, request, record));
   const options = cardOptions(model, request, record);
   const locale = request.locale?.language;
-  return withChartFormats(request.options, () => withPeriodEvents(model.records, active.length > 1 ? active : [record], listed => listed.length > 1
-    ? sharedLabelCardContent(listed, locale, options)
-    : labelCardContent({ ...listed[0]!, cardFields: undefined }, locale, options)).accessibleText);
+  return withChartFormats(request.options, () => withPeriodEvents(active.length > 1
+    ? sharedLabelCardContent(active, locale, options)
+    : labelCardContent({ ...record, cardFields: undefined }, locale, options), model.records, record).accessibleText);
 }
