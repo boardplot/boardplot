@@ -42,7 +42,7 @@ import { isOwnMark } from './label/solver';
 import { cutLabels, reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
 import { LIVE_NOTE_SHOW, staticFrame } from './footer';
-import { AUTO_PANEL_HEIGHT, engineNoteMeta, shownNoteKinds, sourceLine, withAuthorNotesOnly, withEngineNotes } from './notes';
+import { AUTO_PANEL_HEIGHT, engineNoteMeta, shownNoteKinds, sourceLine, withEngineNotes } from './notes';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 import { hasCompleteTextWidths } from './fontMetrics/injected';
@@ -55,7 +55,7 @@ export type DiscardRepair = boolean | ((refusal: RefusedLayout) => boolean);
 type RegistryFitLayout<O extends ChartOptions, M extends object, DV extends object> = FitLayout<O, M, DV>
   & ((options?: O, replaceRepair?: RepairReplacement<M, DV>) => LayoutResult<M, DV>);
 
-/** A fixed canvas keeps its default caveats only when they leave room for the plot. */
+/** A fixed canvas keeps optional notes only when they leave room for the plot. */
 function fitDefaultCaveats<M extends object, DV extends object>(first: LayoutResult<M, DV>, options: ChartOptions,
   withoutCaveats: () => LayoutResult<M, DV>): LayoutResult<M, DV> {
   if (first.refused || isRefused(first)) return withoutCaveats();
@@ -765,13 +765,20 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const options = withDefaultTarget(authored);
     return withLayoutMemo(() => {
       const draw = (at?: O) => loadedDeferred('footer')?.(layout, data, at, def.type) ?? layout(data, at);
-      const geo = hasDefaultCaveats && options && shownNoteKinds(options) === undefined && !(AUTO_PANEL_HEIGHT in options)
+      const comboDisclosures = def.type === 'combo' && options?.notes?.show?.includes('disclosure') ? options.notes.show : undefined;
+      const geo = hasDefaultCaveats && options && (comboDisclosures || shownNoteKinds(options) === undefined) && !(AUTO_PANEL_HEIGHT in options)
         && !heightOmitted(options.size, options.target)
         ? withEngineNotes(notes => {
           const { caveat } = notes;
           const first = draw(options);
-          if (first.refused ? notes.caveat === caveat : !first.frame.noteList?.some(note => engineNoteMeta(note)?.caveat)) return first;
-          return fitDefaultCaveats(first, options, () => draw({ ...withAuthorNotesOnly(options), [LIVE_NOTE_SHOW]: ['note'] }));
+          if (comboDisclosures) {
+            if (!first.refused || first.warnings[0]?.code !== 'size-below-floor' || first.size.width + SIZE_TOLERANCE < first.sizing.minWidth) return first;
+          } else if (first.refused ? notes.caveat === caveat : !first.frame.noteList?.some(note => engineNoteMeta(note)?.caveat)) return first;
+          const show = comboDisclosures?.filter(kind => kind !== 'disclosure') ?? ['note' as const];
+          return fitDefaultCaveats(first, options, () => {
+            const plain = draw({ ...options, notes: { ...options.notes, show }, [LIVE_NOTE_SHOW]: show });
+            return comboDisclosures && isRefused(plain) ? first : plain;
+          });
         }) : draw(options);
       if (options?.categoryAxis?.title) {
         // The title gives way when it would refuse the chart or hide a label, itself included.
