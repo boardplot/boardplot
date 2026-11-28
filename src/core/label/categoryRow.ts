@@ -103,8 +103,10 @@ export interface CategoryRowInput {
   padding?: number;
   /** Allow the 45° rotation step for prose (default true). */
   rotate?: boolean;
-  /** True for an ordered line axis, false for stack names within a group. Otherwise infer the order from the labels. */
+  /** Ordered prose (line axes) wraps, then uses a uniform stride before rotation. */
   ordered?: boolean;
+  /** Stack names under a group row: never read as dates, numbers or an ordered axis, so every name keeps its place. */
+  stackNames?: true;
   /** Line-family rows count equal label steps back from the latest period. */
   strideFromEnd?: boolean;
   /**
@@ -1058,7 +1060,7 @@ const PROSE_FLOOR_LINES = 3;
 function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?: (fit: FitRotation) => void): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
-  const dateNumeric = input.ordered !== false && ((input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels));
+  const dateNumeric = !input.stackNames && ((input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels));
   const periodRow = dateNumeric || input.periods === true || calendarLike(labels);
   // A period row keeps the muted secondary role but prints at the label step. A narrow card keeps the ink: its names are 12 px and its secondary text 11 px.
   const secondary = periodRow && typeClassCap() !== 'XS' && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
@@ -1086,7 +1088,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
   const allowRotate = input.rotate ?? true;
-  const orderedProse = !dateNumeric && (input.ordered ?? (input.strideFromEnd || numberedSequence(labels)));
+  const orderedProse = !input.stackNames && (input.ordered || input.strideFromEnd || numberedSequence(labels)) && !dateNumeric;
   const baseFont = fonts[0]!;
   const bundled = sourceMeasure === defaultMeasurer || sourceMeasure === measureText;
   // A space-separated name with nonnegative advances cannot fit whole if a word exceeds its slot.

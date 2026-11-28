@@ -747,7 +747,7 @@ function columnBand(
       // Without the rank key, nominal names keep one name per column (rotate, then ellipsis).
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : { everyName: true }),
-      ...(groupedNames && !ticked ? { ordered: false, everyName: true } : {}),
+      ...(groupedNames && !ticked ? { stackNames: true, everyName: true } : {}),
       ...ticked?.plan,
       ...(typeClassCap() === 'XS' && !ticked && calendarLike(row.labels)
         ? { pinned: cats.map((_, i) => i === cats.length - 1 || row.pinned?.[i] === true) } : {}),
