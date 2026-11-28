@@ -271,7 +271,8 @@ describe('note rules', () => {
     });
 
     it('does not cost a 343 px doughnut a slice label when its hole already holds the total', () => {
-      expect(drawnAt('dashboard', 343, 300, 0.6, 1)).toEqual({ total: true, slices: 3 });
+      // The narrow card's smaller slice text seats five slice labels beside the total.
+      expect(drawnAt('dashboard', 343, 300, 0.6, 1)).toEqual({ total: true, slices: 5 });
     });
 
     it('leaves the labels as they are when the hole cannot hold the total at either size', () => {

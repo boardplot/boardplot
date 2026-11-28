@@ -179,7 +179,7 @@
 ["dimswitch/sheet",400,"authored","default","drawn",[],[400,613],[16,45,368,558],"3830cbd8fea9",[]]
 ["dimswitch/sheet",400,"authored","fixed=400x300","drawn",[],[400,300],[12,44,376,246],"27459e5bf9e5",[]]
 ["dimswitch/sheet",400,"notation","default","drawn",[],[400,654],[16,45,368,599],"3830cbd8fea9",[]]
-["dimswitch/sheet",400,"notation","fixed=400x300","drawn",[],[400,300],[12,39,376,253],"27459e5bf9e5",[]]
+["dimswitch/sheet",400,"notation","fixed=400x300","refused",["size-below-floor"],null,null,null,[]]
 ["dimswitch/sheet",480,"authored","default","drawn",[],[480,656],[16,45,448,601],"3830cbd8fea9",[]]
 ["dimswitch/sheet",480,"notation","default","drawn",[],[480,697],[16,45,448,642],"3830cbd8fea9",[]]
 ["dimswitch/sheet",720,"authored","default","drawn",[],[720,632],[24,53,672,569],"3830cbd8fea9",[]]

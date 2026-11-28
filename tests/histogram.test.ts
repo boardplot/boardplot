@@ -329,7 +329,8 @@ describe('histogram disclosures', () => {
     }));
     const equalCounts = equal.labels.filter(label => label.kind === 'point' && !label.hidden);
     expect(equalCounts).toHaveLength(10);
-    expect(equalCounts.every(label => label.text === '1k')).toBe(true);
+    // The narrow card's 11 px text seats the whole count, so no label needs the 1k form.
+    expect(equalCounts.every(label => label.text === '1,000')).toBe(true);
     expect(equal.warnings.some(warning => warning.code === 'value-labels-dropped-series')).toBe(false);
     for (const content of [['absolute', 'category'], ['absolute', 'series']] as const) {
       const composed = requireGeometry(getChart('histogram')!.layout(equalData, {
@@ -355,7 +356,7 @@ describe('histogram disclosures', () => {
       const points = localized.labels.filter(label => label.kind === 'point' && !label.hidden);
       expect(points).toHaveLength(10);
       // The language changes words only, never the marks.
-      expect(points.every(label => label.text === '1.1k')).toBe(true);
+      expect(points.every(label => label.text === '1,100')).toBe(true);
     }
   });
 

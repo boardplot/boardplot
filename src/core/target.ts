@@ -31,8 +31,8 @@ export const SIZE_PRESETS: Record<SizePreset, Size> = {
 type TypeColumn = Readonly<Record<TypeRoleName, number>>;
 export type TargetTypeClass = 'XS' | 'S' | 'M' | 'L';
 
-/** The chart types that take the narrow dashboard class. The others keep their sizes under 400 px. */
-const NARROW_EXCLUDED = new Set(['kpi', 'bullet', 'sparkline', 'creative']);
+/** The chart types that keep their sizes under 400 px: KPI, bullet, sparkline and creative have their own, and table, dimswitch, gantt, slope and grid read the class in their own references and in React, which the next change gives them. */
+const NARROW_EXCLUDED = new Set(['kpi', 'bullet', 'sparkline', 'creative', 'table', 'dimswitch', 'gantt', 'slope', 'grid']);
 
 export type NarrowMode = 'on' | 'off';
 let narrowMode: NarrowMode | undefined;
