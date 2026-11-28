@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording of the table and the charts that draw through it (dimswitch).
   "tableTitle": "Table",
   "tableDesc": "Table with {v1} rows and {v2} columns",

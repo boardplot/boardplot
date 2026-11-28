@@ -17,6 +17,7 @@
 import { linkStoryLayer } from '../core/storyLayer';
 import { linkAnnotateEngine } from '../core/annotateEngine';
 import { linkThemeShapeRules } from '../core/themeShapeRules';
+import { linkWordKeys } from '../core/schema/linkWordKeys';
 import { registerAllGeoPacks } from '../core/geo/packs';
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
@@ -61,6 +62,7 @@ import {
 // Linked by value, so this entry resolves a patched theme and lays out
 // annotations synchronously (see core/deferred), and draws every geo pack.
 linkThemeShapeRules();
+linkWordKeys();
 linkAnnotateEngine();
 linkStoryLayer();
 registerAllGeoPacks();

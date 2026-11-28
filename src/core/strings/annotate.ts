@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "seriesSpan": "{v1} to {v2}",
   // author-facing warning, the same on a category axis and a time axis.

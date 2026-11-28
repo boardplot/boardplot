@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "treemapDesc": "Treemap, {v1}, {v2} cells{v3}, total {v4}. ",
   "circular": "circular",

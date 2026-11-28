@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "funnelTitle": "Funnel: {v1} to {v2}",
   "stagesCount": "{v1} stage{v2}",

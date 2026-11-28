@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   "measure": "Retention",
   "title": "Cohort {measure}: {cohorts} cohorts over {periods} periods",
   "cells": "{count} cell{count||s}",

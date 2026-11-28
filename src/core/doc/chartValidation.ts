@@ -1,3 +1,4 @@
+import { linkedWordKeys } from '../schema/wordKeyRegistry';
 import * as z from 'zod';
 import { EMPTY_DATA, isEmptyDataIssue } from '../emptyData';
 import { isRecord } from '../lint/shared';
@@ -837,7 +838,9 @@ function unknownKeyText(
     return { message: rule, suggest: rule };
   }
   // A union branch chosen by its tag ({ kind: 'computed' }) takes only its own keys.
-  const known = selected ? Object.keys(selected.properties!).filter(name => !refusedNode(selected.properties![name]!)) : all;
+  // options.strings takes every key of the built-in word tables: the near miss reads them all, and the message does not list them.
+  const words = optionsType !== undefined && path.at(-2) === 'strings' ? linkedWordKeys() : undefined;
+  const known = words ? [...words] : selected ? Object.keys(selected.properties!).filter(name => !refusedNode(selected.properties![name]!)) : all;
   const moved = optionsType === undefined ? undefined
     : movedKey(path.join('.'), (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
   if (moved) return { message: `unknown key '${key}' — it is ${moved}`, suggest: unknownKeySuggest(key, undefined, moved) };
@@ -863,7 +866,7 @@ function unknownKeyText(
     || (closest.key === 'fill' && typeof content === 'string' && literalColor(content) === null))) {
     closest = { ...closest, near: false };
   }
-  const message = `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`;
+  const message = `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${words ? '; the keys are listed in docs/reference/strings.md' : known.length ? `; known keys: ${known.join(', ')}` : ''}`;
   if (optionsType === undefined) {
     const object = isRecord(source?.parent) ? source.parent : value;
     if (closest?.near && isRecord(object) && Object.hasOwn(object, closest.key)) {

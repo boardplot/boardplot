@@ -22,6 +22,7 @@
  * import.
  */
 
+import { linkWordKeys } from './core/schema/linkWordKeys';
 import { linkSchemaDescriptions } from './core/schema/linkDescriptions';
 import { linkStoryLayer } from './core/storyLayer';
 import { linkAnnotateEngine } from './core/annotateEngine';
@@ -46,6 +47,7 @@ linkThemeShapeRules();
 
 function ensureCatalogueRegistered(): void {
   registerCatalogue();
+  linkWordKeys();
   linkAnnotateEngine();
   linkStoryLayer();
 }

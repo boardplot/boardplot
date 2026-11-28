@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "referenceSeriesCount": "{v1} reference series",
   "stackedColumnSeriesDesc": "{v1} stacked column series ({v2})",

@@ -131,8 +131,10 @@ describe('per-type React entries refuse unknown option keys', { timeout: 120_000
     expect(markup).toContain(`data-bp-error-path="options.${INVENTED}"`);
   });
 
-  // A provider kept since a release that took strings.highlight must still draw; a typo there must still refuse.
-  it('refuses an unknown key in the strings of a BoardplotTheme provider, and takes a reader key and a retired key', async () => {
+  // A provider kept since a release that took strings.highlight must still draw. The entry holds no list of the
+  // built-in word keys (that would put every key in each chart's code), so a misspelt strings key is checked
+  // outside the browser, by the CLI and the spec validation, and the entry ignores it.
+  it('draws with a BoardplotTheme provider whose strings hold a reader key, a retired key or a key it does not know', async () => {
     const { BoardplotTheme } = await import('../src/react/BoardplotTheme');
     for (const type of ['pie', 'table']) {
       const fixture = getFixtures(type)[0]!;
@@ -140,10 +142,7 @@ describe('per-type React entries refuse unknown option keys', { timeout: 120_000
       const draw = (strings: Record<string, string>) => mount(<BoardplotTheme strings={strings as never}>
         <Chart {...structuredClone(fixture.options ?? {}) as Record<string, unknown>} data={structuredClone(fixture.data)} size={SIZE} />
       </BoardplotTheme>);
-      const markup = await draw({ hilite: 'Old' });
-      const card = new DOMParser().parseFromString(markup, 'text/html').querySelector('[data-bp-error-path="BoardplotTheme.strings.hilite"]');
-      expect(card?.getAttribute('data-bp-error-code'), type).toBe('unknown-option');
-      expect(markup, `${type} drew`).not.toContain('<svg');
+      expect(await draw({ hilite: 'Old' }), `${type} unknown key`).toContain('<svg');
       expect(await draw({ emptyHint: 'Pick another month.', loading: 'Loading' }), `${type} reader keys`).toContain('<svg');
       expect(await draw({ highlight: 'Old' }), `${type} retired key`).toContain('<svg');
     }

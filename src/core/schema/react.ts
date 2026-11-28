@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { baseOptionsSchema, sizeSchema, readerStringsSchema } from './shared';
+import { baseOptionsSchema, builtInStringsSchema, stringsShape, sizeSchema, readerStringsSchema } from './shared';
 
 /** The hover prop of every chart component and of BoardplotChart. */
 export const hoverSchema = z.union([
@@ -25,7 +25,7 @@ export const reactSizingOptionsSchema = z.object({
 }).strict().describe('React-only container sizing options. Explicit sizes ignore fit and fallbackSize.');
 
 // The provider strings fields worded as the chart strings fields are the same schema.
-const sharedStrings = baseOptionsSchema.shape.strings.unwrap();
+const sharedStrings = z.object(stringsShape);
 
 /** Serializable provider settings. React children are outside this contract. */
 export const boardplotThemeOptionsSchema = z.object({
@@ -41,7 +41,7 @@ export const boardplotThemeOptionsSchema = z.object({
   ]).optional().describe('Inherited locale. Locale support follows each chart formatter.'),
   motion: z.enum(['system', 'reduce', 'full']).optional().describe('Motion preference. Default system; charts remain static unless motion is enabled.'),
   density: z.enum(['comfortable', 'compact']).optional().describe('Inherited density. Default comfortable preserves existing spacing. Compact scales pad and row-pitch tokens (labelPad, canvas margins, frame gaps, legendRowH) and maps to compact table density when the table has no explicit density.'),
-  strings: z.object({
+  strings: builtInStringsSchema({
     ...readerStringsSchema.shape,
     others: z.string().optional().describe('Host wording for the Others aggregate.'),
     total: z.string().optional().describe('Host wording for a computed total.'),
@@ -90,11 +90,11 @@ export const boardplotThemeOptionsSchema = z.object({
     axisHigh: z.string().optional().describe('Host wording for the high end of a scatter qualitative axis.'),
     ...sharedStrings.pick({ nearZeroChange: true, mixedCoverage: true, hiddenPeriods: true }).shape,
     // use the same wording path for caller and provider overrides.
-    missingStack: baseOptionsSchema.shape.strings.unwrap().shape.missingStack,
-    incompleteStacks: baseOptionsSchema.shape.strings.unwrap().shape.incompleteStacks,
-    knownPartsShares: baseOptionsSchema.shape.strings.unwrap().shape.knownPartsShares,
-    rebaseZero: baseOptionsSchema.shape.strings.unwrap().shape.rebaseZero,
-    rebaseMissing: baseOptionsSchema.shape.strings.unwrap().shape.rebaseMissing,
+    missingStack: stringsShape.missingStack,
+    incompleteStacks: stringsShape.incompleteStacks,
+    knownPartsShares: stringsShape.knownPartsShares,
+    rebaseZero: stringsShape.rebaseZero,
+    rebaseMissing: stringsShape.rebaseMissing,
     loading: z.string().optional().describe('Visible wording of the busy state; default Loading.'),
-  }).strict().optional().describe('Inherited built-in wording. Authored labels remain unchanged.'),
+  }).optional().describe('Inherited built-in wording. Authored labels remain unchanged.'),
 }).strict().describe('Settings inherited through the BoardplotTheme React provider.');

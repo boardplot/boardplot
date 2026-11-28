@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
   "unknownRegionLeftOut": "Region '{v1}' is not in tile pack '{v2}' and was left out.",

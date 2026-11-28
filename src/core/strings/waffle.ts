@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "waffleTitle": "Waffle chart: {v1}",
   "panelsCount": "{v1} {v2}",

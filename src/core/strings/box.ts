@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "boxBriefPoints": "Whiskers: 1.5 × IQR; circles: outliers beyond them.",
   "boxBriefNoPoints": "Whiskers: 1.5 × IQR; values beyond them are not drawn.",

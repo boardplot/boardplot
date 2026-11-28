@@ -68,6 +68,7 @@ For supported row mappings, render and measure accept a local file through `rows
 ## Optional
 
 - [Shared options](docs/reference/options.md): common options, type-specific exceptions, value cells and annotation anchors
+- [Built-in words](docs/reference/strings.md): every key of `options.strings`, with its English default
 - [Theme](docs/reference/theme.md): presets, every token and the theme errors
 - [React](docs/reference/react.md): BoardplotChart and the per-type components, container sizing, server preparation, export
 - [Fixtures](docs/reference/fixtures.md): every runnable example by type

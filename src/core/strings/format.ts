@@ -1,6 +1,6 @@
 import { chartStrings } from '../strings';
 
-const EN = {
+export const EN = {
   // reader-facing wording linked only by its consumers.
   "intervalClosed": "{v1} to {v2} inclusive",
   "intervalOpen": "{v1} to under {v2}",

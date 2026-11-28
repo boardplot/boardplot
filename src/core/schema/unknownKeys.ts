@@ -71,7 +71,7 @@ export function unknownKeys(options: Record<string, unknown>, keys: OptionKeys):
 }
 
 /** The provider strings no chart option takes: the reader copy and the loading word (BoardplotStrings). */
-const PROVIDER_ONLY_STRINGS = Object.fromEntries([...Object.keys(readerStrings()), 'loading'].map((key) => [key, 0 as const]));
+export const PROVIDER_ONLY_STRINGS = Object.fromEntries([...Object.keys(readerStrings()), 'loading', 'loadingFailed'].map((key) => [key, 0 as const]));
 
 /**
  * The check a generated entry hands its component. A provider string is
