@@ -4,13 +4,16 @@
  * set that fits and the tick text. This module stays outside the shared scale module, so other entries do not load it.
  */
 
+import { valueAxisTickLabelX, type ValueAxisInput } from '../axis';
 import { sweepHide } from '../collide';
 import { authoredDecimals } from '../formatPrecision';
 import { MAGNITUDE_DIVISOR, RULE_SET, formatWithSpec, neededDecimals, type NumberFormatSpec } from '../formatSpec';
+import type { OccupiedIndex } from '../label/occupied';
 import { NormalizeError } from '../normalize/shared';
 import { fixedRuleSet, tickScale } from '../numberRule';
 import { applyAxisBounds, type LinearScale } from '../scale';
 import type { FontSpec, TextMeasurer } from '../text';
+import { secondaryFont } from '../theme';
 import { annotationRef, type Annotation } from '../types/annotations';
 import { cellValue, type RangeCell } from '../types/cell';
 import type { ValueAxisOptions } from '../types/options';
@@ -278,26 +281,40 @@ export function fitLogTicks(
 }
 
 /** Format the horizontal tick labels at their own precision and choose the set that fits the plot. */
-export function horizontalLogTicks(scale: LinearScale, spec: NumberFormatSpec, font: FontSpec, measure: TextMeasurer, axis: ValueAxisOptions, ticks?: number[]) {
+export function horizontalLogTicks(
+  { scale, plot, theme, measure, canvasWidth }: Pick<ValueAxisInput, 'scale' | 'plot' | 'theme' | 'measure' | 'canvasWidth'>,
+  occupied: OccupiedIndex,
+  spec: NumberFormatSpec,
+  tickFont: FontSpec,
+  axis: ValueAxisOptions,
+  ticks?: number[],
+) {
   const format = logSpecFormat(spec, scale.domain);
   if (ticks) return { format, ticks };
-  const fitted = fitLogTicks(scale, 'x', format, font, measure);
+  const fitted = fitLogTicks(scale, 'x', format, tickFont, measure);
+  const font = secondaryFont(theme);
+  const labelX = valueAxisTickLabelX(plot, font, occupied, canvasWidth);
   const isDecadePower = (power: number) => Math.abs(power - Math.round(power)) <= 1e-9;
-  // A sparse tick set can skip the decade just inside an automatic domain end.
-  const preferDecade = (end: number, next: number) => {
+  // When an automatic end crowds a decade, keep the nearest decade instead.
+  const preferDecade = (endIndex: number, nextIndex: number) => {
+    const end = fitted[endIndex]!;
     const power = Math.log10(end);
-    if (isDecadePower(power) || !isDecadePower(Math.log10(next))) return end;
-    const widths = measure(format(end), font).width + measure(format(next), font).width;
-    if (Math.abs(scale(end) - scale(next)) >= widths / 2 + 4) return end;
-    return decimal(1, end < next ? Math.ceil(power) : Math.floor(power));
+    if (isDecadePower(power) || !isDecadePower(Math.log10(fitted[nextIndex]!))) return end;
+    const items = [endIndex, nextIndex].map((index) => {
+      const tick = fitted[index]!;
+      const width = measure(format(tick), font).width;
+      return { start: labelX(scale(tick), width, index, fitted.length), size: width, priority: 0 };
+    });
+    if (sweepHide(items, 4).every(Boolean)) return end;
+    return decimal(1, endIndex === 0 ? Math.ceil(power) : Math.floor(power));
   };
   if (axis.min === undefined && fitted.length > 2) {
-    const tick = preferDecade(fitted[0]!, fitted[1]!);
+    const tick = preferDecade(0, 1);
     if (tick === fitted[1]) fitted.shift();
     else fitted[0] = tick;
   }
   if (axis.max === undefined && fitted.length > 2) {
-    const tick = preferDecade(fitted.at(-1)!, fitted.at(-2)!);
+    const tick = preferDecade(fitted.length - 1, fitted.length - 2);
     if (tick === fitted.at(-2)) fitted.pop();
     else fitted[fitted.length - 1] = tick;
   }

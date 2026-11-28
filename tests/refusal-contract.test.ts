@@ -128,6 +128,23 @@ describe('refusal contract', () => {
     }
   });
 
+  // An inward-anchored automatic end label must not displace the last decade as the chart gets wider.
+  it('prints the last log decade when the end label anchors inward', () => {
+    const values = [9000000, 10000000, 40000000, 70000000, 100000000];
+    const cases = [
+      { type: 'box', data: { groups: [{ id: 'a', label: 'Region A', observations: values }] } },
+      { type: 'dot', data: { categories: ['Region A', 'B', 'C', 'D', 'E'], series: [{ id: 's', values }] }, labels: { point: false } },
+    ];
+    for (const { type, data, labels } of cases) {
+      for (const width of [450, 480]) {
+        const options = { size: { width }, format: '$1,234', labels, valueAxis: { log: true, gridlines: true } };
+        const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options })));
+        const ticks = geometry.scene.flatMap((node) => node.t === 'text' && node.part === 'tick' ? node.lines : []);
+        expect(ticks, `${type} at ${width} px`).toContain('$100,000,000');
+      }
+    }
+  });
+
   // An ignored reference series must not cause a log dot chart to refuse or shift the position of a plotted error.
   it('validates log values only in the plotted dot series', () => {
     const options = { title: 'Dot with ignored reference', valueAxis: { log: true } };

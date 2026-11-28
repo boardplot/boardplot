@@ -667,19 +667,14 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const nodes: SceneNode[] = [...frameResult.nodes];
   const axes: Geometry['axes'] = [];
   if (axisShown) {
+    const axisLayout = { scale: x, plot, orient: 'x' as const, gridlines: options.valueAxis?.gridlines ?? false, theme, measure, canvasWidth: size.width };
     const axis = layoutValueAxis(
       {
-        scale: x,
-        plot,
-        orient: 'x',
+        ...axisLayout,
         // A value run under 320 px reads three figures, not five.
         ...(scaleEnd - plot.x < 320 ? { tickCount: 3 } : {}),
-        gridlines: options.valueAxis?.gridlines ?? false,
-        ...(log ? horizontalLogTicks(x, engineSpec ?? observationSpec!, tickFont, measure, va)
+        ...(log ? horizontalLogTicks(axisLayout, occupied, engineSpec ?? observationSpec!, tickFont, va)
           : { format: axisFmt, formatSpec: observationSpec }),
-        theme,
-        measure,
-        canvasWidth: size.width,
       },
       occupied,
     );

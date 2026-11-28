@@ -776,17 +776,12 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const gridOn = options.valueAxis?.gridlines ?? variant !== 'lollipop';
   if (axisShown) {
     const spec = percentAxis ? valueSpec.percentSpec : valueSpec.spec;
+    const axis = { scale: x, plot, orient: 'x' as const, gridlines: gridOn, theme, measure, canvasWidth: size.width };
     const axisResult = layoutValueAxis(
       {
-        scale: x,
-        plot,
-        orient: 'x',
-        gridlines: gridOn,
-        ...(log ? horizontalLogTicks(x, spec, tickFont, measure, va, stepped.ticks)
+        ...axis,
+        ...(log ? horizontalLogTicks(axis, occupied, spec, tickFont, va, stepped.ticks)
           : { ticks: stepped.ticks, format: percentAxis ? valueSpec.fmtPercent : fmt, formatSpec: spec }),
-        theme,
-        measure,
-        canvasWidth: size.width,
       },
       occupied,
     );
