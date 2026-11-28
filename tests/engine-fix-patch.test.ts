@@ -165,8 +165,8 @@ describe('root key fixes', () => {
     }
   });
 
-  // A root locale object (or array/object subtitle or source) on a bare chart got a remove patch that dropped the authored setting, while an envelope's locale-ignored warning omitted options.locale.
-  it('moves accepted object and array furniture into bare-chart options and points envelope locale objects to options.locale', () => {
+  // A bare-chart fix must preserve locale, subtitle and source values that work in chart options.
+  it('moves accepted object and array values into bare-chart options and warns on unsupported document locale types', () => {
     const sales = {
       type: 'column',
       data: {
@@ -219,21 +219,13 @@ describe('root key fixes', () => {
       expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
     }
 
-    const envelope = { version: 1, locale, charts: [{ name: 'sales', ...sales }] };
-    const envDrawn = render({ spec: envelope, format: 'svg' }).body as any;
-    expect(envDrawn.ok).toBe(true);
-    const ignored = envDrawn.warnings.find((warning: any) => warning.code === 'locale-ignored');
-    expect(ignored).toMatchObject({
-      code: 'locale-ignored',
-      severity: 'warn',
-      path: '/locale',
-      message: expect.stringContaining("each chart's options.locale"),
-    });
-    const envAdvised = { version: 1, charts: [{ name: 'sales', ...sales, options: { ...sales.options, locale } }] };
-    const envFixed = render({ spec: envAdvised, format: 'svg', return: ['svg'] }).body as any;
-    expect(envFixed.ok).toBe(true);
-    expect(envFixed.warnings.map((warning: any) => warning.code)).not.toContain('locale-ignored');
-    expect(envFixed.charts[0].svg).toContain('1.520,5');
+    for (const unsupported of [7, ['de']]) {
+      const envelope = { version: 1, locale: unsupported, charts: [{ name: 'sales', ...sales }] };
+      expect(render({ spec: envelope, format: 'svg' }).body).toMatchObject({
+        ok: true,
+        warnings: expect.arrayContaining([expect.objectContaining({ code: 'locale-ignored', severity: 'warn', path: '/locale' })]),
+      });
+    }
   });
 });
 

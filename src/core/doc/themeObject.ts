@@ -17,7 +17,7 @@ import { canonicalJson } from '../claims/canonical';
 import { isRecord } from '../lint/shared';
 import { resolveTheme, themes } from '../theme';
 import { canonicalLanguage, NormalizeError } from '../normalize/shared';
-import type { JsonPatchOperation } from '../diagnostics/jsonPatch';
+import { toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
 import { adoptTheme } from '../themeStore';
 import { checkThemeShape, unknownThemeKeyRepair } from '../themeShape';
 import type { Theme, ThemeRef } from '../types/theme';
@@ -25,6 +25,8 @@ import type { LintWarning } from '../types/scene';
 import { linkThemeShapeRules } from '../themeShapeRules';
 import { retiredThemeKeyWarning, withoutRetiredThemeKeys } from '../retired';
 import { themeShape } from '../normalize/optionShapes';
+import { baseOptionsSchema, diagnosedSafeParse } from '../schema/shared';
+import { flattenIssues } from '../schema/flattenIssues';
 
 // Links the theme checks `resolveTheme` runs over a patched theme, so a spec
 // with `theme.overrides` validates synchronously in every entry that holds
@@ -112,6 +114,14 @@ export function rootContextErrors(root: { theme?: unknown; locale?: unknown }): 
   const errors = [];
   if (typeof root.locale === 'string' && canonicalLanguage(root.locale) === null) {
     errors.push({ code: 'invalid-locale', message: `'${root.locale}' is not a BCP 47 language tag`, path: '/locale', suggest: 'use a tag such as "de" or "de-DE"', docs: 'docs/reference/options.md#options' });
+  }
+  if (isRecord(root.locale)) {
+    const parsed = diagnosedSafeParse(baseOptionsSchema.shape.locale, root.locale);
+    if (!parsed.success) {
+      for (const issue of flattenIssues(parsed.error.issues)) {
+        errors.push({ code: 'invalid-locale', message: issue.message, path: toJsonPointer(['locale', ...issue.path.map(String)]), docs: 'docs/reference/options.md#options' });
+      }
+    }
   }
   if (root.theme !== undefined) {
     if (typeof root.theme !== 'string' && !isRecord(root.theme)) {

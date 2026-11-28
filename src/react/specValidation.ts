@@ -34,6 +34,7 @@ import { publishSpecValidator } from './specHandover';
 import type { HoverOption } from './useHover';
 import { pushAll } from '../core/arrays';
 import { caseInsensitiveValue } from '../core/inputConversion';
+import { mergeLocale } from '../core/normalize/optionShapes';
 
 /** Serializable BoardplotChart props beside the spec itself. */
 export interface BoardplotSpecSettings extends ContainerSizeOptions {
@@ -169,15 +170,17 @@ function validateSelection({ doc, envelope, selected }: Selection): ParsedChartS
   const validated = validateChartInput(doc, selected, envelope);
   if (!validated) throw new DocumentSchemaError(envelope.errors);
   const type = validated.definition.type;
+  const options = validated.options as RequestOptions;
+  const locale = mergeLocale(doc.locale, options.locale);
   return {
     name: selected.name,
     request: {
       type, data: validated.data,
       options: {
         ...(doc.theme === undefined ? {} : { theme: doc.theme }),
-        ...(typeof doc.locale === 'string' ? { locale: { language: doc.locale } } : {}),
-        ...validated.options,
-      } as RequestOptions,
+        ...options,
+        ...(locale === undefined ? {} : { locale }),
+      },
       ...(validated.chart.annotations === undefined ? {} : { annotations: validated.chart.annotations as Annotation[] }),
     },
     warnings: envelope.warnings,

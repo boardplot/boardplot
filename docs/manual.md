@@ -446,7 +446,7 @@ A file in `--out` takes the chart's name, `chart` when the spec has none; a take
 
 ### Several charts in one call
 
-A document draws several charts in one call: `{ "version": 1, "charts": [...] }`, with a unique `name` per chart that also names its file under `--out`. A root `theme` or `locale` applies to every chart that sets none. The CLI starts and loads the engine once for all charts, where one `boardplot render` per chart pays that start for every chart. `boardplot_render`, `boardplot_measure` and `boardplot measure` take a document too.
+A document draws several charts in one call: `{ "version": 1, "charts": [...] }`, with a unique `name` per chart that also names its file under `--out`. A root `theme` applies to each chart without its own theme. Set the document's root `locale` to a language tag such as `"de"` or an object such as `{ "decimal": ",", "thousands": "." }`. Each chart inherits those settings and can override individual fields in `options.locale`. The CLI starts and loads the engine once for all charts, where one `boardplot render` per chart pays that start for every chart. `boardplot_render`, `boardplot_measure` and `boardplot measure` take a document too.
 
 ```sh
 boardplot render - --out charts <<'EOF'
@@ -879,7 +879,7 @@ EOF
 - Spec errors come sorted by path, at most ten, then one `more-errors` entry with the count. Tool-argument validation can return only its first error.
 - `ok: false` means nothing was drawn. A `warn` warning needs a review of the drawing. `info` and `advice` need no retry.
 
-`options.locale: "de"` means `{ language: "de" }`. A language sets words only. Decimal and grouping marks come only from `options.locale.decimal` and `options.locale.thousands`. A root `locale` on a bare chart remains invalid, with a fix that moves its value into options.
+`options.locale: "de"` means `{ language: "de" }`. A language sets words only. Set `decimal` and `thousands` in the document's root `locale` or in a chart's `options.locale`. For a bare chart, put `locale` in `options`.
 
 Column, combo, bar and line charts use locale strings for built-in labels and notes. English mean labels read `Average 27.5`. German mean labels keep `Ø`. Set `options.strings.average` to change that word. Other keys cover status labels, missing-value notes, ranks, ranges and anomaly rules. Each key is listed in the reference. `options.strings` also works through the React theme provider. Authored text stays as written. Unsupported languages use English built-in wording.
 

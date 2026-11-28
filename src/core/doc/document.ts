@@ -4,6 +4,7 @@ import { isBareChart } from './bareChart';
 import { diagnosedSafeParse, idRecord } from '../schema/shared';
 import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documentContract';
 import { flattenIssues } from '../schema/flattenIssues';
+import type { LocaleSpec } from '../types/options';
 import type { LintWarning } from '../types/scene';
 import type { ThemeRef } from '../types/theme';
 import { optionsTake } from './chartValidation';
@@ -44,8 +45,8 @@ export interface DocChart {
 }
 
 export interface BoardplotDoc {
-  /** Root language tag; inherited as options.locale.language for number and date labels. */
-  locale?: unknown;
+  /** Locale settings inherited by each chart, with per-field overrides in options.locale. */
+  locale?: string | LocaleSpec;
   version: number;
   theme?: ThemeRef;
   charts: DocChart[];
@@ -62,7 +63,7 @@ const documentSchema = z.preprocess(
       $schema: z.string().optional().describe('Optional schema-location hint; document version selects the supported format.'),
       version: z.literal(1).describe('Document format version; the supported value is 1.'),
       theme: z.unknown().optional().describe('Document theme inherited by charts without an explicit theme. Accepts a preset name, a full theme object, { preset, overrides }, or { overrides } for the default preset.'),
-      locale: z.unknown().optional().describe('Root language tag inherited by charts. Non-string values are accepted structurally but warn and have no effect; explicit chart format examples take precedence.'),
+      locale: z.unknown().optional().describe('Document locale inherited by every chart. Accepts a language tag or an options.locale object. Each field in a chart’s options.locale overrides the corresponding document field. Unsupported value types are ignored with a warning.'),
       charts: z
         .array(
           z.object({
@@ -222,7 +223,7 @@ function strayKey(input: Record<string, unknown>, key: string, where: string, mo
 /**
  * Unknown root and chart fields are refused: zod would strip them, and an
  * author would get no signal that `chart.title` or a typo'd `anotations` did
- * nothing. A non-string root locale stays a warning, because it has no effect.
+ * nothing. An unsupported root locale type stays a warning, because it has no effect.
  */
 function unknownDocFields(raw: unknown, accepts: (candidate: Record<string, unknown>) => boolean): { errors: DocumentFinding[]; warnings: LintWarning[] } {
   const errors: DocumentFinding[] = [];
@@ -254,11 +255,11 @@ function unknownDocFields(raw: unknown, accepts: (candidate: Record<string, unkn
       errors.push(oneChart ? strayKey(raw, key, 'Root', moved) : unknownField(raw, [key], 'Root'));
     }
   }
-  if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string') {
+  if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string' && !isRecord(raw.locale)) {
     warnings.push(completeDiagnostic({
       code: 'locale-ignored',
       severity: 'warn',
-      message: "root 'locale' must be a language tag such as 'de'; anything else has no effect; set a locale object on each chart's options.locale; explicit chart formats override the language tag",
+      message: "Set root 'locale' to a language tag such as 'de' or an object such as { decimal: ',', thousands: '.' }.",
     }, raw, ['locale']));
   }
   if (Array.isArray(raw.charts)) {
@@ -334,6 +335,7 @@ export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): Docu
       })));
   }
   const doc = ownedDocumentCopy(result.data) as unknown as BoardplotDoc;
+  if (typeof doc.locale !== 'string' && !isRecord(doc.locale)) delete doc.locale;
   rememberDiagnosticSource(doc, source);
   return { doc, envelope: {
     ok: true, errors: [],

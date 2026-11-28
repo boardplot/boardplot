@@ -88,6 +88,23 @@ it('applies explicit host settings after document and chart settings', async () 
   expect(resolve.mock.calls.at(-1)![1]).toMatchObject({ theme: 'boardroom', locale: { language: 'de-x-marks-pc' } });
 });
 
+// A chart that changes the language must keep the document's decimal and grouping marks.
+it('inherits document number marks when the chart sets its own language', async () => {
+  const spec = {
+    version: 1,
+    locale: { decimal: ',', thousands: '.' },
+    charts: [{
+      name: 'sales', type: 'column',
+      data: { categories: ['A', 'B'], series: [{ id: 'sales', values: [1345.6, 1000] }] },
+      options: { format: '0.0', locale: { language: 'fr' } },
+    }],
+  };
+  const warnings = vi.fn();
+  const markup = await mountedMarkup(<BoardplotChart spec={spec} onWarnings={warnings} />);
+  expect(markup).toContain('1.345,6');
+  expect(warnings).toHaveBeenLastCalledWith(expect.not.arrayContaining([expect.objectContaining({ code: 'locale-ignored' })]));
+});
+
 it('recovers from an explicit small frame and changes selected chart types', () => {
   const refused = vi.fn();
   const geometry = vi.fn<(value: Geometry) => void>();

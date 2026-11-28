@@ -69,7 +69,8 @@ export function useSpecFrame(spec: unknown, host: Pick<BoardplotChartProps, 'siz
   }
   // A provider target that does not exist is the card's finding; the card takes the default.
   catch { size = resolveTargetSize(Object.hasOwn(TARGET_TYPE_TABLES, settings.target!) ? settings.target! : DEFAULT_TARGET).sizePx; }
-  const language = record(raw.locale).language ?? root.locale;
+  const rootLanguage = typeof root.locale === 'string' ? root.locale : record(root.locale).language;
+  const language = typeof raw.locale === 'string' ? raw.locale : record(raw.locale).language ?? rootLanguage;
   const options = {
     target: target as RenderTarget,
     title: text(raw.title),

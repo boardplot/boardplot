@@ -31,6 +31,7 @@ import { canDraw as canDrawRegistered, measure as measureRegistered, resolveChar
 import type { ChartRequest, RequestContext, RequestOptions, RequestInputOptions } from './core/request';
 import { validateChartInput } from './core/doc/chartValidation';
 import type { DocChart, DocumentEnvelope, BoardplotDoc } from './core/doc/document';
+import { mergeLocale } from './core/normalize/optionShapes';
 import { NormalizeError } from './core/normalize/shared';
 import {
   getChart as getRegisteredChart,
@@ -90,18 +91,17 @@ function validatedRequest<D, O extends object>(
   const { measure: measurer, ...authored } = (request.options ?? {}) as O & RequestOptions;
   // The same authored-input validation as render, before layout adds internal options.
   // It lives here, not in core/request, so the schema validator stays out of the React bundles.
-  const inheritedLocale = typeof context?.locale === 'string' ? { language: context.locale } : context?.locale;
+  const locale = mergeLocale(mergeLocale(context?.locale, authored.locale), request.locale);
   // A chart that sets textScale or textSize takes neither from the context.
   const own = authored as { textScale?: unknown; textSize?: unknown };
   const contextOwnsText = [own.textScale, own.textSize, request.textScale, request.textSize].some(value => value !== undefined);
   const chart: DocChart = { name: 'chart', type: request.type, data: request.data, options: {
     ...(context?.theme === undefined ? {} : { theme: context.theme }),
-    ...(inheritedLocale ? { locale: inheritedLocale } : {}),
     ...(context?.target === undefined ? {} : { target: context.target }),
     ...(contextOwnsText ? {} : { ...(context?.textScale === undefined ? {} : { textScale: context.textScale }), ...(context?.textSize === undefined ? {} : { textSize: context.textSize }) }),
     ...authored,
     ...(request.theme === undefined ? {} : { theme: request.theme }),
-    ...(request.locale === undefined ? {} : { locale: typeof request.locale === 'string' ? { language: request.locale } : request.locale }),
+    ...(locale === undefined ? {} : { locale }),
     ...(request.target === undefined ? {} : { target: request.target }),
     ...(request.textScale === undefined ? {} : { textScale: request.textScale }),
     ...(request.textSize === undefined ? {} : { textSize: request.textSize }),
