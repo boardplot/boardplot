@@ -69,7 +69,7 @@ async function prepareChart(input: PrepareChartRequest, context: BoardplotThemeO
     paintThemes: sceneThemeBindings(geometry) })) as PreparedChart;
 }
 
-type Page = [spec: Record<string, unknown>, host: { theme?: unknown; target?: unknown }];
+type Page = [spec: Record<string, unknown>, host: { theme?: unknown; target?: unknown }, parsed: Record<string, unknown>];
 
 /**
  * The keys of the pages whose first frame shows this chart. A page counts only when the parser reads its spec and host
@@ -84,19 +84,26 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
   const { theme: optionTheme, target: optionTarget, ...options } = (rest.options ?? {}) as Record<string, unknown>;
   const T = theme ?? optionTheme, G = target ?? optionTarget;
   const pages: Page[] = [];
+  // A theme named by a string stands in the top, the options or a host prop, and the parser reads the three alike. The target
+  // in the options decides the canvas the margins are checked against. So one parse serves the forms of one target placement.
+  // A theme object takes other paths through the parser, so each form of it keeps its own parse.
+  const sharedParse = T === undefined || typeof T === 'string';
+  const bare = (inOptions: boolean) => ({ ...rest, options: { ...options, ...(T !== undefined && { theme: T }), ...(inOptions && G !== undefined && { target: G }) } });
+  const bareForms = [bare(false), bare(true)];
+  const parses = new Map<object, ReturnType<typeof parseChartSpec>>();
   if (source) {
     // A document of several charts shows one of them as the document with that chart alone.
     const [spec, chart] = source as [Record<string, unknown>, string | undefined];
     const page = chart === undefined || !Array.isArray(spec.charts) ? spec : { ...spec, charts: spec.charts.filter((entry: { name?: unknown }) => entry?.name === chart) };
     // The page as written, and with the host's theme or target prop over the spec's own.
     for (const t of T === undefined ? [false] : [false, true]) for (const g of G === undefined ? [false] : [false, true]) {
-      pages.push([page, { ...(t && { theme: T }), ...(g && { target: G }) }]);
+      pages.push([page, { ...(t && { theme: T }), ...(g && { target: G }) }, page]);
     }
   }
   // The request written as a bare chart, with its theme at its top, in a prop or in its options, and its target in a prop or in its options.
   for (const t of T === undefined ? [''] : ['prop', 'top', 'options']) for (const g of G === undefined ? [''] : ['prop', 'options']) {
-    pages.push([{ ...rest, ...(t === 'top' && { theme: T }), options: { ...options, ...(t === 'options' && { theme: T }), ...(g === 'options' && { target: G }) } },
-      { ...(t === 'prop' && { theme: T }), ...(g === 'prop' && { target: G }) }]);
+    const spec = { ...rest, ...(t === 'top' && { theme: T }), options: { ...options, ...(t === 'options' && { theme: T }), ...(g === 'options' && { target: G }) } };
+    pages.push([spec, { ...(t === 'prop' && { theme: T }), ...(g === 'prop' && { target: G }) }, sharedParse ? bareForms[g === 'options' ? 1 : 0]! : spec]);
   }
   // A page draws the prepared chart when its render key without the data and its data as one JSON string are the same.
   // The data is the large part, so the check compares it as a string and every page hashes it once.
@@ -104,7 +111,7 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
   const key = apart(prepared), hashes = new Map<unknown, string>();
   const hashData = (data: unknown) => hashes.get(data) ?? hashes.set(data, dataHash(data)).get(data)!;
   const keys = new Set<string>(), tried = new Set<string | undefined>();
-  for (const [spec, host] of pages) {
+  for (const [spec, host, form] of pages) {
     const page = preparedInputKey(spec, { ...host, ...sizing }, context, themes, hashData);
     // Pages of one form draw one chart, so one check serves them all. The first frame draws a theme object without a
     // preset that the prepared value does not carry in the default theme, so such a page shows the busy placeholder.
@@ -115,7 +122,8 @@ async function pageKeys(authored: Record<string | symbol, unknown>, mapRows: ((p
     tried.add(page);
     try {
       specSettings({ ...host, size: sizing.size, fit: sizing.fit, fallbackSize: sizing.fallbackSize } as never);
-      const { request } = await parseChartSpec(mapRows ? { ...spec, data: mapRows(spec) } : spec);
+      if (!parses.has(form)) parses.set(form, parseChartSpec(mapRows ? { ...form, data: mapRows(form) } : form));
+      const { request } = await parses.get(form)!;
       const live = { ...request, options: { ...request.options, ...Object.fromEntries(Object.entries(host).filter(([, value]) => value !== undefined)) } };
       if (page && apart(resolveFor(live)) === key) keys.add(page);
     } catch { /* a page the parser refuses shows no prepared chart */ }
