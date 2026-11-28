@@ -359,7 +359,7 @@ export function layoutCohort(
     warnings.push({
       code: 'cohort-values-suppressed',
       severity: 'warn',
-      message: `${lost.total} of ${lost.drawn} cells are too small to carry their percentage${where}; those cells read from colour alone, and the exhibit says so in a footnote`,
+      message: `${lost.total} of ${lost.drawn} cells are too small to carry their percentage${where}; those cells read from colour alone`,
       suggest: 'widen the canvas, show fewer periods, or read the exact rates from the derived output',
     });
   }
